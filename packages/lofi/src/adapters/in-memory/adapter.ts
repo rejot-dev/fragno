@@ -55,10 +55,12 @@ export class InMemoryLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
     this.schemaMap = schemaMap;
     this.tableMap = tableMap;
     this.ignoreUnknownSchemas = options.ignoreUnknownSchemas ?? false;
-    this.store = new InMemoryLofiStore({
-      endpointName: this.endpointName,
-      schemas: this.schemas,
-    });
+    this.store =
+      options.store ??
+      new InMemoryLofiStore({
+        endpointName: this.endpointName,
+        schemas: this.schemas,
+      });
   }
 
   async applyOutboxEntry(options: {

@@ -85,8 +85,11 @@ export const rebaseSubmitQueue = async (options: {
   cursorKey: string;
   confirmedCommandIds: string[];
   queue: LofiSubmitCommand[];
+  overlay?: {
+    rebuild: (options?: { queue?: LofiSubmitCommand[]; schemaNames?: string[] }) => Promise<void>;
+  };
 }): Promise<RebaseResult> => {
-  const { adapter, entries, cursorKey, confirmedCommandIds, queue } = options;
+  const { adapter, entries, cursorKey, confirmedCommandIds, queue, overlay } = options;
 
   const { appliedEntries, lastVersionstamp } = await applyOutboxEntries({
     adapter,
@@ -102,6 +105,10 @@ export const rebaseSubmitQueue = async (options: {
       continue;
     }
     remaining.push(command);
+  }
+
+  if (overlay) {
+    await overlay.rebuild({ queue: remaining });
   }
 
   return { appliedEntries, lastVersionstamp, queue: remaining };

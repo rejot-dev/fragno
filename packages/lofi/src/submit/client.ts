@@ -7,7 +7,6 @@ import type {
   LofiSubmitResponse,
   LofiQueryableAdapter,
 } from "../types";
-import type { IndexedDbQueryContext } from "../query/engine";
 import { createLocalHandlerTx } from "./local-handler-tx";
 import { rebaseSubmitQueue } from "./rebase";
 import { buildCommandKey, defaultQueueKey, loadSubmitQueue, storeSubmitQueue } from "./queue";
@@ -25,10 +24,7 @@ type SubmitClientOptions<TContext> = {
   endpointName: string;
   submitUrl: string;
   internalUrl: string;
-  adapter: LofiAdapter &
-    LofiQueryableAdapter & {
-      createQueryContext: (schemaName: string) => IndexedDbQueryContext;
-    };
+  adapter: LofiAdapter & LofiQueryableAdapter;
   schemas: AnySchema[];
   commands: Array<LofiSubmitCommandDefinition<unknown, TContext>>;
   fetch?: typeof fetch;
@@ -52,6 +48,7 @@ export class LofiSubmitClient<TContext = unknown> {
   private readonly createCommandContext?: SubmitClientOptions<TContext>["createCommandContext"];
   private readonly overlay?: OptimisticOverlay;
   private adapterIdentity?: string;
+  private submitting?: Promise<void>;
   private readonly localTx: ReturnType<typeof createLocalHandlerTx>;
 
   constructor(options: SubmitClientOptions<TContext>) {
@@ -88,59 +85,79 @@ export class LofiSubmitClient<TContext = unknown> {
       input: options.input,
     };
 
+    if (this.submitting) {
+      await this.submitting;
+    }
+
     const queue = await loadSubmitQueue(this.adapter, this.queueKey);
     queue.push(command);
     await storeSubmitQueue(this.adapter, this.queueKey, queue);
 
     if (options.optimistic !== false) {
-      await this.runOptimisticCommand(command);
+      try {
+        await this.runOptimisticCommand(command);
+      } catch (error) {
+        // Optimistic execution failed; command remains queued for submission.
+        console.warn("Optimistic command failed", error);
+      }
     }
 
     return id;
   }
 
   async submitOnce(options?: { signal?: AbortSignal }): Promise<LofiSubmitResponse> {
-    const queue = await loadSubmitQueue(this.adapter, this.queueKey);
-    const adapterIdentity = await this.getAdapterIdentity(options?.signal);
-    const baseVersionstamp = await this.adapter.getMeta(this.cursorKey);
-
-    const requestId = crypto.randomUUID();
-    const request: LofiSubmitRequest = {
-      baseVersionstamp: baseVersionstamp ?? undefined,
-      requestId,
-      conflictResolutionStrategy: this.conflictResolutionStrategy,
-      adapterIdentity,
-      commands: queue,
-    };
-
-    const response = await this.fetcher(this.submitUrl, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(request),
-      signal: options?.signal,
+    if (this.submitting) {
+      throw new Error("Submit already in progress");
+    }
+    let resolveSubmitting!: () => void;
+    this.submitting = new Promise<void>((resolve) => {
+      resolveSubmitting = resolve;
     });
 
-    if (!response.ok) {
-      throw new Error(`Submit request failed: ${response.status} ${response.statusText}`);
+    try {
+      const queue = await loadSubmitQueue(this.adapter, this.queueKey);
+      const adapterIdentity = await this.getAdapterIdentity(options?.signal);
+      const baseVersionstamp = await this.adapter.getMeta(this.cursorKey);
+
+      const requestId = crypto.randomUUID();
+      const request: LofiSubmitRequest = {
+        baseVersionstamp: baseVersionstamp ?? undefined,
+        requestId,
+        conflictResolutionStrategy: this.conflictResolutionStrategy,
+        adapterIdentity,
+        commands: queue,
+      };
+
+      const response = await this.fetcher(this.submitUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(request),
+        signal: options?.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Submit request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const payload = (await response.json()) as LofiSubmitResponse;
+
+      const rebased = await rebaseSubmitQueue({
+        adapter: this.adapter,
+        entries: payload.entries,
+        cursorKey: this.cursorKey,
+        confirmedCommandIds: payload.confirmedCommandIds,
+        queue,
+        overlay: this.overlay,
+      });
+
+      await storeSubmitQueue(this.adapter, this.queueKey, rebased.queue);
+      return payload;
+    } finally {
+      resolveSubmitting();
+      this.submitting = undefined;
     }
-
-    const payload = (await response.json()) as LofiSubmitResponse;
-
-    const rebased = await rebaseSubmitQueue({
-      adapter: this.adapter,
-      entries: payload.entries,
-      cursorKey: this.cursorKey,
-      confirmedCommandIds: payload.confirmedCommandIds,
-      queue,
-    });
-
-    await storeSubmitQueue(this.adapter, this.queueKey, rebased.queue);
-    if (this.overlay) {
-      await this.overlay.rebuild({ queue: rebased.queue });
-    }
-    return payload;
   }
 
   private async runOptimisticCommand(command: LofiSubmitCommand): Promise<void> {
@@ -158,9 +175,13 @@ export class LofiSubmitClient<TContext = unknown> {
       throw new Error(`Unknown sync command: ${key}`);
     }
 
-    const ctx = this.createCommandContext
-      ? this.createCommandContext(definition)
-      : ({} as TContext);
+    if (!this.createCommandContext) {
+      throw new Error(
+        "createCommandContext is required to run optimistic commands without an overlay.",
+      );
+    }
+
+    const ctx = this.createCommandContext(definition);
 
     await definition.handler({
       input: command.input,

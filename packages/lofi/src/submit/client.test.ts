@@ -129,7 +129,7 @@ describe("LofiSubmitClient", () => {
       endpointName: "app",
       submitUrl: "https://example.com/_internal/sync",
       internalUrl: "https://example.com/_internal",
-      adapter,
+      adapter: overlay.stackedAdapter,
       schemas: [appSchema],
       commands: [commandDef as LofiSubmitCommandDefinition<unknown, {}>],
       overlay,
