@@ -15,6 +15,7 @@ export { decodeOutboxPayload, outboxMutationsToUowOperations, resolveOutboxRefs 
 export { LofiClient } from "./client";
 export { IndexedDbAdapter } from "./indexeddb/adapter";
 export { InMemoryLofiAdapter } from "./adapters/in-memory/adapter";
+export { StackedLofiAdapter, type StackedLofiAdapterOptions } from "./adapters/stacked/adapter";
 export { LofiOverlayManager } from "./optimistic/overlay-manager";
 export { LofiSubmitClient } from "./submit/client";
 export { applyOutboxEntries, rebaseSubmitQueue } from "./submit/rebase";
