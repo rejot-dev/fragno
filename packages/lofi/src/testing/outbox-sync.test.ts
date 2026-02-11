@@ -156,12 +156,14 @@ describe("outbox sync integration", () => {
         schemas: [{ schema: appSchema }],
       });
 
+      const onSyncApplied = vi.fn();
       const client = new LofiClient({
         outboxUrl: "https://example.com/outbox",
         endpointName: "app",
         adapter,
         fetch: fetcher as unknown as typeof fetch,
         limit: 1,
+        onSyncApplied,
       });
 
       const result = await client.syncOnce();
@@ -169,6 +171,8 @@ describe("outbox sync integration", () => {
       expect(result.appliedEntries).toBe(expectedEntries.length);
       expect(result.lastVersionstamp).toBe(expectedEntries.at(-1)?.versionstamp);
       expect(await adapter.getMeta("app::outbox")).toBe(expectedEntries.at(-1)?.versionstamp);
+      expect(onSyncApplied).toHaveBeenCalledTimes(1);
+      expect(onSyncApplied).toHaveBeenCalledWith(result);
 
       expect(requests).toHaveLength(expectedEntries.length + 1);
       expect(requests[0]?.after).toBeNull();
@@ -214,19 +218,23 @@ describe("outbox sync integration", () => {
         async () => new Response(JSON.stringify(expectedEntries), { status: 200 }),
       );
 
+      const onSyncApplied = vi.fn();
       const client = new LofiClient({
         outboxUrl: "https://example.com/outbox",
         endpointName: "app",
         adapter,
         fetch: fetcher as unknown as typeof fetch,
         limit: expectedEntries.length + 1,
+        onSyncApplied,
       });
 
       const first = await client.syncOnce();
       expect(first.appliedEntries).toBe(expectedEntries.length);
+      expect(onSyncApplied).toHaveBeenCalledTimes(1);
 
       const second = await client.syncOnce();
       expect(second.appliedEntries).toBe(0);
+      expect(onSyncApplied).toHaveBeenCalledTimes(1);
 
       const query = adapter.createQueryEngine(appSchema);
       const count = await query.find("users", (b) => b.whereIndex("idx_age").selectCount());

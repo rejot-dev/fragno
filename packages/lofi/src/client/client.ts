@@ -26,6 +26,7 @@ export class LofiClient {
   private readonly pollIntervalMs: number;
   private readonly limit: number;
   private readonly cursorKey?: string;
+  private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
   private readonly defaultSignal?: AbortSignal;
 
@@ -44,6 +45,7 @@ export class LofiClient {
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.limit = options.limit ?? DEFAULT_LIMIT;
     this.cursorKey = options.cursorKey;
+    this.onSyncApplied = options.onSyncApplied;
     this.onError = options.onError;
     this.defaultSignal = options.signal;
   }
@@ -190,7 +192,13 @@ export class LofiClient {
       throw error;
     }
 
-    return { appliedEntries, lastVersionstamp };
+    const result = { appliedEntries, lastVersionstamp };
+
+    if (appliedEntries > 0) {
+      await this.onSyncApplied?.(result);
+    }
+
+    return result;
   }
 
   private async *fetchPages(options: OutboxFetchOptions): AsyncGenerator<OutboxPageResult> {

@@ -11,6 +11,7 @@ export type LofiClientOptions = {
   pollIntervalMs?: number;
   limit?: number;
   cursorKey?: string;
+  onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   onError?: (error: unknown) => void;
   signal?: AbortSignal;
 };
