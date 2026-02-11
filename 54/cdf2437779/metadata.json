@@ -1,0 +1,30 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "54cdf2437779",
+  "strategy": "manual-commit",
+  "branch": "jan/experiment-cc-refactors",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/fragno-db/src/adapters/generic-sql/query/where-builder.ts",
+    "packages/fragno-db/src/adapters/in-memory/condition-evaluator.ts",
+    "packages/fragno-db/src/query/unit-of-work/execute-unit-of-work.ts",
+    "packages/fragno/src/api/fragment-instantiator.ts",
+    "packages/lofi/src/query/engine.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/54/cdf2437779/0/metadata.json",
+      "transcript": "/54/cdf2437779/0/full.jsonl",
+      "context": "/54/cdf2437779/0/context.md",
+      "content_hash": "/54/cdf2437779/0/content_hash.txt",
+      "prompt": "/54/cdf2437779/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 64,
+    "cache_creation_tokens": 335056,
+    "cache_read_tokens": 4123514,
+    "output_tokens": 30481,
+    "api_call_count": 58
+  }
+}

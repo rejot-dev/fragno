@@ -1,0 +1,13 @@
+Perform all refactor tasks in fp issue luist
+
+---
+
+commit changes for each package into separate commits, add a description to the commit to describe why/how you changed it
+
+---
+
+[Request interrupted by user for tool use]
+
+---
+
+commit with --no-verify
