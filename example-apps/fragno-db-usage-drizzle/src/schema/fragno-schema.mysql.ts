@@ -50,6 +50,39 @@ export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
   index("idx_fragno_db_outbox_idx_outbox_uow_733c7f90").on(table.uowId)
 ])
 
+export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  entryVersionstamp: text("entryVersionstamp").notNull(),
+  mutationVersionstamp: text("mutationVersionstamp").notNull(),
+  uowId: text("uowId").notNull(),
+  schema: text("schema").notNull(),
+  table: text("table").notNull(),
+  externalId: text("externalId").notNull(),
+  op: text("op").notNull(),
+  createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+  _version: int("_version").notNull().default(0)
+}, (table) => [
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d").on(table.entryVersionstamp),
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId)
+])
+
+export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  requestId: text("requestId").notNull(),
+  status: text("status").notNull(),
+  confirmedCommandIds: json("confirmedCommandIds").notNull(),
+  conflictCommandId: text("conflictCommandId"),
+  baseVersionstamp: text("baseVersionstamp"),
+  lastVersionstamp: text("lastVersionstamp"),
+  createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+  _version: int("_version").notNull().default(0)
+}, (table) => [
+  uniqueIndex("uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb").on(table.requestId)
+])
+
 // ============================================================================
 // Fragment: auth
 // ============================================================================

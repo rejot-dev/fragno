@@ -50,67 +50,38 @@ export const fragno_db_outbox = pgTable("fragno_db_outbox", {
   index("idx_outbox_uow").on(table.uowId)
 ])
 
-// ============================================================================
-// Fragment: auth
-// ============================================================================
-
-const schema_auth = pgSchema("auth");
-
-export const user_auth = schema_auth.table("user", {
+export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
-  role: text("role").notNull().default("user"),
+  entryVersionstamp: text("entryVersionstamp").notNull(),
+  mutationVersionstamp: text("mutationVersionstamp").notNull(),
+  uowId: text("uowId").notNull(),
+  schema: text("schema").notNull(),
+  table: text("table").notNull(),
+  externalId: text("externalId").notNull(),
+  op: text("op").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_user_email").on(table.email),
-  uniqueIndex("idx_user_id").on(table.id),
-  index("idx_user_createdAt").on(table.createdAt)
+  index("idx_outbox_mutations_entry").on(table.entryVersionstamp),
+  index("idx_outbox_mutations_key").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
+  index("idx_outbox_mutations_uow").on(table.uowId)
 ])
 
-export const session_auth = schema_auth.table("session", {
+export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  userId: bigint("userId", { mode: "number" }).notNull(),
-  expiresAt: timestamp("expiresAt").notNull(),
+  requestId: text("requestId").notNull(),
+  status: text("status").notNull(),
+  confirmedCommandIds: json("confirmedCommandIds").notNull(),
+  conflictCommandId: text("conflictCommandId"),
+  baseVersionstamp: text("baseVersionstamp"),
+  lastVersionstamp: text("lastVersionstamp"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  foreignKey({
-    columns: [table.userId],
-    foreignColumns: [user_auth._internalId],
-    name: "fk_session_user_sessionOwner"
-  }),
-  index("idx_session_user").on(table.userId)
+  uniqueIndex("idx_sync_request_id").on(table.requestId)
 ])
-
-export const user_authRelations = relations(user_auth, ({ many }) => ({
-  sessionList: many(session_auth, {
-    relationName: "session_user"
-  })
-}));
-
-export const session_authRelations = relations(session_auth, ({ one }) => ({
-  sessionOwner: one(user_auth, {
-    relationName: "session_user",
-    fields: [session_auth.userId],
-    references: [user_auth._internalId]
-  })
-}));
-
-export const auth_schema = {
-  user_auth: user_auth,
-  user_authRelations: user_authRelations,
-  user: user_auth,
-  userRelations: user_authRelations,
-  session_auth: session_auth,
-  session_authRelations: session_authRelations,
-  session: session_auth,
-  sessionRelations: session_authRelations,
-  schemaVersion: 4
-}
 
 // ============================================================================
 // Fragment: comment
@@ -192,6 +163,68 @@ export const upvote_schema = {
   upvote_total_upvote: upvote_total_upvote,
   upvote_total: upvote_total_upvote,
   schemaVersion: 2
+}
+
+// ============================================================================
+// Fragment: auth
+// ============================================================================
+
+const schema_auth = pgSchema("auth");
+
+export const user_auth = schema_auth.table("user", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  email: text("email").notNull(),
+  passwordHash: text("passwordHash").notNull(),
+  role: text("role").notNull().default("user"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  index("idx_user_email").on(table.email),
+  uniqueIndex("idx_user_id").on(table.id),
+  index("idx_user_createdAt").on(table.createdAt)
+])
+
+export const session_auth = schema_auth.table("session", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_session_user_sessionOwner"
+  }),
+  index("idx_session_user").on(table.userId)
+])
+
+export const user_authRelations = relations(user_auth, ({ many }) => ({
+  sessionList: many(session_auth, {
+    relationName: "session_user"
+  })
+}));
+
+export const session_authRelations = relations(session_auth, ({ one }) => ({
+  sessionOwner: one(user_auth, {
+    relationName: "session_user",
+    fields: [session_auth.userId],
+    references: [user_auth._internalId]
+  })
+}));
+
+export const auth_schema = {
+  user_auth: user_auth,
+  user_authRelations: user_authRelations,
+  user: user_auth,
+  userRelations: user_authRelations,
+  session_auth: session_auth,
+  session_authRelations: session_authRelations,
+  session: session_auth,
+  sessionRelations: session_authRelations,
+  schemaVersion: 4
 }
 
 // ============================================================================
