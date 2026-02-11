@@ -688,6 +688,132 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
   return internal.finalResult as T;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function collectServiceIntermediateResults(serviceCalls: readonly (TxResult<any, any> | undefined)[] | undefined): unknown[] {
+  const serviceResults: unknown[] = [];
+  if (!serviceCalls) {
+    return serviceResults;
+  }
+
+  for (const serviceCall of serviceCalls) {
+    if (serviceCall === undefined) {
+      serviceResults.push(undefined);
+      continue;
+    }
+    const serviceCallInternal = serviceCall._internal;
+    // Check if this is a mutate-only service call (empty array sentinel with mutate callback)
+    // In that case, prefer mutateResult over the empty array retrieveSuccessResult
+    if (
+      serviceCallInternal.retrieveSuccessResult !== undefined &&
+      !(
+        Array.isArray(serviceCallInternal.retrieveSuccessResult) &&
+        serviceCallInternal.retrieveSuccessResult.length === 0 &&
+        serviceCallInternal.callbacks.mutate
+      )
+    ) {
+      serviceResults.push(serviceCallInternal.retrieveSuccessResult);
+    } else if (serviceCallInternal.mutateResult !== undefined) {
+      serviceResults.push(serviceCallInternal.mutateResult);
+    } else {
+      serviceResults.push(serviceCallInternal.retrieveSuccessResult);
+    }
+  }
+
+  return serviceResults;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function collectServiceFinalResults(serviceCalls: readonly (TxResult<any, any> | undefined)[] | undefined): unknown[] {
+  const serviceFinalResults: unknown[] = [];
+  if (!serviceCalls) {
+    return serviceFinalResults;
+  }
+
+  for (const serviceCall of serviceCalls) {
+    if (serviceCall === undefined) {
+      serviceFinalResults.push(undefined);
+      continue;
+    }
+    serviceFinalResults.push(serviceCall._internal.finalResult);
+  }
+
+  return serviceFinalResults;
+}
+
+function computeFinalResult(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callbacks: HandlerTxCallbacks<unknown[], unknown, readonly (TxResult<any, any> | undefined)[], unknown, unknown, HooksMap>,
+  retrieveSuccessResult: unknown,
+  mutateResult: unknown,
+  serviceResults: unknown[],
+  serviceFinalResults: unknown[],
+): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type TServiceCalls = readonly (TxResult<any, any> | undefined)[];
+
+  if (callbacks.success) {
+    const successCtx = {
+      retrieveResult: retrieveSuccessResult,
+      mutateResult,
+      serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
+      serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
+    } as Parameters<NonNullable<typeof callbacks.success>>[0];
+    return callbacks.success(successCtx);
+  }
+  if (callbacks.mutate) {
+    return mutateResult;
+  }
+  if (callbacks.retrieveSuccess || callbacks.retrieve) {
+    return retrieveSuccessResult;
+  }
+  return serviceFinalResults;
+}
+
+function resolveRetryPolicy(
+  hasRetrieveOps: boolean,
+  explicitPolicy: RetryPolicy | undefined,
+): RetryPolicy {
+  if (!hasRetrieveOps) {
+    if (explicitPolicy) {
+      throw new Error(
+        "Retry policy is only supported when the transaction includes retrieve operations.",
+      );
+    }
+    return new NoRetryPolicy();
+  }
+
+  return (
+    explicitPolicy ??
+    new ExponentialBackoffRetryPolicy({
+      maxRetries: 5,
+      initialDelayMs: 10,
+      maxDelayMs: 100,
+    })
+  );
+}
+
+function handleRetryableError(
+  error: unknown,
+  retryPolicy: RetryPolicy,
+  attempt: number,
+  signal: AbortSignal | undefined,
+): void {
+  if (signal?.aborted) {
+    throw new Error("Transaction execution aborted");
+  }
+
+  if (!(error instanceof ConcurrencyConflictError)) {
+    throw error;
+  }
+
+  if (!retryPolicy.shouldRetry(attempt, error, signal)) {
+    if (signal?.aborted) {
+      throw new Error("Transaction execution aborted");
+    }
+    throw new ConcurrencyConflictError();
+  }
+}
+
 /**
  * Execute a transaction with the unified TxResult pattern.
  *
@@ -718,17 +844,13 @@ async function executeTx(
   >,
   options: ExecuteTxOptions,
 ): Promise<unknown> {
-  type TRetrieveResults = unknown[];
-  type TRetrieveSuccessResult = unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type TServiceCalls = readonly (TxResult<any, any> | undefined)[];
-  type TMutateResult = unknown;
   type THooks = HooksMap;
   const signal = options.signal;
   let attempt = 0;
 
   while (true) {
-    // Check if aborted before starting attempt
     if (signal?.aborted) {
       throw new Error("Transaction execution aborted");
     }
@@ -736,10 +858,8 @@ async function executeTx(
     let retryPolicy: RetryPolicy | undefined;
 
     try {
-      // Create a fresh UOW for this attempt
       const baseUow = options.createUnitOfWork();
 
-      // Create handler context
       const context: HandlerTxContext<THooks> = {
         forSchema: <S extends AnySchema, H extends HooksMap = THooks>(schema: S, hooks?: H) => {
           return baseUow.forSchema(schema, hooks);
@@ -748,96 +868,41 @@ async function executeTx(
         currentAttempt: attempt,
       };
 
-      // Call serviceCalls factory if provided - this creates TxResults that schedule operations
-      let serviceCalls: TServiceCalls | undefined;
-      if (callbacks.serviceCalls) {
-        serviceCalls = callbacks.serviceCalls();
-      }
-
-      // Call retrieve callback - it returns a TypedUnitOfWork with scheduled operations or void
+      const serviceCalls: TServiceCalls | undefined = callbacks.serviceCalls?.();
       const typedUowFromRetrieve = callbacks.retrieve?.(context);
-
       const allServiceCallTxResults = serviceCalls ? collectAllTxResults([...serviceCalls]) : [];
 
-      const hasRetrieveOps = baseUow.getRetrievalOperations().length > 0;
-      if (!hasRetrieveOps) {
-        if (options.retryPolicy) {
-          throw new Error(
-            "Retry policy is only supported when the transaction includes retrieve operations.",
-          );
-        }
-        retryPolicy = new NoRetryPolicy();
-      } else {
-        retryPolicy =
-          options.retryPolicy ??
-          new ExponentialBackoffRetryPolicy({
-            maxRetries: 5,
-            initialDelayMs: 10,
-            maxDelayMs: 100,
-          });
-      }
+      retryPolicy = resolveRetryPolicy(
+        baseUow.getRetrievalOperations().length > 0,
+        options.retryPolicy,
+      );
 
       await baseUow.executeRetrieve();
 
-      // Get retrieve results from TypedUnitOfWork's retrievalPhase or default to empty array
-      const retrieveResult: TRetrieveResults = typedUowFromRetrieve
+      const retrieveResult: unknown[] = typedUowFromRetrieve
         ? await typedUowFromRetrieve.retrievalPhase
-        : ([] as unknown as TRetrieveResults);
+        : [];
 
       for (const txResult of allServiceCallTxResults) {
         await processTxResultAfterRetrieve(txResult, baseUow);
       }
 
-      const serviceResults: unknown[] = [];
-      if (serviceCalls) {
-        for (const serviceCall of serviceCalls) {
-          if (serviceCall === undefined) {
-            serviceResults.push(undefined);
-            continue;
-          }
-          const serviceCallInternal = serviceCall._internal;
-          // Check if this is a mutate-only service call (empty array sentinel with mutate callback)
-          // In that case, prefer mutateResult over the empty array retrieveSuccessResult
-          if (
-            serviceCallInternal.retrieveSuccessResult !== undefined &&
-            !(
-              Array.isArray(serviceCallInternal.retrieveSuccessResult) &&
-              serviceCallInternal.retrieveSuccessResult.length === 0 &&
-              serviceCallInternal.callbacks.mutate
-            )
-          ) {
-            serviceResults.push(serviceCallInternal.retrieveSuccessResult);
-          } else if (serviceCallInternal.mutateResult !== undefined) {
-            serviceResults.push(serviceCallInternal.mutateResult);
-          } else {
-            serviceResults.push(serviceCallInternal.retrieveSuccessResult);
-          }
-        }
-      }
+      const serviceResults = collectServiceIntermediateResults(serviceCalls);
 
-      // Call retrieveSuccess if provided
-      let retrieveSuccessResult: TRetrieveSuccessResult;
-      if (callbacks.retrieveSuccess) {
-        retrieveSuccessResult = callbacks.retrieveSuccess(
-          retrieveResult,
-          serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
-        );
-      } else {
-        retrieveSuccessResult = retrieveResult as unknown as TRetrieveSuccessResult;
-      }
+      const retrieveSuccessResult = callbacks.retrieveSuccess
+        ? callbacks.retrieveSuccess(
+            retrieveResult,
+            serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
+          )
+        : retrieveResult;
 
-      let mutateResult: TMutateResult | undefined;
+      let mutateResult: unknown;
       if (callbacks.mutate) {
-        const mutateCtx: HandlerTxMutateContext<
-          TRetrieveSuccessResult,
-          ExtractServiceRetrieveResults<TServiceCalls>,
-          THooks
-        > = {
+        mutateResult = callbacks.mutate({
           ...context,
           retrieveResult: retrieveSuccessResult,
           serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
-        };
-        mutateResult = callbacks.mutate(mutateCtx);
+        });
       }
 
       if (options.onBeforeMutate) {
@@ -848,40 +913,18 @@ async function executeTx(
         throw new ConcurrencyConflictError();
       }
 
-      // Process each serviceCall TxResult's success callback
       for (const txResult of allServiceCallTxResults) {
         await processTxResultAfterMutate(txResult);
       }
 
-      const serviceFinalResults: unknown[] = [];
-      if (serviceCalls) {
-        for (const serviceCall of serviceCalls) {
-          if (serviceCall === undefined) {
-            serviceFinalResults.push(undefined);
-            continue;
-          }
-          serviceFinalResults.push(serviceCall._internal.finalResult);
-        }
-      }
-
-      let finalResult: unknown;
-      if (callbacks.success) {
-        // The success context type is determined by the overload - we construct it at runtime
-        // and the type safety is guaranteed by the discriminated overloads
-        const successCtx = {
-          retrieveResult: retrieveSuccessResult,
-          mutateResult,
-          serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
-          serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
-        } as Parameters<NonNullable<typeof callbacks.success>>[0];
-        finalResult = callbacks.success(successCtx);
-      } else if (callbacks.mutate) {
-        finalResult = await awaitPromisesInObject(mutateResult);
-      } else if (callbacks.retrieveSuccess || callbacks.retrieve) {
-        finalResult = retrieveSuccessResult;
-      } else {
-        finalResult = serviceFinalResults;
-      }
+      const serviceFinalResults = collectServiceFinalResults(serviceCalls);
+      const finalResult = computeFinalResult(
+        callbacks,
+        retrieveSuccessResult,
+        mutateResult,
+        serviceResults,
+        serviceFinalResults,
+      );
 
       if (options.onAfterMutate) {
         await options.onAfterMutate(baseUow);
@@ -889,25 +932,11 @@ async function executeTx(
 
       return await awaitPromisesInObject(finalResult);
     } catch (error) {
-      if (signal?.aborted) {
-        throw new Error("Transaction execution aborted");
-      }
-
-      // Only retry concurrency conflicts, not other errors
-      if (!(error instanceof ConcurrencyConflictError)) {
-        throw error;
-      }
-
       if (!retryPolicy) {
         throw error;
       }
 
-      if (!retryPolicy.shouldRetry(attempt, error, signal)) {
-        if (signal?.aborted) {
-          throw new Error("Transaction execution aborted");
-        }
-        throw new ConcurrencyConflictError();
-      }
+      handleRetryableError(error, retryPolicy, attempt, signal);
 
       const delayMs = retryPolicy.getDelayMs(attempt);
       if (delayMs > 0) {

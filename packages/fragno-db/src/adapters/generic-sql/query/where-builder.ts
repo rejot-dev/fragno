@@ -44,6 +44,158 @@ export function fullSQLName(column: AnyColumn, resolver?: NamingResolver): strin
  * @returns A Kysely expression wrapper representing the WHERE clause
  * @internal
  */
+function resolveDbNowValue(
+  left: AnyColumn,
+  driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
+): unknown {
+  if (driverConfig.databaseType === "sqlite") {
+    const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
+    const storage =
+      left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
+    if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
+      return sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+    }
+  }
+  return sql`CURRENT_TIMESTAMP`;
+}
+
+function buildReferenceSubquery(
+  externalId: unknown,
+  left: AnyColumn,
+  table: AnyTable,
+  eb: AnyExpressionBuilder,
+  resolver?: NamingResolver,
+): unknown | undefined {
+  const relation = Object.values(table.relations).find((rel) =>
+    rel.on.some(([localCol]) => localCol === left.name),
+  );
+  if (!relation) {
+    return undefined;
+  }
+
+  const refTable = relation.table;
+  const internalIdCol = refTable.getInternalIdColumn();
+  const idCol = refTable.getIdColumn();
+  const physicalTableName = resolver ? resolver.getTableName(refTable.name) : refTable.name;
+
+  return eb
+    .selectFrom(physicalTableName)
+    .select(
+      resolver
+        ? resolver.getColumnName(refTable.name, internalIdCol.name)
+        : internalIdCol.name,
+    )
+    .where(
+      resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
+      "=",
+      externalId,
+    )
+    .limit(1);
+}
+
+function resolveCompareValue(
+  val: unknown,
+  left: AnyColumn,
+  table: AnyTable | undefined,
+  eb: AnyExpressionBuilder,
+  driverConfig: DriverConfig,
+  sqliteStorageMode: SQLiteStorageMode | undefined,
+  resolver: NamingResolver | undefined,
+  serializer: ReturnType<typeof createSQLSerializer>,
+): unknown {
+  if (val instanceof Column) {
+    return val;
+  }
+
+  if (isDbNow(val)) {
+    return resolveDbNowValue(left, driverConfig, sqliteStorageMode);
+  }
+
+  if (left.role === "reference" && table) {
+    if (typeof val === "string") {
+      return buildReferenceSubquery(val, left, table, eb, resolver) ?? val;
+    }
+    if (val instanceof FragnoId && val.internalId !== undefined) {
+      return val.internalId;
+    }
+    if (val instanceof FragnoId && val.internalId === undefined) {
+      return buildReferenceSubquery(val.externalId, left, table, eb, resolver) ?? val;
+    }
+    if (val instanceof FragnoReference) {
+      return val.internalId;
+    }
+    const resolvedVal = resolveFragnoIdValue(val, left);
+    return serializer.serialize(resolvedVal, left);
+  }
+
+  const resolvedVal = resolveFragnoIdValue(val, left);
+  return serializer.serialize(resolvedVal, left);
+}
+
+function mapOperatorToSQL(
+  op: string,
+  val: unknown,
+  eb: AnyExpressionBuilder,
+  resolver?: NamingResolver,
+): { binaryOp: BinaryOperator; rhs: unknown } {
+  switch (op) {
+    case "contains":
+      return {
+        binaryOp: "like",
+        rhs:
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `%${val}%`,
+      };
+    case "not contains":
+      return {
+        binaryOp: "not like",
+        rhs:
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `%${val}%`,
+      };
+    case "starts with":
+      return {
+        binaryOp: "like",
+        rhs:
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `${val}%`,
+      };
+    case "not starts with":
+      return {
+        binaryOp: "not like",
+        rhs:
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `${val}%`,
+      };
+    case "ends with":
+      return {
+        binaryOp: "like",
+        rhs:
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            : `%${val}`,
+      };
+    case "not ends with":
+      return {
+        binaryOp: "not like",
+        rhs:
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            : `%${val}`,
+      };
+    default:
+      return {
+        binaryOp: op as BinaryOperator,
+        rhs: val instanceof Column ? eb.ref(fullSQLName(val, resolver)) : val,
+      };
+  }
+}
+
 export function buildWhere(
   condition: Condition,
   eb: AnyExpressionBuilder,
@@ -52,156 +204,23 @@ export function buildWhere(
   resolver?: NamingResolver,
   table?: AnyTable,
 ): AnyExpressionWrapper {
-  const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
-
   if (condition.type === "compare") {
     const left = condition.a;
-    const op = condition.operator;
-    let val = condition.b;
-
-    if (!(val instanceof Column)) {
-      if (isDbNow(val)) {
-        if (driverConfig.databaseType === "sqlite") {
-          const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
-          const storage =
-            left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
-          if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
-            val = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-          } else {
-            val = sql`CURRENT_TIMESTAMP`;
-          }
-        } else {
-          val = sql`CURRENT_TIMESTAMP`;
-        }
-      } else if (left.role === "reference" && table) {
-        // Handle reference columns specially
-        if (typeof val === "string") {
-          // String external ID - create subquery to lookup internal ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
-          );
-          if (relation) {
-            const refTable = relation.table;
-            const internalIdCol = refTable.getInternalIdColumn();
-            const idCol = refTable.getIdColumn();
-            const physicalTableName = resolver
-              ? resolver.getTableName(refTable.name)
-              : refTable.name;
-
-            val = eb
-              .selectFrom(physicalTableName)
-              .select(
-                resolver
-                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
-                  : internalIdCol.name,
-              )
-              .where(
-                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
-                "=",
-                val,
-              )
-              .limit(1);
-          }
-        } else if (val instanceof FragnoId && val.internalId !== undefined) {
-          // FragnoId with internal ID - use it directly (no serialization needed)
-          val = val.internalId;
-        } else if (val instanceof FragnoId && val.internalId === undefined) {
-          // FragnoId without internal ID - create subquery using external ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
-          );
-          if (relation) {
-            const refTable = relation.table;
-            const internalIdCol = refTable.getInternalIdColumn();
-            const idCol = refTable.getIdColumn();
-            const physicalTableName = resolver
-              ? resolver.getTableName(refTable.name)
-              : refTable.name;
-
-            val = eb
-              .selectFrom(physicalTableName)
-              .select(
-                resolver
-                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
-                  : internalIdCol.name,
-              )
-              .where(
-                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
-                "=",
-                val.externalId,
-              )
-              .limit(1);
-          }
-        } else if (val instanceof FragnoReference) {
-          // FragnoReference - use internal ID directly (no serialization needed)
-          val = val.internalId;
-        } else {
-          // Other values - resolve and serialize
-          const resolvedVal = resolveFragnoIdValue(val, left);
-          val = serializer.serialize(resolvedVal, left);
-        }
-      } else {
-        // Non-reference columns - resolve FragnoId/FragnoReference and serialize
-        const resolvedVal = resolveFragnoIdValue(val, left);
-        val = serializer.serialize(resolvedVal, left);
-      }
-    }
-
-    let v: BinaryOperator;
-    let rhs: unknown;
-
-    switch (op) {
-      case "contains":
-        v = "like";
-        rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
-            : `%${val}%`;
-        break;
-      case "not contains":
-        v = "not like";
-        rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
-            : `%${val}%`;
-        break;
-      case "starts with":
-        v = "like";
-        rhs =
-          val instanceof Column
-            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
-            : `${val}%`;
-        break;
-      case "not starts with":
-        v = "not like";
-        rhs =
-          val instanceof Column
-            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
-            : `${val}%`;
-        break;
-      case "ends with":
-        v = "like";
-        rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
-            : `%${val}`;
-        break;
-      case "not ends with":
-        v = "not like";
-        rhs =
-          val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
-            : `%${val}`;
-        break;
-      default:
-        v = op;
-        rhs = val instanceof Column ? eb.ref(fullSQLName(val, resolver)) : val;
-    }
-
-    return eb(fullSQLName(left, resolver), v, rhs);
+    const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
+    const val = resolveCompareValue(
+      condition.b,
+      left,
+      table,
+      eb,
+      driverConfig,
+      sqliteStorageMode,
+      resolver,
+      serializer,
+    );
+    const { binaryOp, rhs } = mapOperatorToSQL(condition.operator, val, eb, resolver);
+    return eb(fullSQLName(left, resolver), binaryOp, rhs);
   }
 
-  // Nested conditions
   if (condition.type === "and") {
     return eb.and(
       condition.items.map((v) =>
