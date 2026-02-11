@@ -337,7 +337,7 @@ describe("IndexedDbAdapter", () => {
     expect(result.applied).toBe(true);
     const db = await openDb(dbName);
     const row = await getRow(db, ["app", "app", "users", "user-1"]);
-    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1"]);
+    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1", "vs1"]);
     expect(row).toBeUndefined();
     expect(inboxRow).toBeDefined();
   });
@@ -395,7 +395,7 @@ describe("IndexedDbAdapter", () => {
     const db = await openDb(dbName);
     const userRow = await getRow(db, ["app", "app", "users", "user-1"]);
     const postRow = await getRow(db, ["app", "app", "posts", "post-1"]);
-    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1"]);
+    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1", "vs1"]);
     const seqMeta = await getMeta(db, "app::seq::app::users");
 
     expect(userRow).toBeUndefined();
