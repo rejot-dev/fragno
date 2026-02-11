@@ -16,6 +16,11 @@ type InternalDescribeResponse = {
   adapterIdentity?: string;
 };
 
+type OptimisticOverlay = {
+  applyCommand: (command: LofiSubmitCommand) => Promise<void>;
+  rebuild: (options?: { queue?: LofiSubmitCommand[]; schemaNames?: string[] }) => Promise<void>;
+};
+
 type SubmitClientOptions<TContext> = {
   endpointName: string;
   submitUrl: string;
@@ -31,6 +36,7 @@ type SubmitClientOptions<TContext> = {
   queueKey?: string;
   conflictResolutionStrategy?: "server" | "disabled";
   createCommandContext?: (command: LofiSubmitCommandDefinition<unknown, TContext>) => TContext;
+  overlay?: OptimisticOverlay;
 };
 
 export class LofiSubmitClient<TContext = unknown> {
@@ -44,6 +50,7 @@ export class LofiSubmitClient<TContext = unknown> {
   private readonly conflictResolutionStrategy: "server" | "disabled";
   private readonly commands: Map<string, LofiSubmitCommandDefinition<unknown, TContext>>;
   private readonly createCommandContext?: SubmitClientOptions<TContext>["createCommandContext"];
+  private readonly overlay?: OptimisticOverlay;
   private adapterIdentity?: string;
   private readonly localTx: ReturnType<typeof createLocalHandlerTx>;
 
@@ -59,6 +66,7 @@ export class LofiSubmitClient<TContext = unknown> {
     this.conflictResolutionStrategy = options.conflictResolutionStrategy ?? "server";
     this.createCommandContext = options.createCommandContext;
     this.commands = new Map(options.commands.map((command) => [buildCommandKey(command), command]));
+    this.overlay = options.overlay;
     this.localTx = createLocalHandlerTx({
       adapter: options.adapter,
       schemas: options.schemas,
@@ -85,7 +93,7 @@ export class LofiSubmitClient<TContext = unknown> {
     await storeSubmitQueue(this.adapter, this.queueKey, queue);
 
     if (options.optimistic !== false) {
-      await this.runCommand(command);
+      await this.runOptimisticCommand(command);
     }
 
     return id;
@@ -126,13 +134,21 @@ export class LofiSubmitClient<TContext = unknown> {
       cursorKey: this.cursorKey,
       confirmedCommandIds: payload.confirmedCommandIds,
       queue,
-      replayCommand: async (command) => {
-        await this.runCommand(command);
-      },
     });
 
     await storeSubmitQueue(this.adapter, this.queueKey, rebased.queue);
+    if (this.overlay) {
+      await this.overlay.rebuild({ queue: rebased.queue });
+    }
     return payload;
+  }
+
+  private async runOptimisticCommand(command: LofiSubmitCommand): Promise<void> {
+    if (this.overlay) {
+      await this.overlay.applyCommand(command);
+      return;
+    }
+    await this.runCommand(command);
   }
 
   private async runCommand(command: LofiSubmitCommand): Promise<void> {

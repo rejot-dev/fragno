@@ -112,6 +112,10 @@ export class LofiOverlayManager<TContext = unknown> {
     }
   }
 
+  async applyCommand(command: LofiSubmitCommand): Promise<void> {
+    await this.runCommand(command);
+  }
+
   private async runCommand(command: LofiSubmitCommand): Promise<void> {
     const key = buildCommandKey(command);
     const definition = this.commands.get(key);

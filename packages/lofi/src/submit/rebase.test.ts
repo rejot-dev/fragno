@@ -28,7 +28,7 @@ const makeEntry = (versionstamp: string): OutboxEntry => ({
 });
 
 describe("rebaseSubmitQueue", () => {
-  it("does not replay confirmed commands after applying server entries", async () => {
+  it("removes confirmed commands after applying server entries", async () => {
     const meta = new Map<string, string>();
     const adapter: LofiAdapter = {
       applyOutboxEntry: vi.fn(async () => ({ applied: true })),
@@ -38,7 +38,6 @@ describe("rebaseSubmitQueue", () => {
       },
     };
 
-    const replayCommand = vi.fn(async () => undefined);
     const queue: LofiSubmitCommand[] = [
       {
         id: "cmd-1",
@@ -54,10 +53,9 @@ describe("rebaseSubmitQueue", () => {
       cursorKey: "client-a::outbox",
       confirmedCommandIds: ["cmd-1"],
       queue,
-      replayCommand,
     });
 
-    expect(replayCommand).not.toHaveBeenCalled();
+    expect(adapter.applyOutboxEntry).toHaveBeenCalledTimes(1);
     expect(result.queue).toEqual([]);
   });
 });
