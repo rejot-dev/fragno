@@ -7,7 +7,7 @@ import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
 import type { LofiQueryInterface } from "../types";
 import type { ReferenceTarget } from "../indexeddb/types";
 import { normalizeValue } from "./normalize";
-import { buildCondition, type Condition } from "./conditions";
+import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";
 
 const ROWS_STORE = "lofi_rows";
 const INDEX_SCHEMA_TABLE = "idx_schema_table";
@@ -100,22 +100,7 @@ const bytesToHex = (bytes: Uint8Array): string => {
   return hex;
 };
 
-const compareNormalizedValues = (left: unknown, right: unknown): number => {
-  if (left === right) {
-    return 0;
-  }
-  if (left === undefined) {
-    return -1;
-  }
-  if (right === undefined) {
-    return 1;
-  }
-  if (left === null) {
-    return -1;
-  }
-  if (right === null) {
-    return 1;
-  }
+const compareByType = (left: unknown, right: unknown): number | undefined => {
   const leftBytes = toByteArray(left);
   const rightBytes = toByteArray(right);
   if (leftBytes && rightBytes) {
@@ -135,6 +120,29 @@ const compareNormalizedValues = (left: unknown, right: unknown): number => {
   }
   if (typeof left === "boolean" && typeof right === "boolean") {
     return left === right ? 0 : left ? 1 : -1;
+  }
+  return undefined;
+};
+
+const compareNormalizedValues = (left: unknown, right: unknown): number => {
+  if (left === right) {
+    return 0;
+  }
+  if (left === undefined) {
+    return -1;
+  }
+  if (right === undefined) {
+    return 1;
+  }
+  if (left === null) {
+    return -1;
+  }
+  if (right === null) {
+    return 1;
+  }
+  const typed = compareByType(left, right);
+  if (typed !== undefined) {
+    return typed;
   }
   const leftString = String(left);
   const rightString = String(right);
@@ -494,6 +502,196 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
   return String(normalized);
 };
 
+const LIKE_OPS = new Set([
+  "contains",
+  "starts with",
+  "ends with",
+  "not contains",
+  "not starts with",
+  "not ends with",
+]);
+
+const evaluateIsComparison = (
+  op: "is" | "is not",
+  leftValue: unknown,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+): boolean => {
+  if (isNullish(rightValue)) {
+    const matches = isNullish(leftValue);
+    return op === "is" ? matches : !matches;
+  }
+
+  if (isNullish(leftValue)) {
+    return op === "is not";
+  }
+
+  const rightNormalized =
+    rightColumn.role === "reference" || rightColumn.role === "internal-id"
+      ? coerceLocalInternalId(rightValue)
+      : normalizeValue(rightValue, rightColumn);
+  const matches = compareNormalizedValues(leftValue, rightNormalized) === 0;
+  return op === "is" ? matches : !matches;
+};
+
+const evaluateInComparison = async <TxStores extends ArrayLike<string>, StoreName extends string>(
+  op: "in" | "not in",
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  table: AnyTable,
+  row: LofiRow,
+  context: QueryContext,
+  rowsStore: ReadStore<TxStores, StoreName>,
+): Promise<boolean> => {
+  if (!Array.isArray(rightValue)) {
+    throw new Error(`Operator "${op}" expects an array value.`);
+  }
+
+  let hasNull = false;
+  let hasMatch = false;
+
+  for (const item of rightValue) {
+    const resolved = await resolveComparisonValue({
+      value: item,
+      column: leftColumn,
+      table,
+      row,
+      schemaName: context.schemaName,
+      endpointName: context.endpointName,
+      rowsStore,
+      referenceTargets: context.referenceTargets,
+    });
+    if (isNullish(resolved.value)) {
+      hasNull = true;
+      continue;
+    }
+
+    const normalized =
+      resolved.column.role === "reference" || resolved.column.role === "internal-id"
+        ? coerceLocalInternalId(resolved.value)
+        : normalizeValue(resolved.value, resolved.column);
+    if (compareNormalizedValues(leftValue, normalized) === 0) {
+      hasMatch = true;
+      break;
+    }
+  }
+
+  if (hasMatch) {
+    return op === "in";
+  }
+
+  if (hasNull) {
+    return false;
+  }
+
+  return op === "not in";
+};
+
+const evaluateLikeComparison = (
+  op: string,
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+): boolean => {
+  const leftLike = normalizeLikeValue(leftValue, leftColumn);
+  const rightLike = normalizeLikeValue(rightValue, rightColumn);
+
+  if (leftLike === null || rightLike === null) {
+    return false;
+  }
+
+  const leftText = leftLike.toLowerCase();
+  const rightText = rightLike.toLowerCase();
+  let matches = false;
+
+  if (op.includes("contains")) {
+    matches = leftText.includes(rightText);
+  } else if (op.includes("starts with")) {
+    matches = leftText.startsWith(rightText);
+  } else {
+    matches = leftText.endsWith(rightText);
+  }
+
+  return op.startsWith("not ") ? !matches : matches;
+};
+
+const evaluateCompareCondition = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(
+  condition: Extract<Condition, { type: "compare" }>,
+  table: AnyTable,
+  row: LofiRow,
+  context: QueryContext,
+  rowsStore: ReadStore<TxStores, StoreName>,
+): Promise<boolean> => {
+  const leftColumn = condition.a;
+  const leftValue = row._lofi.norm[leftColumn.name];
+  const right = await resolveComparisonValue({
+    value: condition.b,
+    column: leftColumn,
+    table,
+    row,
+    schemaName: context.schemaName,
+    endpointName: context.endpointName,
+    rowsStore,
+    referenceTargets: context.referenceTargets,
+  });
+
+  const op = condition.operator;
+  const rightValue = right.value;
+
+  if (op === "is" || op === "is not") {
+    return evaluateIsComparison(op, leftValue, rightValue, right.column);
+  }
+
+  if (isNullish(leftValue) || isNullish(rightValue)) {
+    return false;
+  }
+
+  if (op === "in" || op === "not in") {
+    return evaluateInComparison(
+      op,
+      leftValue,
+      leftColumn,
+      rightValue,
+      table,
+      row,
+      context,
+      rowsStore,
+    );
+  }
+
+  if (LIKE_OPS.has(op)) {
+    return evaluateLikeComparison(op, leftValue, leftColumn, rightValue, right.column);
+  }
+
+  const rightNormalized =
+    right.column.role === "reference" || right.column.role === "internal-id"
+      ? coerceLocalInternalId(rightValue)
+      : normalizeValue(rightValue, right.column);
+  const comparison = compareNormalizedValues(leftValue, rightNormalized);
+
+  switch (op) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${op}".`);
+  }
+};
+
 const evaluateCondition = async <TxStores extends ArrayLike<string>, StoreName extends string>(
   condition: Condition | boolean,
   table: AnyTable,
@@ -525,153 +723,11 @@ const evaluateCondition = async <TxStores extends ArrayLike<string>, StoreName e
     case "not":
       return !(await evaluateCondition(condition.item, table, row, context, rowsStore));
     case "compare":
-      break;
+      return evaluateCompareCondition(condition, table, row, context, rowsStore);
     default: {
       const exhaustiveCheck: never = condition;
       throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
     }
-  }
-
-  const leftColumn = condition.a;
-  const leftValue = row._lofi.norm[leftColumn.name];
-  const right = await resolveComparisonValue({
-    value: condition.b,
-    column: leftColumn,
-    table,
-    row,
-    schemaName: context.schemaName,
-    endpointName: context.endpointName,
-    rowsStore,
-    referenceTargets: context.referenceTargets,
-  });
-
-  const op = condition.operator;
-  const rightValue = right.value;
-
-  if (op === "is" || op === "is not") {
-    if (isNullish(rightValue)) {
-      const matches = isNullish(leftValue);
-      return op === "is" ? matches : !matches;
-    }
-
-    if (isNullish(leftValue)) {
-      return op === "is not";
-    }
-
-    const leftNormalized = leftValue;
-    const rightNormalized =
-      right.column.role === "reference" || right.column.role === "internal-id"
-        ? coerceLocalInternalId(rightValue)
-        : normalizeValue(rightValue, right.column);
-    const matches = compareNormalizedValues(leftNormalized, rightNormalized) === 0;
-    return op === "is" ? matches : !matches;
-  }
-
-  if (isNullish(leftValue) || isNullish(rightValue)) {
-    return false;
-  }
-
-  if (op === "in" || op === "not in") {
-    if (!Array.isArray(rightValue)) {
-      throw new Error(`Operator "${op}" expects an array value.`);
-    }
-
-    const leftNormalized = leftValue;
-    let hasNull = false;
-    let hasMatch = false;
-
-    for (const item of rightValue) {
-      const resolved = await resolveComparisonValue({
-        value: item,
-        column: leftColumn,
-        table,
-        row,
-        schemaName: context.schemaName,
-        endpointName: context.endpointName,
-        rowsStore,
-        referenceTargets: context.referenceTargets,
-      });
-      if (isNullish(resolved.value)) {
-        hasNull = true;
-        continue;
-      }
-
-      const normalized =
-        resolved.column.role === "reference" || resolved.column.role === "internal-id"
-          ? coerceLocalInternalId(resolved.value)
-          : normalizeValue(resolved.value, resolved.column);
-      if (compareNormalizedValues(leftNormalized, normalized) === 0) {
-        hasMatch = true;
-        break;
-      }
-    }
-
-    if (hasMatch) {
-      return op === "in";
-    }
-
-    if (hasNull) {
-      return false;
-    }
-
-    return op === "not in";
-  }
-
-  if (
-    op === "contains" ||
-    op === "starts with" ||
-    op === "ends with" ||
-    op === "not contains" ||
-    op === "not starts with" ||
-    op === "not ends with"
-  ) {
-    const leftLike = normalizeLikeValue(leftValue, leftColumn);
-    const rightLike = normalizeLikeValue(rightValue, right.column);
-
-    if (leftLike === null || rightLike === null) {
-      return false;
-    }
-
-    const leftText = leftLike.toLowerCase();
-    const rightText = rightLike.toLowerCase();
-    let matches = false;
-
-    if (op.includes("contains")) {
-      matches = leftText.includes(rightText);
-    } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
-    } else {
-      matches = leftText.endsWith(rightText);
-    }
-
-    if (op.startsWith("not ")) {
-      return !matches;
-    }
-    return matches;
-  }
-
-  const leftNormalized = leftValue;
-  const rightNormalized =
-    right.column.role === "reference" || right.column.role === "internal-id"
-      ? coerceLocalInternalId(rightValue)
-      : normalizeValue(rightValue, right.column);
-  const comparison = compareNormalizedValues(leftNormalized, rightNormalized);
-
-  switch (op) {
-    case "=":
-      return comparison === 0;
-    case "!=":
-      return comparison !== 0;
-    case ">":
-      return comparison > 0;
-    case ">=":
-      return comparison >= 0;
-    case "<":
-      return comparison < 0;
-    case "<=":
-      return comparison <= 0;
-    default:
-      throw new Error(`Unsupported operator "${op}".`);
   }
 };
 
@@ -1033,6 +1089,134 @@ const applyCursorFilters = (options: {
   });
 };
 
+const collectAndFilterRows = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  table: AnyTable;
+  indexName: string;
+  whereClause:
+    | ((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean)
+    | undefined;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+}): Promise<LofiRow[] | null> => {
+  const { table, indexName, whereClause, context, rowsStore } = options;
+
+  const rows = await collectRows({
+    rowsStore,
+    endpointName: context.endpointName,
+    schemaName: context.schemaName,
+    tableName: table.name,
+    indexName,
+  });
+
+  const conditionResult = whereClause ? buildCondition(table.columns, whereClause) : undefined;
+  if (conditionResult === false) {
+    return null;
+  }
+  const condition = conditionResult === true ? undefined : conditionResult;
+
+  const filtered: LofiRow[] = [];
+  for (const row of rows) {
+    if (condition && !(await evaluateCondition(condition, table, row, context, rowsStore))) {
+      continue;
+    }
+    filtered.push(row);
+  }
+
+  return filtered;
+};
+
+const assembleResultRows = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  ordered: LofiRow[];
+  table: AnyTable;
+  select: undefined | true | readonly string[];
+  joins: CompiledJoin[] | undefined;
+  limit: number | undefined;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+}): Promise<{ results: RowSelection[]; resultSources: LofiRow[] }> => {
+  const { ordered, table, select, joins, limit, context, rowsStore } = options;
+  const results: RowSelection[] = [];
+  const resultSources: LofiRow[] = [];
+  const rowsByTable = new Map<string, LofiRow[]>();
+
+  for (const row of ordered) {
+    const baseOutput = selectRow(row, table, select);
+
+    if (joins && joins.length > 0) {
+      const joined = await applyJoins({
+        baseOutput,
+        parentRow: row,
+        parentTable: table,
+        joins,
+        rowsByTable,
+        context,
+        rowsStore,
+      });
+      for (const joinedRow of joined) {
+        results.push(joinedRow);
+        resultSources.push(row);
+        if (limit !== undefined && results.length >= limit) {
+          break;
+        }
+      }
+    } else {
+      results.push(baseOutput);
+      resultSources.push(row);
+    }
+
+    if (limit !== undefined && results.length >= limit) {
+      break;
+    }
+  }
+
+  return { results, resultSources };
+};
+
+const buildPaginatedResult = (options: {
+  decoded: Record<string, unknown>[];
+  resultSources: LofiRow[];
+  pageSize: number | undefined;
+  orderColumns: AnyColumn[];
+  orderIndexName: string;
+  direction: "asc" | "desc";
+}): CursorResult<Record<string, unknown>> => {
+  const { decoded, resultSources, pageSize, orderColumns, orderIndexName, direction } = options;
+
+  if (!pageSize || pageSize <= 0 || decoded.length <= pageSize) {
+    return { items: decoded, hasNextPage: false };
+  }
+
+  const items = decoded.slice(0, pageSize);
+  const lastRow = items[items.length - 1];
+  if (!lastRow) {
+    return { items, hasNextPage: true };
+  }
+
+  const cursorRecord: Record<string, unknown> = { ...lastRow };
+  const sourceRow = resultSources[pageSize - 1];
+  for (const column of orderColumns) {
+    if (cursorRecord[column.name] === undefined) {
+      cursorRecord[column.name] = sourceRow
+        ? buildOutputValueForColumn(sourceRow, column)
+        : cursorRecord[column.name];
+    }
+  }
+
+  const cursor = createCursorFromRecord(cursorRecord, orderColumns, {
+    indexName: orderIndexName,
+    orderDirection: direction,
+    pageSize,
+  });
+
+  return { items, cursor, hasNextPage: true };
+};
+
 export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
   schema: T;
   endpointName: string;
@@ -1067,67 +1251,32 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
     }
 
     const built = builder.build();
-    if (built.type === "count") {
-      const db = await options.getDb();
-      const tx = db.transaction(ROWS_STORE, "readonly");
-      const rowsStore = tx.objectStore(ROWS_STORE);
-
-      const rows = await collectRows({
-        rowsStore,
-        endpointName: context.endpointName,
-        schemaName: context.schemaName,
-        tableName: table.name,
-        indexName: built.indexName,
-      });
-
-      let count = 0;
-      const conditionResult = built.options.where
-        ? buildCondition(table.columns, built.options.where)
-        : undefined;
-      if (conditionResult === false) {
-        await tx.done;
-        return 0;
-      }
-      const condition = conditionResult === true ? undefined : conditionResult;
-
-      for (const row of rows) {
-        if (condition && !(await evaluateCondition(condition, table, row, context, rowsStore))) {
-          continue;
-        }
-        count += 1;
-      }
-
-      await tx.done;
-      return count;
-    }
-
     const db = await options.getDb();
     const tx = db.transaction(ROWS_STORE, "readonly");
     const rowsStore = tx.objectStore(ROWS_STORE);
 
-    const rows = await collectRows({
-      rowsStore,
-      endpointName: context.endpointName,
-      schemaName: context.schemaName,
-      tableName: table.name,
-      indexName: built.indexName,
-    });
+    if (built.type === "count") {
+      const filtered = await collectAndFilterRows({
+        table,
+        indexName: built.indexName,
+        whereClause: built.options.where,
+        context,
+        rowsStore,
+      });
+      await tx.done;
+      return filtered === null ? 0 : filtered.length;
+    }
 
-    const conditionResult = built.options.where
-      ? buildCondition(table.columns, built.options.where)
-      : undefined;
-    if (conditionResult === false) {
+    const filtered = await collectAndFilterRows({
+      table,
+      indexName: built.indexName,
+      whereClause: built.options.where,
+      context,
+      rowsStore,
+    });
+    if (filtered === null) {
       await tx.done;
       return withCursor ? { items: [], hasNextPage: false } : [];
-    }
-    const condition = conditionResult === true ? undefined : conditionResult;
-
-    const filtered: LofiRow[] = [];
-    for (const row of rows) {
-      if (condition && !(await evaluateCondition(condition, table, row, context, rowsStore))) {
-        continue;
-      }
-      filtered.push(row);
     }
 
     const orderIndexName = built.options.orderByIndex?.indexName ?? built.indexName;
@@ -1151,40 +1300,15 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
         ? built.options.pageSize + 1
         : built.options.pageSize;
 
-    const results: RowSelection[] = [];
-    const resultSources: LofiRow[] = [];
-    const rowsByTable = new Map<string, LofiRow[]>();
-
-    for (const row of ordered) {
-      const select = built.options.select as undefined | true | readonly string[];
-      const baseOutput = selectRow(row, table, select);
-
-      if (built.options.joins && built.options.joins.length > 0) {
-        const joined = await applyJoins({
-          baseOutput,
-          parentRow: row,
-          parentTable: table,
-          joins: built.options.joins,
-          rowsByTable,
-          context,
-          rowsStore,
-        });
-        for (const joinedRow of joined) {
-          results.push(joinedRow);
-          resultSources.push(row);
-          if (limit !== undefined && results.length >= limit) {
-            break;
-          }
-        }
-      } else {
-        results.push(baseOutput);
-        resultSources.push(row);
-      }
-
-      if (limit !== undefined && results.length >= limit) {
-        break;
-      }
-    }
+    const { results, resultSources } = await assembleResultRows({
+      ordered,
+      table,
+      select: built.options.select as undefined | true | readonly string[],
+      joins: built.options.joins,
+      limit,
+      context,
+      rowsStore,
+    });
 
     await tx.done;
 
@@ -1194,39 +1318,14 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
       return decoded;
     }
 
-    let cursor: Cursor | undefined;
-    let hasNextPage = false;
-    let items = decoded;
-
-    if (
-      built.options.pageSize &&
-      built.options.pageSize > 0 &&
-      decoded.length > built.options.pageSize
-    ) {
-      hasNextPage = true;
-      items = decoded.slice(0, built.options.pageSize);
-
-      const lastRow = items[items.length - 1];
-      if (lastRow) {
-        const cursorRecord: Record<string, unknown> = { ...lastRow };
-        const sourceRow = resultSources[built.options.pageSize - 1];
-        for (const column of orderColumns) {
-          if (cursorRecord[column.name] === undefined) {
-            cursorRecord[column.name] = sourceRow
-              ? buildOutputValueForColumn(sourceRow, column)
-              : cursorRecord[column.name];
-          }
-        }
-
-        cursor = createCursorFromRecord(cursorRecord, orderColumns, {
-          indexName: orderIndexName,
-          orderDirection: direction,
-          pageSize: built.options.pageSize,
-        });
-      }
-    }
-
-    return { items, cursor, hasNextPage };
+    return buildPaginatedResult({
+      decoded,
+      resultSources,
+      pageSize: built.options.pageSize,
+      orderColumns,
+      orderIndexName,
+      direction,
+    });
   };
 
   const queryEngine = {
