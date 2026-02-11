@@ -61,6 +61,12 @@ export type IndexedDbAdapterOptions = {
   ignoreUnknownSchemas?: boolean;
 };
 
+export type InMemoryLofiAdapterOptions = {
+  endpointName: string;
+  schemas: AnySchema[];
+  ignoreUnknownSchemas?: boolean;
+};
+
 export type LofiQueryInterface<TSchema extends AnySchema> = {
   find: SimpleQueryInterface<TSchema>["find"];
   findFirst: SimpleQueryInterface<TSchema>["findFirst"];

@@ -1,12 +1,12 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import type { LofiMutation } from "../types";
-import type { ReferenceTarget } from "../indexeddb/types";
-import { normalizeValue } from "../query/normalize";
+import type { LofiBaseSnapshotRow, LofiMutation } from "../../types";
+import type { ReferenceTarget } from "../../indexeddb/types";
+import { normalizeValue } from "../../query/normalize";
 import { compareNormalizedValues } from "./value-comparison";
 import { SortedArrayIndex, type IndexKey } from "./sorted-array-index";
 
-export type OverlayRow = {
+export type InMemoryLofiRow = {
   key: [string, string, string, string];
   endpoint: string;
   schema: string;
@@ -21,29 +21,30 @@ export type OverlayRow = {
   };
 };
 
-type OverlayIndexDefinition = {
+type InMemoryIndexDefinition = {
   name: string;
   columnNames: string[];
   unique: boolean;
 };
 
-type OverlayIndexStore = {
-  definition: OverlayIndexDefinition;
+type InMemoryIndexStore = {
+  definition: InMemoryIndexDefinition;
   index: SortedArrayIndex<number>;
 };
 
-type OverlayTableStore = {
-  rowsByExternalId: Map<string, OverlayRow>;
-  rowsByInternalId: Map<number, OverlayRow>;
+type InMemoryTableStore = {
+  rowsByExternalId: Map<string, InMemoryLofiRow>;
+  rowsByInternalId: Map<number, InMemoryLofiRow>;
   nextInternalId: number;
-  indexes: Map<string, OverlayIndexStore>;
+  indexes: Map<string, InMemoryIndexStore>;
+  tombstones: Set<string>;
 };
 
-type OverlaySchemaStore = {
-  tables: Map<string, OverlayTableStore>;
+type InMemorySchemaStore = {
+  tables: Map<string, InMemoryTableStore>;
 };
 
-type OverlayStoreOptions = {
+type InMemoryStoreOptions = {
   endpointName: string;
   schemas: AnySchema[];
 };
@@ -65,13 +66,13 @@ const createReferenceTargets = (schemas: AnySchema[]): Map<string, ReferenceTarg
   return referenceTargets;
 };
 
-const createTableIndexes = (table: AnyTable): Map<string, OverlayIndexStore> => {
-  const indexes = new Map<string, OverlayIndexStore>();
+const createTableIndexes = (table: AnyTable): Map<string, InMemoryIndexStore> => {
+  const indexes = new Map<string, InMemoryIndexStore>();
   const primaryIndex = table.indexes["_primary"];
   const primaryColumnNames = primaryIndex
     ? [...primaryIndex.columnNames]
     : [table.getIdColumn().name];
-  const primaryDefinition: OverlayIndexDefinition = {
+  const primaryDefinition: InMemoryIndexDefinition = {
     name: "_primary",
     columnNames: primaryColumnNames,
     unique: primaryIndex?.unique ?? true,
@@ -85,7 +86,7 @@ const createTableIndexes = (table: AnyTable): Map<string, OverlayIndexStore> => 
     if (name === "_primary") {
       continue;
     }
-    const definition: OverlayIndexDefinition = {
+    const definition: InMemoryIndexDefinition = {
       name,
       columnNames: [...index.columnNames],
       unique: index.unique,
@@ -99,32 +100,33 @@ const createTableIndexes = (table: AnyTable): Map<string, OverlayIndexStore> => 
   return indexes;
 };
 
-const createTableStore = (table: AnyTable): OverlayTableStore => ({
+const createTableStore = (table: AnyTable): InMemoryTableStore => ({
   rowsByExternalId: new Map(),
   rowsByInternalId: new Map(),
   nextInternalId: 1,
   indexes: createTableIndexes(table),
+  tombstones: new Set(),
 });
 
-const createSchemaStore = (schema: AnySchema): OverlaySchemaStore => {
-  const tables = new Map<string, OverlayTableStore>();
+const createSchemaStore = (schema: AnySchema): InMemorySchemaStore => {
+  const tables = new Map<string, InMemoryTableStore>();
   for (const table of Object.values(schema.tables)) {
     tables.set(table.name, createTableStore(table));
   }
   return { tables };
 };
 
-const buildIndexKey = (row: OverlayRow, index: OverlayIndexDefinition): IndexKey =>
+const buildIndexKey = (row: InMemoryLofiRow, index: InMemoryIndexDefinition): IndexKey =>
   index.columnNames.map((columnName) => row._lofi.norm[columnName]);
 
-const insertRowIntoIndexes = (store: OverlayTableStore, row: OverlayRow): void => {
+const insertRowIntoIndexes = (store: InMemoryTableStore, row: InMemoryLofiRow): void => {
   for (const indexStore of store.indexes.values()) {
     const key = buildIndexKey(row, indexStore.definition);
     indexStore.index.insert(key, row._lofi.internalId, { enforceUnique: true });
   }
 };
 
-const removeRowFromIndexes = (store: OverlayTableStore, row: OverlayRow): void => {
+const removeRowFromIndexes = (store: InMemoryTableStore, row: InMemoryLofiRow): void => {
   for (const indexStore of store.indexes.values()) {
     const key = buildIndexKey(row, indexStore.definition);
     indexStore.index.remove(key, row._lofi.internalId);
@@ -132,9 +134,9 @@ const removeRowFromIndexes = (store: OverlayTableStore, row: OverlayRow): void =
 };
 
 const updateRowIndexes = (
-  store: OverlayTableStore,
-  existing: OverlayRow,
-  next: OverlayRow,
+  store: InMemoryTableStore,
+  existing: InMemoryLofiRow,
+  next: InMemoryLofiRow,
 ): void => {
   const updates = Array.from(store.indexes.values()).map((indexStore) => ({
     indexStore,
@@ -182,7 +184,7 @@ const resolveReferenceExternalId = (options: {
   columnName: string;
   externalId: string;
   referenceTargets: Map<string, ReferenceTarget>;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
 }): number | undefined => {
   const { schema, table, columnName, externalId, referenceTargets, store } = options;
   const target = referenceTargets.get(`${schema.name}::${table.name}::${columnName}`);
@@ -205,7 +207,7 @@ const resolveColumnValue = (options: {
   rowId: string;
   internalId: number;
   version: number;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 }): unknown => {
   const {
@@ -301,7 +303,7 @@ const buildNormalizedValues = (options: {
   rowId: string;
   internalId: number;
   version: number;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Record<string, unknown> => {
   const { schema, table, data, rowId, internalId, version, store, referenceTargets } = options;
@@ -325,17 +327,17 @@ const buildNormalizedValues = (options: {
   return norm;
 };
 
-export class OptimisticOverlayStore {
+export class InMemoryLofiStore {
   readonly endpointName: string;
   readonly schemas: AnySchema[];
   readonly schemaMap: Map<string, AnySchema>;
   readonly tableMap: Map<string, Map<string, AnyTable>>;
   readonly referenceTargets: Map<string, ReferenceTarget>;
-  #stores: Map<string, OverlaySchemaStore>;
+  #stores: Map<string, InMemorySchemaStore>;
 
-  constructor(options: OverlayStoreOptions) {
+  constructor(options: InMemoryStoreOptions) {
     if (!options.endpointName || options.endpointName.trim().length === 0) {
-      throw new Error("OptimisticOverlayStore requires a non-empty endpointName.");
+      throw new Error("InMemoryLofiStore requires a non-empty endpointName.");
     }
 
     const schemaMap = new Map<string, AnySchema>();
@@ -343,10 +345,10 @@ export class OptimisticOverlayStore {
 
     for (const schema of options.schemas) {
       if (!schema.name || schema.name.trim().length === 0) {
-        throw new Error("OptimisticOverlayStore schemas must have a non-empty name.");
+        throw new Error("InMemoryLofiStore schemas must have a non-empty name.");
       }
       if (schemaMap.has(schema.name)) {
-        throw new Error(`OptimisticOverlayStore schema name must be unique: ${schema.name}`);
+        throw new Error(`InMemoryLofiStore schema name must be unique: ${schema.name}`);
       }
       schemaMap.set(schema.name, schema);
       const tables = new Map<string, AnyTable>();
@@ -374,13 +376,18 @@ export class OptimisticOverlayStore {
     }
   }
 
-  seedRows(rows: OverlayRow[]): void {
+  reset(): void {
+    this.clear();
+  }
+
+  seedRows(rows: LofiBaseSnapshotRow[]): void {
     for (const row of rows) {
       if (row.endpoint !== this.endpointName) {
         continue;
       }
       const tableStore = this.getTableStore(row.schema, row.table);
-      this.upsertRow(tableStore, row);
+      this.upsertRow(tableStore, row as InMemoryLofiRow);
+      tableStore.tombstones.delete(row.id);
     }
   }
 
@@ -409,6 +416,7 @@ export class OptimisticOverlayStore {
         tableStore.rowsByExternalId.delete(existing.id);
         tableStore.rowsByInternalId.delete(existing._lofi.internalId);
       }
+      tableStore.tombstones.add(mutation.externalId);
       return;
     }
 
@@ -417,6 +425,7 @@ export class OptimisticOverlayStore {
       return;
     }
 
+    tableStore.tombstones.delete(mutation.externalId);
     const data = existing ? { ...existing.data, ...values } : { ...values };
     const internalId = existing ? existing._lofi.internalId : this.allocateInternalId(tableStore);
     const version = existing ? existing._lofi.version + (mutation.op === "update" ? 1 : 0) : 1;
@@ -431,7 +440,7 @@ export class OptimisticOverlayStore {
       referenceTargets: this.referenceTargets,
     });
 
-    const row: OverlayRow = {
+    const row: InMemoryLofiRow = {
       key: [this.endpointName, schema.name, table.name, mutation.externalId],
       endpoint: this.endpointName,
       schema: schema.name,
@@ -456,11 +465,19 @@ export class OptimisticOverlayStore {
     this.upsertRow(tableStore, row);
   }
 
-  getRow(schemaName: string, tableName: string, externalId: string): OverlayRow | undefined {
+  getRow(schemaName: string, tableName: string, externalId: string): InMemoryLofiRow | undefined {
     return this.getTableStore(schemaName, tableName).rowsByExternalId.get(externalId);
   }
 
-  getTableRows(schemaName: string, tableName: string): OverlayRow[] {
+  hasTombstone(schemaName: string, tableName: string, externalId: string): boolean {
+    return this.getTableStore(schemaName, tableName).tombstones.has(externalId);
+  }
+
+  getTombstones(schemaName: string, tableName: string): Set<string> {
+    return new Set(this.getTableStore(schemaName, tableName).tombstones);
+  }
+
+  getTableRows(schemaName: string, tableName: string): InMemoryLofiRow[] {
     const tableStore = this.getTableStore(schemaName, tableName);
     return Array.from(tableStore.rowsByExternalId.values());
   }
@@ -475,7 +492,7 @@ export class OptimisticOverlayStore {
     endInclusive?: boolean;
     direction?: "asc" | "desc";
     limit?: number;
-  }): OverlayRow[] {
+  }): InMemoryLofiRow[] {
     const {
       schemaName,
       tableName,
@@ -490,7 +507,7 @@ export class OptimisticOverlayStore {
     const tableStore = this.getTableStore(schemaName, tableName);
     const indexStore = tableStore.indexes.get(indexName) ?? tableStore.indexes.get("_primary");
     if (!indexStore) {
-      throw new Error(`Missing overlay index "${indexName}" on ${schemaName}.${tableName}.`);
+      throw new Error(`Missing in-memory index "${indexName}" on ${schemaName}.${tableName}.`);
     }
     const entries = indexStore.index.scan({
       start,
@@ -501,7 +518,7 @@ export class OptimisticOverlayStore {
       limit,
     });
 
-    const rows: OverlayRow[] = [];
+    const rows: InMemoryLofiRow[] = [];
     for (const entry of entries) {
       const row = tableStore.rowsByInternalId.get(entry.value);
       if (row) {
@@ -511,28 +528,28 @@ export class OptimisticOverlayStore {
     return rows;
   }
 
-  private getTableStore(schemaName: string, tableName: string): OverlayTableStore {
+  private getTableStore(schemaName: string, tableName: string): InMemoryTableStore {
     const schemaStore = this.#stores.get(schemaName);
     if (!schemaStore) {
-      throw new Error(`Unknown overlay schema: ${schemaName}`);
+      throw new Error(`Unknown in-memory schema: ${schemaName}`);
     }
     const tableStore = schemaStore.tables.get(tableName);
     if (!tableStore) {
-      throw new Error(`Unknown overlay table: ${schemaName}.${tableName}`);
+      throw new Error(`Unknown in-memory table: ${schemaName}.${tableName}`);
     }
     return tableStore;
   }
 
-  private allocateInternalId(tableStore: OverlayTableStore): number {
+  private allocateInternalId(tableStore: InMemoryTableStore): number {
     const next = tableStore.nextInternalId;
     tableStore.nextInternalId += 1;
     if (!Number.isSafeInteger(next)) {
-      throw new Error("OptimisticOverlayStore internalId overflow.");
+      throw new Error("InMemoryLofiStore internalId overflow.");
     }
     return next;
   }
 
-  private upsertRow(tableStore: OverlayTableStore, row: OverlayRow): void {
+  private upsertRow(tableStore: InMemoryTableStore, row: InMemoryLofiRow): void {
     const existing = tableStore.rowsByExternalId.get(row.id);
     if (existing) {
       removeRowFromIndexes(tableStore, existing);

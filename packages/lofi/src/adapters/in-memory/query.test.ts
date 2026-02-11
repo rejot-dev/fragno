@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
-import { OptimisticOverlayStore } from "./overlay-store";
-import { createOverlayQueryEngine } from "./overlay-query";
+import { InMemoryLofiStore } from "./store";
+import { createInMemoryQueryEngine } from "./query";
 
 const createStore = (appSchema: ReturnType<typeof schema>) =>
-  new OptimisticOverlayStore({ endpointName: "app", schemas: [appSchema] });
+  new InMemoryLofiStore({ endpointName: "app", schemas: [appSchema] });
 
-describe("optimistic overlay query engine", () => {
+describe("in-memory query engine", () => {
   it("supports whereIndex, orderByIndex, select, and selectCount", async () => {
     const appSchema = schema("app", (s) =>
       s.addTable("users", (t) =>
@@ -47,7 +47,7 @@ describe("optimistic overlay query engine", () => {
       },
     ]);
 
-    const query = createOverlayQueryEngine({ schema: appSchema, store });
+    const query = createInMemoryQueryEngine({ schema: appSchema, store });
 
     const ordered = await query.find("users", (b) =>
       b.whereIndex("idx_age", (eb) => eb("age", ">=", 30)).orderByIndex("idx_age", "asc"),
@@ -122,7 +122,7 @@ describe("optimistic overlay query engine", () => {
       },
     ]);
 
-    const query = createOverlayQueryEngine({ schema: appSchema, store });
+    const query = createInMemoryQueryEngine({ schema: appSchema, store });
 
     const joined = await query.find("posts", (b) =>
       b.whereIndex("idx_author", (eb) => eb("authorId", "=", "user-2")).join((j) => j.author()),
@@ -182,7 +182,7 @@ describe("optimistic overlay query engine", () => {
       },
     ]);
 
-    const query = createOverlayQueryEngine({ schema: appSchema, store });
+    const query = createInMemoryQueryEngine({ schema: appSchema, store });
 
     const firstPage = await query.findWithCursor("users", (b) =>
       b.whereIndex("idx_age").orderByIndex("idx_age", "asc").pageSize(2),
@@ -239,7 +239,7 @@ describe("optimistic overlay query engine", () => {
       },
     ]);
 
-    const query = createOverlayQueryEngine({ schema: appSchema, store });
+    const query = createInMemoryQueryEngine({ schema: appSchema, store });
     const ordered = await query.find("files", (b) =>
       b.whereIndex("idx_hash").orderByIndex("idx_hash", "asc"),
     );

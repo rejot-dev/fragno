@@ -3,22 +3,22 @@ import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
 import { FindBuilder } from "@fragno-dev/db/unit-of-work";
-import type { LofiQueryInterface } from "../types";
-import type { ReferenceTarget } from "../indexeddb/types";
-import { normalizeValue } from "../query/normalize";
-import { buildCondition, type Condition, type ConditionBuilder } from "../query/conditions";
+import type { LofiQueryInterface } from "../../types";
+import type { ReferenceTarget } from "../../indexeddb/types";
+import { normalizeValue } from "../../query/normalize";
+import { buildCondition, type Condition, type ConditionBuilder } from "../../query/conditions";
 import { compareNormalizedValues } from "./value-comparison";
-import type { OverlayRow } from "./overlay-store";
-import { OptimisticOverlayStore } from "./overlay-store";
+import type { InMemoryLofiRow } from "./store";
+import { InMemoryLofiStore } from "./store";
 
-export type OverlayQueryContext = {
+export type InMemoryQueryContext = {
   endpointName: string;
   schemaName: string;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 };
 
-type QueryContext = OverlayQueryContext;
+type QueryContext = InMemoryQueryContext;
 
 type RowSelection = Record<string, unknown>;
 
@@ -110,7 +110,7 @@ const buildSelection = (
   return selection;
 };
 
-const getColumnValue = (row: OverlayRow, columnName: string, column: AnyColumn): unknown => {
+const getColumnValue = (row: InMemoryLofiRow, columnName: string, column: AnyColumn): unknown => {
   if (column.role === "external-id") {
     return row.id;
   }
@@ -125,7 +125,7 @@ const getColumnValue = (row: OverlayRow, columnName: string, column: AnyColumn):
 };
 
 const selectRow = (
-  row: OverlayRow,
+  row: InMemoryLofiRow,
   table: AnyTable,
   select: undefined | true | readonly string[],
 ): RowSelection => {
@@ -159,7 +159,7 @@ const selectRow = (
 };
 
 const prefixSelection = (
-  row: OverlayRow,
+  row: InMemoryLofiRow,
   table: AnyTable,
   select: undefined | true | readonly string[],
   prefix: string,
@@ -174,7 +174,7 @@ const prefixSelection = (
   return prefixed;
 };
 
-const buildOutputValueForColumn = (row: OverlayRow, column: AnyColumn): unknown => {
+const buildOutputValueForColumn = (row: InMemoryLofiRow, column: AnyColumn): unknown => {
   if (column.isHidden) {
     return undefined;
   }
@@ -284,7 +284,7 @@ const resolveReferenceExternalId = (options: {
   schemaName: string;
   table: AnyTable;
   columnName: string;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 }): number | null => {
   const { value, schemaName, table, columnName, store, referenceTargets } = options;
@@ -304,7 +304,7 @@ const resolveReferenceValue = (options: {
   column: AnyColumn;
   table: AnyTable;
   schemaName: string;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 }): unknown => {
   const { value, column, table, schemaName, store, referenceTargets } = options;
@@ -345,9 +345,9 @@ const resolveComparisonValue = (options: {
   value: unknown;
   column: AnyColumn;
   table: AnyTable;
-  row: OverlayRow;
+  row: InMemoryLofiRow;
   schemaName: string;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   referenceTargets: Map<string, ReferenceTarget>;
 }): { value: unknown; column: AnyColumn } => {
   const { value, column, table, row, schemaName, store, referenceTargets } = options;
@@ -393,7 +393,7 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
 const evaluateCondition = async (
   condition: Condition | boolean,
   table: AnyTable,
-  row: OverlayRow,
+  row: InMemoryLofiRow,
   context: QueryContext,
 ): Promise<boolean> => {
   if (typeof condition === "boolean") {
@@ -569,9 +569,9 @@ const evaluateCondition = async (
 };
 
 const orderRows = (
-  rows: OverlayRow[],
+  rows: InMemoryLofiRow[],
   orderBy: [AnyColumn, "asc" | "desc"][] | undefined,
-): OverlayRow[] => {
+): InMemoryLofiRow[] => {
   if (!orderBy || orderBy.length === 0) {
     return rows;
   }
@@ -660,7 +660,7 @@ const buildCursorValues = (
 };
 
 const compareRowToCursor = (
-  row: OverlayRow,
+  row: InMemoryLofiRow,
   columns: AnyColumn[],
   cursorValues: readonly unknown[],
 ): number => {
@@ -676,18 +676,18 @@ const compareRowToCursor = (
   return 0;
 };
 
-const collectRows = (options: { context: QueryContext; tableName: string }): OverlayRow[] => {
+const collectRows = (options: { context: QueryContext; tableName: string }): InMemoryLofiRow[] => {
   const { context, tableName } = options;
   return context.store.getTableRows(context.schemaName, tableName);
 };
 
 const findJoinMatches = async (options: {
-  parentRow: OverlayRow;
+  parentRow: InMemoryLofiRow;
   parentTable: AnyTable;
   join: CompiledJoin;
-  rowsByTable: Map<string, OverlayRow[]>;
+  rowsByTable: Map<string, InMemoryLofiRow[]>;
   context: QueryContext;
-}): Promise<OverlayRow[]> => {
+}): Promise<InMemoryLofiRow[]> => {
   const { parentRow, parentTable, join, rowsByTable, context } = options;
   if (join.options === false) {
     return [];
@@ -704,7 +704,7 @@ const findJoinMatches = async (options: {
     rowsByTable.set(cacheKey, targetRows);
   }
 
-  const matches: OverlayRow[] = [];
+  const matches: InMemoryLofiRow[] = [];
 
   for (const row of targetRows) {
     let matchesJoin = true;
@@ -761,10 +761,10 @@ const findJoinMatches = async (options: {
 
 const applyJoins = async (options: {
   baseOutput: RowSelection;
-  parentRow: OverlayRow;
+  parentRow: InMemoryLofiRow;
   parentTable: AnyTable;
   joins: CompiledJoin[];
-  rowsByTable: Map<string, OverlayRow[]>;
+  rowsByTable: Map<string, InMemoryLofiRow[]>;
   context: QueryContext;
   parentPath?: string;
 }): Promise<RowSelection[]> => {
@@ -881,12 +881,12 @@ const resolveFindCondition = <TTable extends AnyTable>(
 };
 
 const applyCursorFilters = (options: {
-  rows: OverlayRow[];
+  rows: InMemoryLofiRow[];
   orderColumns: AnyColumn[];
   direction: "asc" | "desc";
   after?: Cursor | string;
   before?: Cursor | string;
-}): OverlayRow[] => {
+}): InMemoryLofiRow[] => {
   const { rows, orderColumns, direction, after, before } = options;
 
   const afterValues = buildCursorValues(after, orderColumns);
@@ -911,7 +911,7 @@ const applyCursorFilters = (options: {
   });
 };
 
-export const executeOverlayRetrievalOperation = async (options: {
+export const executeInMemoryRetrievalOperation = async (options: {
   operation: OverlayRetrievalOperation;
   context: QueryContext;
 }): Promise<Record<string, unknown>[] | CursorResult<Record<string, unknown>> | number> => {
@@ -945,7 +945,7 @@ export const executeOverlayRetrievalOperation = async (options: {
     return count;
   }
 
-  const filtered: OverlayRow[] = [];
+  const filtered: InMemoryLofiRow[] = [];
   for (const row of rows) {
     if (condition && !(await evaluateCondition(condition, operation.table, row, context))) {
       continue;
@@ -975,8 +975,8 @@ export const executeOverlayRetrievalOperation = async (options: {
       : operation.options.pageSize;
 
   const results: RowSelection[] = [];
-  const resultSources: OverlayRow[] = [];
-  const rowsByTable = new Map<string, OverlayRow[]>();
+  const resultSources: InMemoryLofiRow[] = [];
+  const rowsByTable = new Map<string, InMemoryLofiRow[]>();
 
   for (const row of ordered) {
     const select = operation.options.select as undefined | true | readonly string[];
@@ -1049,9 +1049,9 @@ export const executeOverlayRetrievalOperation = async (options: {
   return { items, cursor, hasNextPage };
 };
 
-export const createOverlayQueryEngine = <T extends AnySchema>(options: {
+export const createInMemoryQueryEngine = <T extends AnySchema>(options: {
   schema: T;
-  store: OptimisticOverlayStore;
+  store: InMemoryLofiStore;
   schemaName?: string;
 }): LofiQueryInterface<T> => {
   const schemaName = options.schemaName ?? options.schema.name;
@@ -1082,7 +1082,7 @@ export const createOverlayQueryEngine = <T extends AnySchema>(options: {
 
     const built = builder.build();
     if (built.type === "count") {
-      return executeOverlayRetrievalOperation({
+      return executeInMemoryRetrievalOperation({
         operation: {
           type: "count",
           table,
@@ -1093,7 +1093,7 @@ export const createOverlayQueryEngine = <T extends AnySchema>(options: {
       });
     }
 
-    return executeOverlayRetrievalOperation({
+    return executeInMemoryRetrievalOperation({
       operation: {
         type: "find",
         table,
