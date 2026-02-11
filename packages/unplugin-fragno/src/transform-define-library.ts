@@ -90,6 +90,9 @@ const isUtilityFunctionBinding = (binding: Binding): boolean => {
   }
 
   const source = binding.path.parent.source.value;
+  if (source === "@fragno-dev/db/schema") {
+    return false;
+  }
   const definition = getPackageDefinition(source);
 
   if (!definition || !("utilityFunctions" in definition)) {
