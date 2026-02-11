@@ -1,8 +1,6 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type {
   LofiAdapter,
-  LofiBaseSnapshotOptions,
-  LofiBaseSnapshotRow,
   LofiQueryEngineOptions,
   LofiQueryInterface,
   LofiMutation,
@@ -17,10 +15,11 @@ import {
   type InMemoryQueryContext,
 } from "../adapters/in-memory/query";
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
+import type { InMemoryLofiRow } from "../adapters/in-memory/store";
 import { InMemoryLofiStore } from "../adapters/in-memory/store";
 
 type OverlayManagerAdapter = Pick<LofiAdapter, "getMeta" | "setMeta"> & {
-  exportBaseSnapshot: (options?: LofiBaseSnapshotOptions) => Promise<LofiBaseSnapshotRow[]>;
+  exportBaseSnapshot?: (options?: { schemaNames?: string[] }) => Promise<InMemoryLofiRow[]>;
 };
 
 export type OverlayManagerOptions<TContext> = {
@@ -103,10 +102,12 @@ export class LofiOverlayManager<TContext = unknown> {
 
   async rebuild(options?: { queue?: LofiSubmitCommand[]; schemaNames?: string[] }): Promise<void> {
     this.store.clear();
-    const baseRows = await this.adapter.exportBaseSnapshot({
-      schemaNames: options?.schemaNames ?? this.schemaNames,
-    });
-    this.store.seedRows(baseRows);
+    if (this.adapter.exportBaseSnapshot) {
+      const baseRows = await this.adapter.exportBaseSnapshot({
+        schemaNames: options?.schemaNames ?? this.schemaNames,
+      });
+      this.store.seedRows(baseRows);
+    }
 
     const queue = options?.queue ?? (await loadSubmitQueue(this.adapter, this.queueKey));
     for (const command of queue) {

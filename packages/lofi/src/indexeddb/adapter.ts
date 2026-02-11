@@ -4,8 +4,6 @@ import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
 import type {
   IndexedDbAdapterOptions,
-  LofiBaseSnapshotOptions,
-  LofiBaseSnapshotRow,
   LofiAdapter,
   LofiMutation,
   LofiQueryEngineOptions,
@@ -16,7 +14,20 @@ import type { ReferenceTarget } from "./types";
 import { normalizeValue } from "../query/normalize";
 import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
 
-type LofiRow = LofiBaseSnapshotRow;
+type LofiRow = {
+  key: [string, string, string, string];
+  endpoint: string;
+  schema: string;
+  table: string;
+  id: string;
+  data: Record<string, unknown>;
+  _lofi: {
+    versionstamp: string;
+    norm: Record<string, unknown>;
+    internalId: number;
+    version: number;
+  };
+};
 
 type InboxRow = {
   key: [string, string];
@@ -278,45 +289,6 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     await tx.done;
   }
 
-  async exportBaseSnapshot(options?: LofiBaseSnapshotOptions): Promise<LofiBaseSnapshotRow[]> {
-    const db = await this.openDatabase();
-    const tx = db.transaction(ROWS_STORE, "readonly");
-    const store = tx.objectStore(ROWS_STORE);
-    const index = store.index(INDEX_SCHEMA_TABLE);
-
-    const schemaNames = this.resolveSchemaNames(options?.schemaNames);
-    const rows: LofiBaseSnapshotRow[] = [];
-
-    if (!schemaNames) {
-      const range = IDBKeyRange.bound([this.endpointName], [this.endpointName, "\uffff", "\uffff"]);
-      const result = (await index.getAll(range)) as LofiBaseSnapshotRow[];
-      rows.push(...result);
-      await tx.done;
-      return rows;
-    }
-
-    for (const schemaName of schemaNames) {
-      const range = IDBKeyRange.bound(
-        [this.endpointName, schemaName],
-        [this.endpointName, schemaName, "\uffff"],
-      );
-      const result = (await index.getAll(range)) as LofiBaseSnapshotRow[];
-      rows.push(...result);
-    }
-
-    await tx.done;
-    return rows;
-  }
-
-  async *streamBaseSnapshot(
-    options?: LofiBaseSnapshotOptions,
-  ): AsyncGenerator<LofiBaseSnapshotRow> {
-    const rows = await this.exportBaseSnapshot(options);
-    for (const row of rows) {
-      yield row;
-    }
-  }
-
   createQueryEngine<const T extends AnySchema>(
     schema: T,
     options?: LofiQueryEngineOptions,
@@ -386,23 +358,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
 
     return upgraded;
   }
-
-  private resolveSchemaNames(schemaNames?: string[]): string[] | undefined {
-    if (!schemaNames || schemaNames.length === 0) {
-      return undefined;
-    }
-
-    const unique = Array.from(new Set(schemaNames));
-    for (const schemaName of unique) {
-      if (!this.schemaMap.has(schemaName)) {
-        throw new Error(`Unknown schema requested for base snapshot: ${schemaName}`);
-      }
-    }
-
-    return unique;
-  }
 }
-
 const schemaFingerprintKey = (endpointName: string) => `${endpointName}::schema_fingerprint`;
 const cursorKeyDefault = (endpointName: string) => `${endpointName}::outbox`;
 const seqKey = (endpointName: string, schema: string, table: string) =>

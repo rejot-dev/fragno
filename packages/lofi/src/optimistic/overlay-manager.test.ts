@@ -35,36 +35,20 @@ describe("optimistic overlay manager", () => {
     globalThis.IDBTransaction = IDBTransaction;
   });
 
-  it("rebuilds overlay from base snapshot and queued commands", async () => {
+  it("rebuilds overlay from queued commands", async () => {
     const adapter = new IndexedDbAdapter({
       dbName: createDbName(),
       endpointName: "app",
       schemas: [{ schema: appSchema }],
     });
 
-    await adapter.applyOutboxEntry({
-      sourceKey: "app::outbox",
-      versionstamp: "vs1",
-      uowId: "uow-vs1",
-      mutations: [
-        {
-          op: "create",
-          schema: "app",
-          table: "users",
-          externalId: "user-1",
-          versionstamp: "vs1",
-          values: { name: "Ada" },
-        },
-      ],
-    });
-
     const command: LofiSubmitCommandDefinition<{ id: string; name: string }, {}> = {
-      name: "rename",
+      name: "createUser",
       target: { fragment: "app", schema: "app" },
       handler: async ({ input, tx }) => {
         await tx()
           .mutate(({ forSchema }) => {
-            forSchema(appSchema).update("users", input.id, (b) => b.set({ name: input.name }));
+            forSchema(appSchema).create("users", input);
           })
           .execute();
       },
@@ -74,7 +58,7 @@ describe("optimistic overlay manager", () => {
     await storeSubmitQueue(adapter, queueKey, [
       {
         id: "cmd-1",
-        name: "rename",
+        name: "createUser",
         target: { fragment: "app", schema: "app" },
         input: { id: "user-1", name: "Ada Lovelace" },
       },
@@ -94,6 +78,6 @@ describe("optimistic overlay manager", () => {
     expect(users).toHaveLength(1);
     expect(users[0].name).toBe("Ada Lovelace");
     const userId = users[0].id as FragnoId;
-    expect(userId.version).toBe(2);
+    expect(userId.version).toBe(1);
   });
 });

@@ -405,64 +405,6 @@ describe("IndexedDbAdapter", () => {
     db.close();
   });
 
-  it("exports base snapshot rows for schemas", async () => {
-    const appSchema = schema("app", (s) =>
-      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
-    );
-    const billingSchema = schema("billing", (s) =>
-      s.addTable("invoices", (t) =>
-        t.addColumn("id", idColumn()).addColumn("total", column("integer")),
-      ),
-    );
-
-    const dbName = createDbName();
-    const adapter = new IndexedDbAdapter({
-      dbName,
-      endpointName: "app",
-      schemas: [{ schema: appSchema }, { schema: billingSchema }],
-    });
-
-    await adapter.applyOutboxEntry({
-      sourceKey: "app::outbox",
-      versionstamp: "vs1",
-      uowId: "uow-vs1",
-      mutations: [
-        {
-          op: "create",
-          schema: "app",
-          table: "users",
-          externalId: "user-1",
-          versionstamp: "vs1",
-          values: { name: "Ada" },
-        },
-        {
-          op: "create",
-          schema: "billing",
-          table: "invoices",
-          externalId: "inv-1",
-          versionstamp: "vs1",
-          values: { total: 4200 },
-        },
-      ],
-    });
-
-    const allRows = await adapter.exportBaseSnapshot();
-    expect(allRows).toHaveLength(2);
-    const rowSchemas = allRows.map((row) => row.schema);
-    expect(rowSchemas).toContain("app");
-    expect(rowSchemas).toContain("billing");
-    for (const row of allRows) {
-      expect(row.id).toBeDefined();
-      expect(row._lofi.version).toBe(1);
-    }
-
-    const appRows = await adapter.exportBaseSnapshot({ schemaNames: ["app"] });
-    expect(appRows).toHaveLength(1);
-    expect(appRows[0]?.schema).toBe("app");
-    expect(appRows[0]?.table).toBe("users");
-    expect(appRows[0]?.id).toBe("user-1");
-  });
-
   it("creates indexes and clears rows on schema fingerprint changes", async () => {
     const schemaV1 = schema("app", (s) =>
       s.addTable("users", (t) =>

@@ -154,13 +154,13 @@ of queued sync commands layered on top of the persisted IndexedDB state.
 
 - **Base state** lives in IndexedDB and only changes via outbox sync (`LofiClient`) or submit
   responses (`submitOnce`).
-- **Overlay state** is in-memory and rebuilt by replaying the queued commands on top of a base
-  snapshot (`exportBaseSnapshot`).
+- **Overlay state** is in-memory and rebuilt by replaying queued commands. It no longer relies on
+  IndexedDbAdapter snapshot export APIs.
 - **Durability**: the submit queue is persisted in IndexedDB meta, but the overlay store is
   ephemeral. After reloads, call `rebuild()` to restore the optimistic view.
 - **Rebase flow**: when `submitOnce()` returns, confirmed command ids are removed from the queue and
   outbox entries are applied to the base adapter. Rebuilding the overlay replays only the remaining
-  queued commands on top of the new base snapshot.
+  queued commands.
 
 ```ts
 import { LofiOverlayManager } from "@fragno-dev/lofi";
