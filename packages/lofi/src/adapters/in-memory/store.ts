@@ -1,6 +1,6 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import type { LofiBaseSnapshotRow, LofiMutation } from "../../types";
+import type { LofiMutation } from "../../types";
 import type { ReferenceTarget } from "../../indexeddb/types";
 import { normalizeValue } from "../../query/normalize";
 import { compareNormalizedValues } from "./value-comparison";
@@ -380,7 +380,7 @@ export class InMemoryLofiStore {
     this.clear();
   }
 
-  seedRows(rows: LofiBaseSnapshotRow[]): void {
+  seedRows(rows: InMemoryLofiRow[]): void {
     for (const row of rows) {
       if (row.endpoint !== this.endpointName) {
         continue;
@@ -505,7 +505,7 @@ export class InMemoryLofiStore {
       limit,
     } = options;
     const tableStore = this.getTableStore(schemaName, tableName);
-    const indexStore = tableStore.indexes.get(indexName) ?? tableStore.indexes.get("_primary");
+    const indexStore = tableStore.indexes.get(indexName);
     if (!indexStore) {
       throw new Error(`Missing in-memory index "${indexName}" on ${schemaName}.${tableName}.`);
     }
