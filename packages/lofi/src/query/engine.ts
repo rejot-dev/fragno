@@ -494,6 +494,205 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
   return String(normalized);
 };
 
+const normalizeRightValue = (value: unknown, column: AnyColumn): unknown =>
+  column.role === "reference" || column.role === "internal-id"
+    ? coerceLocalInternalId(value)
+    : normalizeValue(value, column);
+
+const evaluateIsOperator = (
+  leftValue: unknown,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+  op: "is" | "is not",
+): boolean => {
+  if (isNullish(rightValue)) {
+    const matches = isNullish(leftValue);
+    return op === "is" ? matches : !matches;
+  }
+
+  if (isNullish(leftValue)) {
+    return op === "is not";
+  }
+
+  const rightNormalized = normalizeRightValue(rightValue, rightColumn);
+  const matches = compareNormalizedValues(leftValue, rightNormalized) === 0;
+  return op === "is" ? matches : !matches;
+};
+
+const evaluateInOperator = async <TxStores extends ArrayLike<string>, StoreName extends string>(
+  leftValue: unknown,
+  rightValue: unknown,
+  leftColumn: AnyColumn,
+  table: AnyTable,
+  row: LofiRow,
+  context: QueryContext,
+  rowsStore: ReadStore<TxStores, StoreName>,
+  op: "in" | "not in",
+): Promise<boolean> => {
+  if (!Array.isArray(rightValue)) {
+    throw new Error(`Operator "${op}" expects an array value.`);
+  }
+
+  let hasNull = false;
+  let hasMatch = false;
+
+  for (const item of rightValue) {
+    const resolved = await resolveComparisonValue({
+      value: item,
+      column: leftColumn,
+      table,
+      row,
+      schemaName: context.schemaName,
+      endpointName: context.endpointName,
+      rowsStore,
+      referenceTargets: context.referenceTargets,
+    });
+    if (isNullish(resolved.value)) {
+      hasNull = true;
+      continue;
+    }
+
+    const normalized = normalizeRightValue(resolved.value, resolved.column);
+    if (compareNormalizedValues(leftValue, normalized) === 0) {
+      hasMatch = true;
+      break;
+    }
+  }
+
+  if (hasMatch) {
+    return op === "in";
+  }
+
+  if (hasNull) {
+    return false;
+  }
+
+  return op === "not in";
+};
+
+const evaluateStringOperator = (
+  leftValue: unknown,
+  rightValue: unknown,
+  leftColumn: AnyColumn,
+  rightColumn: AnyColumn,
+  op:
+    | "contains"
+    | "starts with"
+    | "ends with"
+    | "not contains"
+    | "not starts with"
+    | "not ends with",
+): boolean => {
+  const leftLike = normalizeLikeValue(leftValue, leftColumn);
+  const rightLike = normalizeLikeValue(rightValue, rightColumn);
+
+  if (leftLike === null || rightLike === null) {
+    return false;
+  }
+
+  const leftText = leftLike.toLowerCase();
+  const rightText = rightLike.toLowerCase();
+  let matches = false;
+
+  if (op.includes("contains")) {
+    matches = leftText.includes(rightText);
+  } else if (op.includes("starts with")) {
+    matches = leftText.startsWith(rightText);
+  } else {
+    matches = leftText.endsWith(rightText);
+  }
+
+  return op.startsWith("not ") ? !matches : matches;
+};
+
+const evaluateOrderingOperator = (
+  leftValue: unknown,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+  op: "=" | "!=" | ">" | ">=" | "<" | "<=",
+): boolean => {
+  const rightNormalized = normalizeRightValue(rightValue, rightColumn);
+  const comparison = compareNormalizedValues(leftValue, rightNormalized);
+
+  switch (op) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${op}".`);
+  }
+};
+
+const evaluateCompareCondition = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(
+  condition: Extract<Condition, { type: "compare" }>,
+  table: AnyTable,
+  row: LofiRow,
+  context: QueryContext,
+  rowsStore: ReadStore<TxStores, StoreName>,
+): Promise<boolean> => {
+  const leftColumn = condition.a;
+  const leftValue = row._lofi.norm[leftColumn.name];
+  const right = await resolveComparisonValue({
+    value: condition.b,
+    column: leftColumn,
+    table,
+    row,
+    schemaName: context.schemaName,
+    endpointName: context.endpointName,
+    rowsStore,
+    referenceTargets: context.referenceTargets,
+  });
+
+  const op = condition.operator;
+  const rightValue = right.value;
+
+  if (op === "is" || op === "is not") {
+    return evaluateIsOperator(leftValue, rightValue, right.column, op);
+  }
+
+  if (isNullish(leftValue) || isNullish(rightValue)) {
+    return false;
+  }
+
+  if (op === "in" || op === "not in") {
+    return evaluateInOperator(
+      leftValue,
+      rightValue,
+      leftColumn,
+      table,
+      row,
+      context,
+      rowsStore,
+      op,
+    );
+  }
+
+  if (
+    op === "contains" ||
+    op === "starts with" ||
+    op === "ends with" ||
+    op === "not contains" ||
+    op === "not starts with" ||
+    op === "not ends with"
+  ) {
+    return evaluateStringOperator(leftValue, rightValue, leftColumn, right.column, op);
+  }
+
+  return evaluateOrderingOperator(leftValue, rightValue, right.column, op);
+};
+
 const evaluateCondition = async <TxStores extends ArrayLike<string>, StoreName extends string>(
   condition: Condition | boolean,
   table: AnyTable,
@@ -525,153 +724,11 @@ const evaluateCondition = async <TxStores extends ArrayLike<string>, StoreName e
     case "not":
       return !(await evaluateCondition(condition.item, table, row, context, rowsStore));
     case "compare":
-      break;
+      return evaluateCompareCondition(condition, table, row, context, rowsStore);
     default: {
       const exhaustiveCheck: never = condition;
       throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
     }
-  }
-
-  const leftColumn = condition.a;
-  const leftValue = row._lofi.norm[leftColumn.name];
-  const right = await resolveComparisonValue({
-    value: condition.b,
-    column: leftColumn,
-    table,
-    row,
-    schemaName: context.schemaName,
-    endpointName: context.endpointName,
-    rowsStore,
-    referenceTargets: context.referenceTargets,
-  });
-
-  const op = condition.operator;
-  const rightValue = right.value;
-
-  if (op === "is" || op === "is not") {
-    if (isNullish(rightValue)) {
-      const matches = isNullish(leftValue);
-      return op === "is" ? matches : !matches;
-    }
-
-    if (isNullish(leftValue)) {
-      return op === "is not";
-    }
-
-    const leftNormalized = leftValue;
-    const rightNormalized =
-      right.column.role === "reference" || right.column.role === "internal-id"
-        ? coerceLocalInternalId(rightValue)
-        : normalizeValue(rightValue, right.column);
-    const matches = compareNormalizedValues(leftNormalized, rightNormalized) === 0;
-    return op === "is" ? matches : !matches;
-  }
-
-  if (isNullish(leftValue) || isNullish(rightValue)) {
-    return false;
-  }
-
-  if (op === "in" || op === "not in") {
-    if (!Array.isArray(rightValue)) {
-      throw new Error(`Operator "${op}" expects an array value.`);
-    }
-
-    const leftNormalized = leftValue;
-    let hasNull = false;
-    let hasMatch = false;
-
-    for (const item of rightValue) {
-      const resolved = await resolveComparisonValue({
-        value: item,
-        column: leftColumn,
-        table,
-        row,
-        schemaName: context.schemaName,
-        endpointName: context.endpointName,
-        rowsStore,
-        referenceTargets: context.referenceTargets,
-      });
-      if (isNullish(resolved.value)) {
-        hasNull = true;
-        continue;
-      }
-
-      const normalized =
-        resolved.column.role === "reference" || resolved.column.role === "internal-id"
-          ? coerceLocalInternalId(resolved.value)
-          : normalizeValue(resolved.value, resolved.column);
-      if (compareNormalizedValues(leftNormalized, normalized) === 0) {
-        hasMatch = true;
-        break;
-      }
-    }
-
-    if (hasMatch) {
-      return op === "in";
-    }
-
-    if (hasNull) {
-      return false;
-    }
-
-    return op === "not in";
-  }
-
-  if (
-    op === "contains" ||
-    op === "starts with" ||
-    op === "ends with" ||
-    op === "not contains" ||
-    op === "not starts with" ||
-    op === "not ends with"
-  ) {
-    const leftLike = normalizeLikeValue(leftValue, leftColumn);
-    const rightLike = normalizeLikeValue(rightValue, right.column);
-
-    if (leftLike === null || rightLike === null) {
-      return false;
-    }
-
-    const leftText = leftLike.toLowerCase();
-    const rightText = rightLike.toLowerCase();
-    let matches = false;
-
-    if (op.includes("contains")) {
-      matches = leftText.includes(rightText);
-    } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
-    } else {
-      matches = leftText.endsWith(rightText);
-    }
-
-    if (op.startsWith("not ")) {
-      return !matches;
-    }
-    return matches;
-  }
-
-  const leftNormalized = leftValue;
-  const rightNormalized =
-    right.column.role === "reference" || right.column.role === "internal-id"
-      ? coerceLocalInternalId(rightValue)
-      : normalizeValue(rightValue, right.column);
-  const comparison = compareNormalizedValues(leftNormalized, rightNormalized);
-
-  switch (op) {
-    case "=":
-      return comparison === 0;
-    case "!=":
-      return comparison !== 0;
-    case ">":
-      return comparison > 0;
-    case ">=":
-      return comparison >= 0;
-    case "<":
-      return comparison < 0;
-    case "<=":
-      return comparison <= 0;
-    default:
-      throw new Error(`Unsupported operator "${op}".`);
   }
 };
 
