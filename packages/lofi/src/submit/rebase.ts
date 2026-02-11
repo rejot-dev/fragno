@@ -85,16 +85,8 @@ export const rebaseSubmitQueue = async (options: {
   cursorKey: string;
   confirmedCommandIds: string[];
   queue: LofiSubmitCommand[];
-  replayCommand: (command: LofiSubmitCommand) => Promise<void>;
 }): Promise<RebaseResult> => {
-  const {
-    adapter,
-    entries,
-    cursorKey,
-    confirmedCommandIds,
-    queue,
-    replayCommand: _replayCommand,
-  } = options;
+  const { adapter, entries, cursorKey, confirmedCommandIds, queue } = options;
 
   const { appliedEntries, lastVersionstamp } = await applyOutboxEntries({
     adapter,

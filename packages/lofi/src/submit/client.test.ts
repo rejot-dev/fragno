@@ -15,6 +15,7 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import type { LofiSubmitCommandDefinition } from "../types";
 import { LofiSubmitClient } from "./client";
 import { IndexedDbAdapter } from "../indexeddb/adapter";
+import { LofiOverlayManager } from "../optimistic/overlay-manager";
 
 const appSchema = schema("app", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("email", column("string"))),
@@ -96,5 +97,59 @@ describe("LofiSubmitClient", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(commandId).toBeTruthy();
+  });
+
+  it("routes optimistic commands through the overlay store", async () => {
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    const commandDef: LofiSubmitCommandDefinition<{ id: string; email: string }, {}> = {
+      name: "createUser",
+      target: { fragment: "app", schema: "app" },
+      handler: async ({ input, tx }) => {
+        await tx()
+          .mutate(({ forSchema }) => {
+            forSchema(appSchema).create("users", input);
+          })
+          .execute();
+      },
+    };
+
+    const overlay = new LofiOverlayManager({
+      endpointName: "app",
+      adapter,
+      schemas: [appSchema],
+      commands: [commandDef as LofiSubmitCommandDefinition<unknown, {}>],
+    });
+
+    const client = new LofiSubmitClient({
+      endpointName: "app",
+      submitUrl: "https://example.com/_internal/sync",
+      internalUrl: "https://example.com/_internal",
+      adapter,
+      schemas: [appSchema],
+      commands: [commandDef as LofiSubmitCommandDefinition<unknown, {}>],
+      overlay,
+      fetch: vi.fn(async () => new Response(JSON.stringify({}), { status: 500 })) as typeof fetch,
+    });
+
+    await client.queueCommand({
+      name: "createUser",
+      target: { fragment: "app", schema: "app" },
+      input: { id: "user-1", email: "ada@example.com" },
+      optimistic: true,
+    });
+
+    const baseQuery = adapter.createQueryEngine(appSchema);
+    const baseUsers = await baseQuery.find("users");
+    expect(baseUsers).toHaveLength(0);
+
+    const overlayQuery = overlay.createQueryEngine(appSchema);
+    const overlayUsers = await overlayQuery.find("users");
+    expect(overlayUsers).toHaveLength(1);
+    expect(overlayUsers[0].email).toBe("ada@example.com");
   });
 });
