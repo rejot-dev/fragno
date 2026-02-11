@@ -66,11 +66,15 @@ type ScenarioVars = {
   overlayUsers?: UserRow[];
   usersB?: UserRow[];
   posts?: PostWithAuthor[];
+  postsBeforeSubmit?: PostWithAuthor[];
+  postsAfterSubmit?: PostWithAuthor[];
   stackedUser?: UserRow | null;
   baseUser?: UserRow | null;
   overlayUser?: UserRow | null;
   basePost?: PostRow | null;
   overlayPost?: PostRow | null;
+  basePostBefore?: PostRow | null;
+  basePostAfter?: PostRow | null;
 };
 const steps = createScenarioSteps<typeof appSchema, unknown, ScenarioVars>();
 const authSteps = createScenarioSteps<typeof appSchema, AuthContext, ScenarioVars>();
@@ -97,7 +101,15 @@ const runScenarioWithIndexedDb = async <
   TVars extends ScenarioVars = ScenarioVars,
 >(
   scenario: ScenarioDefinition<TSchema, TContext, TCommands, TVars>,
-) => runScenario(scenario, { indexedDbGlobals: createIndexedDbGlobals() });
+) => {
+  const withContext = scenario.createClientContext
+    ? scenario
+    : ({
+        ...scenario,
+        createClientContext: () => ({}) as TContext,
+      } as ScenarioDefinition<TSchema, TContext, TCommands, TVars>);
+  return runScenario(withContext, { indexedDbGlobals: createIndexedDbGlobals() });
+};
 
 type CreateUserInput = { id: string; name: string };
 const createUserHandler = async ({ input, tx }: CommandArgs) => {
@@ -226,6 +238,8 @@ const secureRetitlePostHandler = async ({ input, tx, ctx }: CommandArgs) => {
     .execute();
 };
 
+const optimisticSecureRetitlePostHandler = retitlePostHandler;
+
 type DeleteUserInput = { id: string; expectedVersion: number };
 const deleteUserHandler = async ({ input, tx, ctx }: CommandArgs) => {
   const payload = input as DeleteUserInput;
@@ -322,6 +336,10 @@ const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineC
   defineCommand({ name: "createPost", handler: createPostHandler }),
   defineCommand({ name: "retitlePost", handler: retitlePostHandler }),
   defineCommand({ name: "secureRetitlePost", handler: secureRetitlePostHandler }),
+  defineCommand({
+    name: "secureRetitlePostOptimistic",
+    handler: secureRetitlePostHandler,
+  }),
   defineCommand({ name: "deleteUser", handler: deleteUserHandler }),
   defineCommand({ name: "deleteUserConflict", handler: deleteUserConflictHandler }),
   defineCommand({ name: "updateUserAndPost", handler: updateUserAndPostHandler }),
@@ -363,6 +381,11 @@ const clientCommands: LofiSubmitCommandDefinition[] = [
     name: "secureRetitlePost",
     target: { fragment: "lofi-test", schema: appSchema.name },
     handler: secureRetitlePostHandler,
+  },
+  {
+    name: "secureRetitlePostOptimistic",
+    target: { fragment: "lofi-test", schema: appSchema.name },
+    handler: optimisticSecureRetitlePostHandler,
   },
   {
     name: "deleteUser",
@@ -644,6 +667,97 @@ describe("Lofi scenario DSL", () => {
           expect(posts).toHaveLength(1);
           expect(posts?.[0]?.title).toBe("Hello");
           expect(posts?.[0]?.author?.name).toBe("Ada");
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("rolls back optimistic edits when auth rejects on submit", async () => {
+    const scenario = defineScenario<typeof appSchema, AuthContext>({
+      name: "auth-optimistic-rejected",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a" },
+        b: { endpointName: "client-b", adapter: { type: "stacked" } },
+      },
+      createClientContext: (clientName) => ({
+        userId: clientName === "a" ? "user-1" : "user-2",
+      }),
+      steps: [
+        authSteps.command(
+          "a",
+          "createUser",
+          { id: "user-1", name: "Ada" },
+          { optimistic: true, submit: true },
+        ),
+        authSteps.command(
+          "a",
+          "createUser",
+          { id: "user-2", name: "Bea" },
+          { optimistic: true, submit: true },
+        ),
+        authSteps.command(
+          "a",
+          "createPost",
+          { id: "post-1", authorId: "user-1", title: "Hello" },
+          { optimistic: true, submit: true },
+        ),
+        authSteps.sync("b"),
+        authSteps.command(
+          "b",
+          "secureRetitlePostOptimistic",
+          { postId: "post-1", expectedAuthorName: "Ada", title: "Denied" },
+          { optimistic: true },
+        ),
+        authSteps.read(
+          "b",
+          (_ctx, client) =>
+            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+          "postsBeforeSubmit",
+        ),
+        authSteps.read(
+          "b",
+          (_ctx, client) =>
+            client.baseQuery.findFirst("posts", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "post-1")),
+            ),
+          "basePostBefore",
+        ),
+        authSteps.submit("b"),
+        authSteps.read(
+          "b",
+          (_ctx, client) =>
+            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+          "postsAfterSubmit",
+        ),
+        authSteps.read(
+          "b",
+          (_ctx, client) =>
+            client.baseQuery.findFirst("posts", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "post-1")),
+            ),
+          "basePostAfter",
+        ),
+        authSteps.assert((ctx) => {
+          const before = ctx.vars.postsBeforeSubmit;
+          const after = ctx.vars.postsAfterSubmit;
+          expect(before).toHaveLength(1);
+          expect(before?.[0]?.title).toBe("Denied");
+          expect(before?.[0]?.author?.name).toBe("Ada");
+          expect(ctx.vars.basePostBefore?.title).toBe("Hello");
+          expect(ctx.lastSubmit["b"]?.status).toBe("applied");
+          expect(after).toHaveLength(1);
+          expect(after?.[0]?.title).toBe("Hello");
+          expect(after?.[0]?.author?.name).toBe("Ada");
+          expect(ctx.vars.basePostAfter?.title).toBe("Hello");
         }),
       ],
     });
