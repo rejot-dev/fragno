@@ -5,6 +5,9 @@ description: Test database-backed fragments with the database test harness.
 
 This section covers database test utilities, including usage of the in-memory adapter.
 
+Important: Use the test harness below. It applies fragment migrations plus Fragno internal tables
+for hooks/outbox behavior and handles cleanup. Avoid copying internal adapters or migrations.
+
 ## Testing Database Fragments
 
 Use `buildDatabaseFragmentsTest` from `@fragno-dev/test` to set up a database adapter and apply
