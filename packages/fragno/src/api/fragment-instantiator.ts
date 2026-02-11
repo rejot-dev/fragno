@@ -870,6 +870,85 @@ export interface InstantiationOptions {
  * Core instantiation function that creates a fragment instance from a definition.
  * This function validates dependencies, calls all callbacks, and wires everything together.
  */
+function validateServiceDependencies(
+  definition: { name: string; serviceDependencies?: Record<string, unknown> },
+  serviceImplementations?: Record<string, unknown>,
+): void {
+  if (!definition.serviceDependencies) {
+    return;
+  }
+  for (const [serviceName, meta] of Object.entries(definition.serviceDependencies)) {
+    const metadata = meta as { name: string; required: boolean };
+    const implementation = serviceImplementations?.[serviceName];
+    if (metadata.required && !implementation) {
+      throw new Error(
+        `Fragment '${definition.name}' requires service '${metadata.name}' but it was not provided`,
+      );
+    }
+  }
+}
+
+function tryWithDryRun<T>(fn: () => T, fallback: T, label: string, dryRun: boolean): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (dryRun) {
+      console.warn(label, error instanceof Error ? error.message : String(error));
+      return fallback;
+    }
+    throw error;
+  }
+}
+
+function initializeServiceMap(
+  factoryMap: Record<string, unknown> | undefined,
+  buildContext: (currentServices: Record<string, unknown>) => Record<string, unknown>,
+  label: string,
+  dryRun: boolean,
+): Record<string, unknown> {
+  const services: Record<string, unknown> = {};
+  if (!factoryMap) {
+    return services;
+  }
+  for (const [name, factory] of Object.entries(factoryMap)) {
+    const serviceFactory = factory as (context: Record<string, unknown>) => unknown;
+    try {
+      services[name] = serviceFactory(buildContext(services));
+    } catch (error) {
+      if (dryRun) {
+        console.warn(
+          `Warning: Failed to initialize ${label} '${name}' in dry run mode:`,
+          error instanceof Error ? error.message : String(error),
+        );
+        services[name] = {};
+      } else {
+        throw error;
+      }
+    }
+  }
+  return services;
+}
+
+function resolveAllRoutes(
+  context: { config: unknown; deps: unknown; services: unknown; serviceDeps: unknown },
+  routesOrFactories: readonly AnyRouteOrFactory[],
+  internalRoutes?: readonly AnyRouteOrFactory[],
+): AnyFragnoRouteConfig[] {
+  const routes = resolveRouteFactories(context, routesOrFactories) as AnyFragnoRouteConfig[];
+  if (!internalRoutes) {
+    return routes;
+  }
+  const resolved = resolveRouteFactories(
+    context,
+    internalRoutes,
+  ) as readonly AnyFragnoRouteConfig[];
+  const prefixed = resolved.map((route) => ({
+    ...route,
+    path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
+  }));
+  return prefixed.length > 0 ? [...routes, ...prefixed] : routes;
+}
+
 export function instantiateFragment<
   const TConfig,
   const TOptions extends FragnoPublicConfig,
@@ -914,35 +993,18 @@ export function instantiateFragment<
   const { dryRun = false } = instantiationOptions ?? {};
 
   // 1. Validate service dependencies
-  const serviceDependencies = definition.serviceDependencies;
-  if (serviceDependencies) {
-    for (const [serviceName, meta] of Object.entries(serviceDependencies)) {
-      const metadata = meta as { name: string; required: boolean };
-      const implementation = serviceImplementations?.[serviceName as keyof TServiceDependencies];
-      if (metadata.required && !implementation) {
-        throw new Error(
-          `Fragment '${definition.name}' requires service '${metadata.name}' but it was not provided`,
-        );
-      }
-    }
-  }
+  validateServiceDependencies(
+    definition,
+    serviceImplementations as Record<string, unknown> | undefined,
+  );
 
   // 2. Call dependencies callback
-  let deps: TDeps;
-  try {
-    deps = definition.dependencies?.({ config, options }) ?? ({} as TDeps);
-  } catch (error) {
-    if (dryRun) {
-      console.warn(
-        "Warning: Failed to initialize dependencies in dry run mode:",
-        error instanceof Error ? error.message : String(error),
-      );
-      // Return empty deps - database fragments will add implicit deps later
-      deps = {} as TDeps;
-    } else {
-      throw error;
-    }
-  }
+  const deps = tryWithDryRun(
+    () => definition.dependencies?.({ config, options }) ?? ({} as TDeps),
+    {} as TDeps,
+    "Warning: Failed to initialize dependencies in dry run mode:",
+    dryRun,
+  );
 
   // 3. Calculate mount route early so internal routes can reference it
   const mountRoute = getMountRoute({
@@ -952,103 +1014,47 @@ export function instantiateFragment<
 
   // 4. Identity function for service definition (used to set 'this' context)
   const defineService = <T>(services: T & ThisType<TServiceThisContext>): T => services;
+  const serviceDeps = (serviceImplementations ?? {}) as TServiceDependencies;
 
   // 5. Call privateServices factories
   // Private services are instantiated in order, so earlier ones are available to later ones
-  const privateServices = {} as TPrivateServices;
-  if (definition.privateServices) {
-    for (const [serviceName, factory] of Object.entries(definition.privateServices)) {
-      const serviceFactory = factory as (context: {
-        config: TConfig;
-        options: TOptions;
-        deps: TDeps;
-        serviceDeps: TServiceDependencies;
-        privateServices: TPrivateServices;
-        defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
-      }) => unknown;
-
-      try {
-        (privateServices as Record<string, unknown>)[serviceName] = serviceFactory({
-          config,
-          options,
-          deps,
-          serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-          privateServices, // Pass the current state of private services (earlier ones are available)
-          defineService,
-        });
-      } catch (error) {
-        if (dryRun) {
-          console.warn(
-            `Warning: Failed to initialize private service '${serviceName}' in dry run mode:`,
-            error instanceof Error ? error.message : String(error),
-          );
-          (privateServices as Record<string, unknown>)[serviceName] = {};
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
+  const privateServices = initializeServiceMap(
+    definition.privateServices as Record<string, unknown> | undefined,
+    (currentPrivateServices) => ({
+      config,
+      options,
+      deps,
+      serviceDeps,
+      privateServices: currentPrivateServices,
+      defineService,
+    }),
+    "private service",
+    dryRun,
+  ) as TPrivateServices;
 
   // 6. Call baseServices callback (with access to private services)
-  let baseServices: TBaseServices;
-  try {
-    baseServices =
+  const baseServices = tryWithDryRun(
+    () =>
       definition.baseServices?.({
         config,
         options,
         deps,
-        serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
+        serviceDeps,
         privateServices,
         defineService,
-      }) ?? ({} as TBaseServices);
-  } catch (error) {
-    if (dryRun) {
-      console.warn(
-        "Warning: Failed to initialize base services in dry run mode:",
-        error instanceof Error ? error.message : String(error),
-      );
-      baseServices = {} as TBaseServices;
-    } else {
-      throw error;
-    }
-  }
+      }) ?? ({} as TBaseServices),
+    {} as TBaseServices,
+    "Warning: Failed to initialize base services in dry run mode:",
+    dryRun,
+  );
 
   // 7. Call namedServices factories (with access to private services)
-  const namedServices = {} as TServices;
-  if (definition.namedServices) {
-    for (const [serviceName, factory] of Object.entries(definition.namedServices)) {
-      const serviceFactory = factory as (context: {
-        config: TConfig;
-        options: TOptions;
-        deps: TDeps;
-        serviceDeps: TServiceDependencies;
-        privateServices: TPrivateServices;
-        defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
-      }) => unknown;
-
-      try {
-        (namedServices as Record<string, unknown>)[serviceName] = serviceFactory({
-          config,
-          options,
-          deps,
-          serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-          privateServices,
-          defineService,
-        });
-      } catch (error) {
-        if (dryRun) {
-          console.warn(
-            `Warning: Failed to initialize service '${serviceName}' in dry run mode:`,
-            error instanceof Error ? error.message : String(error),
-          );
-          (namedServices as Record<string, unknown>)[serviceName] = {};
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
+  const namedServices = initializeServiceMap(
+    definition.namedServices as Record<string, unknown> | undefined,
+    () => ({ config, options, deps, serviceDeps, privateServices, defineService }),
+    "service",
+    dryRun,
+  ) as TServices;
 
   // 8. Merge public services (NOT including private services)
   const services = {
@@ -1057,12 +1063,10 @@ export function instantiateFragment<
   };
 
   // 9. Create request context storage and both service & handler contexts
-  // Use external storage if provided, otherwise create new storage
   const storage = definition.getExternalStorage
     ? definition.getExternalStorage({ config, options, deps })
     : new RequestContextStorage<TRequestStorage>();
 
-  // Create both contexts using createThisContext (returns { serviceContext, handlerContext })
   const contexts = definition.createThisContext?.({
     config,
     options,
@@ -1072,36 +1076,19 @@ export function instantiateFragment<
 
   const serviceContext = contexts?.serviceContext;
   const handlerContext = contexts?.handlerContext;
-  const internalData =
-    definition.internalDataFactory?.({
-      config,
-      options,
-      deps,
-    }) ?? {};
+  const internalData = definition.internalDataFactory?.({ config, options, deps }) ?? {};
 
   // 10. Bind services to serviceContext (restricted)
-  // Services get the restricted context (for database fragments, this excludes execute methods)
   const boundServices = serviceContext ? bindServicesToContext(services, serviceContext) : services;
 
   // 11. Resolve routes with bound services
-  const context = {
+  const routeContext = {
     config,
     deps,
     services: boundServices,
-    serviceDeps: serviceImplementations ?? ({} as TServiceDependencies),
+    serviceDeps,
   };
-  const routes = resolveRouteFactories(context, routesOrFactories) as AnyFragnoRouteConfig[];
-  const internalRoutes = definition.internalRoutes
-    ? (resolveRouteFactories(context, definition.internalRoutes) as readonly AnyFragnoRouteConfig[])
-    : [];
-  const prefixedInternalRoutes = internalRoutes.map((route) => ({
-    ...route,
-    path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
-  }));
-  const finalRoutes =
-    prefixedInternalRoutes.length > 0
-      ? [...routes, ...prefixedInternalRoutes]
-      : (routes as AnyFragnoRouteConfig[]);
+  const finalRoutes = resolveAllRoutes(routeContext, routesOrFactories, definition.internalRoutes);
 
   // 12. Wrap createRequestStorage to capture context
   const createRequestStorageWithContext = definition.createRequestStorage
@@ -1109,8 +1096,6 @@ export function instantiateFragment<
     : undefined;
 
   // 13. Create and return fragment instance
-  // Pass bound services so they have access to serviceContext via 'this'
-  // Handlers get handlerContext which may have more capabilities than serviceContext
   return new FragnoInstantiatedFragment({
     name: definition.name,
     routes: finalRoutes as unknown as RoutesWithInternal<
