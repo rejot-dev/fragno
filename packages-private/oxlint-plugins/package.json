@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./tsdown-exports-sync": "./tsdown-exports-sync.js"
+    "./tsdown-exports-sync": "./tsdown-exports-sync.js",
+    "./fragment-dev-browser-exports": "./fragment-dev-browser-exports.js"
   },
   "scripts": {
     "types:check": "tsc --noEmit"

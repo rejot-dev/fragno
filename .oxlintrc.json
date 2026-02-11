@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn"],
-  "jsPlugins": ["./packages-private/oxlint-plugins/tsdown-exports-sync.js"],
+  "jsPlugins": [
+    "./packages-private/oxlint-plugins/tsdown-exports-sync.js",
+    "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js"
+  ],
   "env": {
     "builtin": true
   },
@@ -23,6 +26,7 @@
   ],
   "rules": {
     "tsdown-exports-sync/exports-match": "error",
+    "fragment-dev-browser-exports/exports-match": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",
