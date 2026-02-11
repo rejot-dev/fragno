@@ -3,24 +3,17 @@ import type {
   LofiAdapter,
   LofiQueryEngineOptions,
   LofiQueryInterface,
-  LofiMutation,
   LofiSubmitCommand,
   LofiSubmitCommandDefinition,
+  LofiQueryableAdapter,
 } from "../types";
-import { createLocalHandlerTx, type LocalHandlerQueryExecutor } from "../submit/local-handler-tx";
+import { createLocalHandlerTx } from "../submit/local-handler-tx";
 import { buildCommandKey, defaultQueueKey, loadSubmitQueue } from "../submit/queue";
-import {
-  createInMemoryQueryEngine,
-  executeInMemoryRetrievalOperation,
-  type InMemoryQueryContext,
-} from "../adapters/in-memory/query";
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
-import type { InMemoryLofiRow } from "../adapters/in-memory/store";
 import { InMemoryLofiStore } from "../adapters/in-memory/store";
+import { StackedLofiAdapter } from "../adapters/stacked/adapter";
 
-type OverlayManagerAdapter = Pick<LofiAdapter, "getMeta" | "setMeta"> & {
-  exportBaseSnapshot?: (options?: { schemaNames?: string[] }) => Promise<InMemoryLofiRow[]>;
-};
+type OverlayManagerAdapter = LofiAdapter & LofiQueryableAdapter;
 
 export type OverlayManagerOptions<TContext> = {
   endpointName: string;
@@ -35,6 +28,8 @@ export type OverlayManagerOptions<TContext> = {
 
 export class LofiOverlayManager<TContext = unknown> {
   readonly store: InMemoryLofiStore;
+  readonly overlayAdapter: InMemoryLofiAdapter;
+  readonly stackedAdapter: StackedLofiAdapter;
   private readonly adapter: OverlayManagerAdapter;
   private readonly schemas: AnySchema[];
   private readonly commands: Map<string, LofiSubmitCommandDefinition<unknown, TContext>>;
@@ -43,49 +38,28 @@ export class LofiOverlayManager<TContext = unknown> {
     command: LofiSubmitCommandDefinition<unknown, TContext>,
   ) => TContext;
   private readonly localTx: ReturnType<typeof createLocalHandlerTx>;
-  private readonly schemaNames: string[];
 
   constructor(options: OverlayManagerOptions<TContext>) {
     this.adapter = options.adapter;
     this.schemas = options.schemas;
-    const initialStore =
-      options.store ??
-      new InMemoryLofiAdapter({
-        endpointName: options.endpointName,
-        schemas: options.schemas,
-      }).store;
-    this.store = initialStore;
+    this.overlayAdapter = new InMemoryLofiAdapter({
+      endpointName: options.endpointName,
+      schemas: options.schemas,
+      ...(options.store ? { store: options.store } : {}),
+    });
+    this.store = this.overlayAdapter.store;
+    this.stackedAdapter = new StackedLofiAdapter({
+      base: this.adapter,
+      overlay: this.overlayAdapter,
+      schemas: options.schemas,
+    });
     this.queueKey = options.queueKey ?? defaultQueueKey(options.endpointName);
     this.commands = new Map(options.commands.map((command) => [buildCommandKey(command), command]));
     this.createCommandContext = options.createCommandContext;
-    this.schemaNames = options.schemaNames ?? options.schemas.map((schema) => schema.name);
-
-    const overlayAdapter = {
-      applyMutations: async (mutations: LofiMutation[]) => {
-        this.store.applyMutations(mutations);
-      },
-    };
-
-    const queryExecutor: LocalHandlerQueryExecutor<InMemoryQueryContext> = {
-      createQueryContext: (schemaName: string): InMemoryQueryContext => ({
-        endpointName: this.store.endpointName,
-        schemaName,
-        store: this.store,
-        referenceTargets: this.store.referenceTargets,
-      }),
-      executeRetrievalOperation: async ({ operation, context }) =>
-        executeInMemoryRetrievalOperation({
-          operation: operation as Parameters<
-            typeof executeInMemoryRetrievalOperation
-          >[0]["operation"],
-          context,
-        }),
-    };
 
     this.localTx = createLocalHandlerTx({
-      adapter: overlayAdapter,
+      adapter: this.stackedAdapter,
       schemas: options.schemas,
-      queryExecutor,
     });
   }
 
@@ -93,26 +67,19 @@ export class LofiOverlayManager<TContext = unknown> {
     schema: T,
     options?: LofiQueryEngineOptions,
   ): LofiQueryInterface<T> {
-    return createInMemoryQueryEngine({
-      schema,
-      store: this.store,
-      schemaName: options?.schemaName,
-    });
+    return this.overlayAdapter.createQueryEngine(schema, options);
   }
 
   async rebuild(options?: { queue?: LofiSubmitCommand[]; schemaNames?: string[] }): Promise<void> {
-    this.store.clear();
-    if (this.adapter.exportBaseSnapshot) {
-      const baseRows = await this.adapter.exportBaseSnapshot({
-        schemaNames: options?.schemaNames ?? this.schemaNames,
-      });
-      this.store.seedRows(baseRows);
-    }
-
+    this.overlayAdapter.reset();
     const queue = options?.queue ?? (await loadSubmitQueue(this.adapter, this.queueKey));
     for (const command of queue) {
       await this.runCommand(command);
     }
+  }
+
+  async reset(): Promise<void> {
+    this.overlayAdapter.reset();
   }
 
   async applyCommand(command: LofiSubmitCommand): Promise<void> {

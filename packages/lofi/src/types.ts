@@ -2,6 +2,7 @@ import type { createHandlerTxBuilder, HandlerTxBuilder } from "@fragno-dev/db";
 import type { OutboxEntry } from "@fragno-dev/db";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { InMemoryLofiStore } from "./adapters/in-memory/store";
 
 export type LofiClientOptions = {
   outboxUrl: string;
@@ -46,6 +47,7 @@ export type InMemoryLofiAdapterOptions = {
   endpointName: string;
   schemas: AnySchema[];
   ignoreUnknownSchemas?: boolean;
+  store?: InMemoryLofiStore;
 };
 
 export type LofiQueryInterface<TSchema extends AnySchema> = {
