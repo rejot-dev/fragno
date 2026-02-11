@@ -307,7 +307,7 @@ describe("Lofi scenario DSL", () => {
     await context.cleanup();
   });
 
-  it.todo("does not reapply confirmed commands during submit rebase", async () => {
+  it("does not reapply confirmed commands during submit rebase", async () => {
     const scenario = defineScenario({
       name: "rebase-confirmed",
       server: {

@@ -590,6 +590,23 @@ const applyMutation = async <
   }
 
   const values = mutation.op === "create" ? mutation.values : mutation.set;
+  if (existing && existing._lofi.versionstamp.startsWith("local-")) {
+    const isMatch = Object.entries(values).every(([column, value]) =>
+      Object.is(existing.data[column], value),
+    );
+    if (isMatch) {
+      const row: LofiRow = {
+        ...existing,
+        data: { ...existing.data, ...values },
+        _lofi: {
+          ...existing._lofi,
+          versionstamp: mutation.versionstamp,
+        },
+      };
+      await rowsStore.put(row);
+      return;
+    }
+  }
   if (!existing && mutation.op === "update") {
     return;
   }
