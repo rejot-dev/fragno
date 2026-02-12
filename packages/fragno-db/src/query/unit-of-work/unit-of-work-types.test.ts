@@ -97,7 +97,11 @@ describe("UnitOfWork type tests", () => {
     const mockDecoder = {
       decode: () => [],
     };
-    return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder).forSchema(testSchema);
+    return new UnitOfWork({
+      compiler: mockCompiler,
+      executor: mockExecutor,
+      decoder: mockDecoder,
+    }).forSchema(testSchema);
   }
 
   it("should type find without joins correctly", async () => {

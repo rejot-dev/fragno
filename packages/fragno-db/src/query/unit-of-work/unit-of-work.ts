@@ -825,6 +825,41 @@ export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
 };
 
 /**
+ * Resolve a join's where clause into a Condition, or signal that the join should be skipped.
+ * Returns `{ skip: true }` when the condition evaluates to literal false.
+ */
+function resolveJoinCondition(
+  table: AnyTable,
+  where: ((eb: IndexedConditionBuilder<AnyTable>) => Condition | boolean) | undefined,
+): { skip: true } | { skip: false; condition: Condition | undefined } {
+  if (!where) {
+    return { skip: false, condition: undefined };
+  }
+  const cond = buildCondition(table.columns, where);
+  if (cond === false) {
+    return { skip: true };
+  }
+  return { skip: false, condition: cond === true ? undefined : cond };
+}
+
+/**
+ * Resolve an orderByIndex specification into column/direction pairs.
+ */
+function resolveJoinOrderBy(
+  table: AnyTable,
+  orderByIndex: { indexName: string; direction: "asc" | "desc" } | undefined,
+): [AnyColumn, "asc" | "desc"][] | undefined {
+  if (!orderByIndex) {
+    return undefined;
+  }
+  const index = table.indexes[orderByIndex.indexName];
+  if (index) {
+    return index.columns.map((col) => [col, orderByIndex.direction] as [AnyColumn, "asc" | "desc"]);
+  }
+  return [[table.getIdColumn(), orderByIndex.direction]];
+}
+
+/**
  * Build join operations with indexed-only where clauses for Unit of Work
  * This ensures all join conditions can leverage indexes for optimal performance
  */
@@ -839,53 +874,25 @@ export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
     const relation = table.relations[name]!;
 
     builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => JoinFindBuilder<AnyTable>) => {
-      // Create join builder for this relation's table
       const joinBuilder = new JoinFindBuilder(relation.table.name, relation.table);
       if (builderFn) {
         builderFn(joinBuilder);
       }
       const config = joinBuilder.build();
 
-      // Build condition with indexed columns only
-      let conditions: Condition | undefined;
-      if (config.where) {
-        const cond = buildCondition(relation.table.columns, config.where);
-        if (cond === true) {
-          conditions = undefined;
-        } else if (cond === false) {
-          // If condition evaluates to false, skip this join
-          compiled.push({
-            relation,
-            options: false,
-          });
-          delete builder[name];
-          return builder;
-        } else {
-          conditions = cond;
-        }
-      }
-
-      // Build orderBy from orderByIndex if provided
-      let orderBy: [AnyColumn, "asc" | "desc"][] | undefined;
-      if (config.orderByIndex) {
-        const index = relation.table.indexes[config.orderByIndex.indexName];
-        if (index) {
-          // Use all columns from the index for ordering
-          orderBy = index.columns.map(
-            (col) => [col, config.orderByIndex!.direction] as [AnyColumn, "asc" | "desc"],
-          );
-        } else {
-          // Fallback to ID column if index not found
-          orderBy = [[relation.table.getIdColumn(), config.orderByIndex.direction]];
-        }
+      const conditionResult = resolveJoinCondition(relation.table, config.where);
+      if (conditionResult.skip) {
+        compiled.push({ relation, options: false });
+        delete builder[name];
+        return builder;
       }
 
       compiled.push({
         relation,
         options: {
           select: config.select ?? true,
-          where: conditions,
-          orderBy,
+          where: conditionResult.condition,
+          orderBy: resolveJoinOrderBy(relation.table, config.orderByIndex),
           join: config.joins,
           limit: config.pageSize,
         },
@@ -998,6 +1005,15 @@ export type UOWInstrumentationFinalizer = {
   afterMutate?: (ctx: UOWInstrumentationContext) => void | Promise<void>;
 };
 
+export interface UnitOfWorkInit<TRawInput = unknown> {
+  compiler: UOWCompiler<unknown>;
+  executor: UOWExecutor<unknown, TRawInput>;
+  decoder: UOWDecoder<TRawInput>;
+  name?: string;
+  config?: UnitOfWorkConfig;
+  schemaNamespaceMap?: WeakMap<AnySchema, string | null>;
+}
+
 export function createUnitOfWork(
   compiler: UOWCompiler<unknown>,
   executor: UOWExecutor<unknown, unknown>,
@@ -1005,7 +1021,7 @@ export function createUnitOfWork(
   schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
   name?: string,
 ): UnitOfWork {
-  return new UnitOfWork(compiler, executor, decoder, name, undefined, schemaNamespaceMap);
+  return new UnitOfWork({ compiler, executor, decoder, name, schemaNamespaceMap });
 }
 
 export interface UnitOfWorkConfig {
@@ -1283,21 +1299,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   // Hook triggers
   #triggeredHooks: TriggeredHook[] = [];
 
-  constructor(
-    compiler: UOWCompiler<unknown>,
-    executor: UOWExecutor<unknown, TRawInput>,
-    decoder: UOWDecoder<TRawInput>,
-    name?: string,
-    config?: UnitOfWorkConfig,
-    schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
-  ) {
-    this.#compiler = compiler;
-    this.#executor = executor;
-    this.#decoder = decoder;
-    this.#schemaNamespaceMap = schemaNamespaceMap ?? new WeakMap();
-    this.#name = name;
-    this.#config = config;
-    this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
+  constructor(init: UnitOfWorkInit<TRawInput>) {
+    this.#compiler = init.compiler;
+    this.#executor = init.executor;
+    this.#decoder = init.decoder;
+    this.#schemaNamespaceMap = init.schemaNamespaceMap ?? new WeakMap();
+    this.#name = init.name;
+    this.#config = init.config;
+    this.#idempotencyKey = init.config?.idempotencyKey ?? crypto.randomUUID();
   }
 
   #createInstrumentationContext(phase: UOWInstrumentationPhase): UOWInstrumentationContext {
@@ -1397,14 +1406,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   restrict(options?: { readyFor?: "mutation" | "retrieval" | "none" }): UnitOfWork<TRawInput> {
     const readyFor = options?.readyFor ?? "mutation";
 
-    const child = new UnitOfWork(
-      this.#compiler,
-      this.#executor,
-      this.#decoder,
-      this.#name,
-      { ...this.#config, idempotencyKey: this.#idempotencyKey },
-      this.#schemaNamespaceMap,
-    );
+    const child = new UnitOfWork<TRawInput>({
+      compiler: this.#compiler,
+      executor: this.#executor,
+      decoder: this.#decoder,
+      name: this.#name,
+      config: { ...this.#config, idempotencyKey: this.#idempotencyKey },
+      schemaNamespaceMap: this.#schemaNamespaceMap,
+    });
     child.#coordinator.setAsRestricted(this, this.#coordinator);
 
     child.#retrievalOps = this.#retrievalOps;
@@ -1523,6 +1532,96 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     return this.#mutationPhaseDeferred.promise;
   }
 
+  #compileRetrievalBatch(): unknown[] {
+    const batch: unknown[] = [];
+    for (const op of this.#retrievalOps) {
+      const compiled = this.#compiler.compileRetrievalOperation(op);
+      if (compiled !== null) {
+        this.#config?.onQuery?.(compiled);
+        batch.push(compiled);
+      }
+    }
+    return batch;
+  }
+
+  #compileMutationBatch(): CompiledMutation<unknown>[] {
+    const batch: CompiledMutation<unknown>[] = [];
+    for (const op of this.#mutationOps) {
+      const compiled = this.#compiler.compileMutationOperation(op);
+      if (compiled !== null) {
+        compiled.uowId = this.#idempotencyKey;
+        this.#config?.onQuery?.(compiled);
+        batch.push(compiled);
+      }
+    }
+    return batch;
+  }
+
+  /**
+   * Core retrieval logic: compile, execute, decode.
+   * Returns the results and the state to transition to.
+   */
+  async #runRetrievalCore(): Promise<{ results: unknown[]; nextState: UOWState }> {
+    if (this.#retrievalOps.length === 0) {
+      return { results: [], nextState: "building-mutation" };
+    }
+
+    const batch = this.#compileRetrievalBatch();
+
+    if (this.#config?.dryRun) {
+      return { results: [], nextState: "executed" };
+    }
+
+    const rawResults = await this.#executor.executeRetrievalPhase(batch);
+    const results = this.#decoder.decode(rawResults, this.#retrievalOps);
+    this.#retrievalResults = results;
+    return { results, nextState: "building-mutation" };
+  }
+
+  /**
+   * Core mutation logic: compile, execute, store created IDs.
+   * Returns the success status.
+   */
+  async #runMutationCore(): Promise<{ success: boolean }> {
+    const batch = this.#compileMutationBatch();
+
+    if (this.#config?.dryRun) {
+      return { success: true };
+    }
+
+    const result = await this.#executor.executeMutationPhase(batch);
+    if (result.success) {
+      // Mutate array in-place to preserve shared references with child UOWs
+      this.#createdInternalIds.length = 0;
+      this.#createdInternalIds.push(...result.createdInternalIds);
+    }
+    return { success: result.success };
+  }
+
+  /**
+   * Shared cleanup for both phases: runs the instrumentation finalizer,
+   * and if the after-hook never ran during a failure, runs it for observability.
+   */
+  async #runPhaseCleanup(
+    afterPhase: "afterRetrieve" | "afterMutate",
+    afterRan: boolean,
+    failed: boolean,
+  ): Promise<void> {
+    try {
+      await this.#runInstrumentationFinalizer(afterPhase);
+    } catch {
+      // Ignore finalizer errors when unwinding failures.
+    }
+
+    if (!afterRan && failed) {
+      try {
+        await this.#runInstrumentation(afterPhase);
+      } catch {
+        // Ignore after-hook errors when unwinding failures.
+      }
+    }
+  }
+
   /**
    * Execute the retrieval phase and transition to mutation phase
    * Returns all results from find operations
@@ -1541,7 +1640,6 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     let afterRan = false;
     let failed = false;
     try {
-      // Wait for all children to signal readiness
       await this.#coordinator.retrievalReadinessPromise;
 
       const beforeInjection = await this.#runInstrumentation("beforeRetrieve");
@@ -1549,47 +1647,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         return this.#handleRetrieveInjection(beforeInjection);
       }
 
-      if (this.#retrievalOps.length === 0) {
-        this.#state = "building-mutation";
-        const emptyResults: unknown[] = [];
-        afterRan = true;
-        const afterInjection = await this.#runInstrumentation("afterRetrieve");
-        if (afterInjection) {
-          return this.#handleRetrieveInjection(afterInjection);
-        }
-        this.#retrievalPhaseDeferred.resolve(emptyResults);
-        return emptyResults;
-      }
-
-      // Compile retrieval operations using single compiler
-      const retrievalBatch: unknown[] = [];
-      for (const op of this.#retrievalOps) {
-        const compiled = this.#compiler.compileRetrievalOperation(op);
-        if (compiled !== null) {
-          this.#config?.onQuery?.(compiled);
-          retrievalBatch.push(compiled);
-        }
-      }
-
-      if (this.#config?.dryRun) {
-        this.#state = "executed";
-        const emptyResults: unknown[] = [];
-        afterRan = true;
-        const afterInjection = await this.#runInstrumentation("afterRetrieve");
-        if (afterInjection) {
-          return this.#handleRetrieveInjection(afterInjection);
-        }
-        this.#retrievalPhaseDeferred.resolve(emptyResults);
-        return emptyResults;
-      }
-
-      const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
-
-      const results = this.#decoder.decode(rawResults, this.#retrievalOps);
-
-      // Store results and transition to mutation phase
-      this.#retrievalResults = results;
-      this.#state = "building-mutation";
+      const { results, nextState } = await this.#runRetrievalCore();
+      this.#state = nextState;
 
       afterRan = true;
       const afterInjection = await this.#runInstrumentation("afterRetrieve");
@@ -1597,27 +1656,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         return this.#handleRetrieveInjection(afterInjection);
       }
 
-      this.#retrievalPhaseDeferred.resolve(this.#retrievalResults);
-
-      return this.#retrievalResults;
+      this.#retrievalPhaseDeferred.resolve(results);
+      return results;
     } catch (error) {
       this.#retrievalError = error instanceof Error ? error : new Error(String(error));
       failed = true;
       throw error;
     } finally {
-      try {
-        await this.#runInstrumentationFinalizer("afterRetrieve");
-      } catch {
-        // Ignore finalizer errors when unwinding failures.
-      }
-
-      if (!afterRan && failed) {
-        try {
-          await this.#runInstrumentation("afterRetrieve");
-        } catch {
-          // Ignore after-retrieve hook errors when unwinding failures.
-        }
-      }
+      await this.#runPhaseCleanup("afterRetrieve", afterRan, failed);
     }
   }
 
@@ -1637,7 +1683,6 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     let afterRan = false;
     let failed = false;
     try {
-      // Wait for all children to signal readiness
       await this.#coordinator.mutationReadinessPromise;
 
       const beforeInjection = await this.#runInstrumentation("beforeMutate");
@@ -1645,39 +1690,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         return this.#handleMutationInjection(beforeInjection);
       }
 
-      // Compile mutation operations using single compiler
-      const mutationBatch: CompiledMutation<unknown>[] = [];
-      for (const op of this.#mutationOps) {
-        const compiled = this.#compiler.compileMutationOperation(op);
-        if (compiled !== null) {
-          compiled.uowId = this.#idempotencyKey;
-          this.#config?.onQuery?.(compiled);
-          mutationBatch.push(compiled);
-        }
-      }
-
-      if (this.#config?.dryRun) {
-        this.#state = "executed";
-        afterRan = true;
-        const afterInjection = await this.#runInstrumentation("afterMutate");
-        if (afterInjection) {
-          return this.#handleMutationInjection(afterInjection);
-        }
-        this.#mutationPhaseDeferred.resolve();
-        return {
-          success: true,
-        };
-      }
-
-      // Execute mutation phase
-      const result = await this.#executor.executeMutationPhase(mutationBatch);
+      const result = await this.#runMutationCore();
       this.#state = "executed";
-
-      if (result.success) {
-        // Mutate array in-place to preserve shared references with child UOWs
-        this.#createdInternalIds.length = 0;
-        this.#createdInternalIds.push(...result.createdInternalIds);
-      }
 
       afterRan = true;
       const afterInjection = await this.#runInstrumentation("afterMutate");
@@ -1685,30 +1699,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         return this.#handleMutationInjection(afterInjection);
       }
 
-      // Resolve the mutation phase promise to unblock waiting service methods
       this.#mutationPhaseDeferred.resolve();
-
-      return {
-        success: result.success,
-      };
+      return result;
     } catch (error) {
       this.#mutationError = error instanceof Error ? error : new Error(String(error));
       failed = true;
       throw error;
     } finally {
-      try {
-        await this.#runInstrumentationFinalizer("afterMutate");
-      } catch {
-        // Ignore finalizer errors when unwinding failures.
-      }
-
-      if (!afterRan && failed) {
-        try {
-          await this.#runInstrumentation("afterMutate");
-        } catch {
-          // Ignore after-mutate hook errors when unwinding failures.
-        }
-      }
+      await this.#runPhaseCleanup("afterMutate", afterRan, failed);
     }
   }
 

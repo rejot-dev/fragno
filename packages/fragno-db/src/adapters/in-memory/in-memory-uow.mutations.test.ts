@@ -37,7 +37,7 @@ const createTestUowFactory = () => {
   const executor = createInMemoryUowExecutor(store, options);
   const decoder = new InMemoryUowDecoder();
 
-  return () => new UnitOfWork(compiler, executor, decoder).forSchema(testSchema);
+  return () => new UnitOfWork({ compiler, executor, decoder }).forSchema(testSchema);
 };
 
 const createFkUowFactory = () => {
@@ -47,7 +47,7 @@ const createFkUowFactory = () => {
   const executor = createInMemoryUowExecutor(store, options);
   const decoder = new InMemoryUowDecoder();
 
-  return () => new UnitOfWork(compiler, executor, decoder).forSchema(fkSchema);
+  return () => new UnitOfWork({ compiler, executor, decoder }).forSchema(fkSchema);
 };
 
 const createUowFactoryWithOptions = <TSchema extends AnySchema>(
@@ -61,7 +61,7 @@ const createUowFactoryWithOptions = <TSchema extends AnySchema>(
   const decoder = new InMemoryUowDecoder();
 
   return {
-    createUow: () => new UnitOfWork(compiler, executor, decoder).forSchema(testSchemaToUse),
+    createUow: () => new UnitOfWork({ compiler, executor, decoder }).forSchema(testSchemaToUse),
     options,
     store,
   };

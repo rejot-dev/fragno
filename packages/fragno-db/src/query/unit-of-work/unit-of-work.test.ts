@@ -1279,43 +1279,48 @@ describe("Instrumentation", () => {
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
 
-    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
-      instrumentation: {
-        beforeRetrieve: (ctx) => {
-          calls.push("beforeRetrieve");
-          contexts.push({
-            phase: ctx.phase,
-            idempotencyKey: ctx.idempotencyKey,
-            retrievalOpsCount: ctx.retrievalOpsCount,
-            mutationOpsCount: ctx.mutationOpsCount,
-          });
-        },
-        afterRetrieve: (ctx) => {
-          calls.push("afterRetrieve");
-          contexts.push({
-            phase: ctx.phase,
-            idempotencyKey: ctx.idempotencyKey,
-            retrievalOpsCount: ctx.retrievalOpsCount,
-            mutationOpsCount: ctx.mutationOpsCount,
-          });
-        },
-        beforeMutate: (ctx) => {
-          calls.push("beforeMutate");
-          contexts.push({
-            phase: ctx.phase,
-            idempotencyKey: ctx.idempotencyKey,
-            retrievalOpsCount: ctx.retrievalOpsCount,
-            mutationOpsCount: ctx.mutationOpsCount,
-          });
-        },
-        afterMutate: (ctx) => {
-          calls.push("afterMutate");
-          contexts.push({
-            phase: ctx.phase,
-            idempotencyKey: ctx.idempotencyKey,
-            retrievalOpsCount: ctx.retrievalOpsCount,
-            mutationOpsCount: ctx.mutationOpsCount,
-          });
+    const uow = new UnitOfWork({
+      compiler: createMockCompiler(),
+      executor,
+      decoder: createMockDecoder(),
+      config: {
+        instrumentation: {
+          beforeRetrieve: (ctx) => {
+            calls.push("beforeRetrieve");
+            contexts.push({
+              phase: ctx.phase,
+              idempotencyKey: ctx.idempotencyKey,
+              retrievalOpsCount: ctx.retrievalOpsCount,
+              mutationOpsCount: ctx.mutationOpsCount,
+            });
+          },
+          afterRetrieve: (ctx) => {
+            calls.push("afterRetrieve");
+            contexts.push({
+              phase: ctx.phase,
+              idempotencyKey: ctx.idempotencyKey,
+              retrievalOpsCount: ctx.retrievalOpsCount,
+              mutationOpsCount: ctx.mutationOpsCount,
+            });
+          },
+          beforeMutate: (ctx) => {
+            calls.push("beforeMutate");
+            contexts.push({
+              phase: ctx.phase,
+              idempotencyKey: ctx.idempotencyKey,
+              retrievalOpsCount: ctx.retrievalOpsCount,
+              mutationOpsCount: ctx.mutationOpsCount,
+            });
+          },
+          afterMutate: (ctx) => {
+            calls.push("afterMutate");
+            contexts.push({
+              phase: ctx.phase,
+              idempotencyKey: ctx.idempotencyKey,
+              retrievalOpsCount: ctx.retrievalOpsCount,
+              mutationOpsCount: ctx.mutationOpsCount,
+            });
+          },
         },
       },
     });
@@ -1348,11 +1353,16 @@ describe("Instrumentation", () => {
       },
     };
 
-    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
-      instrumentation: {
-        beforeMutate: () => ({ type: "conflict", reason: "Injected conflict" }),
-        afterMutate: () => {
-          throw new Error("afterMutate should not run");
+    const uow = new UnitOfWork({
+      compiler: createMockCompiler(),
+      executor,
+      decoder: createMockDecoder(),
+      config: {
+        instrumentation: {
+          beforeMutate: () => ({ type: "conflict", reason: "Injected conflict" }),
+          afterMutate: () => {
+            throw new Error("afterMutate should not run");
+          },
         },
       },
     });
@@ -1375,9 +1385,14 @@ describe("Instrumentation", () => {
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
 
-    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
-      instrumentation: {
-        beforeRetrieve: () => ({ type: "error", error: new Error("Injected failure") }),
+    const uow = new UnitOfWork({
+      compiler: createMockCompiler(),
+      executor,
+      decoder: createMockDecoder(),
+      config: {
+        instrumentation: {
+          beforeRetrieve: () => ({ type: "error", error: new Error("Injected failure") }),
+        },
       },
     });
 

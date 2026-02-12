@@ -97,6 +97,7 @@ export {
   TypedUnitOfWork,
   type IUnitOfWork,
   type IUnitOfWorkRestricted,
+  type UnitOfWorkInit,
   type UOWCompiler,
   type UOWExecutor,
   type UOWDecoder,

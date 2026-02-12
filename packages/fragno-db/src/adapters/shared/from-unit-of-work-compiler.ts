@@ -137,12 +137,12 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
   function createUOW(opts: { name?: string; config?: UnitOfWorkConfig }) {
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
-    return new UnitOfWork(
+    return new UnitOfWork({
       compiler,
       executor,
       decoder,
-      opts.name,
-      {
+      name: opts.name,
+      config: {
         ...restUowConfig,
         onQuery: onQuery
           ? (query) => {
@@ -155,7 +155,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
           : undefined,
       },
       schemaNamespaceMap,
-    ).forSchema(schema);
+    }).forSchema(schema);
   }
 
   return {

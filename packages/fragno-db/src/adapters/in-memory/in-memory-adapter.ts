@@ -127,14 +127,14 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
     const createUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
-      new UnitOfWork(
+      new UnitOfWork({
         compiler,
         executor,
         decoder,
-        opts?.name,
-        opts?.config,
-        this.#schemaNamespaceMap,
-      ).forSchema(schema);
+        name: opts?.name,
+        config: opts?.config,
+        schemaNamespaceMap: this.#schemaNamespaceMap,
+      }).forSchema(schema);
 
     const queryEngine = {
       now: async () => this.options.clock.now(),

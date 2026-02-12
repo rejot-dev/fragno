@@ -40,7 +40,7 @@ const createHarness = () => {
   const decoder = new InMemoryUowDecoder();
 
   return {
-    createUow: () => new UnitOfWork(compiler, executor, decoder).forSchema(joinSchema),
+    createUow: () => new UnitOfWork({ compiler, executor, decoder }).forSchema(joinSchema),
     executor,
   };
 };
