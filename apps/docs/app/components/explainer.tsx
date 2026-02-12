@@ -141,7 +141,7 @@ await signIn({
   },
   typeform: {
     label: "Typeform",
-    link: "/forms",
+    link: "/fragments/forms",
     linkCta: "Explore Form Fragment",
     frontend: {
       code: `return {

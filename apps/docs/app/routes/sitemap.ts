@@ -13,6 +13,35 @@ export async function loader(_: Route.LoaderArgs) {
     <priority>1.0</priority>
   </url>`;
 
+  const authorEntry = `
+  <url>
+    <loc>${baseUrl}/authors</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+
+  const fragmentPages = [
+    "/fragments",
+    "/fragments/forms",
+    "/fragments/stripe",
+    "/fragments/workflows",
+    "/fragments/upload",
+    "/fragments/auth",
+  ];
+
+  const fragmentEntries = fragmentPages
+    .map((path) => {
+      return `
+  <url>
+    <loc>${baseUrl}${path}</loc>
+    <lastmod>${new Date().toISOString()}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+    })
+    .join("");
+
   // All documentation pages
   const docPages = source
     .getPages()
@@ -55,7 +84,7 @@ export async function loader(_: Route.LoaderArgs) {
     .join("");
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${homepageEntry}${docPages}${blogIndexEntry}${blogPosts}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${homepageEntry}${authorEntry}${fragmentEntries}${docPages}${blogIndexEntry}${blogPosts}
 </urlset>`;
 
   return new Response(sitemap, {

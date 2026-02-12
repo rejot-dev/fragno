@@ -82,6 +82,18 @@ export function HomeLayoutWithFooter({
         {
           type: "main",
           on: "all",
+          url: "/fragments",
+          text: "Fragments",
+        },
+        {
+          type: "main",
+          on: "all",
+          url: "/authors",
+          text: "For Authors",
+        },
+        {
+          type: "main",
+          on: "all",
           url: "/docs",
           text: "Docs",
         },
@@ -191,6 +203,22 @@ export function Footer({ isDocsPage }: { isDocsPage: boolean }) {
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                 >
                   Home
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/fragments"
+                  className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                >
+                  Fragments
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/authors"
+                  className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                >
+                  For Authors
                 </Link>
               </li>
               <li>

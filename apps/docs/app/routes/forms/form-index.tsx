@@ -14,6 +14,7 @@ import type { Route } from "./+types/form-index";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { Link } from "react-router";
 import { GitHub } from "@/components/logos/github";
+import { FragmentSubnav } from "@/components/fragment-subnav";
 
 export function meta() {
   return [
@@ -163,19 +164,12 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <main className="relative min-h-screen">
-      {/* Background gradient */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="bg-linear-to-br absolute -top-40 left-1/2 h-[600px] w-[1200px] -translate-x-1/2 from-blue-500/10 via-sky-400/5 to-slate-500/10 blur-3xl dark:from-blue-500/20 dark:via-sky-400/10 dark:to-slate-500/20" />
-      </div>
-
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-16 md:px-8">
+        <FragmentSubnav current="forms" />
         {/* Hero Section */}
         <section className="space-y-4 text-center">
           <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl lg:text-6xl">
-            Forms,{" "}
-            <span className="bg-linear-to-r from-blue-600 to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-400">
-              Simplified
-            </span>
+            Forms, <span className="text-blue-600 dark:text-blue-400">Simplified</span>
           </h1>
           <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg md:text-xl">
             Build forms and collect responses. Based on open standards. Add to any application.
@@ -316,7 +310,7 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
         <div className="mx-auto w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
 
         {/* Form Builder Section */}
-        <section className="mx-auto max-w-6xl space-y-6">
+        <section className="mx-auto max-w-7xl space-y-6">
           <div className="space-y-4 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 dark:bg-violet-400/20">
               <Hammer className="size-7 text-violet-600 dark:text-violet-400" />
