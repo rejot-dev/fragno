@@ -44,6 +44,22 @@ export interface OrganizationInvitation<TRole extends string = DefaultOrganizati
   respondedAt?: Date | null;
 }
 
+export interface AuthMeResponse<TRole extends string = DefaultOrganizationRole> {
+  user: { id: string; email: string; role: Role };
+  organizations: Array<{
+    organization: Organization;
+    member: OrganizationMember<TRole>;
+  }>;
+  activeOrganization: {
+    organization: Organization;
+    member: OrganizationMember<TRole>;
+  } | null;
+  invitations: Array<{
+    invitation: OrganizationInvitation<TRole>;
+    organization: Organization;
+  }>;
+}
+
 export interface OrganizationHookPayload {
   organizationId: string;
   name: string;
