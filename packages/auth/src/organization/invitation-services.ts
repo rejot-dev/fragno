@@ -2,8 +2,14 @@ import { randomBytes } from "node:crypto";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
-import type { OrganizationInvitation, OrganizationInvitationStatus } from "./types";
+import type {
+  OrganizationConfig,
+  OrganizationInvitation,
+  OrganizationInvitationStatus,
+} from "./types";
 import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils";
+import { canManageOrganization, isGlobalAdmin } from "./permissions";
+import type { Role } from "../types";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
@@ -14,17 +20,20 @@ type CreateInvitationInput = {
   inviterId: string;
   expiresAt?: Date;
   expiresInDays?: number;
+  actor: { userId: string; userRole: Role };
 };
 
 type RespondInvitationInput = {
   invitationId: string;
   action: "accept" | "reject" | "cancel";
   token?: string;
-  userId?: string;
+  actor: { userId: string; userRole: Role };
+  organizationId?: string;
 };
 
 type OrganizationInvitationServiceOptions = {
   hooksEnabled?: boolean;
+  organizationConfig?: OrganizationConfig<string>;
 };
 
 const mapInvitation = (invitation: {
@@ -61,11 +70,63 @@ const buildExpiresAt = (input: CreateInvitationInput): Date => {
   return expiresAt;
 };
 
+const filterRolesForMemberId = (
+  roles: {
+    role: string;
+    memberId: unknown;
+    organizationMemberRoleMember?: { id?: unknown } | null;
+  }[],
+  member: { id?: unknown; _internalId?: unknown } | null,
+) => {
+  if (!member) {
+    return [];
+  }
+  const candidates = new Set([toExternalId(member.id), toExternalId(member._internalId ?? "")]);
+  return roles
+    .filter(
+      (role) =>
+        candidates.has(toExternalId(role.memberId)) ||
+        (role.organizationMemberRoleMember &&
+          candidates.has(toExternalId(role.organizationMemberRoleMember.id))),
+    )
+    .map((role) => role.role);
+};
+
 export function createOrganizationInvitationServices(
   options: OrganizationInvitationServiceOptions = {},
 ) {
   const hooksEnabled = options.hooksEnabled ?? false;
+  const limits = options.organizationConfig?.limits;
+  const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
   return {
+    getOrganizationInvitationById: function (this: AuthServiceContext, invitationId: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("organizationInvitation", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", invitationId)),
+          ),
+        )
+        .transformRetrieve(([invitation]) =>
+          invitation
+            ? {
+                invitation: mapInvitation({
+                  id: invitation.id,
+                  organizationId: invitation.organizationId,
+                  email: invitation.email,
+                  roles: invitation.roles,
+                  status: invitation.status,
+                  token: invitation.token,
+                  inviterId: invitation.inviterId,
+                  expiresAt: invitation.expiresAt,
+                  createdAt: invitation.createdAt,
+                  respondedAt: invitation.respondedAt,
+                }),
+              }
+            : null,
+        )
+        .build();
+    },
+
     createOrganizationInvitation: function (
       this: AuthServiceContext,
       input: CreateInvitationInput,
@@ -73,10 +134,51 @@ export function createOrganizationInvitationServices(
       const roles = normalizeRoleNames(input.roles, DEFAULT_MEMBER_ROLES);
       const now = new Date();
       const token = randomBytes(32).toString("hex");
-      const expiresAt = buildExpiresAt(input);
+      const expiresAt = buildExpiresAt({
+        ...input,
+        expiresInDays: input.expiresInDays ?? invitationExpiresInDays,
+      });
 
       return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
+        .retrieve((uow) =>
+          uow
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org_user", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", input.organizationId),
+                  eb("userId", "=", input.actor.userId),
+                ),
+              ),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+            )
+            .find("organizationInvitation", (b) =>
+              b.whereIndex("idx_org_invitation_org_status", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", input.organizationId),
+                  eb("status", "=", "pending"),
+                ),
+              ),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [actorMember, actorRoles, invitations] }) => {
+          if (!actorMember) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+          if (!isGlobalAdmin(input.actor.userRole) && !canManageOrganization(actorRoleNames)) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          if (
+            limits?.invitationsPerOrganization !== undefined &&
+            invitations.length >= limits.invitationsPerOrganization
+          ) {
+            return { ok: false as const, code: "limit_reached" as const };
+          }
+
           const invitationId = uow.create("organizationInvitation", {
             organizationId: input.organizationId,
             email: input.email,
@@ -190,11 +292,28 @@ export function createOrganizationInvitationServices(
 
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("organizationInvitation", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", input.invitationId)),
-          ),
+          uow
+            .findFirst("organizationInvitation", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.invitationId)),
+            )
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org_user", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", input.organizationId ?? ""),
+                  eb("userId", "=", input.actor.userId),
+                ),
+              ),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+            )
+            .find("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org", (eb) =>
+                eb("organizationId", "=", input.organizationId ?? ""),
+              ),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [invitation] }) => {
+        .mutate(({ uow, retrieveResult: [invitation, actorMember, actorRoles, members] }) => {
           if (!invitation) {
             return { ok: false as const, code: "invitation_not_found" as const };
           }
@@ -214,14 +333,34 @@ export function createOrganizationInvitationServices(
             }
           }
 
+          if (input.action === "cancel") {
+            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+            const isInviter = toExternalId(invitation.inviterId) === input.actor.userId;
+            const canCancel =
+              isInviter ||
+              isGlobalAdmin(input.actor.userRole) ||
+              (actorMember && canManageOrganization(actorRoleNames));
+
+            if (!canCancel) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+          }
+
           if (input.action === "accept") {
-            if (!input.userId) {
-              return { ok: false as const, code: "invitation_not_found" as const };
+            if (
+              limits?.membersPerOrganization !== undefined &&
+              members.length >= limits.membersPerOrganization
+            ) {
+              return { ok: false as const, code: "limit_reached" as const };
+            }
+
+            if (actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
             }
 
             const memberId = uow.create("organizationMember", {
               organizationId: invitation.organizationId,
-              userId: input.userId,
+              userId: input.actor.userId,
               createdAt: now,
               updatedAt: now,
             });
@@ -251,7 +390,7 @@ export function createOrganizationInvitationServices(
               uow.triggerHook("onMemberAdded", {
                 organizationId: toExternalId(invitation.organizationId),
                 memberId: memberId.valueOf(),
-                userId: input.userId,
+                userId: input.actor.userId,
                 roles,
               });
             }

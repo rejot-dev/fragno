@@ -108,6 +108,8 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
     const organizationsEnabled = config.organizations !== false;
     const organizationConfig = config.organizations === false ? undefined : config.organizations;
 
+    const organizationConfigResolved = organizationConfig as OrganizationConfig<string> | undefined;
+
     return defineService({
       ...createUserServices(
         organizationsEnabled
@@ -123,9 +125,18 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       ),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
-      ...createOrganizationServices({ hooksEnabled: organizationsEnabled }),
-      ...createOrganizationMemberServices({ hooksEnabled: organizationsEnabled }),
-      ...createOrganizationInvitationServices({ hooksEnabled: organizationsEnabled }),
+      ...createOrganizationServices({
+        hooksEnabled: organizationsEnabled,
+        organizationConfig: organizationConfigResolved,
+      }),
+      ...createOrganizationMemberServices({
+        hooksEnabled: organizationsEnabled,
+        organizationConfig: organizationConfigResolved,
+      }),
+      ...createOrganizationInvitationServices({
+        hooksEnabled: organizationsEnabled,
+        organizationConfig: organizationConfigResolved,
+      }),
       ...createActiveOrganizationServices(),
     });
   })
@@ -304,6 +315,7 @@ export type { GetUsersParams, UserResult, SortField, SortOrder };
 export type { AuthHooks, SessionHookPayload, UserHookPayload } from "./hooks";
 export type {
   AuthMeResponse,
+  AutoCreateOrganizationConfig,
   DefaultOrganizationRole,
   Organization,
   OrganizationConfig,
