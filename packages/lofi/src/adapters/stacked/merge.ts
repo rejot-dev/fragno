@@ -1,4 +1,4 @@
-import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
@@ -11,7 +11,7 @@ import type { InMemoryLofiAdapter } from "../in-memory/adapter";
 import type { InMemoryLofiRow } from "../in-memory/store";
 
 type CompiledJoin = {
-  relation: { name: string; table: AnyTable; on: [string, string][] };
+  relation: AnyRelation;
   options:
     | {
         select: unknown;
@@ -109,6 +109,397 @@ const compareRows = (
     }
   }
   return 0;
+};
+
+const isNullish = (value: unknown): value is null | undefined =>
+  value === null || value === undefined;
+
+const toByteArray = (value: unknown): Uint8Array | null => {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return null;
+};
+
+const bytesToHex = (bytes: Uint8Array): string => {
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
+};
+
+type JoinCandidates = {
+  internal: unknown[];
+  external: unknown[];
+  normalized: unknown[];
+};
+
+const collectJoinCandidates = (value: unknown, column: AnyColumn): JoinCandidates => {
+  const candidates: JoinCandidates = { internal: [], external: [], normalized: [] };
+  if (isNullish(value)) {
+    return candidates;
+  }
+
+  const pushInternal = (input: unknown) => {
+    const coerced = coerceLocalInternalId(input);
+    if (coerced !== null) {
+      candidates.internal.push(coerced);
+    }
+  };
+
+  const pushExternal = (input: unknown) => {
+    if (input !== undefined) {
+      candidates.external.push(input);
+    }
+  };
+
+  if (value instanceof FragnoId) {
+    pushInternal(value.internalId);
+    pushExternal(value.externalId);
+    return candidates;
+  }
+
+  if (value instanceof FragnoReference) {
+    pushInternal(value.internalId);
+    return candidates;
+  }
+
+  if (typeof value === "object") {
+    if ("internalId" in value) {
+      pushInternal((value as { internalId?: unknown }).internalId);
+    }
+    if (
+      "externalId" in value &&
+      typeof (value as { externalId?: unknown }).externalId === "string"
+    ) {
+      pushExternal((value as { externalId: string }).externalId);
+    }
+  }
+
+  if (column.role === "external-id") {
+    if (typeof value === "string") {
+      pushExternal(value);
+      return candidates;
+    }
+    if (typeof value === "number" || typeof value === "bigint") {
+      pushInternal(value);
+      return candidates;
+    }
+  }
+
+  if (column.role === "reference" || column.role === "internal-id") {
+    if (typeof value === "string") {
+      pushExternal(value);
+      return candidates;
+    }
+    if (typeof value === "number" || typeof value === "bigint") {
+      pushInternal(value);
+      return candidates;
+    }
+  }
+
+  candidates.normalized.push(normalizeValue(value, column));
+  return candidates;
+};
+
+const hasCandidateMatch = (left: unknown[], right: unknown[]): boolean => {
+  for (const leftValue of left) {
+    for (const rightValue of right) {
+      if (compareNormalizedValues(leftValue, rightValue) === 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const matchesJoinCandidates = (left: JoinCandidates, right: JoinCandidates): boolean => {
+  if (left.internal.length > 0 && right.internal.length > 0) {
+    return hasCandidateMatch(left.internal, right.internal);
+  }
+  if (left.external.length > 0 && right.external.length > 0) {
+    return hasCandidateMatch(left.external, right.external);
+  }
+  if (left.normalized.length > 0 && right.normalized.length > 0) {
+    return hasCandidateMatch(left.normalized, right.normalized);
+  }
+  return false;
+};
+
+const getRowValueWithOverlay = (
+  row: Record<string, unknown>,
+  columnName: string,
+  overlayData: Record<string, unknown> | undefined,
+): unknown => {
+  if (overlayData && columnName in overlayData) {
+    return overlayData[columnName];
+  }
+  return row[columnName];
+};
+
+const isConditionColumn = (value: unknown): value is AnyColumn =>
+  !!value && typeof value === "object" && "name" in value && "role" in value && "type" in value;
+
+const normalizeConditionValue = (value: unknown, column: AnyColumn): unknown => {
+  if (isNullish(value)) {
+    return value;
+  }
+
+  if (column.role === "external-id") {
+    if (value instanceof FragnoId) {
+      return value.externalId;
+    }
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "externalId" in value &&
+      typeof (value as { externalId?: unknown }).externalId === "string"
+    ) {
+      return (value as { externalId: string }).externalId;
+    }
+    return value;
+  }
+
+  if (column.role === "reference" || column.role === "internal-id") {
+    if (value instanceof FragnoReference) {
+      return coerceLocalInternalId(value.internalId);
+    }
+    if (value instanceof FragnoId) {
+      return coerceLocalInternalId(value.internalId);
+    }
+    if (typeof value === "object" && value !== null && "internalId" in value) {
+      return coerceLocalInternalId((value as { internalId?: unknown }).internalId);
+    }
+    if (typeof value === "number" || typeof value === "bigint") {
+      return coerceLocalInternalId(value);
+    }
+  }
+
+  return normalizeValue(value, column);
+};
+
+const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null => {
+  const normalized =
+    column.role === "reference" || column.role === "internal-id"
+      ? coerceLocalInternalId(value)
+      : normalizeConditionValue(value, column);
+  if (normalized === null || normalized === undefined) {
+    return null;
+  }
+  const bytes = toByteArray(normalized);
+  if (bytes) {
+    return bytesToHex(bytes);
+  }
+  return String(normalized);
+};
+
+const resolveConditionValue = (options: {
+  value: unknown;
+  column: AnyColumn;
+  row: Record<string, unknown>;
+}): { value: unknown; column: AnyColumn } => {
+  const { value, column, row } = options;
+
+  if (isConditionColumn(value)) {
+    return { value: row[value.name], column: value };
+  }
+
+  return { value, column };
+};
+
+const evaluateCondition = (
+  condition: Condition | boolean,
+  row: Record<string, unknown>,
+): boolean => {
+  if (typeof condition === "boolean") {
+    return condition;
+  }
+
+  switch (condition.type) {
+    case "and":
+      return condition.items.every((item) => evaluateCondition(item, row));
+    case "or":
+      return condition.items.some((item) => evaluateCondition(item, row));
+    case "not":
+      return !evaluateCondition(condition.item, row);
+    case "compare":
+      break;
+    default: {
+      const exhaustiveCheck: never = condition;
+      throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+
+  const leftColumn = condition.a;
+  const leftValue = normalizeConditionValue(row[leftColumn.name], leftColumn);
+  const right = resolveConditionValue({ value: condition.b, column: leftColumn, row });
+  const rightValue = right.value;
+  const op = condition.operator;
+
+  if (op === "is" || op === "is not") {
+    if (isNullish(rightValue)) {
+      const matches = isNullish(leftValue);
+      return op === "is" ? matches : !matches;
+    }
+
+    if (isNullish(leftValue)) {
+      return op === "is not";
+    }
+
+    const rightNormalized = normalizeConditionValue(rightValue, right.column);
+    const matches = compareNormalizedValues(leftValue, rightNormalized) === 0;
+    return op === "is" ? matches : !matches;
+  }
+
+  if (op === "in" || op === "not in") {
+    const values = Array.isArray(rightValue) ? rightValue : [];
+    let hasNull = false;
+    let hasMatch = false;
+
+    for (const entry of values) {
+      if (isNullish(entry)) {
+        hasNull = true;
+        continue;
+      }
+      const normalized = normalizeConditionValue(entry, leftColumn);
+      if (compareNormalizedValues(leftValue, normalized) === 0) {
+        hasMatch = true;
+        break;
+      }
+    }
+
+    if (hasMatch) {
+      return op === "in";
+    }
+
+    if (hasNull) {
+      return false;
+    }
+
+    return op === "not in";
+  }
+
+  if (
+    op === "contains" ||
+    op === "starts with" ||
+    op === "ends with" ||
+    op === "not contains" ||
+    op === "not starts with" ||
+    op === "not ends with"
+  ) {
+    const leftLike = normalizeLikeValue(leftValue, leftColumn);
+    const rightLike = normalizeLikeValue(rightValue, right.column);
+
+    if (leftLike === null || rightLike === null) {
+      return false;
+    }
+
+    const leftText = leftLike.toLowerCase();
+    const rightText = rightLike.toLowerCase();
+    let matches = false;
+
+    if (op.includes("contains")) {
+      matches = leftText.includes(rightText);
+    } else if (op.includes("starts with")) {
+      matches = leftText.startsWith(rightText);
+    } else {
+      matches = leftText.endsWith(rightText);
+    }
+
+    if (op.startsWith("not ")) {
+      return !matches;
+    }
+    return matches;
+  }
+
+  const rightNormalized = normalizeConditionValue(rightValue, right.column);
+  const comparison = compareNormalizedValues(leftValue, rightNormalized);
+
+  switch (op) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${op}".`);
+  }
+};
+
+const orderJoinRows = (
+  rows: Record<string, unknown>[],
+  orderBy: [AnyColumn, "asc" | "desc"][] | undefined,
+): Record<string, unknown>[] => {
+  if (!orderBy || orderBy.length === 0) {
+    return rows;
+  }
+
+  return rows.slice().sort((left, right) => {
+    for (const [column, direction] of orderBy) {
+      const leftValue = resolveOrderValue(left[column.name], column);
+      const rightValue = resolveOrderValue(right[column.name], column);
+      const comparison = compareNormalizedValues(leftValue, rightValue);
+      if (comparison !== 0) {
+        return direction === "asc" ? comparison : -comparison;
+      }
+    }
+    return 0;
+  });
+};
+
+const matchesJoinOn = (options: {
+  parentRow: Record<string, unknown>;
+  targetRow: Record<string, unknown>;
+  join: CompiledJoin;
+  overlay: InMemoryLofiAdapter;
+  schemaName: string;
+}): boolean => {
+  const { parentRow, targetRow, join, overlay, schemaName } = options;
+  const parentTable = join.relation.referencer;
+  const targetTable = join.relation.table;
+  const parentExternalId = getExternalIdFromRow(parentRow, parentTable);
+  const overlayParent = parentExternalId
+    ? overlay.store.getRow(schemaName, parentTable.name, parentExternalId)
+    : undefined;
+  const overlayData = overlayParent?.data;
+
+  for (const [left, right] of join.relation.on) {
+    const leftColumn = parentTable.columns[left];
+    if (!leftColumn) {
+      throw new Error(`Column "${left}" not found on table "${parentTable.name}".`);
+    }
+
+    const rightColumn = targetTable.columns[right];
+    if (!rightColumn) {
+      throw new Error(`Column "${right}" not found on table "${targetTable.name}".`);
+    }
+
+    const leftValue = getRowValueWithOverlay(parentRow, left, overlayData);
+    const rightValue = targetRow[right];
+
+    const leftCandidates = collectJoinCandidates(leftValue, leftColumn);
+    const rightCandidates = collectJoinCandidates(rightValue, rightColumn);
+
+    if (!matchesJoinCandidates(leftCandidates, rightCandidates)) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 const buildCursorValues = (
@@ -260,13 +651,15 @@ const mergeRowColumns = (
   return merged;
 };
 
-const patchJoinRows = (options: {
+const patchJoinRows = async <TSchema extends AnySchema>(options: {
   row: Record<string, unknown>;
   joins: CompiledJoin[] | undefined;
   overlay: InMemoryLofiAdapter;
+  baseQuery: LofiQueryInterface<TSchema>;
   schemaName: string;
-}): void => {
-  const { row, joins, overlay, schemaName } = options;
+  baseRowsCache: Map<string, Record<string, unknown>[]>;
+}): Promise<void> => {
+  const { row, joins, overlay, baseQuery, schemaName, baseRowsCache } = options;
   if (!joins || joins.length === 0) {
     return;
   }
@@ -278,23 +671,83 @@ const patchJoinRows = (options: {
 
     const joinOptions = join.options;
     const relationName = join.relation.name;
-    const target = row[relationName];
-    if (!target) {
+    let target = row[relationName];
+
+    if (target !== undefined && target !== null) {
+      const canCheck = (targetRow: Record<string, unknown>) =>
+        join.relation.on.every(([, right]) => right in targetRow);
+
+      const needsRefresh = Array.isArray(target)
+        ? target.some(
+            (entry) =>
+              entry &&
+              typeof entry === "object" &&
+              canCheck(entry as Record<string, unknown>) &&
+              !matchesJoinOn({
+                parentRow: row,
+                targetRow: entry as Record<string, unknown>,
+                join,
+                overlay,
+                schemaName,
+              }),
+          )
+        : typeof target === "object" &&
+          canCheck(target as Record<string, unknown>) &&
+          !matchesJoinOn({
+            parentRow: row,
+            targetRow: target as Record<string, unknown>,
+            join,
+            overlay,
+            schemaName,
+          });
+
+      if (needsRefresh) {
+        delete row[relationName];
+        target = undefined;
+      }
+    }
+
+    if (target === undefined || target === null || (Array.isArray(target) && target.length === 0)) {
+      const baseMatches = await loadBaseJoinMatches({
+        parentRow: row,
+        join,
+        overlay,
+        baseQuery,
+        schemaName,
+        baseRowsCache,
+      });
+      if (baseMatches.length > 0) {
+        target = join.relation.type === "many" ? baseMatches : baseMatches[0];
+        row[relationName] = target;
+      }
+    }
+
+    if (target === undefined || target === null) {
       continue;
     }
 
-    const patchTarget = (targetRow: Record<string, unknown>) => {
+    const patchTarget = async (
+      targetRow: Record<string, unknown>,
+    ): Promise<Record<string, unknown> | null> => {
       const targetTable = join.relation.table;
       const externalId = getExternalIdFromRow(targetRow, targetTable);
       if (!externalId) {
-        return;
+        await patchJoinRows({
+          row: targetRow,
+          joins: joinOptions.join,
+          overlay,
+          baseQuery,
+          schemaName,
+          baseRowsCache,
+        });
+        return targetRow;
       }
 
       if (overlay.store.hasTombstone(schemaName, targetTable.name, externalId)) {
-        delete row[relationName];
-        return;
+        return null;
       }
 
+      let mergedTarget = targetRow;
       const overlayRow = overlay.store.getRow(schemaName, targetTable.name, externalId);
       if (overlayRow) {
         const overlayOutput = buildOutputFromLofiRow(
@@ -302,7 +755,7 @@ const patchJoinRows = (options: {
           targetTable,
           joinOptions.select as undefined | true | readonly string[],
         );
-        row[relationName] = mergeRowColumns(
+        mergedTarget = mergeRowColumns(
           targetRow,
           overlayOutput,
           targetTable,
@@ -310,28 +763,118 @@ const patchJoinRows = (options: {
         );
       }
 
-      patchJoinRows({
-        row: row[relationName] as Record<string, unknown>,
+      await patchJoinRows({
+        row: mergedTarget,
         joins: joinOptions.join,
         overlay,
+        baseQuery,
         schemaName,
+        baseRowsCache,
       });
+
+      return mergedTarget;
     };
 
     if (Array.isArray(target)) {
+      const next: Record<string, unknown>[] = [];
       for (const entry of target) {
         if (entry && typeof entry === "object") {
-          patchTarget(entry as Record<string, unknown>);
+          const patched = await patchTarget(entry as Record<string, unknown>);
+          if (patched) {
+            next.push(patched);
+          }
         }
       }
+      row[relationName] = next;
       continue;
     }
 
     if (typeof target === "object") {
-      patchTarget(target as Record<string, unknown>);
+      const patched = await patchTarget(target as Record<string, unknown>);
+      if (!patched) {
+        delete row[relationName];
+      } else {
+        row[relationName] = patched;
+      }
     }
   }
 };
+
+async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
+  parentRow: Record<string, unknown>;
+  join: CompiledJoin;
+  overlay: InMemoryLofiAdapter;
+  baseQuery: LofiQueryInterface<TSchema>;
+  schemaName: string;
+  baseRowsCache: Map<string, Record<string, unknown>[]>;
+}): Promise<Record<string, unknown>[]> {
+  const { parentRow, join, overlay, baseQuery, schemaName, baseRowsCache } = options;
+  if (join.options === false) {
+    return [];
+  }
+
+  const joinOptions = join.options;
+  const targetTable = join.relation.table;
+  let baseRows = baseRowsCache.get(targetTable.name);
+  if (!baseRows) {
+    baseRows = (await baseQuery.find(targetTable.name, (b) => b.whereIndex("primary"))) as Record<
+      string,
+      unknown
+    >[];
+    baseRowsCache.set(targetTable.name, baseRows);
+  }
+
+  const matches: Record<string, unknown>[] = [];
+  for (const baseRow of baseRows) {
+    if (!matchesJoinOn({ parentRow, targetRow: baseRow, join, overlay, schemaName })) {
+      continue;
+    }
+    if (joinOptions.where && !evaluateCondition(joinOptions.where as Condition, baseRow)) {
+      continue;
+    }
+    matches.push({ ...baseRow });
+  }
+
+  let ordered = orderJoinRows(matches, joinOptions.orderBy);
+  if (joinOptions.limit !== undefined) {
+    ordered = ordered.slice(0, Math.max(0, joinOptions.limit));
+  }
+
+  for (const row of ordered) {
+    await patchJoinRows({
+      row,
+      joins: joinOptions.join,
+      overlay,
+      baseQuery,
+      schemaName,
+      baseRowsCache,
+    });
+  }
+
+  if (joinOptions.select && joinOptions.select !== true) {
+    return ordered.map((row) =>
+      stripSelection({
+        row,
+        table: targetTable,
+        select: joinOptions.select as undefined | true | readonly string[],
+        joins: joinOptions.join,
+      }),
+    );
+  }
+
+  if (joinOptions.join && joinOptions.join.length > 0) {
+    return ordered.map((row) =>
+      stripSelection({
+        row,
+        table: targetTable,
+        select: joinOptions.select as undefined | true | readonly string[],
+        joins: joinOptions.join,
+      }),
+    );
+  }
+
+  return ordered;
+}
 
 const stripSelection = (options: {
   row: Record<string, unknown>;
@@ -665,12 +1208,15 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
       before: built.options.before,
     });
 
+    const baseRowsCache = new Map<string, Record<string, unknown>[]>();
     for (const row of mergedRows) {
-      patchJoinRows({
+      await patchJoinRows({
         row,
         joins: built.options.joins,
         overlay: options.overlay,
+        baseQuery,
         schemaName,
+        baseRowsCache,
       });
     }
 
