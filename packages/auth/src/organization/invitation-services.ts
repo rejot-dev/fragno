@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type { OrganizationInvitation, OrganizationInvitationStatus } from "./types";
 import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils";
 
-type AuthServiceContext = DatabaseServiceContext<{}>;
+type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
 type CreateInvitationInput = {
   organizationId: string;
@@ -20,6 +21,10 @@ type RespondInvitationInput = {
   action: "accept" | "reject" | "cancel";
   token?: string;
   userId?: string;
+};
+
+type OrganizationInvitationServiceOptions = {
+  hooksEnabled?: boolean;
 };
 
 const mapInvitation = (invitation: {
@@ -56,7 +61,10 @@ const buildExpiresAt = (input: CreateInvitationInput): Date => {
   return expiresAt;
 };
 
-export function createOrganizationInvitationServices() {
+export function createOrganizationInvitationServices(
+  options: OrganizationInvitationServiceOptions = {},
+) {
+  const hooksEnabled = options.hooksEnabled ?? false;
   return {
     createOrganizationInvitation: function (
       this: AuthServiceContext,
@@ -80,6 +88,16 @@ export function createOrganizationInvitationServices() {
             createdAt: now,
             respondedAt: null,
           });
+
+          if (hooksEnabled) {
+            uow.triggerHook("onInvitationCreated", {
+              organizationId: input.organizationId,
+              invitationId: invitationId.valueOf(),
+              email: input.email,
+              roles,
+              inviterId: input.inviterId,
+            });
+          }
 
           return {
             ok: true as const,
@@ -222,6 +240,22 @@ export function createOrganizationInvitationServices() {
               b.set({ status: "accepted", respondedAt: now }).check(),
             );
 
+            if (hooksEnabled) {
+              uow.triggerHook("onInvitationAccepted", {
+                organizationId: toExternalId(invitation.organizationId),
+                invitationId: toExternalId(invitation.id),
+                email: invitation.email,
+                roles,
+                inviterId: toExternalId(invitation.inviterId),
+              });
+              uow.triggerHook("onMemberAdded", {
+                organizationId: toExternalId(invitation.organizationId),
+                memberId: memberId.valueOf(),
+                userId: input.userId,
+                roles,
+              });
+            }
+
             return {
               ok: true as const,
               invitation: mapInvitation({
@@ -244,6 +278,18 @@ export function createOrganizationInvitationServices() {
           uow.update("organizationInvitation", invitation.id, (b) =>
             b.set({ status: nextStatus, respondedAt: now }).check(),
           );
+
+          if (hooksEnabled) {
+            const hookName =
+              input.action === "reject" ? "onInvitationRejected" : "onInvitationCanceled";
+            uow.triggerHook(hookName, {
+              organizationId: toExternalId(invitation.organizationId),
+              invitationId: toExternalId(invitation.id),
+              email: invitation.email,
+              roles: Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [],
+              inviterId: toExternalId(invitation.inviterId),
+            });
+          }
 
           return {
             ok: true as const,

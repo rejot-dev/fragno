@@ -1,15 +1,20 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db/cursor";
+import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type { OrganizationMember } from "./types";
 import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils";
 
-type AuthServiceContext = DatabaseServiceContext<{}>;
+type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
 type CreateMemberInput = {
   organizationId: string;
   userId: string;
   roles?: readonly string[];
+};
+
+type OrganizationMemberServiceOptions = {
+  hooksEnabled?: boolean;
 };
 
 const mapMember = (
@@ -31,7 +36,8 @@ const mapMember = (
   updatedAt: member.updatedAt,
 });
 
-export function createOrganizationMemberServices() {
+export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
+  const hooksEnabled = options.hooksEnabled ?? false;
   return {
     getOrganizationMemberByUser: function (
       this: AuthServiceContext,
@@ -97,6 +103,15 @@ export function createOrganizationMemberServices() {
               memberId,
               role,
               createdAt: now,
+            });
+          }
+
+          if (hooksEnabled) {
+            uow.triggerHook("onMemberAdded", {
+              organizationId: input.organizationId,
+              memberId: memberId.valueOf(),
+              userId: input.userId,
+              roles,
             });
           }
 
@@ -198,6 +213,15 @@ export function createOrganizationMemberServices() {
 
           uow.update("organizationMember", member.id, (b) => b.set({ updatedAt: now }).check());
 
+          if (hooksEnabled) {
+            uow.triggerHook("onMemberRolesUpdated", {
+              organizationId: toExternalId(member.organizationId),
+              memberId: toExternalId(member.id),
+              userId: toExternalId(member.userId),
+              roles: nextRoles,
+            });
+          }
+
           return {
             ok: true as const,
             member: mapMember(
@@ -236,6 +260,14 @@ export function createOrganizationMemberServices() {
           }
 
           uow.delete("organizationMember", member.id, (b) => b.check());
+          if (hooksEnabled) {
+            uow.triggerHook("onMemberRemoved", {
+              organizationId: toExternalId(member.organizationId),
+              memberId: toExternalId(member.id),
+              userId: toExternalId(member.userId),
+              roles: roles.map((role) => role.role),
+            });
+          }
           return { ok: true as const };
         })
         .build();

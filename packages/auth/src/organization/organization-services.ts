@@ -1,5 +1,6 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db/cursor";
+import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type { Organization, OrganizationMember } from "./types";
 import {
@@ -9,7 +10,7 @@ import {
   toExternalId,
 } from "./utils";
 
-type AuthServiceContext = DatabaseServiceContext<{}>;
+type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
 type CreateOrganizationInput = {
   name: string;
@@ -19,6 +20,10 @@ type CreateOrganizationInput = {
   metadata?: Record<string, unknown> | null;
   creatorRoles?: readonly string[];
   sessionId?: string;
+};
+
+type OrganizationServiceOptions = {
+  hooksEnabled?: boolean;
 };
 
 const mapOrganization = (organization: {
@@ -62,7 +67,8 @@ const mapMember = (
   updatedAt: member.updatedAt,
 });
 
-export function createOrganizationServices() {
+export function createOrganizationServices(options: OrganizationServiceOptions = {}) {
+  const hooksEnabled = options.hooksEnabled ?? false;
   return {
     createOrganization: function (this: AuthServiceContext, input: CreateOrganizationInput) {
       const normalizedSlug = normalizeOrganizationSlug(input.slug);
@@ -122,6 +128,21 @@ export function createOrganizationServices() {
             uow.update("session", session.id, (b) =>
               b.set({ activeOrganizationId: organizationId }).check(),
             );
+          }
+
+          if (hooksEnabled) {
+            uow.triggerHook("onOrganizationCreated", {
+              organizationId: organizationId.valueOf(),
+              name: input.name,
+              slug: normalizedSlug,
+              createdBy: input.creatorUserId,
+            });
+            uow.triggerHook("onMemberAdded", {
+              organizationId: organizationId.valueOf(),
+              memberId: memberId.valueOf(),
+              userId: input.creatorUserId,
+              roles: creatorRoles,
+            });
           }
 
           return {
@@ -277,6 +298,15 @@ export function createOrganizationServices() {
               .check(),
           );
 
+          if (hooksEnabled) {
+            uow.triggerHook("onOrganizationUpdated", {
+              organizationId: toExternalId(existing.id),
+              name: updated.name,
+              slug: updated.slug,
+              createdBy: toExternalId(existing.createdBy),
+            });
+          }
+
           return {
             ok: true as const,
             organization: mapOrganization({
@@ -312,6 +342,15 @@ export function createOrganizationServices() {
           uow.update("organization", organization.id, (b) =>
             b.set({ deletedAt: now, updatedAt: now }).check(),
           );
+
+          if (hooksEnabled) {
+            uow.triggerHook("onOrganizationDeleted", {
+              organizationId: toExternalId(organization.id),
+              name: organization.name,
+              slug: organization.slug,
+              createdBy: toExternalId(organization.createdBy),
+            });
+          }
 
           return { ok: true as const };
         })

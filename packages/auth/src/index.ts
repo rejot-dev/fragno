@@ -9,6 +9,15 @@ import { createOrganizationInvitationServices } from "./organization/invitation-
 import { createOrganizationMemberServices } from "./organization/member-services";
 import { createOrganizationServices } from "./organization/organization-services";
 import { organizationRoutesFactory } from "./organization/routes";
+import type { AuthHooks, AuthHooksMap, SessionHookPayload, UserHookPayload } from "./hooks";
+import type {
+  DefaultOrganizationRole,
+  OrganizationConfig,
+  OrganizationHookPayload,
+  OrganizationHooks,
+  OrganizationInvitationHookPayload,
+  OrganizationMemberHookPayload,
+} from "./organization/types";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -18,22 +27,105 @@ import {
   type SortOrder,
 } from "./user/user-overview";
 import type { CookieOptions } from "./utils/cookie";
+import type { Role } from "./types";
 
-export interface AuthConfig {
-  sendEmail?: (params: { to: string; subject: string; body: string }) => Promise<void>;
+export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
   cookieOptions?: CookieOptions;
+  hooks?: AuthHooks;
+  organizations?: OrganizationConfig<TRole> | false;
 }
 
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
   .extend(withDatabase(authSchema))
+  .provideHooks<AuthHooksMap>(({ defineHook, config }) => {
+    const authHooks = config.hooks;
+    const organizationConfig = config.organizations === false ? undefined : config.organizations;
+    const organizationHooks = organizationConfig?.hooks as OrganizationHooks<string> | undefined;
+
+    const baseHooks = {
+      onUserCreated: defineHook<UserHookPayload>(async function (payload) {
+        await authHooks?.onUserCreated?.(payload);
+      }),
+      onUserRoleUpdated: defineHook<UserHookPayload>(async function (payload) {
+        await authHooks?.onUserRoleUpdated?.(payload);
+      }),
+      onUserPasswordChanged: defineHook<UserHookPayload>(async function (payload) {
+        await authHooks?.onUserPasswordChanged?.(payload);
+      }),
+      onSessionCreated: defineHook<SessionHookPayload>(async function (payload) {
+        await authHooks?.onSessionCreated?.(payload);
+      }),
+      onSessionInvalidated: defineHook<SessionHookPayload>(async function (payload) {
+        await authHooks?.onSessionInvalidated?.(payload);
+      }),
+    };
+
+    return {
+      ...baseHooks,
+      onOrganizationCreated: defineHook<OrganizationHookPayload>(async function (payload) {
+        await organizationHooks?.onOrganizationCreated?.(payload);
+      }),
+      onOrganizationUpdated: defineHook<OrganizationHookPayload>(async function (payload) {
+        await organizationHooks?.onOrganizationUpdated?.(payload);
+      }),
+      onOrganizationDeleted: defineHook<OrganizationHookPayload>(async function (payload) {
+        await organizationHooks?.onOrganizationDeleted?.(payload);
+      }),
+      onMemberAdded: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
+        await organizationHooks?.onMemberAdded?.(payload);
+      }),
+      onMemberRemoved: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
+        await organizationHooks?.onMemberRemoved?.(payload);
+      }),
+      onMemberRolesUpdated: defineHook<OrganizationMemberHookPayload<string>>(
+        async function (payload) {
+          await organizationHooks?.onMemberRolesUpdated?.(payload);
+        },
+      ),
+      onInvitationCreated: defineHook<OrganizationInvitationHookPayload<string>>(
+        async function (payload) {
+          await organizationHooks?.onInvitationCreated?.(payload);
+        },
+      ),
+      onInvitationAccepted: defineHook<OrganizationInvitationHookPayload<string>>(
+        async function (payload) {
+          await organizationHooks?.onInvitationAccepted?.(payload);
+        },
+      ),
+      onInvitationRejected: defineHook<OrganizationInvitationHookPayload<string>>(
+        async function (payload) {
+          await organizationHooks?.onInvitationRejected?.(payload);
+        },
+      ),
+      onInvitationCanceled: defineHook<OrganizationInvitationHookPayload<string>>(
+        async function (payload) {
+          await organizationHooks?.onInvitationCanceled?.(payload);
+        },
+      ),
+    };
+  })
   .providesBaseService(({ defineService, config }) => {
+    const organizationsEnabled = config.organizations !== false;
+    const organizationConfig = config.organizations === false ? undefined : config.organizations;
+
     return defineService({
-      ...createUserServices(),
+      ...createUserServices(
+        organizationsEnabled
+          ? {
+              autoCreateOrganization:
+                organizationConfig && organizationConfig.autoCreateOrganization !== false
+                  ? organizationConfig.autoCreateOrganization
+                  : undefined,
+              creatorRoles: organizationConfig?.creatorRoles,
+              organizationHooksEnabled: organizationsEnabled,
+            }
+          : undefined,
+      ),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
-      ...createOrganizationServices(),
-      ...createOrganizationMemberServices(),
-      ...createOrganizationInvitationServices(),
+      ...createOrganizationServices({ hooksEnabled: organizationsEnabled }),
+      ...createOrganizationMemberServices({ hooksEnabled: organizationsEnabled }),
+      ...createOrganizationInvitationServices({ hooksEnabled: organizationsEnabled }),
       ...createActiveOrganizationServices(),
     });
   })
@@ -54,6 +146,8 @@ export function createAuthFragment(
         : "simple-auth-db",
   };
 
+  const organizationsEnabled = config.organizations !== false;
+
   return instantiate(authFragmentDefinition)
     .withConfig(config)
     .withOptions(options)
@@ -61,7 +155,7 @@ export function createAuthFragment(
       userActionsRoutesFactory,
       sessionRoutesFactory,
       userOverviewRoutesFactory,
-      organizationRoutesFactory,
+      ...(organizationsEnabled ? [organizationRoutesFactory] : []),
     ])
     .build();
 }
@@ -162,5 +256,15 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
+export type { AuthHooks, SessionHookPayload, UserHookPayload } from "./hooks";
+export type {
+  DefaultOrganizationRole,
+  OrganizationConfig,
+  OrganizationHookPayload,
+  OrganizationHooks,
+  OrganizationInvitationHookPayload,
+  OrganizationMemberHookPayload,
+  OrganizationRoleName,
+} from "./organization/types";
 
-export type Role = "user" | "admin";
+export type { Role };
