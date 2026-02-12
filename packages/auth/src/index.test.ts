@@ -6,6 +6,7 @@ import { userOverviewRoutesFactory } from "./user/user-overview";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { hashPassword } from "./user/password";
+import { getInternalFragment } from "@fragno-dev/db";
 
 describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -310,6 +311,97 @@ describe("auth-fragment", async () => {
       });
 
       expect(updated?.passwordHash).toBe(nextHash);
+    });
+  });
+
+  describe("Hooks", () => {
+    it("records auth and organization hook events", async () => {
+      const passwordHash = await hashPassword("hookspassword123");
+      const [user] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUser("hooks-user@test.com", passwordHash, "user"),
+          ])
+          .execute();
+      });
+
+      const [session] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [fragment.services.createSession(user.id)])
+          .execute();
+      });
+
+      const [organizationResult] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "Hooks Org",
+              slug: "hooks-org",
+              creatorUserId: user.id,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(organizationResult.ok);
+
+      const [invitationResult] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganizationInvitation({
+              organizationId: organizationResult.organization.id,
+              email: "hooks-invitee@test.com",
+              inviterId: user.id,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(invitationResult.ok);
+
+      const internalFragment = getInternalFragment(test.adapter);
+      const hooks = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      const userHooks = hooks.filter(
+        (hook) => (hook.payload as { userId?: string }).userId === user.id,
+      );
+      expect(userHooks.some((hook) => hook.hookName === "onUserCreated")).toBe(true);
+      expect(
+        hooks.some(
+          (hook) =>
+            hook.hookName === "onSessionCreated" &&
+            (hook.payload as { sessionId?: string }).sessionId === session.id,
+        ),
+      ).toBe(true);
+
+      const orgHooks = hooks.filter(
+        (hook) =>
+          (hook.payload as { organizationId?: string }).organizationId ===
+          organizationResult.organization.id,
+      );
+      expect(orgHooks.some((hook) => hook.hookName === "onOrganizationCreated")).toBe(true);
+      expect(
+        orgHooks.some(
+          (hook) =>
+            hook.hookName === "onMemberAdded" &&
+            (hook.payload as { memberId?: string }).memberId === organizationResult.member.id,
+        ),
+      ).toBe(true);
+      expect(
+        orgHooks.some(
+          (hook) =>
+            hook.hookName === "onInvitationCreated" &&
+            (hook.payload as { invitationId?: string }).invitationId ===
+              invitationResult.invitation.id,
+        ),
+      ).toBe(true);
     });
   });
 });

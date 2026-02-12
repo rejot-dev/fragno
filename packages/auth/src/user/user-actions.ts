@@ -5,6 +5,7 @@ import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import type { authFragmentDefinition } from "..";
+import type { AuthHooksMap } from "../hooks";
 import type { AutoCreateOrganizationConfig } from "../organization/types";
 import {
   DEFAULT_CREATOR_ROLES,
@@ -13,12 +14,21 @@ import {
   normalizeRoleNames,
 } from "../organization/utils";
 
-type AuthServiceContext = DatabaseServiceContext<{}>;
-type AuthUow = TypedUnitOfWork<typeof authSchema, unknown[], unknown, {}>;
+type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
+type AuthUow = TypedUnitOfWork<typeof authSchema, unknown[], unknown, AuthHooksMap>;
 
 type AutoCreateOrganizationOptions = {
   autoCreateOrganization?: AutoCreateOrganizationConfig;
   creatorRoles?: readonly string[];
+  organizationHooksEnabled?: boolean;
+};
+
+type AutoCreateOrganizationResult = {
+  organizationId: string;
+  memberId: string;
+  name: string;
+  slug: string;
+  roles: string[];
 };
 
 const resolveAutoOrganizationSlug = (name: string, userId: string): string => {
@@ -42,7 +52,7 @@ const createAutoOrganization = (
     now: Date;
     options?: AutoCreateOrganizationOptions;
   },
-) => {
+): AutoCreateOrganizationResult | null => {
   if (!input.options?.autoCreateOrganization) {
     return null;
   }
@@ -83,7 +93,13 @@ const createAutoOrganization = (
     });
   }
 
-  return organizationId;
+  return {
+    organizationId: organizationId.valueOf(),
+    memberId: memberId.valueOf(),
+    name,
+    slug: normalizedSlug,
+    roles: creatorRoles,
+  };
 };
 
 export function createUserServices(options?: AutoCreateOrganizationOptions) {
@@ -95,6 +111,8 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
       role: "user" | "admin" = "user",
       autoCreateOptions?: AutoCreateOrganizationOptions,
     ) {
+      const organizationHooksEnabled =
+        (autoCreateOptions ?? options)?.organizationHooksEnabled ?? false;
       return this.serviceTx(authSchema)
         .mutate(({ uow }) => {
           const now = new Date();
@@ -104,12 +122,33 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
             role,
           });
 
-          createAutoOrganization(uow, {
+          const autoOrganization = createAutoOrganization(uow, {
             userId: id.valueOf(),
             email,
             now,
             options: autoCreateOptions ?? options,
           });
+
+          uow.triggerHook("onUserCreated", {
+            userId: id.valueOf(),
+            email,
+            role,
+          });
+
+          if (organizationHooksEnabled && autoOrganization) {
+            uow.triggerHook("onOrganizationCreated", {
+              organizationId: autoOrganization.organizationId,
+              name: autoOrganization.name,
+              slug: autoOrganization.slug,
+              createdBy: id.valueOf(),
+            });
+            uow.triggerHook("onMemberAdded", {
+              organizationId: autoOrganization.organizationId,
+              memberId: autoOrganization.memberId,
+              userId: id.valueOf(),
+              roles: autoOrganization.roles,
+            });
+          }
 
           return {
             id: id.valueOf(),
@@ -140,16 +179,38 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
     },
     updateUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
       return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
           uow.update("user", userId, (b) => b.set({ role }));
+
+          if (user) {
+            uow.triggerHook("onUserRoleUpdated", {
+              userId: userId,
+              email: user.email,
+              role,
+            });
+          }
           return { success: true };
         })
         .build();
     },
     updateUserPassword: function (this: AuthServiceContext, userId: string, passwordHash: string) {
       return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
           uow.update("user", userId, (b) => b.set({ passwordHash }));
+
+          if (user) {
+            uow.triggerHook("onUserPasswordChanged", {
+              userId: userId,
+              email: user.email,
+              role: user.role as "user" | "admin",
+            });
+          }
           return { success: true };
         })
         .build();
@@ -160,6 +221,8 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
       passwordHash: string,
       autoCreateOptions?: AutoCreateOrganizationOptions,
     ) {
+      const organizationHooksEnabled =
+        (autoCreateOptions ?? options)?.organizationHooksEnabled ?? false;
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
@@ -182,7 +245,7 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
             role: "user",
           });
 
-          const organizationId = createAutoOrganization(uow, {
+          const autoOrganization = createAutoOrganization(uow, {
             userId: userId.valueOf(),
             email,
             now,
@@ -191,9 +254,34 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
 
           const sessionId = uow.create("session", {
             userId,
-            activeOrganizationId: organizationId ?? null,
+            activeOrganizationId: autoOrganization?.organizationId ?? null,
             expiresAt,
           });
+
+          uow.triggerHook("onUserCreated", {
+            userId: userId.valueOf(),
+            email,
+            role: "user",
+          });
+          uow.triggerHook("onSessionCreated", {
+            sessionId: sessionId.valueOf(),
+            userId: userId.valueOf(),
+          });
+
+          if (organizationHooksEnabled && autoOrganization) {
+            uow.triggerHook("onOrganizationCreated", {
+              organizationId: autoOrganization.organizationId,
+              name: autoOrganization.name,
+              slug: autoOrganization.slug,
+              createdBy: userId.valueOf(),
+            });
+            uow.triggerHook("onMemberAdded", {
+              organizationId: autoOrganization.organizationId,
+              memberId: autoOrganization.memberId,
+              userId: userId.valueOf(),
+              roles: autoOrganization.roles,
+            });
+          }
 
           return {
             ok: true as const,
@@ -214,13 +302,15 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
       const now = new Date();
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("session", (b) =>
-            b
-              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
-          ),
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+            )
+            .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
-        .mutate(({ uow, retrieveResult: [session] }) => {
+        .mutate(({ uow, retrieveResult: [session, user] }) => {
           if (!session || !session.sessionOwner) {
             return { ok: false as const, code: "session_invalid" as const };
           }
@@ -235,6 +325,14 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
           }
 
           uow.update("user", userId, (b) => b.set({ role }));
+
+          if (user) {
+            uow.triggerHook("onUserRoleUpdated", {
+              userId: userId,
+              email: user.email,
+              role,
+            });
+          }
           return { ok: true as const };
         })
         .build();
@@ -264,6 +362,11 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
           }
 
           uow.update("user", session.sessionOwner.id, (b) => b.set({ passwordHash }).check());
+          uow.triggerHook("onUserPasswordChanged", {
+            userId: session.sessionOwner.id.valueOf(),
+            email: session.sessionOwner.email,
+            role: session.sessionOwner.role as "user" | "admin",
+          });
           return { ok: true as const };
         })
         .build();

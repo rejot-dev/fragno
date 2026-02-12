@@ -9,13 +9,14 @@ import {
   type CookieOptions,
 } from "../utils/cookie";
 import type { Role, authFragmentDefinition } from "..";
+import type { AuthHooksMap } from "../hooks";
 import {
   serializeInvitation,
   serializeMember,
   serializeOrganization,
 } from "../organization/serializers";
 
-type AuthServiceContext = DatabaseServiceContext<{}>;
+type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
@@ -31,6 +32,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           const id = uow.create("session", {
             userId,
             expiresAt,
+          });
+
+          uow.triggerHook("onSessionCreated", {
+            sessionId: id.valueOf(),
+            userId,
           });
 
           return {
@@ -91,6 +97,10 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           }
 
           uow.delete("session", session.id, (b) => b.check());
+          uow.triggerHook("onSessionInvalidated", {
+            sessionId: session.id.valueOf(),
+            userId: session.userId as unknown as string,
+          });
           return true;
         })
         .build();
@@ -288,9 +298,24 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
+          if (config.organizations === false) {
+            return json({
+              user: {
+                id: session.user.id,
+                email: session.user.email,
+                role: session.user.role as Role,
+              },
+              organizations: [],
+              activeOrganization: null,
+              invitations: [],
+            });
+          }
+
+          const organizationServices = services as Required<typeof services>;
+
           const [organizationsResult] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationsForUser({
+              organizationServices.getOrganizationsForUser({
                 userId: session.user.id,
                 pageSize: 1000,
               }),
@@ -299,7 +324,9 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
 
           const memberIds = organizationsResult.organizations.map((entry) => entry.member.id);
           const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRolesForMembers(memberIds)])
+            .withServiceCalls(() => [
+              organizationServices.listOrganizationMemberRolesForMembers(memberIds),
+            ])
             .execute();
 
           const organizations = organizationsResult.organizations.map((entry) => ({
@@ -312,7 +339,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
 
           const [invitationsResult] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.listOrganizationInvitationsForUser(session.user.email),
+              organizationServices.listOrganizationInvitationsForUser(session.user.email),
             ])
             .execute();
 
@@ -324,7 +351,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             }));
 
           const [activeResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getActiveOrganization(sessionId)])
+            .withServiceCalls(() => [organizationServices.getActiveOrganization(sessionId)])
             .execute();
 
           const activeOrganization = activeResult.organizationId
