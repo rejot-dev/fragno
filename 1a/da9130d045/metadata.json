@@ -1,0 +1,26 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "1ada9130d045",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/docs/app/routes/home.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1a/da9130d045/0/metadata.json",
+      "transcript": "/1a/da9130d045/0/full.jsonl",
+      "context": "/1a/da9130d045/0/context.md",
+      "content_hash": "/1a/da9130d045/0/content_hash.txt",
+      "prompt": "/1a/da9130d045/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 32830,
+    "cache_read_tokens": 659931,
+    "output_tokens": 4730,
+    "api_call_count": 16
+  }
+}
