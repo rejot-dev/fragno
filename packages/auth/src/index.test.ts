@@ -87,8 +87,14 @@ describe("auth-fragment", async () => {
 
       assert(response.type === "json");
       expect(response.data).toMatchObject({
-        userId: userId,
-        email: "test@test.com",
+        user: {
+          id: userId,
+          email: "test@test.com",
+          role: "user",
+        },
+        organizations: [],
+        activeOrganization: null,
+        invitations: [],
       });
     });
 
@@ -188,9 +194,11 @@ describe("auth-fragment", async () => {
 
       assert(meResponse.type === "json");
       expect(meResponse.data).toMatchObject({
-        userId,
-        email: "test@test.com",
-        role: "admin",
+        user: {
+          id: userId,
+          email: "test@test.com",
+          role: "admin",
+        },
       });
     });
 

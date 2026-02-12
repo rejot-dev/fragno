@@ -52,10 +52,11 @@ const mapMember = (
     updatedAt: Date;
   },
   roles: string[],
+  overrides?: { organizationId?: string; userId?: string },
 ): OrganizationMember<string> => ({
   id: toExternalId(member.id),
-  organizationId: toExternalId(member.organizationId),
-  userId: toExternalId(member.userId),
+  organizationId: overrides?.organizationId ?? toExternalId(member.organizationId),
+  userId: overrides?.userId ?? toExternalId(member.userId),
   roles,
   createdAt: member.createdAt,
   updatedAt: member.updatedAt,
@@ -332,7 +333,7 @@ export function createOrganizationServices() {
               .whereIndex("idx_org_member_user", (eb) => eb("userId", "=", userId))
               .orderByIndex("idx_org_member_user", effectiveSortOrder)
               .pageSize(effectivePageSize)
-              .join((j) => j.organizationMemberOrganization());
+              .join((j) => j.organizationMemberOrganization().organizationMemberUser());
 
             return cursor ? query.after(cursor) : query;
           }),
@@ -342,6 +343,9 @@ export function createOrganizationServices() {
             .filter((member) => member.organizationMemberOrganization)
             .map((member) => {
               const organization = member.organizationMemberOrganization;
+              const memberUserId = member.organizationMemberUser
+                ? toExternalId(member.organizationMemberUser.id)
+                : toExternalId(member.userId);
               return {
                 organization: mapOrganization({
                   id: organization!.id,
@@ -363,6 +367,10 @@ export function createOrganizationServices() {
                     updatedAt: member.updatedAt,
                   },
                   [],
+                  {
+                    organizationId: toExternalId(organization!.id),
+                    userId: memberUserId,
+                  },
                 ),
               };
             });

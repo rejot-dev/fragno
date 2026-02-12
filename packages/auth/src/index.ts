@@ -8,6 +8,7 @@ import { createActiveOrganizationServices } from "./organization/active-organiza
 import { createOrganizationInvitationServices } from "./organization/invitation-services";
 import { createOrganizationMemberServices } from "./organization/member-services";
 import { createOrganizationServices } from "./organization/organization-services";
+import { organizationRoutesFactory } from "./organization/routes";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -56,7 +57,12 @@ export function createAuthFragment(
   return instantiate(authFragmentDefinition)
     .withConfig(config)
     .withOptions(options)
-    .withRoutes([userActionsRoutesFactory, sessionRoutesFactory, userOverviewRoutesFactory])
+    .withRoutes([
+      userActionsRoutesFactory,
+      sessionRoutesFactory,
+      userOverviewRoutesFactory,
+      organizationRoutesFactory,
+    ])
     .build();
 }
 
@@ -68,7 +74,12 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const b = createClientBuilder(
     authFragmentDefinition,
     config,
-    [userActionsRoutesFactory, sessionRoutesFactory, userOverviewRoutesFactory],
+    [
+      userActionsRoutesFactory,
+      sessionRoutesFactory,
+      userOverviewRoutesFactory,
+      organizationRoutesFactory,
+    ],
     {
       type: "options",
       options: {
