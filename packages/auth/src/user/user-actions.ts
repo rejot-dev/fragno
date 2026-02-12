@@ -1,28 +1,116 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
 import { authSchema } from "../schema";
 import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import type { authFragmentDefinition } from "..";
+import type { AutoCreateOrganizationConfig } from "../organization/types";
+import {
+  DEFAULT_CREATOR_ROLES,
+  buildAutoOrganizationInput,
+  normalizeOrganizationSlug,
+  normalizeRoleNames,
+} from "../organization/utils";
 
 type AuthServiceContext = DatabaseServiceContext<{}>;
+type AuthUow = TypedUnitOfWork<typeof authSchema, unknown[], unknown, {}>;
 
-export function createUserServices() {
+type AutoCreateOrganizationOptions = {
+  autoCreateOrganization?: AutoCreateOrganizationConfig;
+  creatorRoles?: readonly string[];
+};
+
+const resolveAutoOrganizationSlug = (name: string, userId: string): string => {
+  const normalized = normalizeOrganizationSlug(name);
+  if (normalized) {
+    return normalized;
+  }
+
+  const fallback = normalizeOrganizationSlug(`org-${userId.slice(0, 8)}`);
+  if (!fallback) {
+    throw new Error("Invalid auto organization slug");
+  }
+  return fallback;
+};
+
+const createAutoOrganization = (
+  uow: AuthUow,
+  input: {
+    userId: string;
+    email: string;
+    now: Date;
+    options?: AutoCreateOrganizationOptions;
+  },
+) => {
+  if (!input.options?.autoCreateOrganization) {
+    return null;
+  }
+
+  const { name, slug, logoUrl, metadata } = buildAutoOrganizationInput(
+    input.options.autoCreateOrganization,
+    {
+      userId: input.userId,
+      email: input.email,
+    },
+  );
+
+  const normalizedSlug = slug ?? resolveAutoOrganizationSlug(name, input.userId);
+  const creatorRoles = normalizeRoleNames(input.options.creatorRoles, DEFAULT_CREATOR_ROLES);
+
+  const organizationId = uow.create("organization", {
+    name,
+    slug: normalizedSlug,
+    logoUrl: logoUrl ?? null,
+    metadata: metadata ?? null,
+    createdBy: input.userId,
+    createdAt: input.now,
+    updatedAt: input.now,
+  });
+
+  const memberId = uow.create("organizationMember", {
+    organizationId,
+    userId: input.userId,
+    createdAt: input.now,
+    updatedAt: input.now,
+  });
+
+  for (const role of creatorRoles) {
+    uow.create("organizationMemberRole", {
+      memberId,
+      role,
+      createdAt: input.now,
+    });
+  }
+
+  return organizationId;
+};
+
+export function createUserServices(options?: AutoCreateOrganizationOptions) {
   return {
     createUser: function (
       this: AuthServiceContext,
       email: string,
       passwordHash: string,
       role: "user" | "admin" = "user",
+      autoCreateOptions?: AutoCreateOrganizationOptions,
     ) {
       return this.serviceTx(authSchema)
         .mutate(({ uow }) => {
+          const now = new Date();
           const id = uow.create("user", {
             email,
             passwordHash,
             role,
           });
+
+          createAutoOrganization(uow, {
+            userId: id.valueOf(),
+            email,
+            now,
+            options: autoCreateOptions ?? options,
+          });
+
           return {
             id: id.valueOf(),
             email,
@@ -66,7 +154,12 @@ export function createUserServices() {
         })
         .build();
     },
-    signUpWithSession: function (this: AuthServiceContext, email: string, passwordHash: string) {
+    signUpWithSession: function (
+      this: AuthServiceContext,
+      email: string,
+      passwordHash: string,
+      autoCreateOptions?: AutoCreateOrganizationOptions,
+    ) {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
@@ -81,14 +174,24 @@ export function createUserServices() {
             return { ok: false as const, code: "email_already_exists" as const };
           }
 
+          const now = new Date();
+
           const userId = uow.create("user", {
             email,
             passwordHash,
             role: "user",
           });
 
+          const organizationId = createAutoOrganization(uow, {
+            userId: userId.valueOf(),
+            email,
+            now,
+            options: autoCreateOptions ?? options,
+          });
+
           const sessionId = uow.create("session", {
             userId,
+            activeOrganizationId: organizationId ?? null,
             expiresAt,
           });
 
