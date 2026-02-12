@@ -94,6 +94,63 @@ function toFormData(value: object): FormData {
 }
 
 /**
+ * Check if a value is a valid binary body for octet-stream requests.
+ * @internal
+ */
+function isValidBinaryBody(body: unknown): body is BodyInit {
+  return (
+    body instanceof ReadableStream ||
+    body instanceof Blob ||
+    body instanceof File ||
+    body instanceof ArrayBuffer ||
+    body instanceof Uint8Array
+  );
+}
+
+/**
+ * Prepare an octet-stream request body.
+ * @internal
+ */
+function prepareOctetStreamBody(body: unknown): { body: BodyInit; headers: HeadersInit } {
+  if (isValidBinaryBody(body)) {
+    return { body, headers: { "Content-Type": "application/octet-stream" } };
+  }
+
+  throw new Error(
+    "Octet-stream routes only accept Blob, File, ArrayBuffer, Uint8Array, or ReadableStream bodies.",
+  );
+}
+
+/**
+ * Prepare a FormData request body from File, Blob, FormData, or object-with-files.
+ * Returns undefined if the body is not a FormData-compatible type.
+ * @internal
+ */
+function prepareFormDataBody(body: unknown): { body: FormData } | undefined {
+  if (body instanceof FormData) {
+    return { body };
+  }
+
+  if (body instanceof File) {
+    const formData = new FormData();
+    formData.append("file", body, body.name);
+    return { body: formData };
+  }
+
+  if (body instanceof Blob) {
+    const formData = new FormData();
+    formData.append("file", body);
+    return { body: formData };
+  }
+
+  if (typeof body === "object" && body !== null && containsFiles(body)) {
+    return { body: toFormData(body) };
+  }
+
+  return undefined;
+}
+
+/**
  * Prepare request body and headers for sending.
  * Handles FormData (file uploads) vs JSON data.
  * @internal
@@ -107,49 +164,32 @@ function prepareRequestBody(
   }
 
   if (contentType === "application/octet-stream") {
-    if (
-      body instanceof ReadableStream ||
-      body instanceof Blob ||
-      body instanceof File ||
-      body instanceof ArrayBuffer ||
-      body instanceof Uint8Array
-    ) {
-      return { body: body as BodyInit, headers: { "Content-Type": "application/octet-stream" } };
-    }
-
-    throw new Error(
-      "Octet-stream routes only accept Blob, File, ArrayBuffer, Uint8Array, or ReadableStream bodies.",
-    );
+    return prepareOctetStreamBody(body);
   }
 
-  // If already FormData, send as-is (browser sets Content-Type with boundary)
-  if (body instanceof FormData) {
-    return { body };
+  const formDataResult = prepareFormDataBody(body);
+  if (formDataResult) {
+    return formDataResult;
   }
 
-  // If body is directly a File or Blob, wrap it in FormData
-  if (body instanceof File) {
-    const formData = new FormData();
-    formData.append("file", body, body.name);
-    return { body: formData };
-  }
-
-  if (body instanceof Blob) {
-    const formData = new FormData();
-    formData.append("file", body);
-    return { body: formData };
-  }
-
-  // If object contains files, convert to FormData
-  if (typeof body === "object" && body !== null && containsFiles(body)) {
-    return { body: toFormData(body) };
-  }
-
-  // Otherwise, JSON-stringify
   return {
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   };
+}
+
+/**
+ * Normalize any HeadersInit variant to key-value pairs.
+ * @internal
+ */
+function headersToEntries(source: HeadersInit): [string, string][] {
+  if (source instanceof Headers) {
+    return [...source.entries()];
+  }
+  if (Array.isArray(source)) {
+    return source;
+  }
+  return Object.entries(source);
 }
 
 /**
@@ -168,21 +208,9 @@ function mergeRequestHeaders(
       continue;
     }
 
-    if (source instanceof Headers) {
-      for (const [key, value] of source.entries()) {
-        result[key] = value;
-        hasHeaders = true;
-      }
-    } else if (Array.isArray(source)) {
-      for (const [key, value] of source) {
-        result[key] = value;
-        hasHeaders = true;
-      }
-    } else {
-      for (const [key, value] of Object.entries(source)) {
-        result[key] = value;
-        hasHeaders = true;
-      }
+    for (const [key, value] of headersToEntries(source)) {
+      result[key] = value;
+      hasHeaders = true;
     }
   }
 
@@ -504,6 +532,14 @@ export function buildUrl<TPath extends string>(
 }
 
 /**
+ * Check if a value is a nanostores atom (ReadableAtom).
+ * @internal
+ */
+function isAtom(value: unknown): value is ReadableAtom<unknown> {
+  return value !== null && typeof value === "object" && "get" in value;
+}
+
+/**
  * This method returns an array, which can be passed directly to nanostores.
  *
  * The returned array is always: path, pathParams (In order they appear in the path), queryParams (In alphabetical order)
@@ -537,7 +573,7 @@ export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
         .map((key) => {
           const value = queryParams[key];
           // If it's an atom, wrap it to convert undefined to ""
-          if (value && typeof value === "object" && "get" in value) {
+          if (isAtom(value)) {
             return computed(value as ReadableAtom<string | undefined>, (v) => v ?? "");
           }
           // Plain string value (or undefined)
@@ -563,7 +599,6 @@ function isStreamingResponse(response: Response): false | "ndjson" | "octet-stre
   }
 
   if (contentType.subtype === "octet-stream") {
-    // TODO(Wilco): This is not actually supported properly
     return "octet-stream";
   }
 
@@ -803,7 +838,7 @@ export class ClientBuilder<
     path: TPath,
     onInvalidate?: OnInvalidateFn<TPath>,
   ): FragnoClientMutatorData<
-    NonGetHTTPMethod, // TODO: This can be any Method, but should be related to TPath
+    NonGetHTTPMethod,
     TPath,
     ExtractRouteByPath<TFragmentConfig["routes"], TPath>["inputSchema"],
     ExtractRouteByPath<TFragmentConfig["routes"], TPath>["outputSchema"],
@@ -985,7 +1020,6 @@ export class ClientBuilder<
             }
 
             if (isStreaming === "octet-stream") {
-              // TODO(Wilco): Implement this
               throw new Error("Octet-stream streaming is not supported.");
             }
 
@@ -1020,7 +1054,6 @@ export class ClientBuilder<
         }
 
         if (isStreaming === "octet-stream") {
-          // TODO(Wilco): Implement this
           throw new Error("Octet-stream streaming is not supported.");
         }
 
@@ -1139,10 +1172,6 @@ export class ClientBuilder<
       TQueryParameters
     >["mutatorStore"] = this.#createMutatorStore(
       async ({ data }) => {
-        if (typeof window === "undefined") {
-          // TODO(Wilco): Handle server-side rendering.
-        }
-
         const { body, path, query } = data as {
           body?: InferOr<TInputSchema, undefined>;
           path?: ExtractPathParamsOrWiden<TPath, string>;
@@ -1199,7 +1228,6 @@ export class ClientBuilder<
         }
 
         if (isStreaming === "octet-stream") {
-          // TODO(Wilco): Implement this
           throw new Error("Octet-stream streaming is not supported.");
         }
 
