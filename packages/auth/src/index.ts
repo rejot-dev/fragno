@@ -195,6 +195,36 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     invalidate("GET", "/me", {});
   });
   const useChangePassword = b.createMutator("POST", "/change-password");
+  const useOrganizations = b.createHook("/organizations");
+  const useOrganization = b.createHook("/organizations/:organizationId");
+  const useCreateOrganization = b.createMutator("POST", "/organizations");
+  const useUpdateOrganization = b.createMutator("PATCH", "/organizations/:organizationId");
+  const useDeleteOrganization = b.createMutator("DELETE", "/organizations/:organizationId");
+  const useActiveOrganization = b.createHook("/organizations/active");
+  const useSetActiveOrganization = b.createMutator("POST", "/organizations/active");
+  const useOrganizationMembers = b.createHook("/organizations/:organizationId/members");
+  const useAddOrganizationMember = b.createMutator(
+    "POST",
+    "/organizations/:organizationId/members",
+  );
+  const useUpdateOrganizationMemberRoles = b.createMutator(
+    "PATCH",
+    "/organizations/:organizationId/members/:memberId",
+  );
+  const useRemoveOrganizationMember = b.createMutator(
+    "DELETE",
+    "/organizations/:organizationId/members/:memberId",
+  );
+  const useOrganizationInvitations = b.createHook("/organizations/:organizationId/invitations");
+  const useInviteOrganizationMember = b.createMutator(
+    "POST",
+    "/organizations/:organizationId/invitations",
+  );
+  const useRespondOrganizationInvitation = b.createMutator(
+    "PATCH",
+    "/organizations/invitations/:invitationId",
+  );
+  const useUserInvitations = b.createHook("/organizations/invitations");
 
   return {
     // Reactive hooks - Auth
@@ -205,6 +235,21 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     useUsers,
     useUpdateUserRole,
     useChangePassword,
+    useOrganizations,
+    useOrganization,
+    useCreateOrganization,
+    useUpdateOrganization,
+    useDeleteOrganization,
+    useActiveOrganization,
+    useSetActiveOrganization,
+    useOrganizationMembers,
+    useAddOrganizationMember,
+    useUpdateOrganizationMemberRoles,
+    useRemoveOrganizationMember,
+    useOrganizationInvitations,
+    useInviteOrganizationMember,
+    useRespondOrganizationInvitation,
+    useUserInvitations,
 
     // Non-reactive methods
     signIn: {
@@ -258,11 +303,16 @@ export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
 export type { AuthHooks, SessionHookPayload, UserHookPayload } from "./hooks";
 export type {
+  AuthMeResponse,
   DefaultOrganizationRole,
+  Organization,
   OrganizationConfig,
   OrganizationHookPayload,
   OrganizationHooks,
+  OrganizationInvitation,
   OrganizationInvitationHookPayload,
+  OrganizationInvitationStatus,
+  OrganizationMember,
   OrganizationMemberHookPayload,
   OrganizationRoleName,
 } from "./organization/types";
