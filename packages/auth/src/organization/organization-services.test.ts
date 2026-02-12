@@ -375,6 +375,236 @@ describe("organization services", async () => {
 
     expect(activeOrg.organizationId).toBe(orgsResult.organizations[0]?.organization.id ?? null);
   });
+
+  it("paginates organizations for a user", async () => {
+    const owner = await createUser("paginate-owner@test.com");
+
+    const [firstOrg] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Page Org One",
+            slug: "page-org-one",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    const [secondOrg] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Page Org Two",
+            slug: "page-org-two",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(firstOrg.ok).toBe(true);
+    expect(secondOrg.ok).toBe(true);
+
+    const [firstPage] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationsForUser({
+            userId: owner.id,
+            pageSize: 1,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(firstPage.organizations).toHaveLength(1);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeTruthy();
+  });
+
+  it("paginates organization members", async () => {
+    const owner = await createUser("members-owner@test.com");
+    const memberOne = await createUser("members-one@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Members Org",
+            slug: "members-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for member pagination test");
+    }
+
+    const [memberResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMember({
+            organizationId: organizationResult.organization.id,
+            userId: memberOne.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(memberResult.ok).toBe(true);
+
+    const [firstPage] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationMembers({
+            organizationId: organizationResult.organization.id,
+            pageSize: 1,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(firstPage.members).toHaveLength(1);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeTruthy();
+  });
+
+  it("lists invitations for org and user", async () => {
+    const owner = await createUser("invite-list-owner@test.com");
+    const invitedUser = await createUser("invite-list-user@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite List Org",
+            slug: "invite-list-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for invitation list test");
+    }
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(invitationResult.ok).toBe(true);
+
+    const [orgInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitations({
+            organizationId: organizationResult.organization.id,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(orgInvites.invitations).toHaveLength(1);
+    expect(orgInvites.invitations[0]?.email).toBe(invitedUser.email);
+
+    const [userInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitationsForUser(invitedUser.email),
+        ])
+        .execute();
+    });
+
+    expect(userInvites.invitations).toHaveLength(1);
+    expect(userInvites.invitations[0]?.invitation.email).toBe(invitedUser.email);
+    expect(userInvites.invitations[0]?.organization?.id).toBe(organizationResult.organization.id);
+  });
+
+  it("removes members from organizations", async () => {
+    const owner = await createUser("remove-owner@test.com");
+    const memberUser = await createUser("remove-member@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Remove Org",
+            slug: "remove-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for removal test");
+    }
+
+    const [memberResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMember({
+            organizationId: organizationResult.organization.id,
+            userId: memberUser.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    if (!memberResult.ok) {
+      throw new Error("Failed to create member for removal test");
+    }
+
+    const [removeResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.removeOrganizationMember({
+            organizationId: organizationResult.organization.id,
+            memberId: memberResult.member.id,
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(removeResult.ok).toBe(true);
+
+    const [membersResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationMembers({
+            organizationId: organizationResult.organization.id,
+            pageSize: 10,
+          }),
+        ])
+        .execute();
+    });
+
+    const remainingUserIds = membersResult.members.map((member) => member.userId);
+    expect(remainingUserIds).not.toContain(memberUser.id);
+  });
 });
 
 describe("organization service limits", async () => {
