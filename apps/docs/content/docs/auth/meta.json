@@ -1,0 +1,7 @@
+{
+  "title": "Auth",
+  "description": "Authentication fragment",
+  "icon": "Shield",
+  "root": true,
+  "pages": ["index", "organizations"]
+}
