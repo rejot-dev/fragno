@@ -99,6 +99,84 @@ describe("auth-fragment", async () => {
       });
     });
 
+    it("/me - includes organizations and invitations", async () => {
+      const [ownedOrg] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "My Org",
+              slug: "my-org",
+              creatorUserId: userId,
+              creatorUserRole: "user",
+              sessionId,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(ownedOrg.ok);
+
+      await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.setActiveOrganization(sessionId, ownedOrg.organization.id),
+          ])
+          .execute();
+      });
+
+      const otherPassword = await hashPassword("otherpassword123");
+      const [otherUser] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUser("other-owner@test.com", otherPassword),
+          ])
+          .execute();
+      });
+
+      const [otherOrg] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "Other Org",
+              slug: "other-org",
+              creatorUserId: otherUser.id,
+              creatorUserRole: otherUser.role,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(otherOrg.ok);
+
+      const [invitation] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganizationInvitation({
+              organizationId: otherOrg.organization.id,
+              email: "test@test.com",
+              inviterId: otherUser.id,
+              roles: ["member"],
+              actor: { userId: otherUser.id, userRole: otherUser.role },
+            }),
+          ])
+          .execute();
+      });
+
+      assert(invitation.ok);
+
+      const meResponse = await fragment.callRoute("GET", "/me", {
+        query: { sessionId },
+      });
+
+      assert(meResponse.type === "json");
+      expect(meResponse.data.organizations).toHaveLength(1);
+      expect(meResponse.data.organizations[0]?.organization.id).toBe(ownedOrg.organization.id);
+      expect(meResponse.data.activeOrganization?.organization.id).toBe(ownedOrg.organization.id);
+      expect(meResponse.data.invitations).toHaveLength(1);
+      expect(meResponse.data.invitations[0]?.invitation.email).toBe("test@test.com");
+      expect(meResponse.data.invitations[0]?.organization.id).toBe(otherOrg.organization.id);
+    });
+
     it("/sign-out - invalidate session", async () => {
       const response = await fragment.callRoute("POST", "/sign-out", {
         body: { sessionId },
