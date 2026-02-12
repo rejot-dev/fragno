@@ -1,40 +1,24 @@
-import { useState } from "react";
-import { Link, Form, useActionData, useNavigation } from "react-router";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
-import {
-  Shield,
-  Target,
-  Package,
-  Rocket,
-  Waves,
-  RotateCcw,
-  Route as RouteIcon,
-  Database,
-  Activity,
-  Layers,
-  BookOpen,
-  Users,
-  MessageCircleMore,
-  Mail,
-} from "lucide-react";
+import { Package, Route as RouteIcon, Layers } from "lucide-react";
 
 import Frameworks from "@/components/frameworks";
-import DatabaseIntegration from "@/components/database-integration";
-import { GitHub } from "@/components/logos/github";
+import { DatabaseSupport } from "@/components/database-support";
 import type { Route } from "./+types/home";
 import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
-import { Turnstile } from "@marsidev/react-turnstile";
-import { FragnoExplainer } from "@/components/explainer";
+import { CommunitySection } from "@/components/community-section";
+import { SkillCta } from "@/components/skill-cta";
 
 export function meta() {
   return [
-    { title: "Fragno: Full-Stack TypeScript Libraries" },
+    { title: "Fragno for Users: Integrate Full-Stack Fragments" },
     {
       name: "description",
       content:
-        "Fragno is the toolkit for building full-stack TypeScript libraries that work seamlessly across frameworks",
+        "Integrate full-stack fragments into your app with typed hooks, server routes, and database schemas included.",
     },
   ];
 }
@@ -93,81 +77,63 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 function Hero() {
   return (
-    <section className="w-full max-w-5xl space-y-5 py-6 text-center md:py-10">
-      <h1 className="text-fd-foreground dark:bg-linear-to-b text-5xl font-extrabold tracking-tight md:text-6xl lg:text-7xl dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Modular{" "}
-        <span className="text-fd-foreground dark:bg-linear-to-b relative inline-block dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-          TypeScript
-          <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center md:-right-7 md:-top-3">
-            <span className="bg-linear-to-r relative inline-flex items-center gap-2 rounded-full from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
-              <span
-                aria-hidden
-                className="bg-linear-to-r pointer-events-none absolute -inset-0.5 -z-10 rounded-full from-indigo-500/30 to-fuchsia-500/30 blur-md"
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/10"
-              />
+    <section className="w-full max-w-6xl py-6 md:py-10">
+      <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <div className="space-y-6">
+          <h1 className="text-4xl font-extrabold tracking-tight md:text-6xl">
+            Integrate full-stack libraries in minutes
+          </h1>
+          <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
+            Drop in auth, billing, forms, or workflows without stitching backend routes, database
+            tables, and frontend hooks by hand.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link
+              to="/docs/fragno/user-quick-start"
+              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            >
+              User Quick Start
+            </Link>
+            <Link
+              to="/fragments"
+              className="rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Explore Fragments
+            </Link>
+          </div>
+          <p className="text-fd-muted-foreground text-sm">
+            Building fragments instead?{" "}
+            <Link to="/authors" className="font-medium text-blue-600 hover:underline">
+              Visit the fragment author overview
+            </Link>
+          </p>
+        </div>
 
-              <span className="select-none text-[11px] font-semibold tracking-wider md:text-xs">
-                Developer Beta
-              </span>
-            </span>
-          </span>
-        </span>
-        <br />
-        building blocks
-      </h1>
-      <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-9">
-        Libraries that bundle database schemas, backend routes, and frontend hooks into one package.
-      </p>
-
-      <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
-        <Link
-          to="/docs"
-          className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-        >
-          View Docs
-        </Link>
-        <a
-          href="https://github.com/rejot-dev/fragno"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-        >
-          <GitHub className="size-4" />
-          Star on GitHub
-        </a>
+        <SkillCta
+          title="Install the Fragno Skill"
+          command="npx skills add https://github.com/rejot-dev/fragno --skill fragno"
+          description='Then ask: "Use the fragno skill to integrate the Stripe fragment into my app."'
+        />
       </div>
     </section>
   );
 }
 
-type FeatureCardProps = {
-  icon: React.ReactNode;
+type StepCardProps = {
+  icon: ReactNode;
   title: string;
   description: string;
-  glowClass?: string;
-  iconClass?: string;
 };
 
-function FeatureCard({
-  icon,
-  title,
-  description,
-  glowClass: _glowClass,
-  iconClass,
-}: FeatureCardProps) {
+function StepCard({ icon, title, description }: StepCardProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-white/90 p-6 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
-      <div className="relative flex items-start gap-3">
-        <span
-          className={`flex items-center justify-center rounded-xl p-3 text-2xl ${iconClass ?? "bg-blue-500/15 dark:bg-blue-400/20"}`}
-        >
+      <div className="flex items-start gap-3">
+        <span className="flex items-center justify-center rounded-xl bg-blue-500/10 p-3 text-2xl text-blue-600 dark:bg-blue-400/20 dark:text-blue-300">
           {icon}
         </span>
         <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
           <p className="text-fd-muted-foreground mt-1 text-sm">{description}</p>
         </div>
       </div>
@@ -175,319 +141,38 @@ function FeatureCard({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function Features() {
-  return (
-    <section className="grid w-full max-w-6xl gap-6 md:grid-cols-3">
-      <FeatureCard
-        icon={<Target className="size-6" />}
-        title="Framework-agnostic"
-        description="Works with React, Vue, Svelte, Solid and related full-stack frameworks."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<Shield className="size-6" />}
-        title="End-to-end type safety"
-        description="From server to client to database, everything is typed."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<Package className="size-6" />}
-        title="Automatic code splitting"
-        description="Server code never reaches the client bundle."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<Rocket className="size-6" />}
-        title="Built-in state management"
-        description="Reactive stores with caching built in."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<Waves className="size-6" />}
-        title="Streaming support"
-        description="Real-time NDJSON streaming for live data."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<RotateCcw className="size-6" />}
-        title="Middleware support"
-        description="Compose auth and custom request processing."
-        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
-      />
-    </section>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function WhatFragnoProvides() {
-  const providesTabs = [
+function UserFlow() {
+  const steps = [
     {
-      id: "server-core",
-      label: "Server",
-      accent: "from-sky-500/80 via-blue-500/70 to-indigo-500/80",
-      code: `import { defineRoute } from "@fragno-dev/core";
-import { z } from "zod";
-
-export const route = defineRoute({
-  method: "POST",
-  path: "/ai-chat",
-  inputSchema: z.string(),
-  outputSchema: z.array(/* ... */),
-  handler: async ({ input }, { jsonStream }) => {
-    const message = await input.valid();
-    const eventStream = await openai.responses.create({ /* ... */ });
-
-    return jsonStream(async (stream) => {
-      // ...
-      await stream.write( /* ... */ );
-    });
-  },
-});`,
+      icon: <Package className="size-6" />,
+      title: "Install a fragment",
+      description: "Add a full-stack feature like billing or auth as a package, not a rewrite.",
     },
-    {
-      id: "client-builder",
-      label: "Client",
-      accent: "from-rose-500/80 via-fuchsia-500/70 to-purple-500/80",
-      code: `import { createClientBuilder } from "@fragno-dev/core/client";
-import { computed } from "nanostores";
-
-export function createMyFragmentClient() {
-  const builder = createClientBuilder(myFragmentDefinition, {}, routes);
-
-  const useChatStream = builder.createMutator("POST", "/chat/stream");
-  const aggregatedMessage = computed(useChatStream.mutatorStore,
-    ({ data }) => /* ... */);
-
-  return {
-    useChatStream,
-    useAggregatedMessage: builder.createStore(aggregatedMessage),
-  };
-}`,
-    },
-    {
-      id: "workflow-sketch",
-      label: "User",
-      accent: "from-amber-500/80 via-orange-500/70 to-rose-500/80",
-      code: `import { createMyFragmentClient } from "example-fragment/react";
-
-const { useChatStream, useAggregatedMessage }
-    = createMyFragmentClient();
-
-export function Chat() {
-  const { mutate, loading } = useChatStream();
-  const aggregatedMessage = useAggregatedMessage();
-
-  const [message, setMessage] = useState("");
-
-  return (
-    <div>
-      <input onChange={(e) => setMessage(e.target.value)} type="text" value={message} />
-      <button onClick={() => mutate({ body: { message } })}>
-        Send
-      </button>
-      <div>{loading ? "AI is thinking..." : aggregatedMessage}</div>
-    </div>
-  );
-}`,
-    },
-  ];
-
-  const [activeTab, setActiveTab] = useState(providesTabs[0].id);
-
-  const highlightItems = [
     {
       icon: <RouteIcon className="size-6" />,
-      title: "Embed Routes",
-      description: "HTTP Routes with automatic frontend bindings",
-      background: "bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,0.15),transparent_50%)]",
-    },
-    {
-      icon: <Database className="size-6" />,
-      title: "State Management",
-      description: "Reactive client-side stores with invalidation built in",
-      background: "bg-[radial-gradient(circle_at_80%_20%,rgba(59,130,246,0.15),transparent_50%)]",
-    },
-    {
-      icon: <Activity className="size-6" />,
-      title: "Streaming Support",
-      description: "Real-time newline-delimited JSON streaming",
-      background: "bg-[radial-gradient(circle_at_20%_80%,rgba(168,85,247,0.15),transparent_50%)]",
+      title: "Mount routes once",
+      description:
+        "Register fragment routes on your server adapter and configure environment bindings.",
     },
     {
       icon: <Layers className="size-6" />,
-      title: "Middleware Support",
-      description: "Users can intercept and process requests before they reach your handlers",
-      background: "bg-[radial-gradient(circle_at_80%_80%,rgba(245,158,11,0.15),transparent_50%)]",
+      title: "Use typed hooks",
+      description: "Call framework-specific hooks and stores with end-to-end type safety.",
     },
   ];
 
   return (
-    <section className="w-full max-w-6xl space-y-12">
-      <div className="relative flex flex-col items-center gap-12 lg:flex-row lg:items-start">
-        <div className="space-y-6 lg:w-2/5">
-          <p className="text-fd-muted-foreground font-medium">With Fragno you build</p>
-          <h2 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-            <span className="text-blue-700 dark:text-blue-400">Full-Stack Libraries</span>
-          </h2>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Traditional libraries integrate on <em>either</em> the frontend <em>or</em> the backend,
-            and the user is responsible for the glue-code.
-          </p>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            A <u>full-stack library</u> does both. Users integrate with only a couple of lines of
-            code. No glue.
-          </p>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">10x the developer experience.</p>
-        </div>
-
-        <div className="relative min-w-0 flex-1 overflow-hidden">
-          <div
-            aria-hidden
-            className="bg-linear-to-br pointer-events-none absolute -right-6 -top-16 h-48 w-48 rounded-full from-blue-400/25 via-transparent to-transparent blur-3xl"
-          />
-          <div
-            aria-hidden
-            className="bg-linear-to-br pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full from-purple-400/20 via-transparent to-transparent blur-3xl"
-          />
-
-          <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] dark:bg-slate-900/75">
-            <div className="bg-white/92 flex flex-wrap gap-2 rounded-full p-1 dark:bg-slate-900/70">
-              {providesTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
-                    activeTab === tab.id
-                      ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                      : "text-slate-700 dark:text-slate-300"
-                  }`}
-                  aria-pressed={activeTab === tab.id}
-                >
-                  <span className="relative">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="bg-white/97 relative rounded-2xl p-2 dark:bg-slate-950/60">
-              {activeTab === "server-core" && (
-                <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Define your API routes with full type safety. Routes are embedded directly in your
-                  user's application.
-                </p>
-              )}
-              {activeTab === "client-builder" && (
-                <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Build reactive client-side stores that call the server routes. Maps reactively to
-                  every framework, both ways.
-                </p>
-              )}
-              {activeTab === "workflow-sketch" && (
-                <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Your user has a seamless experience integrating your library. They get typed,
-                  reactive hooks for React, Vue, or Svelte.
-                </p>
-              )}
-              <FragnoCodeBlock
-                lang="tsx"
-                code={
-                  providesTabs.find((tab) => tab.id === activeTab)?.code ?? providesTabs[0].code
-                }
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {highlightItems.map((item) => (
-          <div
-            key={item.title}
-            className="dark:border-white/12 relative overflow-hidden rounded-3xl border border-white/20 bg-white/70 p-6 dark:bg-slate-900/70"
-          >
-            <span
-              className={`pointer-events-none absolute inset-0 opacity-30 ${item.background}`}
-            />
-            <div className="relative flex items-start gap-4">
-              <span className="bg-linear-to-br flex h-11 w-11 items-center justify-center rounded-xl from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
-                {item.icon}
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {item.title}
-                </h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-200/80">
-                  {item.description}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function DocsSection() {
-  return (
-    <section className="w-full max-w-5xl space-y-8">
+    <section className="w-full max-w-6xl space-y-8">
       <div className="space-y-4 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Documentation</h2>
+        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">How it works</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Choose your path based on whether you're a user or a library author
+          Fragments ship the server, database, and client glue so you can focus on product.
         </p>
       </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Link
-          to="/docs/fragno/for-library-authors/getting-started"
-          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
-        >
-          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-500/10 dark:bg-gray-400/20">
-                <Users className="size-6 text-gray-700 dark:text-gray-300" />
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Library Authors
-                </h3>
-                <p className="text-fd-muted-foreground text-sm">For developers</p>
-              </div>
-            </div>
-            <p className="text-fd-muted-foreground text-sm">
-              Create your own full-stack libraries. Learn how to build them for any framework.
-            </p>
-          </div>
-        </Link>
-
-        <Link
-          to="/docs/fragno/user-quick-start"
-          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
-        >
-          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-500/10 dark:bg-gray-400/20">
-                <BookOpen className="size-6 text-gray-700 dark:text-gray-300" />
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quick Start</h3>
-                <p className="text-fd-muted-foreground text-sm">For users</p>
-              </div>
-            </div>
-            <p className="text-fd-muted-foreground text-sm">
-              Learn how to integrate Fragno libraries into your application
-            </p>
-          </div>
-        </Link>
+      <div className="grid gap-6 md:grid-cols-3">
+        {steps.map((step) => (
+          <StepCard key={step.title} {...step} />
+        ))}
       </div>
     </section>
   );
@@ -496,18 +181,20 @@ function DocsSection() {
 type ShowcaseItem = {
   id: "auth" | "stripe" | "upload" | "forms" | "workflows";
   label: string;
-  title: React.ReactNode;
+  title: ReactNode;
   titlePlain: string;
   summary: string;
   description: string;
   installCommand: string;
   details: string[];
   href: string;
+  docsHref: string;
   cta: string;
   glowClass: string;
   dotClass: string;
   ctaClass: string;
   activeRing: string;
+  comingSoon?: boolean;
 };
 
 const showcaseItems: ShowcaseItem[] = [
@@ -531,8 +218,9 @@ const showcaseItems: ShowcaseItem[] = [
       "Webhook handlers included.",
       "Hooks for creating/cancelling/upgrading subscription plans.",
     ],
-    href: "/docs/stripe",
-    cta: "Stripe Docs",
+    href: "/fragments/stripe",
+    docsHref: "/docs/stripe",
+    cta: "Stripe Overview",
     glowClass: "bg-violet-500/10 dark:bg-violet-400/15",
     dotClass: "bg-violet-500/70 dark:bg-violet-400/70",
     ctaClass: "bg-violet-600 hover:bg-violet-700",
@@ -556,8 +244,9 @@ const showcaseItems: ShowcaseItem[] = [
       "Render beautiful forms with shadcn/ui",
       "User friendly form builder included.",
     ],
-    href: "/forms",
-    cta: "Forms Demo",
+    href: "/fragments/forms",
+    docsHref: "/docs/forms",
+    cta: "Forms Overview",
     glowClass: "bg-blue-500/10 dark:bg-blue-400/15",
     dotClass: "bg-blue-500/70 dark:bg-blue-400/70",
     ctaClass: "bg-blue-600 hover:bg-blue-700",
@@ -577,14 +266,15 @@ const showcaseItems: ShowcaseItem[] = [
     titlePlain: "Durable Workflows",
     summary: "Queues, retries, and durable state.",
     description: "Queues, retries, and durable state for background work.",
-    installCommand: "npm install @fragno-dev/fragment-workflows",
+    installCommand: "npm install @fragno-dev/workflows",
     details: [
       "Steps, timers, retries, and external events.",
       "Runner + dispatcher model for durable execution.",
       "Test harness for deterministic workflow runs.",
     ],
-    href: "/docs/workflows",
-    cta: "Workflows Docs",
+    href: "/fragments/workflows",
+    docsHref: "/docs/workflows",
+    cta: "Workflows Overview",
     glowClass: "bg-amber-500/10 dark:bg-amber-400/15",
     dotClass: "bg-amber-500/70 dark:bg-amber-400/70",
     ctaClass: "bg-amber-600 hover:bg-amber-700",
@@ -601,10 +291,11 @@ const showcaseItems: ShowcaseItem[] = [
     titlePlain: "Authentication",
     summary: "User and session management.",
     description: "User and session management.",
-    installCommand: "npm install @fragno-dev/simple-auth",
+    installCommand: "npm install @fragno-dev/auth",
     details: [],
-    href: "",
-    cta: "",
+    href: "/fragments/auth",
+    docsHref: "/docs/auth",
+    cta: "Auth Overview",
     glowClass: "bg-emerald-500/10 dark:bg-emerald-400/15",
     dotClass: "bg-emerald-500/70 dark:bg-emerald-400/70",
     ctaClass: "bg-emerald-600 hover:bg-emerald-700",
@@ -624,10 +315,11 @@ const showcaseItems: ShowcaseItem[] = [
     titlePlain: "File Uploads",
     summary: "Uploads, metadata, and access hooks.",
     description: "Upload flows, metadata storage, and client hooks for files.",
-    installCommand: "npm install @fragno-dev/fragment-upload",
+    installCommand: "npm install @fragno-dev/upload",
     details: [],
-    href: "",
-    cta: "",
+    href: "/fragments/upload",
+    docsHref: "/docs/upload/overview",
+    cta: "Uploads Overview",
     glowClass: "bg-cyan-500/10 dark:bg-cyan-400/15",
     dotClass: "bg-cyan-500/70 dark:bg-cyan-400/70",
     ctaClass: "bg-cyan-600 hover:bg-cyan-700",
@@ -636,15 +328,17 @@ const showcaseItems: ShowcaseItem[] = [
 ];
 
 function FragmentShowcase() {
-  const selectableItems = showcaseItems.filter((item) => item.href);
-  const [activeId, setActiveId] = useState<ShowcaseItem["id"]>(selectableItems[0].id);
-  const activeItem = selectableItems.find((item) => item.id === activeId) ?? selectableItems[0];
+  const [activeId, setActiveId] = useState<ShowcaseItem["id"]>(showcaseItems[0].id);
+  const activeItem = showcaseItems.find((item) => item.id === activeId) ?? showcaseItems[0];
 
   return (
     <section className="w-full max-w-6xl space-y-8">
-      {/*<div className="space-y-3 text-center">
-        <h2 className="text-2xl tracking-tight md:text-4xl">App features as libraries</h2>
-      </div>*/}
+      <div className="space-y-3 text-center">
+        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">First Party Fragments</h2>
+        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
+          Production-ready integrations you can drop into your app today.
+        </p>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 md:p-10 dark:bg-slate-950/60 dark:ring-white/10">
@@ -653,7 +347,14 @@ function FragmentShowcase() {
           />
           <div className="relative flex h-full flex-col justify-between gap-6">
             <div className="space-y-6">
-              <p className="text-fd-muted-foreground text-sm font-medium">{activeItem.label}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-fd-muted-foreground text-sm font-medium">{activeItem.label}</p>
+                {activeItem.comingSoon && (
+                  <span className="rounded-full border border-amber-400/30 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Coming soon
+                  </span>
+                )}
+              </div>
               <h3 className="text-3xl font-extrabold tracking-tight md:text-4xl">
                 {activeItem.title}
               </h3>
@@ -684,46 +385,28 @@ function FragmentShowcase() {
               </div>
             </div>
             <div>
-              <Link
-                to={activeItem.href}
-                className={`group inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white shadow-sm transition-colors ${activeItem.ctaClass}`}
-              >
-                {activeItem.cta}
-                <span className="transition-transform group-hover:translate-x-0.5">→</span>
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  to={activeItem.href}
+                  className={`group inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white shadow-sm transition-colors ${activeItem.ctaClass}`}
+                >
+                  {activeItem.cta}
+                </Link>
+                <Link
+                  to={activeItem.docsHref}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                >
+                  Docs
+                  <span aria-hidden>→</span>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-3">
           {showcaseItems.map((item) => {
-            const isComingSoon = !item.href;
             const isActive = item.id === activeId;
-
-            if (isComingSoon) {
-              return (
-                <div
-                  key={item.id}
-                  className="w-full rounded-2xl border border-black/5 bg-white/40 p-4 opacity-50 dark:border-white/5 dark:bg-slate-950/30"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
-                        {item.label}
-                      </p>
-                      <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
-                        {item.titlePlain}
-                      </p>
-                      <p className="text-fd-muted-foreground text-sm">Coming soon</p>
-                    </div>
-                    <span
-                      className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600"
-                      aria-hidden
-                    />
-                  </div>
-                </div>
-              );
-            }
 
             return (
               <button
@@ -737,9 +420,16 @@ function FragmentShowcase() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-2">
-                    <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
-                      {item.label}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                        {item.label}
+                      </p>
+                      {item.comingSoon && (
+                        <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
                     <p className="text-lg font-semibold text-gray-900 dark:text-white">
                       {item.titlePlain}
                     </p>
@@ -759,150 +449,31 @@ function FragmentShowcase() {
   );
 }
 
-function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
-  const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
-
+function AuthorCta() {
   return (
-    <section className="w-full max-w-5xl space-y-8">
-      <div className="space-y-4 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Join the Community</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Connect with other developers and stay updated with the latest news
-        </p>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Discord Section */}
-        <a
-          href="https://discord.gg/jdXZxyGCnC"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:ring-white/10"
-        >
-          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-blue-600/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-blue-600/15" />
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
-                <MessageCircleMore className="size-6 text-blue-600 dark:text-blue-400" />
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Discord</h3>
-                <p className="text-fd-muted-foreground text-sm">Join the conversation</p>
-              </div>
-            </div>
-            <p className="text-fd-muted-foreground mb-4 text-sm">
-              Connect with the community, get help with your projects, and stay updated on the
-              latest features and releases.
+    <section className="w-full max-w-5xl">
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-8 py-10 text-white shadow-xl">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-10 top-0 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
+          <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-purple-500/30 blur-3xl" />
+        </div>
+        <div className="relative flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-200">
+              Building fragments?
             </p>
-            <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition-all group-hover:gap-2 dark:text-blue-400">
-              Join Discord
-              <span className="transition-transform group-hover:translate-x-0.5">→</span>
-            </span>
-          </div>
-        </a>
-
-        {/* Mailing List Section */}
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
-                <Mail className="size-6 text-blue-600 dark:text-blue-400" />
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Newsletter</h3>
-                <p className="text-fd-muted-foreground text-sm">Get email updates</p>
-              </div>
-            </div>
-            <p className="text-fd-muted-foreground mb-4 text-sm">
-              Receive notifications about new features, releases, and important announcements.
+            <h2 className="text-3xl font-bold">Create portable full-stack libraries</h2>
+            <p className="text-blue-100">
+              Learn how to ship full-stack libraries with routes, hooks, and database schemas.
             </p>
-            <Form method="post" className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="your@email.com"
-                  required
-                  disabled={isSubmitting}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800/50 dark:text-white dark:placeholder:text-gray-400"
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isSubmitting ? "..." : "Subscribe"}
-                </button>
-              </div>
-              {actionData?.message && (
-                <p
-                  className={`text-sm ${
-                    actionData.success
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  }`}
-                >
-                  {actionData.message}
-                </p>
-              )}
-              <Turnstile siteKey={turnstileSitekey} options={{ appearance: "interaction-only" }} />
-            </Form>
           </div>
+          <Link
+            to="/authors"
+            className="rounded-lg bg-white px-6 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
+          >
+            Author Overview
+          </Link>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function UseCases() {
-  return (
-    <section className="w-full max-w-6xl space-y-12">
-      <div className="space-y-4 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">When to use Fragno</h2>
-      </div>
-      <div className="relative flex flex-col items-start gap-12 lg:flex-row">
-        <div className="space-y-6 lg:w-1/2">
-          <p className="text-fd-muted-foreground font-medium">More than an API client</p>
-          <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-            <span className="text-blue-700 dark:text-blue-400">Full-stack SDKs</span>
-          </h2>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Most SDKs simply wrap API calls. Developers still have to write things like webhook
-            handlers that persist events or build their own frontend hooks.
-          </p>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            With Fragno you can ship a pre-built integration for your product.
-          </p>
-        </div>
-
-        <div className="space-y-6 lg:w-1/2">
-          <p className="text-fd-muted-foreground font-medium">Do not repeat yourself</p>
-          <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-            <span className="text-blue-700 dark:text-blue-400">Full-stack Components</span>
-          </h2>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Build components that can be reused across applications regardless of their stack.
-          </p>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Use community-made Fragments like the Stripe Fragment to add functionality you don't
-            want to maintain yourself.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function BuildOnFragnoHeading() {
-  return (
-    <section className="w-full max-w-5xl py-10 text-center">
-      <div className="space-y-3">
-        <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Built on Fragno</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-base md:text-lg">
-          A toolkit for building full-stack libraries that integrate into any stack.
-        </p>
       </div>
     </section>
   );
@@ -919,20 +490,15 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
       <Hero />
       <FragmentShowcase />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <UserFlow />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Frameworks />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <DatabaseSupport />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <CommunitySection turnstileSitekey={turnstileSitekey} />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <BuildOnFragnoHeading />
-      <FragnoExplainer />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <UseCases />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <Features />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <DatabaseIntegration />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <DocsSection />
+      <AuthorCta />
     </main>
   );
 }
