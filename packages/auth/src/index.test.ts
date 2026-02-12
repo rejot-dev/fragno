@@ -338,6 +338,7 @@ describe("auth-fragment", async () => {
               name: "Hooks Org",
               slug: "hooks-org",
               creatorUserId: user.id,
+              creatorUserRole: user.role,
             }),
           ])
           .execute();
@@ -352,6 +353,7 @@ describe("auth-fragment", async () => {
               organizationId: organizationResult.organization.id,
               email: "hooks-invitee@test.com",
               inviterId: user.id,
+              actor: { userId: user.id, userRole: user.role },
             }),
           ])
           .execute();
