@@ -6,7 +6,7 @@
 - `docs` -> apps/docs
 - `examples` -> example-apps/, example-fragments/
 - `create` -> packages/create, packages/create-cli
-- `dispatch` -> packages/workflows-dispatcher-cloudflare-do, packages/workflows-dispatcher-node
+- `dispatch` -> packages/fragno-db/src/dispatchers
 - `forms` -> packages/forms
 - `node` -> packages/fragno-node
 - `stripe` -> packages/stripe

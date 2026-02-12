@@ -17,9 +17,8 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 
 1. Create the packages per SPEC §5:
    - [x] `packages/fragment-workflows` (`@fragno-dev/workflows`)
-   - [x] `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
-   - [x] `packages/workflows-dispatcher-cloudflare-do`
-         (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
+   - [x] Durable hooks dispatchers in `@fragno-dev/db/dispatchers/node` and
+         `@fragno-dev/db/dispatchers/cloudflare-do` (legacy workflow dispatcher packages removed)
 2. Ensure the main package is runtime-agnostic (SPEC §5.3 note); keep Cloudflare/Node APIs in the
    dispatcher packages.
 3. [x] Implement public types/classes per SPEC §6:
@@ -64,10 +63,11 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 1. [x] Add `provideHooks` to the fragment definition (SPEC §10.1).
 2. [x] Define a dispatcher interface in the main package used by `onWorkflowEnqueued` (SPEC §5.1,
        §10.3).
-3. [x] Implement the Node dispatcher package:
+3. [x] Implement the Node dispatcher entrypoint in `@fragno-dev/db/dispatchers/node`:
    - in-process `wake()` + optional polling loop (SPEC §5.2)
-4. [x] Implement the Cloudflare DO dispatcher package:
-   - Durable Object entrypoint + alarm-driven scheduling (SPEC §5.3)
+4. [x] Implement the Cloudflare DO dispatcher entrypoint in
+       `@fragno-dev/db/dispatchers/cloudflare-do`:
+   - Durable Object alarm handler + scheduling (SPEC §5.3)
    - v1 shape: one dispatcher DO per DB namespace; keep option open for per-workflow scaling
 5. [x] Document the HTTP tick integration path:
    - configure durable hook handler to `fetch("/_runner/tick")` (SPEC §11.9)
@@ -142,7 +142,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 8 — Verification
 
 1. [x] Tests:
-       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
+       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/test`
 2. [x] Lint: `pnpm lint`
 3. [x] Types: `pnpm types:check`
 4. **Verification history**: Last verified 2026-01-18 — All checks passing; verification runs: 68.
@@ -217,7 +217,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 13 — Verification (new additions)
 
 1. [x] Tests:
-       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
+       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/test`
 2. [x] Lint: `pnpm lint`
 3. [x] Types: `pnpm types:check`
 4. **Verification history**: Last verified 2026-01-19 — All checks passing; verification runs: 234.

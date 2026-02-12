@@ -43,13 +43,10 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [ ] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
    - [ ] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
    - [ ] update docs examples accordingly
-7. [ ] Spike: shared dispatcher generalization
-   - [ ] extract `createInProcessDispatcher` into a generic package (node) and update all
-         Workflows/AI call sites to use it directly (no shims; update call sites directly)
-   - [ ] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
-         `@fragno-dev/workflows-dispatcher-cloudflare-do`
+7. [ ] Spike: dispatcher wiring (built into `@fragno-dev/db`)
    - [ ] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
-   - [ ] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
+   - [ ] confirm AI can use `@fragno-dev/db/dispatchers/node` and
+         `@fragno-dev/db/dispatchers/cloudflare-do` without fragment-specific wrappers
 
 Deliverables:
 
@@ -213,22 +210,11 @@ Validation:
    - [ ] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)
 5. [ ] Dispatcher integrations:
-   - [ ] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
-         `POST /ai/_runner/tick` or `runner.tick(...)`
-   - [ ] Cloudflare DO: create a shared dispatcher runtime package (e.g.
-         `@fragno-dev/dispatcher-cloudflare-do`) by extracting core logic from the workflows DO
-         package (keep tick coalescing + alarm scheduling behavior)
-   - [ ] Introduce a shared `FragnoDispatcher` interface (core/shared package) and alias it in
-         Workflows + AI configs
-   - [ ] Add an AI wrapper (e.g. `createAiDispatcherDurableObject`) in
-         `@fragno-dev/ai-dispatcher-cloudflare-do` that uses AI schema + runner and schedules alarms
-         based on `ai_run.nextAttemptAt` + unprocessed webhook events (same pattern as workflows DO)
-   - [ ] Match Workflows DO options where applicable (`namespace`, `runnerId`, `tickOptions`,
-         `enableRunnerTick`, `migrateOnStartup`, `createAdapter`, `onTickError`, `onMigrationError`)
-   - [ ] Update `@fragno-dev/workflows-dispatcher-cloudflare-do` to wrap the shared runtime directly
-         (no shim layer)
-   - [ ] Update workflows docs/examples to use `@fragno-dev/dispatcher-node` and the refactored DO
-         dispatcher packages (e.g. runner-dispatcher docs + quickstart snippets)
+   - [ ] Node: use `@fragno-dev/db/dispatchers/node` and wire wake to `POST /ai/_runner/tick` or
+         `runner.tick(...)`.
+   - [ ] Cloudflare DO: use `@fragno-dev/db/dispatchers/cloudflare-do` and schedule alarms from
+         `getNextWakeAt()`; instantiate in the same DO that owns the fragment DB.
+   - [ ] Update workflows/AI docs and examples to reference the db dispatchers.
 
 Validation:
 

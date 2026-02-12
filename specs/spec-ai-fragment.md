@@ -112,29 +112,14 @@ Responsibilities:
 
 ### 4.2 Shared dispatcher infrastructure (Fragno-wide)
 
-Durable hooks need a generalized dispatcher/ticker to wake fragment runners across runtimes. The
-existing Workflows dispatcher packages will be generalized into shared dispatcher infrastructure,
-with fragment-specific wrappers for Workflows and AI:
+Durable hooks already ship with generic dispatchers in `@fragno-dev/db` that fragments can reuse:
 
-- **Node**: move `createInProcessDispatcher` into a generic package (`@fragno-dev/dispatcher-node`)
-  and update Workflows + AI to import it directly (no shims; update call sites directly).
-- **Cloudflare DO**: extract a generic DO dispatcher runtime (e.g.
-  `@fragno-dev/dispatcher-cloudflare-do`) from the existing workflows DO dispatcher that:
-  - builds a DB adapter (default DurableObjectDialect + Drizzle; override via `createAdapter`),
-  - queues ticks with in-flight + queued coalescing (same behavior as workflows DO),
-  - calls `runner.tick` with `tickOptions` and schedules alarms from a fragment-specific
-    `getNextWake(db)` function,
-  - runs migrations on startup (using `blockConcurrencyWhile` when available),
-  - and exposes `fetch` + optional `alarm`. Options should mirror the workflows DO surface
-    (`namespace`, `runnerId`, `tickOptions`, `enableRunnerTick`, `fragmentConfig`, `createAdapter`,
-    `migrateOnStartup`, `onTickError`, `onMigrationError`). Then expose wrappers:
-  - Workflows: `createWorkflowsDispatcherDurableObject` (backed by the generic runtime) in
-    `@fragno-dev/workflows-dispatcher-cloudflare-do`.
-  - AI: `createAiDispatcherDurableObject` (backed by the generic runtime) in a **separate** package
-    `@fragno-dev/ai-dispatcher-cloudflare-do`.
+- **Node**: `@fragno-dev/db/dispatchers/node` for in-process polling plus `wake()`.
+- **Cloudflare DO**: `@fragno-dev/db/dispatchers/cloudflare-do` for alarm-driven hook processing.
 
-This keeps the runner/tick mechanics consistent across fragments while avoiding duplicate runtime
-code.
+Workflows and AI should wire their durable hooks to these dispatchers directly (no fragment-specific
+dispatcher packages). For Cloudflare, instantiate the DO dispatcher in the same DO that owns the
+fragment DB when using `DurableObjectDialect`.
 
 ### 4.3 Optional runtime integrations (future)
 

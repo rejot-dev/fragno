@@ -28,9 +28,7 @@ This also enables workflows (and other fragments) to schedule future work by tri
 - Internal hooks table/service: `packages/fragno-db/src/fragments/internal-fragment.ts`
 - Workflows hook wiring: `packages/fragment-workflows/src/definition.ts`
 - Workflows runner scheduling: `packages/fragment-workflows/src/runner/task.ts`
-- Existing workflows dispatchers:
-  - `packages/workflows-dispatcher-node/src/index.ts`
-  - `packages/workflows-dispatcher-cloudflare-do/src/index.ts`
+- Historical workflows dispatchers (removed; replaced by db dispatchers)
 
 ## 3. Goals / Non-goals
 
@@ -204,7 +202,7 @@ Update the workflows fragment to rely on durable hooks dispatching:
 - The `onWorkflowEnqueued` hook should call `config.runner?.tick(...)` directly (no
   workflow-specific dispatcher required). The runner already supports concurrent ticks.
 
-This replaces the need for `@fragno-dev/workflows-dispatcher-*` packages.
+This replaces the legacy `@fragno-dev/workflows-dispatcher-*` packages (now removed).
 
 ### 7.2 Other fragments (AI, etc.)
 
@@ -225,8 +223,8 @@ Add to `@fragno-dev/db`:
 
 The existing workflow dispatchers are **replaced** by the durable hooks dispatchers:
 
-- `@fragno-dev/workflows-dispatcher-node`
-- `@fragno-dev/workflows-dispatcher-cloudflare-do`
+- `@fragno-dev/workflows-dispatcher-node` (legacy, removed)
+- `@fragno-dev/workflows-dispatcher-cloudflare-do` (legacy, removed)
 
 These packages must be updated to either:
 

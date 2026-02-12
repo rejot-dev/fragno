@@ -2,8 +2,9 @@
 
 Spec: `./spec-durable-hooks-dispatcher.md`
 
-This work **replaces** `@fragno-dev/workflows-dispatcher-node` and
-`@fragno-dev/workflows-dispatcher-cloudflare-do` with durable hooks dispatchers in `@fragno-dev/db`.
+This work **replaces** the legacy `@fragno-dev/workflows-dispatcher-node` and
+`@fragno-dev/workflows-dispatcher-cloudflare-do` packages (removed) with durable hooks dispatchers
+in `@fragno-dev/db`.
 
 - [x] Add `processAt` (Date only) to `TriggerHookOptions`, clamp to `Date`, and set `nextRetryAt` on
       hook creation in `prepareHookMutations` (Spec 4.1-4.2).
@@ -20,8 +21,7 @@ This work **replaces** `@fragno-dev/workflows-dispatcher-node` and
 - [x] Add tests for `processAt`, `getNextWakeAt`, and dispatcher behavior (Spec 10).
 - [x] Update workflows runner scheduling to trigger `onWorkflowEnqueued` with `processAt` for future
       tasks and call `runner.tick` inside the hook (Spec 7.1).
-- [x] Replace `@fragno-dev/workflows-dispatcher-node` and
-      `@fragno-dev/workflows-dispatcher-cloudflare-do` with shims that re-export the new db
-      dispatchers, and remove their usage from docs/examples (Spec 8.2).
+- [x] Remove the legacy workflow dispatcher packages and update docs/examples to use the db
+      dispatchers (Spec 8.2).
 - [x] Update package exports and tsdown entries for new db dispatcher modules (Spec 8.1).
 - [x] Update docs: durable hooks, workflows quickstart/fragment/runner-dispatcher pages (Spec 9).
