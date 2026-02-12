@@ -15,6 +15,12 @@ Fragno is a framework-agnostic, type-safe full-stack TypeScript toolkit that ena
 portable full-stack libraries called "fragments". Fragments include backend routes, (optional)
 client hooks and (optional) database integration.
 
+Important: Before integrating any first-party fragment, always fetch its docs with `curl`. Use the
+same search endpoint to find the right page, then fetch the full Markdown docs:
+
+- `curl -s "https://fragno.dev/api/search?query=forms"`
+- `curl -L "https://fragno.dev/docs/forms/quickstart" -H "accept: text/markdown"`
+
 This skill will aid you to integrate a Fragment into an application. To do this we have to mount the
 Fragment's backend routes, migrate/generate the database schema, and initialize the client-side
 hooks.
@@ -120,7 +126,11 @@ For Node.js (Express/Node.js) a separate package is required: `@fragno-dev/node`
 ### 6. Optional steps
 
 1. Create Fragno Fragment-specific route middleware to implement authentication (or other features).
-2. Create a custom fetcher for the Fragment (e.g. for authentication headers).
+   See `./references/middleware.md`.
+2. Create a custom fetcher for the Fragment (e.g. for authentication headers). See
+   `./references/client-customization.md`.
+3. Configure a durable hooks dispatcher for fragments that use durable hooks (background retries,
+   scheduled hooks). See `./references/dispatchers.md`.
 
 ### 7. Present options to user
 
@@ -131,14 +141,65 @@ For Node.js (Express/Node.js) a separate package is required: `@fragno-dev/node`
 Present these to the user to come up with a plan for further deep integration into their
 application.
 
-## First-party Fragments (install by npm package name)
+## First-party Fragments (FP)
 
-- `@fragno-dev/auth` - Very simple authentication
-- `@fragno-dev/forms` - Form builder + form definition + form submission, storing in the user's
-  database
-- `@fragno-dev/stripe` - Stripe integration for subscription management and payment processing
-- `@fragno-dev/workflows` - Durable workflows
-- `@fragno-dev/upload` - File upload to s3-compatible storage
+Use these fragments when you need their domain-specific features. Always `curl` the fragment docs
+before wiring anything.
+
+### Auth (`@fragno-dev/auth`)
+
+Definition: Minimal email/password auth with session cookies and DB-backed users/sessions.
+
+Use when: you need a simple, self-hosted auth flow (sign-up/sign-in/sign-out, session, roles) and
+can store credentials in your database.
+
+Reference: `./references/first-party-fragments/auth.md`.
+
+Docs lookup: `curl -s "https://fragno.dev/api/search?query=auth%20fragment"`.
+
+### Forms (`@fragno-dev/forms`)
+
+Definition: JSON Schema and JSON Forms-based form builder plus response collection stored in your
+database.
+
+Use when: you need schema-driven forms, admin-managed form lifecycle, and stored submissions.
+
+Reference: `./references/first-party-fragments/forms.md`.
+
+Docs: `curl -L "https://fragno.dev/docs/forms/quickstart" -H "accept: text/markdown"`.
+
+### Stripe (`@fragno-dev/stripe`)
+
+Definition: Stripe subscription management with webhook-backed local state and client mutators.
+
+Use when: your app sells subscriptions and you want built-in checkout, upgrade, cancel, and admin
+hooks.
+
+Reference: `./references/first-party-fragments/stripe.md`.
+
+Docs: `curl -L "https://fragno.dev/docs/stripe/quickstart" -H "accept: text/markdown"`.
+
+### Workflows (`@fragno-dev/workflows`)
+
+Definition: Durable, long-running workflows with steps, timers, retries, and event waits backed by
+your database.
+
+Use when: you need reliable multi-step processes and an HTTP API/CLI to manage instances.
+
+Reference: `./references/first-party-fragments/workflows.md`.
+
+Docs: `curl -L "https://fragno.dev/docs/workflows/quickstart" -H "accept: text/markdown"`.
+
+### Upload (`@fragno-dev/upload`)
+
+Definition: Full-stack uploads with a normalized file model, S3/R2 or filesystem storage adapters,
+and client helpers for direct or server-streamed uploads.
+
+Use when: you need file uploads with progress tracking and storage-backed file metadata.
+
+Reference: `./references/first-party-fragments/upload.md`.
+
+Docs: `curl -L "https://fragno.dev/docs/upload/quickstart" -H "accept: text/markdown"`.
 
 ## Docs lookup
 
@@ -153,12 +214,19 @@ The Fragno documentation is available online:
 
 ## References
 
-The following reference files are available in `./references/`:
+The following reference files are available in `./references/`: Note: all reference paths are
+relative to this skill file.
 
-| File                      | Description                                                                                     |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `server-integration.md`   | Server-side integration: Framework-specific mounting patterns for server-side API routes        |
-| `client-integration.md`   | Creating client-side integration modules and using Fragment hooks/composables in UI components  |
-| `client-customization.md` | Customizing HTTP requests made by Fragno Fragments (authentication, CORS, interceptors)         |
-| `middleware.md`           | Intercepting and processing requests before they reach route handlers                           |
-| `services.md`             | Running functions defined by Fragments on the server, including calling route handlers directly |
+| File                                 | Description                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `server-integration.md`              | Server-side integration: Framework-specific mounting patterns for server-side API routes        |
+| `client-integration.md`              | Creating client-side integration modules and using Fragment hooks/composables in UI components  |
+| `client-customization.md`            | Customizing HTTP requests made by Fragno Fragments (authentication, CORS, interceptors)         |
+| `middleware.md`                      | Intercepting and processing requests before they reach route handlers                           |
+| `services.md`                        | Running functions defined by Fragments on the server, including calling route handlers directly |
+| `dispatchers.md`                     | Durable hooks dispatchers: background processing, retries, and platform-specific setups         |
+| `first-party-fragments/auth.md`      | Auth fragment one-pager (install, routes, client, migrations)                                   |
+| `first-party-fragments/forms.md`     | Forms fragment one-pager (schemas, hooks, admin routes, migrations)                             |
+| `first-party-fragments/stripe.md`    | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
+| `first-party-fragments/workflows.md` | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
+| `first-party-fragments/upload.md`    | Upload fragment one-pager (storage adapters, helpers, routes)                                   |

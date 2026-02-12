@@ -1,0 +1,146 @@
+---
+title: Dispatchers
+description: Run durable hooks and background work for database-backed fragments.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+Database-backed fragments can schedule durable hooks. Durable hooks are stored in the database as
+part of the same transaction as your mutations, then executed after the commit with retries.
+
+A dispatcher is the background process that wakes up and processes these hooks, so retries and
+scheduled work happen even when no new requests arrive.
+
+## When you need a dispatcher
+
+You need a dispatcher when a fragment uses durable hooks (for example, the Workflows fragment).
+
+If a fragment does not define durable hooks, `createDurableHooksProcessor(fragment)` returns `null`,
+and you do not need a dispatcher.
+
+## How it works (from the code)
+
+Durable hook processing is designed for at-least-once delivery and idempotent handlers:
+
+- Hook triggers are recorded in the same transaction as your mutations.
+- A processor claims pending events in the DB to avoid double-processing.
+- Each event is executed outside the transaction, then marked `completed` or `failed`.
+- Failures are retried with exponential backoff.
+- Events stuck in `processing` too long are re-queued (default 10 minutes).
+
+Dispatchers use `getNextWakeAt()` to decide when work is due. If there is nothing scheduled, they
+sleep. If work is due, they run `processor.process()`.
+
+<Callout type="info">
+  Durable hooks are at-least-once. Your hook handlers must be idempotent.
+</Callout>
+
+## Node dispatcher (polling)
+
+Use the Node dispatcher for long-lived servers or local development:
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+
+const processor = createDurableHooksProcessor(fragment);
+if (processor) {
+  const dispatcher = createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: 2000,
+  });
+
+  dispatcher.startPolling();
+  process.on("SIGTERM", () => dispatcher.stopPolling());
+}
+```
+
+Notes:
+
+- `pollIntervalMs` defaults to 5000.
+- Calling `dispatcher.wake()` triggers immediate processing.
+- The dispatcher serializes runs internally, so concurrent calls are queued.
+
+## Cloudflare Durable Objects dispatcher (alarms)
+
+Use the Durable Object dispatcher to schedule processing via alarms. The dispatcher should be
+created in the same DO instance that owns the fragment:
+
+```ts
+import { DurableObject } from "cloudflare:workers";
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcherDurableObject } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import { migrate } from "@fragno-dev/db";
+import { createMyFragmentServer, type MyFragment } from "@/fragno/my-fragment";
+
+export class MyFragmentDO extends DurableObject<Env> {
+  fragment: MyFragment;
+  handler: ReturnType<ReturnType<typeof createDurableHooksDispatcherDurableObject>>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env);
+
+    this.fragment = createMyFragmentServer({ env, state, type: "live" });
+    state.blockConcurrencyWhile(async () => {
+      await migrate(this.fragment);
+    });
+
+    // Keep the dispatcher in the same DO instance that owns the fragment.
+    const processor = createDurableHooksProcessor(this.fragment);
+    if (!processor) {
+      throw new Error("Fragment has no durable hooks configured.");
+    }
+
+    this.handler = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => processor,
+    })(state, env);
+  }
+
+  alarm() {
+    return this.handler.alarm?.();
+  }
+}
+```
+
+Notes:
+
+- The dispatcher schedules the next alarm based on `getNextWakeAt()`.
+- If no work is pending, it clears the alarm.
+- `state.storage.setAlarm` is required.
+- For Durable Objects, keep the dispatcher in the same DO instance that owns the fragment so it uses
+  the same storage and scheduling lifecycle.
+
+## Configuration knobs
+
+You can tune durable hook behavior when instantiating the fragment:
+
+```ts
+const fragment = instantiate(fragmentDef)
+  .withConfig(config)
+  .withOptions({
+    databaseAdapter,
+    durableHooks: {
+      stuckProcessingTimeoutMinutes: 10,
+      onStuckProcessingHooks: ({ namespace, timeoutMinutes, events }) => {
+        console.warn("Re-queued stuck hooks", namespace, timeoutMinutes, events.length);
+      },
+    },
+  })
+  .build();
+```
+
+## Operational guidance
+
+- Run one dispatcher per deployment process. Multiple dispatchers are safe but may add load.
+- Ensure your hook handlers are idempotent.
+- For serverless platforms, use a dispatcher that integrates with the platform scheduler (e.g.,
+  Cloudflare Durable Objects).
+
+## Troubleshooting
+
+- Hooks never run: verify the dispatcher is started and `createDurableHooksProcessor` is not null.
+- Work is delayed: check `pollIntervalMs` or alarm scheduling.
+- Repeated retries: check hook error logs and implement idempotency.
+- Stuck hooks: confirm `stuckProcessingTimeoutMinutes` is set and logs are visible.
