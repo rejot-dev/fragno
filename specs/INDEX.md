@@ -33,6 +33,8 @@ Format:
 - [Simple Auth Fragment Unification — Spec](./spec-simple-auth-fragment-unification.md) — Bring
   `packages/auth` to parity with the is3a-site implementation: schema, routes, client helpers,
   tests, build config, and docs.
+- [Auth Organizations and Roles — Spec](./spec-auth-organizations.md) — Add organizations, members,
+  roles, invitations, hooks, and conservative endpoints to the auth fragment.
 - [Fragno Upload Fragment - Spec](./spec-upload-fragment.md) — Generic file upload + management
   fragment: storage adapters, key system, routes, DB schema, hooks, and client API.
 - [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment
@@ -54,6 +56,8 @@ Format:
   Implementation tasks for process-at durable hooks and generic dispatchers.
 - [Fragno DB Outbox — Implementation Plan](./impl-outbox.md) — Implementation tasks for the outbox
   clock, schema, adapter integration, and tests.
+- [Auth Organizations and Roles — Implementation Plan](./impl-auth-organizations.md) —
+  Implementation tasks for auth organizations, members, roles, invitations, and hooks.
 - [Fragno Runtime + Traceable Model Checker — Implementation Plan](./impl-runtime-and-trace.md) —
   Tasks to implement runtime injection and traceable model checker support.
 - [Fragno Upload Fragment - Implementation Plan](./impl-upload-fragment.md) — Tasks to implement

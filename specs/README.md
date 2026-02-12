@@ -91,8 +91,8 @@ very detailed, living documents that guide implementation without constraining t
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
 - [Fragno Lofi (Local-First Client) - Spec](./spec-lofi.md) - Local-first client package that polls
   the outbox and applies mutations to IndexedDB.
-- [Fragno Lofi Submit + Conflict Detection — Spec](./spec-lofi-submit.md) — Client submit endpoint,
-  conflict detection via outbox mutation log, and rebase-friendly responses.
+- [Auth Organizations and Roles — Spec](./spec-auth-organizations.md) — Add organizations, members,
+  roles, invitations, hooks, and conservative endpoints to the auth fragment.
 
 ## Implementation Plans
 
@@ -107,6 +107,8 @@ very detailed, living documents that guide implementation without constraining t
   Execution tasks for the SQL adapter unification and schema output refactor.
 - [Fragno DB Outbox — Implementation Plan](./impl-outbox.md) — Implementation tasks for the outbox
   clock, schema, adapter integration, and tests.
+- [Auth Organizations and Roles — Implementation Plan](./impl-auth-organizations.md) —
+  Implementation tasks for auth organizations, members, roles, invitations, and hooks.
 - [Upload Fragment - Implementation Plan](./impl-upload-fragment.md) - Execution tasks for the
   upload fragment spec: adapter implementations, routes, streaming support, tests, docs, and
   examples.
