@@ -102,7 +102,7 @@ const fragments: FragmentCard[] = [
     id: "auth",
     name: "Authentication",
     category: "Auth",
-    description: "Authentication fragment for users, sessions, and app security.",
+    description: "Authentication fragment for users, sessions, organizations, and roles.",
     status: "available",
     href: "/fragments/auth",
     docsHref: "/docs/auth",

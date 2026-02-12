@@ -8,7 +8,7 @@ export function meta() {
     { title: "Auth Fragment" },
     {
       name: "description",
-      content: "Authentication fragment with user, session, and role management.",
+      content: "Authentication fragment with users, sessions, organizations, and roles.",
     },
   ];
 }
@@ -26,8 +26,8 @@ const features: Feature[] = [
     icon: <Users className="size-5" />,
   },
   {
-    title: "Roles + admin",
-    description: "Built-in user overview and role updates via fragment routes.",
+    title: "Organizations + roles",
+    description: "Create organizations, manage members, and assign roles with invitations.",
     icon: <Shield className="size-5" />,
   },
   {
@@ -43,7 +43,15 @@ POST   /sign-in
 POST   /sign-out
 POST   /change-password
 GET    /users
-PATCH  /users/:userId/role`;
+PATCH  /users/:userId/role
+POST   /organizations
+GET    /organizations
+PATCH  /organizations/:organizationId
+GET    /organizations/:organizationId/members
+POST   /organizations/:organizationId/invitations
+PATCH  /organizations/invitations/:invitationId
+GET    /organizations/active
+POST   /organizations/active`;
 
 const serverSnippet = `import { createAuthFragment } from "@fragno-dev/auth";
 
@@ -74,7 +82,14 @@ export const authClient = createAuthFragmentClient();`;
 const hookSnippet = `const { mutate: signIn } = authClient.useSignIn();
 const { mutate: signOut } = authClient.useSignOut();
 const { data: me } = authClient.useMe();
-const { data: users } = authClient.useUsers();`;
+const { data: users } = authClient.useUsers();
+const { data: orgs } = authClient.useOrganizations();
+const { data: members } = authClient.useOrganizationMembers({
+  path: { organizationId },
+});
+const { data: invitations } = authClient.useOrganizationInvitations({
+  path: { organizationId },
+});`;
 
 const useCases = [
   {
@@ -82,12 +97,12 @@ const useCases = [
     description: "Launch email/password authentication with built-in routes and cookies.",
   },
   {
-    title: "Admin user management",
-    description: "List users and update roles through admin routes.",
+    title: "Team onboarding",
+    description: "Invite members to organizations and manage roles as teams grow.",
   },
   {
-    title: "Session-protected APIs",
-    description: "Use the fragment to secure internal routes with session data.",
+    title: "Multi-tenant workspaces",
+    description: "Keep sessions and active organization context in sync for workspaces.",
   },
 ];
 
@@ -102,8 +117,8 @@ export default function AuthPage() {
               Authentication Fragment
             </h1>
             <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
-              Build sign-up, sign-in, sessions, and admin workflows without rolling your own auth
-              stack.
+              Build sign-up, sessions, organizations, and role-based access without rolling your own
+              auth stack.
             </p>
             <div className="max-w-md space-y-2 pt-3">
               <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
@@ -212,7 +227,7 @@ export default function AuthPage() {
                   Client hooks
                 </h3>
                 <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Typed hooks cover sign-in, sign-up, sign-out, and user listings.
+                  Typed hooks cover auth, users, organizations, members, and invitations.
                 </p>
                 <div className="mt-4">
                   <FragnoCodeBlock
