@@ -1,0 +1,9 @@
+<bash-input>fp tree</bash-input>
+
+---
+
+<bash-stdout>FRAG-chfolkfc [todo] Refactor unit-of-work.ts to reduce complexity and improve code health</bash-stdout><bash-stderr></bash-stderr>
+
+---
+
+execute this task

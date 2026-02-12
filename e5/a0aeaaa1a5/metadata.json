@@ -1,0 +1,33 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "e5a0aeaaa1a5",
+  "strategy": "manual-commit",
+  "branch": "jan/experiment-cc-refactors-3",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/fragno-db/src/adapters/in-memory/in-memory-adapter.ts",
+    "packages/fragno-db/src/adapters/in-memory/in-memory-uow.mutations.test.ts",
+    "packages/fragno-db/src/adapters/in-memory/in-memory-uow.retrieval.test.ts",
+    "packages/fragno-db/src/adapters/shared/from-unit-of-work-compiler.ts",
+    "packages/fragno-db/src/mod.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work-types.test.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work.test.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e5/a0aeaaa1a5/0/metadata.json",
+      "transcript": "/e5/a0aeaaa1a5/0/full.jsonl",
+      "context": "/e5/a0aeaaa1a5/0/context.md",
+      "content_hash": "/e5/a0aeaaa1a5/0/content_hash.txt",
+      "prompt": "/e5/a0aeaaa1a5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55,
+    "cache_creation_tokens": 137826,
+    "cache_read_tokens": 3756173,
+    "output_tokens": 14062,
+    "api_call_count": 53
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "e5a0aeaaa1a5",
+  "session_id": "691c2abf-a05c-4143-9c2f-9dbdbbb8e148",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-12T11:00:26.397578635Z",
+  "branch": "jan/experiment-cc-refactors-3",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/fragno-db/src/adapters/in-memory/in-memory-adapter.ts",
+    "packages/fragno-db/src/adapters/in-memory/in-memory-uow.mutations.test.ts",
+    "packages/fragno-db/src/adapters/in-memory/in-memory-uow.retrieval.test.ts",
+    "packages/fragno-db/src/adapters/shared/from-unit-of-work-compiler.ts",
+    "packages/fragno-db/src/mod.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work-types.test.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work.test.ts",
+    "packages/fragno-db/src/query/unit-of-work/unit-of-work.ts"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "b247eb14-a8b3-4518-bc25-31b12491d228",
+  "token_usage": {
+    "input_tokens": 55,
+    "cache_creation_tokens": 137826,
+    "cache_read_tokens": 3756173,
+    "output_tokens": 14062,
+    "api_call_count": 53
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-12T11:00:26.153990426Z",
+    "agent_lines": 245,
+    "human_added": 415,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 660,
+    "agent_percentage": 37.121212121212125
+  }
+}
