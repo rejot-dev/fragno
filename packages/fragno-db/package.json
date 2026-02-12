@@ -5,9 +5,13 @@
   "exports": {
     ".": {
       "development": {
+        "workerd": "./src/mod.ts",
+        "worker": "./src/mod.ts",
         "browser": "./src/browser/mod.ts",
         "default": "./src/mod.ts"
       },
+      "workerd": "./dist/mod.js",
+      "worker": "./dist/mod.js",
       "browser": "./dist/browser/mod.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
@@ -78,7 +82,11 @@
       "default": "./dist/client.js"
     },
     "./sync": {
-      "development": "./src/sync/index.ts",
+      "development": {
+        "browser": "./src/browser/mod.ts",
+        "default": "./src/sync/index.ts"
+      },
+      "browser": "./dist/browser/mod.js",
       "types": "./dist/sync/index.d.ts",
       "default": "./dist/sync/index.js"
     },
