@@ -1,0 +1,131 @@
+---
+title: Organizations
+description: Configure organizations, invitations, and /me bootstrap data.
+icon: Building2
+---
+
+## Overview
+
+Organizations extend the Auth fragment with members, role assignments, invitations, and an `/me`
+bootstrap payload that returns organization context for SPAs.
+
+- Organizations are enabled by default. Disable with `organizations: false`.
+- Default roles are `owner`, `admin`, and `member` (customizable).
+- Invitations are token-based and can be accepted or rejected by the invited user.
+
+## Quickstart
+
+Enable organizations in your Auth fragment config (this is the default) and optionally enable
+auto-creation for new users.
+
+```ts
+import { authFragment } from "@fragno-dev/auth";
+
+export const auth = authFragment({
+  organizations: {
+    roles: ["owner", "admin", "member"],
+    creatorRoles: ["owner"],
+    defaultMemberRoles: ["member"],
+    autoCreateOrganization: {
+      name: ({ email }) => `${email.split("@")[0]}'s Workspace`,
+      slug: ({ userId }) => `org-${userId.slice(0, 8)}`,
+    },
+  },
+});
+```
+
+If you want to disable organizations entirely:
+
+```ts
+export const auth = authFragment({
+  organizations: false,
+});
+```
+
+## Invitation Flow
+
+1. Create an invitation with `POST /organizations/:organizationId/invitations`.
+2. Accept or reject it with `PATCH /organizations/invitations/:invitationId` using the token.
+3. Use `/organizations/invitations` or `/me` to list pending invites for the current user.
+
+## /me Bootstrap Payload
+
+`GET /me` returns the authenticated user plus organization context, which is useful for SPA
+bootstrapping. When organizations are disabled, it returns empty organization arrays.
+
+```json
+{
+  "user": { "id": "user_123", "email": "user@example.com", "role": "user" },
+  "organizations": [
+    {
+      "organization": {
+        "id": "org_123",
+        "name": "Acme",
+        "slug": "acme",
+        "logoUrl": null,
+        "metadata": null,
+        "createdBy": "user_123",
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "updatedAt": "2024-01-01T00:00:00.000Z",
+        "deletedAt": null
+      },
+      "member": {
+        "id": "member_123",
+        "organizationId": "org_123",
+        "userId": "user_123",
+        "roles": ["owner"],
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "updatedAt": "2024-01-01T00:00:00.000Z"
+      }
+    }
+  ],
+  "activeOrganization": null,
+  "invitations": []
+}
+```
+
+## Route Reference
+
+All organization routes require a session. The session ID can be provided via cookies or the
+`sessionId` query parameter.
+
+### Organizations
+
+| Method   | Path                             | Notes                                                                    |
+| -------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `POST`   | `/organizations`                 | Create an organization. Returns organization + creator member.           |
+| `GET`    | `/organizations`                 | List organizations for the current user. Supports `pageSize` + `cursor`. |
+| `GET`    | `/organizations/:organizationId` | Fetch organization + current member.                                     |
+| `PATCH`  | `/organizations/:organizationId` | Update name/slug/logoUrl/metadata.                                       |
+| `DELETE` | `/organizations/:organizationId` | Soft-delete an organization.                                             |
+
+### Active Organization
+
+| Method | Path                    | Notes                                        |
+| ------ | ----------------------- | -------------------------------------------- |
+| `GET`  | `/organizations/active` | Fetch the active organization (or `null`).   |
+| `POST` | `/organizations/active` | Set the active organization for the session. |
+
+### Members
+
+| Method   | Path                                               | Notes                                         |
+| -------- | -------------------------------------------------- | --------------------------------------------- |
+| `GET`    | `/organizations/:organizationId/members`           | List members. Supports `pageSize` + `cursor`. |
+| `POST`   | `/organizations/:organizationId/members`           | Add a user to an organization.                |
+| `PATCH`  | `/organizations/:organizationId/members/:memberId` | Replace member roles.                         |
+| `DELETE` | `/organizations/:organizationId/members/:memberId` | Remove a member.                              |
+
+### Invitations
+
+| Method  | Path                                         | Notes                                          |
+| ------- | -------------------------------------------- | ---------------------------------------------- |
+| `GET`   | `/organizations/:organizationId/invitations` | List invitations for an organization.          |
+| `POST`  | `/organizations/:organizationId/invitations` | Invite a user by email.                        |
+| `GET`   | `/organizations/invitations`                 | List pending invitations for the current user. |
+| `PATCH` | `/organizations/invitations/:invitationId`   | Accept/reject/cancel with `action` + token.    |
+
+### /me
+
+| Method | Path  | Notes                                                              |
+| ------ | ----- | ------------------------------------------------------------------ |
+| `GET`  | `/me` | Returns user, organizations, active organization, and invitations. |

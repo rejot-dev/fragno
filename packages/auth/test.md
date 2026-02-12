@@ -9,14 +9,43 @@ echo "Sign-up response: $RESPONSE"
 # Extract sessionId (requires jq - install with: brew install jq)
 SESSION_ID=$(echo $RESPONSE | jq -r '.sessionId')
 
-# 2. Check current user
+# 2. Check current user (/me bootstrap payload)
 curl -X GET "http://localhost:5173/api/auth/me?sessionId=$SESSION_ID"
 
-# 3. Sign out
+# 3. Create an organization
+ORG_RESPONSE=$(curl -s -X POST http://localhost:5173/api/auth/organizations?sessionId=$SESSION_ID \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Acme","slug":"acme"}')
+
+ORG_ID=$(echo $ORG_RESPONSE | jq -r '.organization.id')
+
+# 4. List organizations for the current user
+curl -X GET "http://localhost:5173/api/auth/organizations?sessionId=$SESSION_ID"
+
+# 5. Set the active organization
+curl -X POST "http://localhost:5173/api/auth/organizations/active?sessionId=$SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d "{\"organizationId\":\"$ORG_ID\"}"
+
+# 6. Invite a member (returns invitation token)
+INVITE_RESPONSE=$(curl -s -X POST \
+  "http://localhost:5173/api/auth/organizations/$ORG_ID/invitations?sessionId=$SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"invitee@example.com","roles":["member"]}')
+
+INVITE_ID=$(echo $INVITE_RESPONSE | jq -r '.invitation.id')
+INVITE_TOKEN=$(echo $INVITE_RESPONSE | jq -r '.invitation.token')
+
+# 7. Accept or reject the invitation
+curl -X PATCH "http://localhost:5173/api/auth/organizations/invitations/$INVITE_ID?sessionId=$SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"accept\",\"token\":\"$INVITE_TOKEN\"}"
+
+# 8. Sign out
 curl -X POST http://localhost:5173/api/auth/sign-out \
   -H "Content-Type: application/json" \
   -d "{\"sessionId\":\"$SESSION_ID\"}"
 
-# 4. Verify session is invalid
+# 9. Verify session is invalid
 curl -X GET "http://localhost:5173/api/auth/me?sessionId=$SESSION_ID"
 ```
