@@ -4,6 +4,10 @@ import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/d
 import { authSchema } from "./schema";
 import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
 import { createSessionServices, sessionRoutesFactory } from "./session/session";
+import { createActiveOrganizationServices } from "./organization/active-organization";
+import { createOrganizationInvitationServices } from "./organization/invitation-services";
+import { createOrganizationMemberServices } from "./organization/member-services";
+import { createOrganizationServices } from "./organization/organization-services";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -26,6 +30,10 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       ...createUserServices(),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
+      ...createOrganizationServices(),
+      ...createOrganizationMemberServices(),
+      ...createOrganizationInvitationServices(),
+      ...createActiveOrganizationServices(),
     });
   })
   .build();
