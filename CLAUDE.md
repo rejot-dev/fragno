@@ -77,6 +77,7 @@ Examples:
   - Schema definition with versioning and migrations
   - Kysely and Drizzle adapters
   - Goal is to let Fragment authors define a (simple) data model to store data in the user's db
+  - Durable hooks dispatchers (Node + Cloudflare DO) live in `@fragno-dev/db/dispatchers/*`
 - `packages/fragno-test/` - Testing utilities for fragment authors
 
 ### First-Party Fragments & Integrations
@@ -88,8 +89,6 @@ Examples:
 - `packages/stripe/` - Stripe integration fragment
 - `packages/corpus/` - Content corpus utilities used by fragments
 - `packages/jsonforms-shadcn-renderers/` - JSONForms renderers (shadcn/ui)
-- `packages/workflows-dispatcher-node/` - Node workflow dispatcher
-- `packages/workflows-dispatcher-cloudflare-do/` - Cloudflare Durable Objects dispatcher
 
 ### Tooling & CLIs
 

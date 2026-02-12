@@ -93,29 +93,23 @@ Responsibilities:
 - Runner core (runtime-agnostic): deterministic replay + scheduling decisions
 - Dispatcher interface: a small abstraction used by durable hooks to “wake” the runner.
 
-### 5.2 Dispatcher Package (Node): `@fragno-dev/workflows-dispatcher-node`
+### 5.2 Dispatcher (Node): `@fragno-dev/db/dispatchers/node`
 
 Responsibilities:
 
-- Provide a Node-friendly dispatcher implementation (in-process):
-  - “wake” the runner immediately when durable hooks fire
-  - optional polling loop (low-latency local dev)
-- Provide convenience helpers to run the runner in common Node deployments (server, background
-  worker).
+- Provide an in-process durable hooks dispatcher (polling + manual wake).
+- Run hook processing outside request lifecycles for Node deployments (server or background worker).
 
-### 5.3 Dispatcher Package (Cloudflare): `@fragno-dev/workflows-dispatcher-cloudflare-do`
+### 5.3 Dispatcher (Cloudflare DO): `@fragno-dev/db/dispatchers/cloudflare-do`
 
 Responsibilities:
 
-- Provide a Cloudflare **Durable Object** runtime that _hosts the system_ (v1):
-  - runs the **runner** inside the DO
-  - uses the DO’s SQL storage via `DurableObjectDialect` as the fragment database
-  - schedules runner ticks via DO alarms and/or explicit fetch calls
-  - provides a safe “single logical dispatcher” entrypoint **per DB namespace** (v1)
-- Recommended integration path for Cloudflare deployments.
+- Provide a Cloudflare **Durable Object** alarm handler that processes due durable hooks.
+- Schedule alarms from `getNextWakeAt()` and coalesce overlapping runs.
+- Recommended integration path for Cloudflare deployments that use Durable Objects.
 
-Note: the main package must remain runtime-agnostic; Cloudflare/Node-specific APIs live only in the
-dispatcher packages.
+Note: the main package must remain runtime-agnostic; Cloudflare/Node-specific APIs live in the
+`@fragno-dev/db` dispatchers.
 
 Scalability note (future):
 
@@ -473,9 +467,9 @@ Rules:
 - A **Fragno runtime** (`FragnoRuntime`) providing time and randomness (SPEC §6.7).
 - Any authentication/authorization policy for management endpoints (configurable).
 - A way to run/wake the runner (all supported):
-  - in-process (Node) via `@fragno-dev/workflows-dispatcher-node`
+  - in-process (Node) via `@fragno-dev/db/dispatchers/node`
   - HTTP “tick” endpoint invoked by cron/scheduler
-  - Cloudflare Durable Object runtime via `@fragno-dev/workflows-dispatcher-cloudflare-do`
+  - Cloudflare Durable Object runtime via `@fragno-dev/db/dispatchers/cloudflare-do`
 
 ### 7.4 WorkflowsFragmentConfig (runtime-focused)
 
@@ -846,8 +840,8 @@ The fragment config should allow wiring durable hook execution to a real “wake
 
 - Node/in-process: `runner.wake()` (set a flag / resolve a promise) so the poll loop runs quickly.
 - HTTP/self-call: `fetch(<tick-endpoint>)`.
-- Cloudflare: use the Durable Object dispatcher (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
-  to run and schedule via alarms and/or trigger ticks.
+- Cloudflare: use the Durable Object dispatcher (`@fragno-dev/db/dispatchers/cloudflare-do`) to run
+  and schedule via alarms and/or trigger ticks.
 
 If no dispatcher is provided, the system still works with polling, but with higher latency.
 
@@ -1100,9 +1094,9 @@ Cloudflare-style expectations:
 ## 16. Decisions (Locked)
 
 1. Single domain package: `@fragno-dev/workflows` (SPEC §5.1)
-2. Dispatcher packages:
-   - Node: `@fragno-dev/workflows-dispatcher-node` (SPEC §5.2)
-   - Cloudflare DO: `@fragno-dev/workflows-dispatcher-cloudflare-do` (SPEC §5.3)
+2. Dispatcher entrypoints:
+   - Node: `@fragno-dev/db/dispatchers/node` (SPEC §5.2)
+   - Cloudflare DO: `@fragno-dev/db/dispatchers/cloudflare-do` (SPEC §5.3)
 3. Runner models supported: in-process, HTTP tick, and Cloudflare DO scheduling (SPEC §7.3, §10.3)
 4. Distributed runners required and must be well tested (SPEC §9.1.1)
 5. Retention: infinite by default; keep full history always (SPEC §11.8, §14.1)
