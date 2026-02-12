@@ -21,10 +21,11 @@ const mapMember = (
     updatedAt: Date;
   },
   roles: string[],
+  overrides?: { organizationId?: string; userId?: string },
 ): OrganizationMember<string> => ({
   id: toExternalId(member.id),
-  organizationId: toExternalId(member.organizationId),
-  userId: toExternalId(member.userId),
+  organizationId: overrides?.organizationId ?? toExternalId(member.organizationId),
+  userId: overrides?.userId ?? toExternalId(member.userId),
   roles,
   createdAt: member.createdAt,
   updatedAt: member.updatedAt,
@@ -32,6 +33,38 @@ const mapMember = (
 
 export function createOrganizationMemberServices() {
   return {
+    getOrganizationMemberByUser: function (
+      this: AuthServiceContext,
+      params: { organizationId: string; userId: string },
+    ) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("organizationMember", (b) =>
+            b.whereIndex("idx_org_member_org_user", (eb) =>
+              eb.and(
+                eb("organizationId", "=", params.organizationId),
+                eb("userId", "=", params.userId),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([member]) =>
+          member
+            ? mapMember(
+                {
+                  id: member.id,
+                  organizationId: member.organizationId,
+                  userId: member.userId,
+                  createdAt: member.createdAt,
+                  updatedAt: member.updatedAt,
+                },
+                [],
+              )
+            : null,
+        )
+        .build();
+    },
+
     createOrganizationMember: function (this: AuthServiceContext, input: CreateMemberInput) {
       const roles = normalizeRoleNames(input.roles, DEFAULT_MEMBER_ROLES);
       const now = new Date();
@@ -222,7 +255,8 @@ export function createOrganizationMemberServices() {
             const query = b
               .whereIndex("idx_org_member_org", (eb) => eb("organizationId", "=", organizationId))
               .orderByIndex("idx_org_member_org", effectiveSortOrder)
-              .pageSize(effectivePageSize);
+              .pageSize(effectivePageSize)
+              .join((j) => j.organizationMemberOrganization().organizationMemberUser());
 
             return cursor ? query.after(cursor) : query;
           }),
@@ -238,6 +272,14 @@ export function createOrganizationMemberServices() {
                 updatedAt: member.updatedAt,
               },
               [],
+              {
+                organizationId: member.organizationMemberOrganization
+                  ? toExternalId(member.organizationMemberOrganization.id)
+                  : toExternalId(member.organizationId),
+                userId: member.organizationMemberUser
+                  ? toExternalId(member.organizationMemberUser.id)
+                  : toExternalId(member.userId),
+              },
             ),
           );
 
@@ -260,6 +302,45 @@ export function createOrganizationMemberServices() {
         .transformRetrieve(([roles]) => ({
           roles: roles.map((role) => role.role),
         }))
+        .build();
+    },
+
+    listOrganizationMemberRolesForMembers: function (
+      this: AuthServiceContext,
+      memberIds: readonly string[],
+    ) {
+      if (memberIds.length === 0) {
+        return this.serviceTx(authSchema)
+          .mutate(() => ({ rolesByMemberId: {} as Record<string, string[]> }))
+          .build();
+      }
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.find("organizationMemberRole", (b) =>
+            b
+              .whereIndex("idx_org_member_role_member", (eb) =>
+                memberIds.length === 1
+                  ? eb("memberId", "=", memberIds[0])
+                  : eb.or(...memberIds.map((memberId) => eb("memberId", "=", memberId))),
+              )
+              .join((j) => j.organizationMemberRoleMember()),
+          ),
+        )
+        .transformRetrieve(([roles]) => {
+          const rolesByMemberId: Record<string, string[]> = {};
+
+          for (const role of roles) {
+            const memberId = role.organizationMemberRoleMember
+              ? toExternalId(role.organizationMemberRoleMember.id)
+              : toExternalId(role.memberId);
+            const list = rolesByMemberId[memberId] ?? [];
+            list.push(role.role);
+            rolesByMemberId[memberId] = list;
+          }
+
+          return { rolesByMemberId };
+        })
         .build();
     },
   };

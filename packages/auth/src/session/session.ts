@@ -9,6 +9,11 @@ import {
   type CookieOptions,
 } from "../utils/cookie";
 import type { Role, authFragmentDefinition } from "..";
+import {
+  serializeInvitation,
+  serializeMember,
+  serializeOrganization,
+} from "../organization/serializers";
 
 type AuthServiceContext = DatabaseServiceContext<{}>;
 
@@ -187,9 +192,84 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
         path: "/me",
         queryParameters: ["sessionId"],
         outputSchema: z.object({
-          userId: z.string(),
-          email: z.string(),
-          role: z.enum(["user", "admin"]),
+          user: z.object({
+            id: z.string(),
+            email: z.string(),
+            role: z.enum(["user", "admin"]),
+          }),
+          organizations: z.array(
+            z.object({
+              organization: z.object({
+                id: z.string(),
+                name: z.string(),
+                slug: z.string(),
+                logoUrl: z.string().nullable(),
+                metadata: z.record(z.string(), z.unknown()).nullable(),
+                createdBy: z.string(),
+                createdAt: z.string(),
+                updatedAt: z.string(),
+                deletedAt: z.string().nullable(),
+              }),
+              member: z.object({
+                id: z.string(),
+                organizationId: z.string(),
+                userId: z.string(),
+                roles: z.array(z.string()),
+                createdAt: z.string(),
+                updatedAt: z.string(),
+              }),
+            }),
+          ),
+          activeOrganization: z
+            .object({
+              organization: z.object({
+                id: z.string(),
+                name: z.string(),
+                slug: z.string(),
+                logoUrl: z.string().nullable(),
+                metadata: z.record(z.string(), z.unknown()).nullable(),
+                createdBy: z.string(),
+                createdAt: z.string(),
+                updatedAt: z.string(),
+                deletedAt: z.string().nullable(),
+              }),
+              member: z.object({
+                id: z.string(),
+                organizationId: z.string(),
+                userId: z.string(),
+                roles: z.array(z.string()),
+                createdAt: z.string(),
+                updatedAt: z.string(),
+              }),
+            })
+            .nullable(),
+          invitations: z.array(
+            z.object({
+              invitation: z.object({
+                id: z.string(),
+                organizationId: z.string(),
+                email: z.string(),
+                roles: z.array(z.string()),
+                status: z.enum(["pending", "accepted", "rejected", "canceled", "expired"]),
+                token: z.string(),
+                inviterId: z.string(),
+                expiresAt: z.string(),
+                createdAt: z.string(),
+                respondedAt: z.string().nullable(),
+              }),
+              organization: z.object({
+                id: z.string(),
+                name: z.string(),
+                slug: z.string(),
+                logoUrl: z.string().nullable(),
+                metadata: z.record(z.string(), z.unknown()).nullable(),
+                createdBy: z.string(),
+                createdAt: z.string(),
+                updatedAt: z.string(),
+                deletedAt: z.string().nullable(),
+              }),
+            }),
+          ),
         }),
         errorCodes: ["session_invalid"],
         handler: async function ({ query, headers }, { json, error }) {
@@ -208,10 +288,60 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
+          const [organizationsResult] = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.getOrganizationsForUser({
+                userId: session.user.id,
+                pageSize: 1000,
+              }),
+            ])
+            .execute();
+
+          const memberIds = organizationsResult.organizations.map((entry) => entry.member.id);
+          const [rolesResult] = await this.handlerTx()
+            .withServiceCalls(() => [services.listOrganizationMemberRolesForMembers(memberIds)])
+            .execute();
+
+          const organizations = organizationsResult.organizations.map((entry) => ({
+            organization: serializeOrganization(entry.organization),
+            member: serializeMember({
+              ...entry.member,
+              roles: rolesResult.rolesByMemberId[entry.member.id] ?? [],
+            }),
+          }));
+
+          const [invitationsResult] = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.listOrganizationInvitationsForUser(session.user.email),
+            ])
+            .execute();
+
+          const invitations = invitationsResult.invitations
+            .filter((entry) => entry.organization && entry.invitation.status === "pending")
+            .map((entry) => ({
+              invitation: serializeInvitation(entry.invitation),
+              organization: serializeOrganization(entry.organization!),
+            }));
+
+          const [activeResult] = await this.handlerTx()
+            .withServiceCalls(() => [services.getActiveOrganization(sessionId)])
+            .execute();
+
+          const activeOrganization = activeResult.organizationId
+            ? (organizations.find(
+                (entry) => entry.organization.id === activeResult.organizationId,
+              ) ?? null)
+            : null;
+
           return json({
-            userId: session.user.id,
-            email: session.user.email,
-            role: session.user.role as Role,
+            user: {
+              id: session.user.id,
+              email: session.user.email,
+              role: session.user.role as Role,
+            },
+            organizations,
+            activeOrganization,
+            invitations,
           });
         },
       }),
