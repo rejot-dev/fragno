@@ -13,6 +13,7 @@ import type {
 import type { ReferenceTarget } from "./types";
 import { normalizeValue } from "../query/normalize";
 import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
+import { stripShardField } from "../system-columns";
 
 type LofiRow = {
   key: [string, string, string, string];
@@ -591,7 +592,8 @@ const applyMutation = async <
     return;
   }
 
-  const values = mutation.op === "create" ? mutation.values : mutation.set;
+  const rawValues = mutation.op === "create" ? mutation.values : mutation.set;
+  const values = stripShardField(rawValues) ?? rawValues;
   if (existing && existing._lofi.versionstamp.startsWith("local-")) {
     const isMatch = Object.entries(values).every(([column, value]) =>
       Object.is(existing.data[column], value),
@@ -613,7 +615,8 @@ const applyMutation = async <
     return;
   }
 
-  const data = existing ? { ...existing.data, ...values } : { ...values };
+  const merged = existing ? { ...existing.data, ...values } : { ...values };
+  const data = stripShardField(merged) ?? merged;
 
   const internalId = existing
     ? existing._lofi.internalId

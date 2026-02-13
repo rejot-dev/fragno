@@ -10,6 +10,7 @@ import { buildCondition, type Condition, type ConditionBuilder } from "../../que
 import { compareNormalizedValues } from "./value-comparison";
 import type { InMemoryLofiRow } from "./store";
 import { InMemoryLofiStore } from "./store";
+import { shouldIgnoreSystemColumn } from "../../system-columns";
 
 export type InMemoryQueryContext = {
   endpointName: string;
@@ -96,10 +97,16 @@ const buildSelection = (
 
   if (!select || select === true) {
     for (const columnName of Object.keys(table.columns)) {
+      if (shouldIgnoreSystemColumn(columnName)) {
+        continue;
+      }
       selection.add(columnName);
     }
   } else {
     for (const columnName of select) {
+      if (shouldIgnoreSystemColumn(columnName)) {
+        continue;
+      }
       selection.add(columnName);
     }
   }
@@ -133,6 +140,9 @@ const selectRow = (
   const selected: RowSelection = {};
 
   for (const columnName of selection) {
+    if (shouldIgnoreSystemColumn(columnName)) {
+      continue;
+    }
     if (columnName === "_internalId") {
       selected[columnName] = row._lofi.internalId;
       continue;

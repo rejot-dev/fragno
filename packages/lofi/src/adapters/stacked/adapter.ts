@@ -8,6 +8,7 @@ import type {
 } from "../../types";
 import { InMemoryLofiAdapter } from "../in-memory/adapter";
 import { createStackedQueryEngine } from "./merge";
+import { shouldIgnoreSystemColumn, stripShardField } from "../../system-columns";
 
 export type StackedLofiAdapterOptions = {
   base: LofiAdapter & LofiQueryableAdapter;
@@ -21,6 +22,9 @@ const extractRowValues = (
 ): Record<string, unknown> => {
   const values: Record<string, unknown> = {};
   for (const columnName of Object.keys(table.columns)) {
+    if (shouldIgnoreSystemColumn(columnName)) {
+      continue;
+    }
     if (columnName in row) {
       values[columnName] = row[columnName];
     }
@@ -112,12 +116,13 @@ export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
         continue;
       }
 
+      const mergedSet = stripShardField(mutation.set) ?? mutation.set;
       materialized.push({
         op: "create",
         schema: mutation.schema,
         table: mutation.table,
         externalId: mutation.externalId,
-        values: { ...values, ...mutation.set },
+        values: { ...values, ...mergedSet },
         versionstamp: mutation.versionstamp,
       });
     }
