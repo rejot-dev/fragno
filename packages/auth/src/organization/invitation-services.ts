@@ -3,6 +3,7 @@ import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type {
+  Organization,
   OrganizationConfig,
   OrganizationInvitation,
   OrganizationInvitationStatus,
@@ -10,6 +11,7 @@ import type {
 import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils";
 import { canManageOrganization, isGlobalAdmin } from "./permissions";
 import type { Role } from "../types";
+import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
@@ -21,6 +23,7 @@ type CreateInvitationInput = {
   expiresAt?: Date;
   expiresInDays?: number;
   actor: { userId: string; userRole: Role };
+  actorMemberId?: string;
 };
 
 type RespondInvitationInput = {
@@ -29,12 +32,34 @@ type RespondInvitationInput = {
   token?: string;
   actor: { userId: string; userRole: Role };
   organizationId?: string;
+  actorMemberId?: string;
 };
 
 type OrganizationInvitationServiceOptions = {
-  hooksEnabled?: boolean;
   organizationConfig?: OrganizationConfig<string>;
 };
+
+const mapOrganization = (organization: {
+  id: unknown;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  metadata: unknown;
+  createdBy: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}): Organization => ({
+  id: toExternalId(organization.id),
+  name: organization.name,
+  slug: organization.slug,
+  logoUrl: organization.logoUrl ?? null,
+  metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
+  createdBy: toExternalId(organization.createdBy),
+  createdAt: organization.createdAt,
+  updatedAt: organization.updatedAt,
+  deletedAt: organization.deletedAt ?? null,
+});
 
 const mapInvitation = (invitation: {
   id: unknown;
@@ -81,7 +106,7 @@ const filterRolesForMemberId = (
   if (!member) {
     return [];
   }
-  const candidates = new Set([toExternalId(member.id), toExternalId(member._internalId ?? "")]);
+  const candidates = new Set([member.id, member._internalId].filter(Boolean).map(toExternalId));
   return roles
     .filter(
       (role) =>
@@ -95,7 +120,6 @@ const filterRolesForMemberId = (
 export function createOrganizationInvitationServices(
   options: OrganizationInvitationServiceOptions = {},
 ) {
-  const hooksEnabled = options.hooksEnabled ?? false;
   const limits = options.organizationConfig?.limits;
   const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
@@ -104,7 +128,9 @@ export function createOrganizationInvitationServices(
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("organizationInvitation", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", invitationId)),
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", invitationId))
+              .join((j) => j.organizationInvitationOrganization()),
           ),
         )
         .transformRetrieve(([invitation]) =>
@@ -112,7 +138,9 @@ export function createOrganizationInvitationServices(
             ? {
                 invitation: mapInvitation({
                   id: invitation.id,
-                  organizationId: invitation.organizationId,
+                  organizationId: invitation.organizationInvitationOrganization
+                    ? invitation.organizationInvitationOrganization.id
+                    : invitation.organizationId,
                   email: invitation.email,
                   roles: invitation.roles,
                   status: invitation.status,
@@ -135,6 +163,7 @@ export function createOrganizationInvitationServices(
       const roles = normalizeRoleNames(input.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
       const now = new Date();
       const token = randomBytes(32).toString("hex");
+      const actorMemberId = input.actorMemberId;
       const expiresAt = buildExpiresAt({
         ...input,
         expiresInDays: input.expiresInDays ?? invitationExpiresInDays,
@@ -144,16 +173,23 @@ export function createOrganizationInvitationServices(
         .retrieve((uow) =>
           uow
             .findFirst("organizationMember", (b) =>
-              b.whereIndex("idx_org_member_org_user", (eb) =>
-                eb.and(
-                  eb("organizationId", "=", input.organizationId),
-                  eb("userId", "=", input.actor.userId),
-                ),
-              ),
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", input.organizationId),
+                    eb("userId", "=", input.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
             )
-            .find("organizationMemberRole", (b) =>
-              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
-            )
+            .find("organizationMemberRole", (b) => {
+              const scoped = actorMemberId
+                ? b.whereIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", actorMemberId),
+                  )
+                : b.whereIndex("primary");
+              return scoped.join((j) => j.organizationMemberRoleMember());
+            })
             .find("organizationInvitation", (b) =>
               b.whereIndex("idx_org_invitation_org_status", (eb) =>
                 eb.and(
@@ -161,9 +197,12 @@ export function createOrganizationInvitationServices(
                   eb("status", "=", "pending"),
                 ),
               ),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.actor.userId)),
             ),
         )
-        .mutate(({ uow, retrieveResult: [actorMember, actorRoles, invitations] }) => {
+        .mutate(({ uow, retrieveResult: [actorMember, actorRoles, invitations, actorUser] }) => {
           if (!actorMember) {
             return { ok: false as const, code: "permission_denied" as const };
           }
@@ -192,30 +231,34 @@ export function createOrganizationInvitationServices(
             respondedAt: null,
           });
 
-          if (hooksEnabled) {
+          const organization = actorMember.organizationMemberOrganization
+            ? mapOrganization(actorMember.organizationMemberOrganization)
+            : null;
+          const invitation = mapInvitation({
+            id: invitationId,
+            organizationId: input.organizationId,
+            email: input.email,
+            roles,
+            status: "pending",
+            token,
+            inviterId: input.inviterId,
+            expiresAt,
+            createdAt: now,
+            respondedAt: null,
+          });
+          const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+
+          if (organization) {
             uow.triggerHook("onInvitationCreated", {
-              organizationId: input.organizationId,
-              invitationId: invitationId.valueOf(),
-              email: input.email,
-              roles,
-              inviterId: input.inviterId,
+              organization,
+              invitation,
+              actor: actorSummary,
             });
           }
 
           return {
             ok: true as const,
-            invitation: mapInvitation({
-              id: invitationId,
-              organizationId: input.organizationId,
-              email: input.email,
-              roles,
-              status: "pending",
-              token,
-              inviterId: input.inviterId,
-              expiresAt,
-              createdAt: now,
-              respondedAt: null,
-            }),
+            invitation,
           };
         })
         .build();
@@ -244,13 +287,20 @@ export function createOrganizationInvitationServices(
         .build();
     },
 
-    listOrganizationInvitationsForUser: function (this: AuthServiceContext, email: string) {
+    listOrganizationInvitationsForUser: function (
+      this: AuthServiceContext,
+      params: { email: string; status?: OrganizationInvitationStatus },
+    ) {
+      const { email, status } = params;
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.find("organizationInvitation", (b) =>
-            b
-              .whereIndex("idx_org_invitation_email", (eb) => eb("email", "=", email))
-              .join((j) => j.organizationInvitationOrganization()),
+            (status
+              ? b.whereIndex("idx_org_invitation_email_status", (eb) =>
+                  eb.and(eb("email", "=", email), eb("status", "=", status)),
+                )
+              : b.whereIndex("idx_org_invitation_email", (eb) => eb("email", "=", email))
+            ).join((j) => j.organizationInvitationOrganization()),
           ),
         )
         .transformRetrieve(([invitations]) => ({
@@ -294,12 +344,15 @@ export function createOrganizationInvitationServices(
       input: RespondInvitationInput,
     ) {
       const now = new Date();
+      const actorMemberId = input.actorMemberId;
 
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow
             .findFirst("organizationInvitation", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", input.invitationId)),
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", input.invitationId))
+                .join((j) => j.organizationInvitationOrganization()),
             )
             .findFirst("organizationMember", (b) =>
               b.whereIndex("idx_org_member_org_user", (eb) =>
@@ -309,100 +362,136 @@ export function createOrganizationInvitationServices(
                 ),
               ),
             )
-            .find("organizationMemberRole", (b) =>
-              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
-            )
+            .find("organizationMemberRole", (b) => {
+              const scoped = actorMemberId
+                ? b.whereIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", actorMemberId),
+                  )
+                : b.whereIndex("primary");
+              return scoped.join((j) => j.organizationMemberRoleMember());
+            })
             .find("organizationMember", (b) =>
-              b.whereIndex("idx_org_member_org", (eb) =>
-                eb("organizationId", "=", input.organizationId ?? ""),
-              ),
+              b
+                .whereIndex("idx_org_member_org", (eb) =>
+                  eb("organizationId", "=", input.organizationId ?? ""),
+                )
+                .join((j) => j.organizationMemberUser()),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.actor.userId)),
             ),
         )
-        .mutate(({ uow, retrieveResult: [invitation, actorMember, actorRoles, members] }) => {
-          if (!invitation) {
-            return { ok: false as const, code: "invitation_not_found" as const };
-          }
-
-          const status = invitation.status as OrganizationInvitationStatus;
-          if (status !== "pending") {
-            return { ok: false as const, code: "invitation_not_found" as const };
-          }
-
-          if (input.action !== "cancel") {
-            if (!input.token || input.token !== invitation.token) {
-              return { ok: false as const, code: "invalid_token" as const };
+        .mutate(
+          ({ uow, retrieveResult: [invitation, actorMember, actorRoles, members, actorUser] }) => {
+            if (!invitation) {
+              return { ok: false as const, code: "invitation_not_found" as const };
             }
 
-            if (invitation.expiresAt < now) {
-              return { ok: false as const, code: "invitation_expired" as const };
-            }
-          }
-
-          if (input.action === "cancel") {
-            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
-            const isInviter = toExternalId(invitation.inviterId) === input.actor.userId;
-            const canCancel =
-              isInviter ||
-              isGlobalAdmin(input.actor.userRole) ||
-              (actorMember && canManageOrganization(actorRoleNames));
-
-            if (!canCancel) {
-              return { ok: false as const, code: "permission_denied" as const };
-            }
-          }
-
-          if (input.action === "accept") {
-            if (
-              limits?.membersPerOrganization !== undefined &&
-              members.length >= limits.membersPerOrganization
-            ) {
-              return { ok: false as const, code: "limit_reached" as const };
+            const status = invitation.status as OrganizationInvitationStatus;
+            if (status !== "pending") {
+              return { ok: false as const, code: "invitation_not_found" as const };
             }
 
-            if (actorMember) {
-              return { ok: false as const, code: "permission_denied" as const };
+            if (input.action !== "cancel") {
+              if (!input.token || input.token !== invitation.token) {
+                return { ok: false as const, code: "invalid_token" as const };
+              }
+
+              if (invitation.expiresAt < now) {
+                return { ok: false as const, code: "invitation_expired" as const };
+              }
             }
 
-            const memberId = uow.create("organizationMember", {
-              organizationId: invitation.organizationId,
-              userId: input.actor.userId,
-              createdAt: now,
-              updatedAt: now,
-            });
+            if (input.action === "cancel") {
+              const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+              const isInviter = toExternalId(invitation.inviterId) === input.actor.userId;
+              const canCancel =
+                isInviter ||
+                isGlobalAdmin(input.actor.userRole) ||
+                (actorMember && canManageOrganization(actorRoleNames));
 
-            const roles = Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [];
-
-            for (const role of roles) {
-              uow.create("organizationMemberRole", {
-                memberId,
-                role,
-                createdAt: now,
-              });
+              if (!canCancel) {
+                return { ok: false as const, code: "permission_denied" as const };
+              }
             }
 
-            uow.update("organizationInvitation", invitation.id, (b) =>
-              b.set({ status: "accepted", respondedAt: now }).check(),
-            );
+            const organization = invitation.organizationInvitationOrganization
+              ? mapOrganization(invitation.organizationInvitationOrganization)
+              : null;
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+            const invitationRoles = Array.isArray(invitation.roles)
+              ? (invitation.roles as string[])
+              : [];
 
-            if (hooksEnabled) {
-              uow.triggerHook("onInvitationAccepted", {
-                organizationId: toExternalId(invitation.organizationId),
-                invitationId: toExternalId(invitation.id),
-                email: invitation.email,
-                roles,
-                inviterId: toExternalId(invitation.inviterId),
-              });
-              uow.triggerHook("onMemberAdded", {
-                organizationId: toExternalId(invitation.organizationId),
-                memberId: memberId.valueOf(),
+            if (input.action === "accept") {
+              const existingMember =
+                actorMember ??
+                members.find(
+                  (member) =>
+                    member.organizationMemberUser &&
+                    toExternalId(member.organizationMemberUser.id) === input.actor.userId,
+                );
+
+              if (existingMember) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "accepted", respondedAt: now }).check(),
+                );
+
+                const acceptedInvitation = mapInvitation({
+                  id: invitation.id,
+                  organizationId: invitation.organizationId,
+                  email: invitation.email,
+                  roles: invitation.roles,
+                  status: "accepted",
+                  token: invitation.token,
+                  inviterId: invitation.inviterId,
+                  expiresAt: invitation.expiresAt,
+                  createdAt: invitation.createdAt,
+                  respondedAt: now,
+                });
+
+                if (organization) {
+                  uow.triggerHook("onInvitationAccepted", {
+                    organization,
+                    invitation: acceptedInvitation,
+                    actor: actorSummary,
+                  });
+                }
+
+                return {
+                  ok: true as const,
+                  invitation: acceptedInvitation,
+                  memberId: toExternalId(existingMember.id),
+                };
+              }
+
+              if (
+                limits?.membersPerOrganization !== undefined &&
+                members.length >= limits.membersPerOrganization
+              ) {
+                return { ok: false as const, code: "limit_reached" as const };
+              }
+
+              const memberId = uow.create("organizationMember", {
+                organizationId: invitation.organizationId,
                 userId: input.actor.userId,
-                roles,
+                createdAt: now,
+                updatedAt: now,
               });
-            }
 
-            return {
-              ok: true as const,
-              invitation: mapInvitation({
+              for (const role of invitationRoles) {
+                uow.create("organizationMemberRole", {
+                  memberId,
+                  role,
+                  createdAt: now,
+                });
+              }
+
+              uow.update("organizationInvitation", invitation.id, (b) =>
+                b.set({ status: "accepted", respondedAt: now }).check(),
+              );
+
+              const acceptedInvitation = mapInvitation({
                 id: invitation.id,
                 organizationId: invitation.organizationId,
                 email: invitation.email,
@@ -413,31 +502,43 @@ export function createOrganizationInvitationServices(
                 expiresAt: invitation.expiresAt,
                 createdAt: invitation.createdAt,
                 respondedAt: now,
-              }),
-              memberId: toExternalId(memberId),
-            };
-          }
+              });
 
-          const nextStatus = input.action === "reject" ? "rejected" : "canceled";
-          uow.update("organizationInvitation", invitation.id, (b) =>
-            b.set({ status: nextStatus, respondedAt: now }).check(),
-          );
+              const member = {
+                id: toExternalId(memberId),
+                organizationId: organization?.id ?? toExternalId(invitation.organizationId),
+                userId: input.actor.userId,
+                roles: invitationRoles,
+                createdAt: now,
+                updatedAt: now,
+              };
 
-          if (hooksEnabled) {
-            const hookName =
-              input.action === "reject" ? "onInvitationRejected" : "onInvitationCanceled";
-            uow.triggerHook(hookName, {
-              organizationId: toExternalId(invitation.organizationId),
-              invitationId: toExternalId(invitation.id),
-              email: invitation.email,
-              roles: Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [],
-              inviterId: toExternalId(invitation.inviterId),
-            });
-          }
+              if (organization) {
+                uow.triggerHook("onInvitationAccepted", {
+                  organization,
+                  invitation: acceptedInvitation,
+                  actor: actorSummary,
+                });
+                uow.triggerHook("onMemberAdded", {
+                  organization,
+                  member,
+                  actor: actorSummary,
+                });
+              }
 
-          return {
-            ok: true as const,
-            invitation: mapInvitation({
+              return {
+                ok: true as const,
+                invitation: acceptedInvitation,
+                memberId: toExternalId(memberId),
+              };
+            }
+
+            const nextStatus = input.action === "reject" ? "rejected" : "canceled";
+            uow.update("organizationInvitation", invitation.id, (b) =>
+              b.set({ status: nextStatus, respondedAt: now }).check(),
+            );
+
+            const nextInvitation = mapInvitation({
               id: invitation.id,
               organizationId: invitation.organizationId,
               email: invitation.email,
@@ -448,9 +549,24 @@ export function createOrganizationInvitationServices(
               expiresAt: invitation.expiresAt,
               createdAt: invitation.createdAt,
               respondedAt: now,
-            }),
-          };
-        })
+            });
+
+            if (organization) {
+              const hookName =
+                input.action === "reject" ? "onInvitationRejected" : "onInvitationCanceled";
+              uow.triggerHook(hookName, {
+                organization,
+                invitation: nextInvitation,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              invitation: nextInvitation,
+            };
+          },
+        )
         .build();
     },
   };

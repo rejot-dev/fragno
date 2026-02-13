@@ -1,5 +1,6 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { Cursor } from "@fragno-dev/db/cursor";
 import { authSchema } from "../schema";
 import { z } from "zod";
 import {
@@ -10,13 +11,37 @@ import {
 } from "../utils/cookie";
 import type { Role, authFragmentDefinition } from "..";
 import type { AuthHooksMap } from "../hooks";
+import type { Organization, OrganizationMemberSummary } from "../organization/types";
 import {
-  serializeInvitation,
+  serializeInvitationSummary,
   serializeMember,
   serializeOrganization,
 } from "../organization/serializers";
+import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
+import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
+
+const requiredOrganizationServiceNames = [
+  "getOrganizationsForUser",
+  "listOrganizationMemberRolesForMembers",
+  "listOrganizationInvitationsForUser",
+  "getActiveOrganization",
+] as const;
+
+export function assertOrganizationServices(
+  services: Record<string, unknown>,
+): asserts services is Record<
+  (typeof requiredOrganizationServiceNames)[number],
+  (...args: unknown[]) => unknown
+> {
+  const missing = requiredOrganizationServiceNames.filter(
+    (name) => typeof services[name] !== "function",
+  );
+  if (missing.length > 0) {
+    throw new Error(`Missing organization services: ${missing.join(", ")}`);
+  }
+}
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
@@ -28,21 +53,41 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
       return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
+          if (!user) {
+            return { ok: false as const, code: "user_not_found" as const };
+          }
+          if (user.bannedAt) {
+            return { ok: false as const, code: "user_banned" as const };
+          }
+
           const id = uow.create("session", {
             userId,
             expiresAt,
           });
+          const userSummary = mapUserSummary(user);
 
           uow.triggerHook("onSessionCreated", {
-            sessionId: id.valueOf(),
-            userId,
+            session: {
+              id: id.valueOf(),
+              user: userSummary,
+              expiresAt,
+              activeOrganizationId: null,
+            },
+            actor: userSummary,
           });
 
           return {
-            id: id.valueOf(),
-            userId,
-            expiresAt,
+            ok: true as const,
+            session: {
+              id: id.valueOf(),
+              userId,
+              expiresAt,
+              activeOrganizationId: null,
+            },
           };
         })
         .build();
@@ -88,7 +133,9 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("session", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
           ),
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
@@ -97,10 +144,25 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           }
 
           uow.delete("session", session.id, (b) => b.check());
-          uow.triggerHook("onSessionInvalidated", {
-            sessionId: session.id.valueOf(),
-            userId: session.userId as unknown as string,
-          });
+          if (session.sessionOwner) {
+            const userSummary = mapUserSummary({
+              id: session.sessionOwner.id,
+              email: session.sessionOwner.email,
+              role: session.sessionOwner.role,
+              bannedAt: session.sessionOwner.bannedAt ?? null,
+            });
+            uow.triggerHook("onSessionInvalidated", {
+              session: {
+                id: session.id.valueOf(),
+                user: userSummary,
+                expiresAt: session.expiresAt,
+                activeOrganizationId: session.activeOrganizationId
+                  ? String(session.activeOrganizationId)
+                  : null,
+              },
+              actor: userSummary,
+            });
+          }
           return true;
         })
         .build();
@@ -209,75 +271,20 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
           }),
           organizations: z.array(
             z.object({
-              organization: z.object({
-                id: z.string(),
-                name: z.string(),
-                slug: z.string(),
-                logoUrl: z.string().nullable(),
-                metadata: z.record(z.string(), z.unknown()).nullable(),
-                createdBy: z.string(),
-                createdAt: z.string(),
-                updatedAt: z.string(),
-                deletedAt: z.string().nullable(),
-              }),
-              member: z.object({
-                id: z.string(),
-                organizationId: z.string(),
-                userId: z.string(),
-                roles: z.array(z.string()),
-                createdAt: z.string(),
-                updatedAt: z.string(),
-              }),
+              organization: organizationSchema,
+              member: memberSchema,
             }),
           ),
           activeOrganization: z
             .object({
-              organization: z.object({
-                id: z.string(),
-                name: z.string(),
-                slug: z.string(),
-                logoUrl: z.string().nullable(),
-                metadata: z.record(z.string(), z.unknown()).nullable(),
-                createdBy: z.string(),
-                createdAt: z.string(),
-                updatedAt: z.string(),
-                deletedAt: z.string().nullable(),
-              }),
-              member: z.object({
-                id: z.string(),
-                organizationId: z.string(),
-                userId: z.string(),
-                roles: z.array(z.string()),
-                createdAt: z.string(),
-                updatedAt: z.string(),
-              }),
+              organization: organizationSchema,
+              member: memberSchema,
             })
             .nullable(),
           invitations: z.array(
             z.object({
-              invitation: z.object({
-                id: z.string(),
-                organizationId: z.string(),
-                email: z.string(),
-                roles: z.array(z.string()),
-                status: z.enum(["pending", "accepted", "rejected", "canceled", "expired"]),
-                token: z.string(),
-                inviterId: z.string(),
-                expiresAt: z.string(),
-                createdAt: z.string(),
-                respondedAt: z.string().nullable(),
-              }),
-              organization: z.object({
-                id: z.string(),
-                name: z.string(),
-                slug: z.string(),
-                logoUrl: z.string().nullable(),
-                metadata: z.record(z.string(), z.unknown()).nullable(),
-                createdBy: z.string(),
-                createdAt: z.string(),
-                updatedAt: z.string(),
-                deletedAt: z.string().nullable(),
-              }),
+              invitation: invitationSummarySchema,
+              organization: organizationSchema,
             }),
           ),
         }),
@@ -311,25 +318,46 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             });
           }
 
+          assertOrganizationServices(services);
           const organizationServices = services as Required<typeof services>;
 
-          const [organizationsResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              organizationServices.getOrganizationsForUser({
-                userId: session.user.id,
-                pageSize: 1000,
-              }),
-            ])
-            .execute();
+          const organizations: Array<{
+            organization: Organization;
+            member: OrganizationMemberSummary;
+          }> = [];
+          let cursor: Cursor | undefined;
+          let hasNextPage = true;
+          const maxOrganizationPages = 50;
+          let pageCount = 0;
+          while (hasNextPage) {
+            if (++pageCount > maxOrganizationPages) {
+              throw new Error(
+                `Exceeded organization page limit (${maxOrganizationPages}) for user ${session.user.id}`,
+              );
+            }
+            const [organizationsResult] = await this.handlerTx()
+              .withServiceCalls(() => [
+                organizationServices.getOrganizationsForUser({
+                  userId: session.user.id,
+                  pageSize: 1000,
+                  cursor,
+                }),
+              ])
+              .execute();
 
-          const memberIds = organizationsResult.organizations.map((entry) => entry.member.id);
+            organizations.push(...organizationsResult.organizations);
+            cursor = organizationsResult.cursor;
+            hasNextPage = organizationsResult.hasNextPage;
+          }
+
+          const memberIds = organizations.map((entry) => entry.member.id);
           const [rolesResult] = await this.handlerTx()
             .withServiceCalls(() => [
               organizationServices.listOrganizationMemberRolesForMembers(memberIds),
             ])
             .execute();
 
-          const organizations = organizationsResult.organizations.map((entry) => ({
+          const organizationsWithRoles = organizations.map((entry) => ({
             organization: serializeOrganization(entry.organization),
             member: serializeMember({
               ...entry.member,
@@ -339,14 +367,17 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
 
           const [invitationsResult] = await this.handlerTx()
             .withServiceCalls(() => [
-              organizationServices.listOrganizationInvitationsForUser(session.user.email),
+              organizationServices.listOrganizationInvitationsForUser({
+                email: session.user.email,
+                status: "pending",
+              }),
             ])
             .execute();
 
           const invitations = invitationsResult.invitations
-            .filter((entry) => entry.organization && entry.invitation.status === "pending")
+            .filter((entry) => entry.organization)
             .map((entry) => ({
-              invitation: serializeInvitation(entry.invitation),
+              invitation: serializeInvitationSummary(entry.invitation),
               organization: serializeOrganization(entry.organization!),
             }));
 
@@ -355,7 +386,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             .execute();
 
           const activeOrganization = activeResult.organizationId
-            ? (organizations.find(
+            ? (organizationsWithRoles.find(
                 (entry) => entry.organization.id === activeResult.organizationId,
               ) ?? null)
             : null;
@@ -366,7 +397,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
               email: session.user.email,
               role: session.user.role as Role,
             },
-            organizations,
+            organizations: organizationsWithRoles,
             activeOrganization,
             invitations,
           });

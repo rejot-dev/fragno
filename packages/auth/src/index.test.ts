@@ -61,7 +61,10 @@ describe("auth-fragment", async () => {
         .execute();
     });
 
-    adminSessionId = adminSession.id;
+    if (!adminSession.ok) {
+      throw new Error(`Failed to create admin session: ${adminSession.code}`);
+    }
+    adminSessionId = adminSession.session.id;
   });
 
   describe("Full session flow", async () => {
@@ -174,6 +177,7 @@ describe("auth-fragment", async () => {
               inviterId: otherUser.id,
               roles: ["member"],
               actor: { userId: otherUser.id, userRole: otherUser.role },
+              actorMemberId: otherOrg.member.id,
             }),
           ])
           .execute();
@@ -192,6 +196,7 @@ describe("auth-fragment", async () => {
       expect(meResponse.data.invitations).toHaveLength(1);
       expect(meResponse.data.invitations[0]?.invitation.email).toBe("test@test.com");
       expect(meResponse.data.invitations[0]?.organization.id).toBe(otherOrg.organization.id);
+      expect("token" in meResponse.data.invitations[0]!.invitation).toBe(false);
     });
 
     it("/sign-out - invalidate session", async () => {
@@ -233,6 +238,36 @@ describe("auth-fragment", async () => {
       const data = response.data as { sessionId: string; userId: string; email: string };
       sessionId = data.sessionId;
       userId = data.userId;
+    });
+
+    it("/sign-in - banned user denied", async () => {
+      const email = "banned-user@test.com";
+      const password = "bannedpassword123";
+      const passwordHash = await hashPassword(password);
+
+      const [bannedUser] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+          .execute();
+      });
+
+      await test.inContext(function () {
+        return this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(authSchema).update("user", bannedUser.id, (b) =>
+              b.set({ bannedAt: new Date() }),
+            );
+            return true;
+          })
+          .execute();
+      });
+
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: { email, password },
+      });
+
+      assert(response.type === "error");
+      expect(response.error.code).toBe("user_banned");
     });
 
     it("/change-password - update password", async () => {
@@ -342,8 +377,15 @@ describe("auth-fragment", async () => {
           .withServiceCalls(() => [fragment.services.createSession(user.id)])
           .execute();
       });
+      if (!session.ok) {
+        throw new Error(`Failed to create session: ${session.code}`);
+      }
+      const createdSessionId = session.session?.id;
+      if (!createdSessionId) {
+        throw new Error("Expected session id for getSession test");
+      }
 
-      const headers = new Headers({ Cookie: `sessionid=${session.id}` });
+      const headers = new Headers({ Cookie: `sessionid=${createdSessionId}` });
       const result = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [fragment.services.getSession(headers)])
@@ -407,6 +449,66 @@ describe("auth-fragment", async () => {
 
       expect(updated?.passwordHash).toBe(nextHash);
     });
+
+    it("setActiveOrganization - requires membership", async () => {
+      const ownerPassword = await hashPassword("ownerpassword123");
+      const [owner] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUser("active-owner@test.com", ownerPassword),
+          ])
+          .execute();
+      });
+
+      const [orgResult] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "Active Org",
+              slug: "active-org",
+              creatorUserId: owner.id,
+              creatorUserRole: owner.role,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(orgResult.ok);
+
+      const outsiderPassword = await hashPassword("outsiderpassword123");
+      const [outsider] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUser("active-outsider@test.com", outsiderPassword),
+          ])
+          .execute();
+      });
+
+      const [outsiderSession] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [fragment.services.createSession(outsider.id)])
+          .execute();
+      });
+      if (!outsiderSession.ok) {
+        throw new Error(`Failed to create session: ${outsiderSession.code}`);
+      }
+
+      const [setResult] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.setActiveOrganization(
+              outsiderSession.session.id,
+              orgResult.organization.id,
+            ),
+          ])
+          .execute();
+      });
+
+      expect(setResult.ok).toBe(false);
+      if (!setResult.ok) {
+        expect(setResult.code).toBe("membership_not_found");
+      }
+    });
   });
 
   describe("Hooks", () => {
@@ -425,6 +527,13 @@ describe("auth-fragment", async () => {
           .withServiceCalls(() => [fragment.services.createSession(user.id)])
           .execute();
       });
+      if (!session.ok) {
+        throw new Error(`Failed to create session: ${session.code}`);
+      }
+      const createdSessionId = session.session?.id;
+      if (!createdSessionId) {
+        throw new Error("Expected session id for hook test");
+      }
 
       const [organizationResult] = await test.inContext(function () {
         return this.handlerTx()
@@ -449,6 +558,7 @@ describe("auth-fragment", async () => {
               email: "hooks-invitee@test.com",
               inviterId: user.id,
               actor: { userId: user.id, userRole: user.role },
+              actorMemberId: organizationResult.member.id,
             }),
           ])
           .execute();
@@ -467,20 +577,20 @@ describe("auth-fragment", async () => {
       });
 
       const userHooks = hooks.filter(
-        (hook) => (hook.payload as { userId?: string }).userId === user.id,
+        (hook) => (hook.payload as { user?: { id?: string } }).user?.id === user.id,
       );
       expect(userHooks.some((hook) => hook.hookName === "onUserCreated")).toBe(true);
       expect(
         hooks.some(
           (hook) =>
             hook.hookName === "onSessionCreated" &&
-            (hook.payload as { sessionId?: string }).sessionId === session.id,
+            (hook.payload as { session?: { id?: string } }).session?.id === createdSessionId,
         ),
       ).toBe(true);
 
       const orgHooks = hooks.filter(
         (hook) =>
-          (hook.payload as { organizationId?: string }).organizationId ===
+          (hook.payload as { organization?: { id?: string } }).organization?.id ===
           organizationResult.organization.id,
       );
       expect(orgHooks.some((hook) => hook.hookName === "onOrganizationCreated")).toBe(true);
@@ -488,14 +598,15 @@ describe("auth-fragment", async () => {
         orgHooks.some(
           (hook) =>
             hook.hookName === "onMemberAdded" &&
-            (hook.payload as { memberId?: string }).memberId === organizationResult.member.id,
+            (hook.payload as { member?: { id?: string } }).member?.id ===
+              organizationResult.member.id,
         ),
       ).toBe(true);
       expect(
         orgHooks.some(
           (hook) =>
             hook.hookName === "onInvitationCreated" &&
-            (hook.payload as { invitationId?: string }).invitationId ===
+            (hook.payload as { invitation?: { id?: string } }).invitation?.id ===
               invitationResult.invitation.id,
         ),
       ).toBe(true);

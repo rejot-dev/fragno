@@ -36,16 +36,23 @@ INVITE_RESPONSE=$(curl -s -X POST \
 INVITE_ID=$(echo $INVITE_RESPONSE | jq -r '.invitation.id')
 INVITE_TOKEN=$(echo $INVITE_RESPONSE | jq -r '.invitation.token')
 
-# 7. Accept or reject the invitation
-curl -X PATCH "http://localhost:5173/api/auth/organizations/invitations/$INVITE_ID?sessionId=$SESSION_ID" \
+# 7. Create the invitee user and capture their session ID
+INVITEE_RESPONSE=$(curl -s -X POST http://localhost:5173/api/auth/sign-up \
+  -H "Content-Type: application/json" \
+  -d '{"email":"invitee@example.com","password":"inviteepassword123"}')
+
+INVITEE_SESSION_ID=$(echo $INVITEE_RESPONSE | jq -r '.sessionId')
+
+# 8. Accept or reject the invitation as the invitee
+curl -X PATCH "http://localhost:5173/api/auth/organizations/invitations/$INVITE_ID?sessionId=$INVITEE_SESSION_ID" \
   -H "Content-Type: application/json" \
   -d "{\"action\":\"accept\",\"token\":\"$INVITE_TOKEN\"}"
 
-# 8. Sign out
+# 9. Sign out
 curl -X POST http://localhost:5173/api/auth/sign-out \
   -H "Content-Type: application/json" \
   -d "{\"sessionId\":\"$SESSION_ID\"}"
 
-# 9. Verify session is invalid
+# 10. Verify session is invalid
 curl -X GET "http://localhost:5173/api/auth/me?sessionId=$SESSION_ID"
 ```

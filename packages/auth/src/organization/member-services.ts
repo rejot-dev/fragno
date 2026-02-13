@@ -2,10 +2,16 @@ import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db/cursor";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
-import type { OrganizationConfig, OrganizationMember } from "./types";
+import type {
+  Organization,
+  OrganizationConfig,
+  OrganizationMember,
+  OrganizationMemberSummary,
+} from "./types";
 import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils";
 import { canManageOrganization, isGlobalAdmin, OWNER_ROLE } from "./permissions";
 import type { Role } from "../types";
+import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
@@ -17,9 +23,30 @@ type CreateMemberInput = {
 };
 
 type OrganizationMemberServiceOptions = {
-  hooksEnabled?: boolean;
   organizationConfig?: OrganizationConfig<string>;
 };
+
+const mapOrganization = (organization: {
+  id: unknown;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  metadata: unknown;
+  createdBy: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}): Organization => ({
+  id: toExternalId(organization.id),
+  name: organization.name,
+  slug: organization.slug,
+  logoUrl: organization.logoUrl ?? null,
+  metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
+  createdBy: toExternalId(organization.createdBy),
+  createdAt: organization.createdAt,
+  updatedAt: organization.updatedAt,
+  deletedAt: organization.deletedAt ?? null,
+});
 
 const mapMember = (
   member: {
@@ -40,6 +67,23 @@ const mapMember = (
   updatedAt: member.updatedAt,
 });
 
+const mapMemberSummary = (
+  member: {
+    id: unknown;
+    organizationId: unknown;
+    userId: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  overrides?: { organizationId?: string; userId?: string },
+): OrganizationMemberSummary => ({
+  id: toExternalId(member.id),
+  organizationId: overrides?.organizationId ?? toExternalId(member.organizationId),
+  userId: overrides?.userId ?? toExternalId(member.userId),
+  createdAt: member.createdAt,
+  updatedAt: member.updatedAt,
+});
+
 const filterRolesForMemberId = (
   roles: {
     role: string;
@@ -51,7 +95,7 @@ const filterRolesForMemberId = (
   if (!member) {
     return [];
   }
-  const candidates = new Set([toExternalId(member.id), toExternalId(member._internalId ?? "")]);
+  const candidates = new Set([member.id, member._internalId].filter(Boolean).map(toExternalId));
   return roles
     .filter(
       (role) =>
@@ -81,7 +125,6 @@ const filterOwnerMemberIds = (
 };
 
 export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
-  const hooksEnabled = options.hooksEnabled ?? false;
   const limits = options.organizationConfig?.limits;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   return {
@@ -102,16 +145,13 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         )
         .transformRetrieve(([member]) =>
           member
-            ? mapMember(
-                {
-                  id: member.id,
-                  organizationId: member.organizationId,
-                  userId: member.userId,
-                  createdAt: member.createdAt,
-                  updatedAt: member.updatedAt,
-                },
-                [],
-              )
+            ? mapMemberSummary({
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: member.updatedAt,
+              })
             : null,
         )
         .build();
@@ -133,13 +173,16 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               ),
             )
             .findFirst("organizationMember", (b) =>
-              b.whereIndex("idx_org_member_org_user", (eb) =>
-                eb.and(
-                  eb("organizationId", "=", input.organizationId),
-                  eb("userId", "=", input.actor.userId),
-                ),
-              ),
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", input.organizationId),
+                    eb("userId", "=", input.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
             )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
             )
@@ -147,56 +190,52 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               b.whereIndex("idx_org_member_org", (eb) =>
                 eb("organizationId", "=", input.organizationId),
               ),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.actor.userId)),
             ),
         )
-        .mutate(({ uow, retrieveResult: [existing, actorMember, actorRoles, members] }) => {
-          if (existing) {
-            return { ok: false as const, code: "member_already_exists" as const };
-          }
+        .mutate(
+          ({ uow, retrieveResult: [existing, actorMember, actorRoles, members, actorUser] }) => {
+            if (existing) {
+              return { ok: false as const, code: "member_already_exists" as const };
+            }
 
-          if (!actorMember) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
-          if (!isGlobalAdmin(input.actor.userRole) && !canManageOrganization(actorRoleNames)) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+            if (!isGlobalAdmin(input.actor.userRole) && !canManageOrganization(actorRoleNames)) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          if (
-            limits?.membersPerOrganization !== undefined &&
-            members.length >= limits.membersPerOrganization
-          ) {
-            return { ok: false as const, code: "limit_reached" as const };
-          }
+            if (
+              limits?.membersPerOrganization !== undefined &&
+              members.length >= limits.membersPerOrganization
+            ) {
+              return { ok: false as const, code: "limit_reached" as const };
+            }
 
-          const memberId = uow.create("organizationMember", {
-            organizationId: input.organizationId,
-            userId: input.userId,
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          for (const role of roles) {
-            uow.create("organizationMemberRole", {
-              memberId,
-              role,
-              createdAt: now,
-            });
-          }
-
-          if (hooksEnabled) {
-            uow.triggerHook("onMemberAdded", {
+            const memberId = uow.create("organizationMember", {
               organizationId: input.organizationId,
-              memberId: memberId.valueOf(),
               userId: input.userId,
-              roles,
+              createdAt: now,
+              updatedAt: now,
             });
-          }
 
-          return {
-            ok: true as const,
-            member: mapMember(
+            for (const role of roles) {
+              uow.create("organizationMemberRole", {
+                memberId,
+                role,
+                createdAt: now,
+              });
+            }
+
+            const organization = actorMember?.organizationMemberOrganization
+              ? mapOrganization(actorMember.organizationMemberOrganization)
+              : null;
+            const member = mapMember(
               {
                 id: memberId,
                 organizationId: input.organizationId,
@@ -205,53 +244,286 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 updatedAt: now,
               },
               roles,
-            ),
-          };
-        })
+            );
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+
+            if (organization) {
+              uow.triggerHook("onMemberAdded", {
+                organization,
+                member,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              member,
+            };
+          },
+        )
         .build();
     },
 
     createOrganizationMemberRole: function (
       this: AuthServiceContext,
-      memberId: string,
-      role: string,
+      params: {
+        organizationId: string;
+        memberId: string;
+        role: string;
+        actor: { userId: string; userRole: Role };
+      },
     ) {
+      const roleNames = normalizeRoleNames([params.role], [params.role]);
+      if (roleNames.length === 0) {
+        return this.serviceTx(authSchema)
+          .mutate(() => ({ ok: false as const, code: "invalid_role" as const }))
+          .build();
+      }
+
+      const roleName = roleNames[0]!;
       const now = new Date();
 
       return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
-          uow.create("organizationMemberRole", {
-            memberId,
-            role,
-            createdAt: now,
-          });
+        .retrieve((uow) =>
+          uow
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.memberId)),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("idx_org_member_role_member", (eb) =>
+                eb("memberId", "=", params.memberId),
+              ),
+            )
+            .findFirst("organizationMember", (b) =>
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", params.organizationId),
+                    eb("userId", "=", params.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
+            )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.actor.userId)),
+            ),
+        )
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [member, existingRoles, actorMember, actorRoles, actorUser],
+          }) => {
+            if (!member) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
 
-          return { ok: true as const };
-        })
+            if (
+              actorMember &&
+              String(member.organizationId) !== String(actorMember.organizationId)
+            ) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
+
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+            if (!isGlobalAdmin(params.actor.userRole) && !canManageOrganization(actorRoleNames)) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const roleExists = existingRoles.some((entry) => entry.role === roleName);
+            const nextRoles = roleExists
+              ? existingRoles.map((entry) => entry.role)
+              : [...existingRoles.map((entry) => entry.role), roleName];
+
+            if (roleExists) {
+              return {
+                ok: true as const,
+                member: mapMember(
+                  {
+                    id: member.id,
+                    organizationId: member.organizationId,
+                    userId: member.userId,
+                    createdAt: member.createdAt,
+                    updatedAt: member.updatedAt,
+                  },
+                  nextRoles,
+                ),
+              };
+            }
+
+            uow.create("organizationMemberRole", {
+              memberId: params.memberId,
+              role: roleName,
+              createdAt: now,
+            });
+
+            uow.update("organizationMember", member.id, (b) => b.set({ updatedAt: now }).check());
+
+            const organization = actorMember?.organizationMemberOrganization
+              ? mapOrganization(actorMember.organizationMemberOrganization)
+              : null;
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+            const updatedMember = mapMember(
+              {
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: now,
+              },
+              nextRoles,
+            );
+
+            if (organization) {
+              uow.triggerHook("onMemberRolesUpdated", {
+                organization,
+                member: updatedMember,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              member: updatedMember,
+            };
+          },
+        )
         .build();
     },
 
     removeOrganizationMemberRole: function (
       this: AuthServiceContext,
-      memberId: string,
-      role: string,
+      params: {
+        organizationId: string;
+        memberId: string;
+        role: string;
+        actor: { userId: string; userRole: Role };
+      },
     ) {
+      const roleNames = normalizeRoleNames([params.role], [params.role]);
+      if (roleNames.length === 0) {
+        return this.serviceTx(authSchema)
+          .mutate(() => ({ ok: false as const, code: "invalid_role" as const }))
+          .build();
+      }
+
+      const roleName = roleNames[0]!;
+
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("organizationMemberRole", (b) =>
-            b.whereIndex("idx_org_member_role_member_role", (eb) =>
-              eb.and(eb("memberId", "=", memberId), eb("role", "=", role)),
+          uow
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.memberId)),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("idx_org_member_role_member", (eb) =>
+                eb("memberId", "=", params.memberId),
+              ),
+            )
+            .findFirst("organizationMember", (b) =>
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", params.organizationId),
+                    eb("userId", "=", params.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
+            )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+            )
+            .find("organizationMemberRole", (b) =>
+              b
+                .whereIndex("idx_org_member_role_role", (eb) => eb("role", "=", OWNER_ROLE))
+                .join((j) => j.organizationMemberRoleMember()),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.actor.userId)),
             ),
-          ),
         )
-        .mutate(({ uow, retrieveResult: [existing] }) => {
-          if (!existing) {
-            return { ok: false as const, code: "role_not_found" as const };
-          }
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [member, existingRoles, actorMember, actorRoles, ownerRoles, actorUser],
+          }) => {
+            if (!member) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
 
-          uow.delete("organizationMemberRole", existing.id, (b) => b.check());
-          return { ok: true as const };
-        })
+            if (
+              actorMember &&
+              String(member.organizationId) !== String(actorMember.organizationId)
+            ) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
+
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+            if (!isGlobalAdmin(params.actor.userRole) && !canManageOrganization(actorRoleNames)) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const existingRole = existingRoles.find((entry) => entry.role === roleName);
+            if (!existingRole) {
+              return { ok: false as const, code: "role_not_found" as const };
+            }
+
+            if (roleName === OWNER_ROLE) {
+              const ownerMemberIds = filterOwnerMemberIds(ownerRoles, member.organizationId);
+              if (ownerMemberIds.size <= 1) {
+                return { ok: false as const, code: "last_owner" as const };
+              }
+            }
+
+            const now = new Date();
+            uow.delete("organizationMemberRole", existingRole.id, (b) => b.check());
+            uow.update("organizationMember", member.id, (b) => b.set({ updatedAt: now }).check());
+
+            const nextRoles = existingRoles
+              .filter((entry) => entry.id !== existingRole.id)
+              .map((entry) => entry.role);
+
+            const organization = actorMember?.organizationMemberOrganization
+              ? mapOrganization(actorMember.organizationMemberOrganization)
+              : null;
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+            const updatedMember = mapMember(
+              {
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: now,
+              },
+              nextRoles,
+            );
+
+            if (organization) {
+              uow.triggerHook("onMemberRolesUpdated", {
+                organization,
+                member: updatedMember,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              member: updatedMember,
+            };
+          },
+        )
         .build();
     },
 
@@ -279,26 +551,32 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               ),
             )
             .findFirst("organizationMember", (b) =>
-              b.whereIndex("idx_org_member_org_user", (eb) =>
-                eb.and(
-                  eb("organizationId", "=", params.organizationId),
-                  eb("userId", "=", params.actor.userId),
-                ),
-              ),
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", params.organizationId),
+                    eb("userId", "=", params.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
             )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
             )
             .find("organizationMemberRole", (b) =>
               b
-                .whereIndex("idx_org_member_role_member_role", (eb) => eb("role", "=", OWNER_ROLE))
+                .whereIndex("idx_org_member_role_role", (eb) => eb("role", "=", OWNER_ROLE))
                 .join((j) => j.organizationMemberRoleMember()),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.actor.userId)),
             ),
         )
         .mutate(
           ({
             uow,
-            retrieveResult: [member, existingRoles, actorMember, actorRoles, ownerRoles],
+            retrieveResult: [member, existingRoles, actorMember, actorRoles, ownerRoles, actorUser],
           }) => {
             if (!member) {
               return { ok: false as const, code: "member_not_found" as const };
@@ -342,27 +620,32 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
 
             uow.update("organizationMember", member.id, (b) => b.set({ updatedAt: now }).check());
 
-            if (hooksEnabled) {
+            const organization = actorMember?.organizationMemberOrganization
+              ? mapOrganization(actorMember.organizationMemberOrganization)
+              : null;
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+            const updatedMember = mapMember(
+              {
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: now,
+              },
+              nextRoles,
+            );
+
+            if (organization) {
               uow.triggerHook("onMemberRolesUpdated", {
-                organizationId: toExternalId(member.organizationId),
-                memberId: toExternalId(member.id),
-                userId: toExternalId(member.userId),
-                roles: nextRoles,
+                organization,
+                member: updatedMember,
+                actor: actorSummary,
               });
             }
 
             return {
               ok: true as const,
-              member: mapMember(
-                {
-                  id: member.id,
-                  organizationId: member.organizationId,
-                  userId: member.userId,
-                  createdAt: member.createdAt,
-                  updatedAt: now,
-                },
-                nextRoles,
-              ),
+              member: updatedMember,
             };
           },
         )
@@ -389,68 +672,96 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               ),
             )
             .findFirst("organizationMember", (b) =>
-              b.whereIndex("idx_org_member_org_user", (eb) =>
-                eb.and(
-                  eb("organizationId", "=", params.organizationId),
-                  eb("userId", "=", params.actor.userId),
-                ),
-              ),
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", params.organizationId),
+                    eb("userId", "=", params.actor.userId),
+                  ),
+                )
+                .join((j) => j.organizationMemberOrganization()),
             )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
             )
             .find("organizationMemberRole", (b) =>
               b
-                .whereIndex("idx_org_member_role_member_role", (eb) => eb("role", "=", OWNER_ROLE))
+                .whereIndex("idx_org_member_role_role", (eb) => eb("role", "=", OWNER_ROLE))
                 .join((j) => j.organizationMemberRoleMember()),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.actor.userId)),
             ),
         )
-        .mutate(({ uow, retrieveResult: [member, roles, actorMember, actorRoles, ownerRoles] }) => {
-          if (!member) {
-            return { ok: false as const, code: "member_not_found" as const };
-          }
-
-          if (actorMember && String(member.organizationId) !== String(actorMember.organizationId)) {
-            return { ok: false as const, code: "member_not_found" as const };
-          }
-
-          if (!actorMember) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
-
-          const isSelf = toExternalId(member.userId) === params.actor.userId;
-          const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
-          if (
-            !isSelf &&
-            !isGlobalAdmin(params.actor.userRole) &&
-            !canManageOrganization(actorRoleNames)
-          ) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
-
-          const hadOwnerRole = roles.some((role) => role.role === OWNER_ROLE);
-          if (hadOwnerRole) {
-            const ownerMemberIds = filterOwnerMemberIds(ownerRoles, member.organizationId);
-            if (ownerMemberIds.size <= 1) {
-              return { ok: false as const, code: "last_owner" as const };
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [member, roles, actorMember, actorRoles, ownerRoles, actorUser],
+          }) => {
+            if (!member) {
+              return { ok: false as const, code: "member_not_found" as const };
             }
-          }
 
-          for (const role of roles) {
-            uow.delete("organizationMemberRole", role.id, (b) => b.check());
-          }
+            if (
+              actorMember &&
+              String(member.organizationId) !== String(actorMember.organizationId)
+            ) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
 
-          uow.delete("organizationMember", member.id, (b) => b.check());
-          if (hooksEnabled) {
-            uow.triggerHook("onMemberRemoved", {
-              organizationId: toExternalId(member.organizationId),
-              memberId: toExternalId(member.id),
-              userId: toExternalId(member.userId),
-              roles: roles.map((role) => role.role),
-            });
-          }
-          return { ok: true as const };
-        })
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const isSelf = toExternalId(member.userId) === params.actor.userId;
+            const actorRoleNames = filterRolesForMemberId(actorRoles, actorMember);
+            if (
+              !isSelf &&
+              !isGlobalAdmin(params.actor.userRole) &&
+              !canManageOrganization(actorRoleNames)
+            ) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const hadOwnerRole = roles.some((role) => role.role === OWNER_ROLE);
+            if (hadOwnerRole) {
+              const ownerMemberIds = filterOwnerMemberIds(ownerRoles, member.organizationId);
+              if (ownerMemberIds.size <= 1) {
+                return { ok: false as const, code: "last_owner" as const };
+              }
+            }
+
+            for (const role of roles) {
+              uow.delete("organizationMemberRole", role.id, (b) => b.check());
+            }
+
+            uow.delete("organizationMember", member.id, (b) => b.check());
+            const organization = actorMember?.organizationMemberOrganization
+              ? mapOrganization(actorMember.organizationMemberOrganization)
+              : null;
+            const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+            const removedMember = mapMember(
+              {
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: member.updatedAt,
+              },
+              roles.map((role) => role.role),
+            );
+
+            if (organization) {
+              uow.triggerHook("onMemberRemoved", {
+                organization,
+                member: removedMember,
+                actor: actorSummary,
+              });
+            }
+            return { ok: true as const };
+          },
+        )
         .build();
     },
 

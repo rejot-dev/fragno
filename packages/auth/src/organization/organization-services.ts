@@ -11,6 +11,7 @@ import {
 } from "./utils";
 import { canDeleteOrganization, canManageOrganization, isGlobalAdmin } from "./permissions";
 import type { Role } from "../types";
+import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
@@ -26,7 +27,6 @@ type CreateOrganizationInput = {
 };
 
 type OrganizationServiceOptions = {
-  hooksEnabled?: boolean;
   organizationConfig?: OrganizationConfig<string>;
 };
 
@@ -82,7 +82,7 @@ const filterRolesForMemberId = (
   if (!member) {
     return [];
   }
-  const candidates = new Set([toExternalId(member.id), toExternalId(member._internalId ?? "")]);
+  const candidates = new Set([member.id, member._internalId].filter(Boolean).map(toExternalId));
   return roles
     .filter(
       (role) =>
@@ -94,7 +94,6 @@ const filterRolesForMemberId = (
 };
 
 export function createOrganizationServices(options: OrganizationServiceOptions = {}) {
-  const hooksEnabled = options.hooksEnabled ?? false;
   const organizationConfig = options.organizationConfig;
   const allowUserToCreateOrganization = organizationConfig?.allowUserToCreateOrganization;
   const limits = organizationConfig?.limits;
@@ -139,9 +138,12 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             )
             .findFirst("session", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", input.sessionId ?? "")),
+            )
+            .findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.creatorUserId)),
             ),
         )
-        .mutate(async ({ uow, retrieveResult: [existing, members, session] }) => {
+        .mutate(async ({ uow, retrieveResult: [existing, members, session, creatorUser] }) => {
           if (existing) {
             return { ok: false as const, code: "organization_slug_taken" as const };
           }
@@ -192,44 +194,52 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             );
           }
 
-          if (hooksEnabled) {
-            uow.triggerHook("onOrganizationCreated", {
-              organizationId: organizationId.valueOf(),
-              name: input.name,
-              slug: normalizedSlug,
-              createdBy: input.creatorUserId,
-            });
-            uow.triggerHook("onMemberAdded", {
-              organizationId: organizationId.valueOf(),
-              memberId: memberId.valueOf(),
+          const organization = mapOrganization({
+            id: organizationId,
+            name: input.name,
+            slug: normalizedSlug,
+            logoUrl: input.logoUrl ?? null,
+            metadata: input.metadata ?? null,
+            createdBy: input.creatorUserId,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          });
+
+          const member = mapMember(
+            {
+              id: memberId,
+              organizationId,
               userId: input.creatorUserId,
-              roles: creatorRoles,
-            });
-          }
+              createdAt: now,
+              updatedAt: now,
+            },
+            creatorRoles,
+          );
+
+          const actorSummary = creatorUser
+            ? mapUserSummary({
+                id: creatorUser.id,
+                email: creatorUser.email,
+                role: creatorUser.role,
+                bannedAt: creatorUser.bannedAt ?? null,
+              })
+            : null;
+
+          uow.triggerHook("onOrganizationCreated", {
+            organization,
+            actor: actorSummary,
+          });
+          uow.triggerHook("onMemberAdded", {
+            organization,
+            member,
+            actor: actorSummary,
+          });
 
           return {
             ok: true as const,
-            organization: mapOrganization({
-              id: organizationId,
-              name: input.name,
-              slug: normalizedSlug,
-              logoUrl: input.logoUrl ?? null,
-              metadata: input.metadata ?? null,
-              createdBy: input.creatorUserId,
-              createdAt: now,
-              updatedAt: now,
-              deletedAt: null,
-            }),
-            member: mapMember(
-              {
-                id: memberId,
-                organizationId,
-                userId: input.creatorUserId,
-                createdAt: now,
-                updatedAt: now,
-              },
-              creatorRoles,
-            ),
+            organization,
+            member,
           };
         })
         .build();
@@ -333,63 +343,55 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 eb.and(eb("organizationId", "=", organizationId), eb("userId", "=", actor.userId)),
               ),
             )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
-            ),
+            )
+            .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", actor.userId))),
         )
-        .mutate(({ uow, retrieveResult: [existing, slugMatch, actorMember, actorRoles] }) => {
-          if (!existing) {
-            return { ok: false as const, code: "organization_not_found" as const };
-          }
+        .mutate(
+          ({ uow, retrieveResult: [existing, slugMatch, actorMember, actorRoles, actorUser] }) => {
+            if (!existing) {
+              return { ok: false as const, code: "organization_not_found" as const };
+            }
 
-          if (!actorMember) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          const roles = filterRolesForMemberId(actorRoles, actorMember);
-          if (!isGlobalAdmin(actor.userRole) && !canManageOrganization(roles)) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            const roles = filterRolesForMemberId(actorRoles, actorMember);
+            if (!isGlobalAdmin(actor.userRole) && !canManageOrganization(roles)) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          if (nextSlug && slugMatch && String(slugMatch.id) !== organizationId) {
-            return { ok: false as const, code: "organization_slug_taken" as const };
-          }
+            if (nextSlug && slugMatch && toExternalId(slugMatch.id) !== organizationId) {
+              return { ok: false as const, code: "organization_slug_taken" as const };
+            }
 
-          const updated = {
-            name: patch.name ?? existing.name,
-            slug: nextSlug ?? existing.slug,
-            logoUrl: patch.logoUrl !== undefined ? patch.logoUrl : existing.logoUrl,
-            metadata: patch.metadata !== undefined ? patch.metadata : existing.metadata,
-            createdBy: existing.createdBy,
-            createdAt: existing.createdAt,
-            updatedAt: now,
-            deletedAt: existing.deletedAt,
-          };
+            const updated = {
+              name: patch.name ?? existing.name,
+              slug: nextSlug ?? existing.slug,
+              logoUrl: patch.logoUrl !== undefined ? patch.logoUrl : existing.logoUrl,
+              metadata: patch.metadata !== undefined ? patch.metadata : existing.metadata,
+              createdBy: existing.createdBy,
+              createdAt: existing.createdAt,
+              updatedAt: now,
+              deletedAt: existing.deletedAt,
+            };
 
-          uow.update("organization", existing.id, (b) =>
-            b
-              .set({
-                name: updated.name,
-                slug: updated.slug,
-                logoUrl: updated.logoUrl,
-                metadata: updated.metadata,
-                updatedAt: updated.updatedAt,
-              })
-              .check(),
-          );
+            uow.update("organization", existing.id, (b) =>
+              b
+                .set({
+                  name: updated.name,
+                  slug: updated.slug,
+                  logoUrl: updated.logoUrl,
+                  metadata: updated.metadata,
+                  updatedAt: updated.updatedAt,
+                })
+                .check(),
+            );
 
-          if (hooksEnabled) {
-            uow.triggerHook("onOrganizationUpdated", {
-              organizationId: toExternalId(existing.id),
-              name: updated.name,
-              slug: updated.slug,
-              createdBy: toExternalId(existing.createdBy),
-            });
-          }
-
-          return {
-            ok: true as const,
-            organization: mapOrganization({
+            const organization = mapOrganization({
               id: existing.id,
               name: updated.name,
               slug: updated.slug,
@@ -399,9 +401,28 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               createdAt: updated.createdAt,
               updatedAt: updated.updatedAt,
               deletedAt: updated.deletedAt,
-            }),
-          };
-        })
+            });
+
+            const actorSummary = actorUser
+              ? mapUserSummary({
+                  id: actorUser.id,
+                  email: actorUser.email,
+                  role: actorUser.role,
+                  bannedAt: actorUser.bannedAt ?? null,
+                })
+              : null;
+
+            uow.triggerHook("onOrganizationUpdated", {
+              organization,
+              actor: actorSummary,
+            });
+
+            return {
+              ok: true as const,
+              organization,
+            };
+          },
+        )
         .build();
     },
 
@@ -423,11 +444,13 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 eb.and(eb("organizationId", "=", organizationId), eb("userId", "=", actor.userId)),
               ),
             )
+            // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
-            ),
+            )
+            .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", actor.userId))),
         )
-        .mutate(({ uow, retrieveResult: [organization, actorMember, actorRoles] }) => {
+        .mutate(({ uow, retrieveResult: [organization, actorMember, actorRoles, actorUser] }) => {
           if (!organization) {
             return { ok: false as const, code: "organization_not_found" as const };
           }
@@ -445,14 +468,31 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             b.set({ deletedAt: now, updatedAt: now }).check(),
           );
 
-          if (hooksEnabled) {
-            uow.triggerHook("onOrganizationDeleted", {
-              organizationId: toExternalId(organization.id),
-              name: organization.name,
-              slug: organization.slug,
-              createdBy: toExternalId(organization.createdBy),
-            });
-          }
+          const organizationSummary = mapOrganization({
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+            logoUrl: organization.logoUrl,
+            metadata: organization.metadata,
+            createdBy: organization.createdBy,
+            createdAt: organization.createdAt,
+            updatedAt: now,
+            deletedAt: now,
+          });
+
+          const actorSummary = actorUser
+            ? mapUserSummary({
+                id: actorUser.id,
+                email: actorUser.email,
+                role: actorUser.role,
+                bannedAt: actorUser.bannedAt ?? null,
+              })
+            : null;
+
+          uow.triggerHook("onOrganizationDeleted", {
+            organization: organizationSummary,
+            actor: actorSummary,
+          });
 
           return { ok: true as const };
         })
