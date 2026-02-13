@@ -54,7 +54,6 @@ Core changes:
   adapter‑level sharding.
 - **System migration**: A migration that **cannot** be handled by the built‑in migration engine
   (because it depends on implicit columns). These are implemented separately and invoked explicitly.
-  The current codebase refers to these as “internal migrations” (renaming tracked as follow‑up).
 
 ## 4. Goals / Non-goals
 

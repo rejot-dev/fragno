@@ -197,8 +197,8 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     });
 
     try {
-      const internalMigrations = fragnoAdapter.prepareMigrations(internalSchema, "");
-      await internalMigrations.executeWithDriver(fragnoAdapter.driver, 0);
+      const systemMigrations = fragnoAdapter.prepareMigrations(internalSchema, "");
+      await systemMigrations.executeWithDriver(fragnoAdapter.driver, 0);
 
       const migrations = fragnoAdapter.prepareMigrations(testSchema, "namespace");
       await migrations.executeWithDriver(fragnoAdapter.driver, 0);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
-import type { InternalMigration } from "../../../migration-engine/internal-migrations";
+import type { SystemMigration } from "../../../migration-engine/system-migrations";
 import { createColdKysely } from "./cold-kysely";
 import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
@@ -749,8 +749,8 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     );
   });
 
-  test("includes internal migrations after schema operations", () => {
-    const internalMigrations: InternalMigration[] = [
+  test("includes system migrations after schema operations", () => {
+    const systemMigrations: SystemMigration[] = [
       ({ schema, resolver }) => {
         const statements: string[] = [];
         for (const table of Object.values(schema.tables)) {
@@ -775,24 +775,24 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       namespace: "test",
       database: "postgresql",
       resolver,
-      internalMigrations,
+      systemMigrations,
     });
 
-    const sql = prepared.getSQL(0, testSchema.version, { internalFromVersion: 0 });
+    const sql = prepared.getSQL(0, testSchema.version, { systemFromVersion: 0 });
 
     expect(sql).toContain(
       `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
     );
-    expect(sql).toContain("test.internal_migration_version");
+    expect(sql).toContain("test.system_migration_version");
 
     const alterIndex = sql.indexOf(
       `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
     );
     const schemaVersionIndex = sql.indexOf("test.schema_version");
-    const internalVersionIndex = sql.indexOf("test.internal_migration_version");
+    const systemVersionIndex = sql.indexOf("test.system_migration_version");
 
     expect(alterIndex).toBeGreaterThan(-1);
     expect(schemaVersionIndex).toBeGreaterThan(alterIndex);
-    expect(internalVersionIndex).toBeGreaterThan(schemaVersionIndex);
+    expect(systemVersionIndex).toBeGreaterThan(schemaVersionIndex);
   });
 });

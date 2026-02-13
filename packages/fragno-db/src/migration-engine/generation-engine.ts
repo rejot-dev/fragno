@@ -11,7 +11,7 @@ import {
   internalSchema,
   SETTINGS_TABLE_NAME,
   getSchemaVersionFromDatabase,
-  getInternalMigrationVersionFromDatabase,
+  getSystemMigrationVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 import { instantiate } from "@fragno-dev/core";
@@ -144,10 +144,7 @@ export async function generateSchemaArtifacts<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
-  const settingsInternalVersion = await getInternalMigrationVersionFromDatabase(
-    internalFragment,
-    "",
-  );
+  const settingsSystemVersion = await getSystemMigrationVersionFromDatabase(internalFragment, "");
 
   const generatedFiles: GenerationInternalResult[] = [];
 
@@ -160,7 +157,7 @@ export async function generateSchemaArtifacts<
     settingsSourceVersion,
     settingsTargetVersion,
     {
-      internalFromVersion: settingsInternalVersion,
+      systemFromVersion: settingsSystemVersion,
     },
   );
 
@@ -195,12 +192,12 @@ export async function generateSchemaArtifacts<
     const sourceVersion = options?.fromVersion ?? 0;
 
     // Generate migration from source to target version
-    const internalFromVersion =
+    const systemFromVersion =
       options?.fromVersion === undefined || sourceVersion === 0
         ? 0
-        : await getInternalMigrationVersionFromDatabase(internalFragment, namespaceKey);
+        : await getSystemMigrationVersionFromDatabase(internalFragment, namespaceKey);
     const sql = preparedMigrations.getSQL(sourceVersion, targetVersion, {
-      internalFromVersion,
+      systemFromVersion,
     });
 
     // If no migrations needed, skip this fragment
@@ -286,10 +283,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
-  const settingsInternalVersion = await getInternalMigrationVersionFromDatabase(
-    internalFragment,
-    "",
-  );
+  const settingsSystemVersion = await getSystemMigrationVersionFromDatabase(internalFragment, "");
 
   // Internal fragment uses empty-string namespace: no table suffix, version key is ".schema_version"
   const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
@@ -304,7 +298,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   const compiledSettingsMigration = settingsPreparedMigrations.compile(
     settingsSourceVersion,
     settingsTargetVersion,
-    { updateVersionInMigration: true, internalFromVersion: settingsInternalVersion },
+    { updateVersionInMigration: true, systemFromVersion: settingsSystemVersion },
   );
 
   if (compiledSettingsMigration.statements.length > 0) {
@@ -316,7 +310,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
       execute: () =>
         settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
           updateVersionInMigration: true,
-          internalFromVersion: settingsInternalVersion,
+          systemFromVersion: settingsSystemVersion,
         }),
     });
   }
@@ -339,14 +333,14 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
       );
     }
 
-    const internalFromVersion = await getInternalMigrationVersionFromDatabase(
+    const systemFromVersion = await getSystemMigrationVersionFromDatabase(
       internalFragment,
       namespaceKey,
     );
 
     const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
       updateVersionInMigration: true,
-      internalFromVersion,
+      systemFromVersion,
     });
 
     if (compiledMigration.statements.length > 0) {
@@ -358,7 +352,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
         execute: () =>
           preparedMigrations.execute(currentVersion, targetVersion, {
             updateVersionInMigration: true,
-            internalFromVersion,
+            systemFromVersion,
           }),
       });
     }
