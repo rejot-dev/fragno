@@ -17,7 +17,7 @@ import type {
   WorkflowTaskRecord,
 } from "./types";
 import { RunnerStep, WorkflowAbort, WorkflowPause, WorkflowSuspend } from "./step";
-import type { RunnerMutationBuffer, RunnerState } from "./state";
+import type { RunnerMutationBuffer, RunnerState, RunnerStepMutationBuffer } from "./state";
 import { createRunnerState } from "./state";
 
 export type ProcessTaskContext = {
@@ -25,6 +25,11 @@ export type ProcessTaskContext = {
   getDbNow: () => Promise<Date>;
   workflowsByName: Map<string, WorkflowRegistryEntry>;
   workflowBindings: WorkflowBindings;
+  flushStepBoundary: (
+    instance: WorkflowInstanceRecord,
+    mutations: RunnerMutationBuffer,
+    stepMutations: RunnerStepMutationBuffer | null,
+  ) => Promise<boolean>;
   commitInstanceAndTask: (
     task: WorkflowTaskRecord,
     instance: WorkflowInstanceRecord,
@@ -91,6 +96,8 @@ export const processTask = async (
     maxSteps,
     time: ctx.time,
     getDbNow: ctx.getDbNow,
+    flushStepBoundary: (mutations, stepMutations) =>
+      ctx.flushStepBoundary(instance, mutations, stepMutations),
   });
 
   // Keep the task lease alive while user code is running.

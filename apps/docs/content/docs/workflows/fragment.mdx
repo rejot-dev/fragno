@@ -52,6 +52,29 @@ export const workflows = {
 } as const;
 ```
 
+## Step-scoped mutations
+
+Use step-scoped mutations to register database work that should commit with the step record. These
+mutations run after the step callback returns and are skipped on replay, so they cannot influence
+the step return value.
+
+Step-scoped mutations commit in the same transaction that persists the step boundary. Service calls
+run before buffered mutations and step state updates. Unique constraint violations during step
+commit fail the step as non-retryable.
+
+```ts
+await step.do("persist-user", async (tx) => {
+  const profile = await buildUserProfile();
+
+  tx.serviceCalls(() => [usersService.createUser(profile), auditService.logUserCreate(profile)]);
+
+  return profile.id;
+});
+```
+
+If you need reads that affect the step output, run an explicit handler transaction inside the step
+body instead of relying on the step-scoped buffer.
+
 ## Schema validation + output typing
 
 If you provide a Standard Schema, params are validated on create/createBatch. If you provide an

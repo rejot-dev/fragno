@@ -221,7 +221,7 @@ export type WorkflowStepTx = {
   // Register serviceTx calls to be executed with the step commit transaction.
   serviceCalls: (factory: () => readonly TxResult<unknown, unknown>[]) => void;
   // Register UOW mutations to run with the step commit transaction.
-  mutate: (fn: (ctx: HandlerTxContext) => void | Promise<void>) => void;
+  mutate: (fn: (ctx: HandlerTxContext) => void) => void;
 };
 
 export interface WorkflowStep {

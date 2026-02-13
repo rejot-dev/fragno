@@ -15,6 +15,7 @@ import {
   deleteTask,
   startTaskLeaseHeartbeat,
   commitInstanceAndTask,
+  flushStepBoundary,
 } from "./runner/task";
 import { processTask } from "./runner/process";
 import type { RunHandlerTx, WorkflowsRunnerOptions, WorkflowTaskRecord } from "./runner/types";
@@ -72,6 +73,16 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     commitInstanceAndTask(task, instance, status, update, taskAction, mutations, {
       runHandlerTx: runHandlerTxForRunner,
       time,
+      getDbNow,
+    });
+
+  const flushStepBoundaryForRunner = (
+    instance: Parameters<typeof flushStepBoundary>[0],
+    mutations: Parameters<typeof flushStepBoundary>[1],
+    stepMutations: Parameters<typeof flushStepBoundary>[2],
+  ) =>
+    flushStepBoundary(instance, mutations, stepMutations, {
+      runHandlerTx: runHandlerTxForRunner,
       getDbNow,
     });
 
@@ -153,6 +164,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
           getDbNow,
           workflowsByName,
           workflowBindings,
+          flushStepBoundary: flushStepBoundaryForRunner,
           commitInstanceAndTask: commitInstanceAndTaskForRunner,
           deleteTask: deleteTaskForRunner,
           startTaskLeaseHeartbeat: startTaskLeaseHeartbeatForRunner,
