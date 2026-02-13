@@ -1,6 +1,6 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
-import type { DbNow } from "@fragno-dev/db";
+import type { DbNow, HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -35,11 +35,20 @@ export type WorkflowLogger = {
   error: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
 };
 
+export type WorkflowStepTx = {
+  serviceCalls: (factory: () => readonly TxResult<unknown, unknown>[]) => void;
+  mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+};
+
 /** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
   log: WorkflowLogger;
-  do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
-  do<T>(name: string, config: WorkflowStepConfig, callback: () => Promise<T> | T): Promise<T>;
+  do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
+  do<T>(
+    name: string,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+  ): Promise<T>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
   waitForEvent<T = unknown>(

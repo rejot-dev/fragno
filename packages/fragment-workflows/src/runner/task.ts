@@ -1,9 +1,10 @@
 // Task leasing and task/instance transition helpers for the workflow runner.
 
-import { ConcurrencyConflictError } from "@fragno-dev/db";
+import { ConcurrencyConflictError, type TxResult } from "@fragno-dev/db";
 import { FragnoId } from "@fragno-dev/db/schema";
 import type { FragnoRuntime } from "@fragno-dev/core";
 import { workflowsSchema } from "../schema";
+import { NonRetryableError } from "../workflow";
 import type {
   RunHandlerTx,
   WorkflowEventRecord,
@@ -13,8 +14,9 @@ import type {
   WorkflowTaskRecord,
 } from "./types";
 import { isPausedStatus, isTerminalStatus } from "./status";
-import type { RunnerMutationBuffer, RunnerState } from "./state";
+import type { RunnerMutationBuffer, RunnerState, RunnerStepMutationBuffer } from "./state";
 import { updateRemoteState } from "./state";
+import { isUniqueConstraintError } from "./utils";
 
 const requireFragnoId = (value: unknown, label: string): FragnoId => {
   if (value instanceof FragnoId) {
@@ -165,6 +167,125 @@ export const claimTask = async (
     steps: outcome.steps,
     events: outcome.events,
   };
+};
+
+export const flushStepBoundary = async (
+  instance: WorkflowInstanceRecord,
+  mutations: RunnerMutationBuffer,
+  stepMutations: RunnerStepMutationBuffer | null,
+  ctx: Pick<TaskContext, "runHandlerTx" | "getDbNow">,
+): Promise<boolean> => {
+  const hasStepMutations =
+    !!stepMutations &&
+    (stepMutations.serviceCalls.length > 0 || stepMutations.mutations.length > 0);
+  if (
+    !hasStepMutations &&
+    mutations.stepCreates.size === 0 &&
+    mutations.stepUpdates.size === 0 &&
+    mutations.eventUpdates.size === 0 &&
+    mutations.logs.length === 0
+  ) {
+    return true;
+  }
+
+  const dbNow = await ctx.getDbNow();
+
+  try {
+    await ctx.runHandlerTx((handlerTx) => {
+      const baseBuilder = handlerTx();
+      const builder = stepMutations?.serviceCalls.length
+        ? (baseBuilder.withServiceCalls(() => {
+            const calls: TxResult<unknown, unknown>[] = [];
+            for (const factory of stepMutations.serviceCalls) {
+              calls.push(...factory());
+            }
+            return calls;
+          }) as unknown as typeof baseBuilder)
+        : baseBuilder;
+
+      return builder
+        .mutate((handlerTxContext) => {
+          if (stepMutations?.mutations.length) {
+            for (const mutate of stepMutations.mutations) {
+              try {
+                mutate(handlerTxContext);
+              } catch (err) {
+                if (isUniqueConstraintError(err)) {
+                  throw new NonRetryableError(
+                    "STEP_UNIQUE_CONSTRAINT_VIOLATION",
+                    "UniqueConstraintError",
+                  );
+                }
+                throw err;
+              }
+            }
+          }
+
+          const uow = handlerTxContext.forSchema(workflowsSchema);
+          const instanceId = instance.id;
+          uow.update("workflow_instance", instanceId, (b) => {
+            requireFragnoId(instanceId, "INSTANCE_ID");
+            return b.set({
+              updatedAt: dbNow,
+            });
+          });
+
+          for (const [, createData] of mutations.stepCreates) {
+            uow.create("workflow_step", createData);
+          }
+
+          for (const [, updateEntry] of mutations.stepUpdates) {
+            uow.update("workflow_step", updateEntry.id, (b) => {
+              requireFragnoId(updateEntry.id, "STEP_ID");
+              const builder = b.set(updateEntry.data);
+              builder.check();
+              return builder;
+            });
+          }
+
+          for (const [, eventUpdate] of mutations.eventUpdates) {
+            uow.update("workflow_event", eventUpdate.id, (b) => {
+              requireFragnoId(eventUpdate.id, "EVENT_ID");
+              const builder = b.set(eventUpdate.data);
+              builder.check();
+              return builder;
+            });
+          }
+
+          for (const log of mutations.logs) {
+            uow.create("workflow_log", log);
+          }
+        })
+        .execute();
+    });
+    const refreshed = await ctx.runHandlerTx((handlerTx) =>
+      handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+            b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+              eb.and(
+                eb("workflowName", "=", instance.workflowName),
+                eb("instanceId", "=", instance.instanceId),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([current]) => current ?? null)
+        .execute(),
+    );
+    if (refreshed) {
+      instance.id = refreshed.id;
+      instance.updatedAt = refreshed.updatedAt ?? dbNow;
+    } else {
+      instance.updatedAt = dbNow;
+    }
+    return true;
+  } catch (err) {
+    if (err instanceof ConcurrencyConflictError) {
+      return false;
+    }
+    throw err;
+  }
 };
 
 export const commitInstanceAndTask = async (

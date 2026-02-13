@@ -2,11 +2,19 @@
 import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { getInternalFragment } from "@fragno-dev/db";
+import { getInternalFragment, type TxResult } from "@fragno-dev/db";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsFragmentDefinition } from "./definition";
 import { createWorkflowsRunner } from "./runner";
-import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
+import * as runnerTask from "./runner/task";
+import {
+  defineWorkflow,
+  NonRetryableError,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "./workflow";
 import { workflowsRoutesFactory } from "./routes";
+import { workflowsSchema } from "./schema";
 
 describe("Workflows Runner", () => {
   let doCallCount = 0;
@@ -19,6 +27,9 @@ describe("Workflows Runner", () => {
   let pauseResumeCount = 0;
   let retryLogCount = 0;
   let maxAttemptsCallCount = 0;
+  let mutationOrder: string[] = [];
+  let replayStepCallCount = 0;
+  let replayMutationCallCount = 0;
   let pauseBoundaryStarted: Promise<void>;
   let pauseBoundaryStartedResolve: (() => void) | null = null;
   let pauseBoundaryContinue: (() => void) | null = null;
@@ -30,6 +41,13 @@ describe("Workflows Runner", () => {
   let restartBoundaryStarted: Promise<void>;
   let restartBoundaryStartedResolve: (() => void) | null = null;
   let restartBoundaryContinue: (() => void) | null = null;
+  const instanceRefs = new Map<string, FragnoId>();
+  let workflowServices: {
+    createInstance: (
+      workflowName: string,
+      options?: { id?: string; params?: unknown },
+    ) => TxResult<unknown, unknown>;
+  } | null = null;
 
   const DemoWorkflow = defineWorkflow(
     { name: "demo-workflow" },
@@ -121,6 +139,130 @@ describe("Workflows Runner", () => {
         () => {
           maxAttemptsCallCount += 1;
           throw new Error("MAX_ATTEMPT_FAIL");
+        },
+      );
+    },
+  );
+
+  const StepMutationWorkflow = defineWorkflow(
+    { name: "step-mutation-workflow" },
+    async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
+      const instanceRef = instanceRefs.get(event.instanceId);
+      if (!instanceRef) {
+        throw new Error("TEST_INSTANCE_REF_MISSING");
+      }
+      const services = workflowServices;
+      if (!services) {
+        throw new Error("TEST_SERVICES_MISSING");
+      }
+
+      const childId = `child-${event.instanceId}`;
+      return await step.do("mutate-step", (tx) => {
+        tx.serviceCalls(() => [
+          services.createInstance("demo-workflow", {
+            id: childId,
+            params: { count: 41 },
+          }),
+        ]);
+
+        tx.mutate(({ forSchema }) => {
+          const uow = forSchema(workflowsSchema);
+          uow.create("workflow_log", {
+            instanceRef,
+            workflowName: "step-mutation-workflow",
+            instanceId: event.instanceId,
+            runNumber: 0,
+            stepKey: "mutate-step",
+            attempt: 1,
+            level: "info",
+            category: "workflow",
+            message: "step-mutation",
+            data: { note: event.payload.note },
+          });
+        });
+
+        return { childId };
+      });
+    },
+  );
+
+  const MutationOrderingWorkflow = defineWorkflow(
+    { name: "mutation-order-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      return await step.do("order-step", (tx) => {
+        mutationOrder.push("callback-start");
+        tx.mutate(() => {
+          mutationOrder.push("mutation");
+        });
+        mutationOrder.push("callback-end");
+        return { ok: true };
+      });
+    },
+  );
+
+  const StepMutationReplayWorkflow = defineWorkflow(
+    { name: "step-mutation-replay-workflow" },
+    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      const services = workflowServices;
+      if (!services) {
+        throw new Error("TEST_SERVICES_MISSING");
+      }
+
+      const childId = `child-${event.instanceId}`;
+      const created = await step.do("spawn-child", (tx) => {
+        replayStepCallCount += 1;
+        tx.serviceCalls(() => [
+          services.createInstance("demo-workflow", { id: childId, params: { count: 9 } }),
+        ]);
+        tx.mutate(() => {
+          replayMutationCallCount += 1;
+        });
+        return { childId };
+      });
+
+      const waited = await step.waitForEvent("await-resume", {
+        type: "resume",
+        timeout: "1 hour",
+      });
+
+      return { created, waited };
+    },
+  );
+
+  const StepMutationUniqueConstraintWorkflow = defineWorkflow(
+    { name: "step-mutation-unique-workflow" },
+    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      return await step.do("unique-step", (tx) => {
+        tx.mutate(({ forSchema }) => {
+          const uow = forSchema(workflowsSchema);
+          uow.create("workflow_instance", {
+            workflowName: "step-mutation-unique-workflow",
+            instanceId: event.instanceId,
+            status: "queued",
+            params: {},
+            pauseRequested: false,
+            retentionUntil: null,
+            runNumber: 0,
+            startedAt: null,
+            completedAt: null,
+            output: null,
+            errorName: null,
+            errorMessage: null,
+          });
+        });
+        return { ok: true };
+      });
+    },
+  );
+
+  const UniqueConstraintWorkflow = defineWorkflow(
+    { name: "unique-constraint-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      return await step.do(
+        "unique-step",
+        { retries: { limit: 2, delay: "25 ms", backoff: "constant" } },
+        () => {
+          throw new NonRetryableError("STEP_UNIQUE_CONSTRAINT_VIOLATION", "UniqueConstraintError");
         },
       );
     },
@@ -330,6 +472,11 @@ describe("Workflows Runner", () => {
     retry: RetryWorkflow,
     retryLogs: RetryLogWorkflow,
     maxAttempts: MaxAttemptsWorkflow,
+    stepMutation: StepMutationWorkflow,
+    mutationOrder: MutationOrderingWorkflow,
+    stepMutationReplay: StepMutationReplayWorkflow,
+    stepMutationUnique: StepMutationUniqueConstraintWorkflow,
+    uniqueConstraint: UniqueConstraintWorkflow,
     concurrent: ConcurrentWorkflow,
     pauseSleep: PauseSleepWorkflow,
     pauseBoundary: PauseBoundaryWorkflow,
@@ -378,6 +525,12 @@ describe("Workflows Runner", () => {
 
   beforeAll(async () => {
     ({ fragments: _fragments, testContext, fragment, db, runner, runtime } = await setup());
+    workflowServices = fragment.services as {
+      createInstance: (
+        workflowName: string,
+        options?: { id?: string; params?: unknown },
+      ) => TxResult<unknown, unknown>;
+    };
   });
 
   const createInstance = async (workflowName: string, params: unknown) => {
@@ -405,6 +558,7 @@ describe("Workflows Runner", () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+    instanceRefs.clear();
     doCallCount = 0;
     concurrentCallCount = 0;
     retryCallCount = 0;
@@ -415,6 +569,9 @@ describe("Workflows Runner", () => {
     pauseResumeCount = 0;
     retryLogCount = 0;
     maxAttemptsCallCount = 0;
+    mutationOrder = [];
+    replayStepCallCount = 0;
+    replayMutationCallCount = 0;
     pauseBoundaryContinue = null;
     pauseBoundaryStartedResolve = null;
     pauseBoundaryStarted = new Promise((resolve) => {
@@ -456,6 +613,170 @@ describe("Workflows Runner", () => {
     const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     expect(steps).toHaveLength(1);
     expect(steps[0].status).toBe("completed");
+  });
+
+  test("step-scoped mutations should run with step commit", async () => {
+    const id = await createInstance("step-mutation-workflow", { note: "hello" });
+    const instanceRef = await getInstanceRef("step-mutation-workflow", id);
+    instanceRefs.set(id, instanceRef);
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const childInstance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", `child-${id}`)),
+      ),
+    );
+    expect(childInstance).not.toBeNull();
+
+    const logs = await db.find("workflow_log", (b) => b.whereIndex("primary"));
+    const log = logs.find(
+      (entry) =>
+        entry.workflowName === "step-mutation-workflow" &&
+        entry.instanceId === id &&
+        entry.message === "step-mutation",
+    );
+    expect(log).toBeTruthy();
+  });
+
+  test("step-scoped mutations should run after the step callback", async () => {
+    const id = await createInstance("mutation-order-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    expect(mutationOrder).toEqual(["callback-start", "callback-end", "mutation"]);
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "mutation-order-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(instance?.status).toBe("complete");
+  });
+
+  test("step-scoped mutations should not re-run on replay", async () => {
+    const id = await createInstance("step-mutation-replay-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(firstTick).toBe(1);
+    expect(replayStepCallCount).toBe(1);
+    expect(replayMutationCallCount).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "step-mutation-replay-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(waiting?.status).toBe("waiting");
+
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "step-mutation-replay-workflow", instanceId: id },
+      body: { type: "resume", payload: { ok: true } },
+    });
+
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(secondTick).toBe(1);
+    expect(replayStepCallCount).toBe(1);
+    expect(replayMutationCallCount).toBe(1);
+
+    const childInstance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", `child-${id}`)),
+      ),
+    );
+    expect(childInstance).not.toBeNull();
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "step-mutation-replay-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(completed?.status).toBe("complete");
+  });
+
+  test("step-scoped unique constraint violations should fail steps without retry", async () => {
+    const id = await createInstance("step-mutation-unique-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const step = await db.findFirst("workflow_step", (b) =>
+      b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "step-mutation-unique-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+          eb("stepKey", "=", "unique-step"),
+        ),
+      ),
+    );
+    expect(step?.status).toBe("errored");
+    expect(step?.attempts).toBe(1);
+    expect(step?.nextRetryAt).toBeNull();
+    expect(step?.errorName).toBe("UniqueConstraintError");
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "step-mutation-unique-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(instance?.status).toBe("errored");
+    expect(instance?.errorName).toBe("UniqueConstraintError");
+  });
+
+  test("unique constraint violations should fail steps without retry", async () => {
+    const id = await createInstance("unique-constraint-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const step = await db.findFirst("workflow_step", (b) =>
+      b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "unique-constraint-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+          eb("stepKey", "=", "unique-step"),
+        ),
+      ),
+    );
+    expect(step?.status).toBe("errored");
+    expect(step?.attempts).toBe(1);
+    expect(step?.nextRetryAt).toBeNull();
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "unique-constraint-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(instance?.status).toBe("errored");
+    expect(instance?.errorName).toBe("UniqueConstraintError");
+  });
+
+  test("tick should flush step boundaries after each step", async () => {
+    const flushSpy = vi.spyOn(runnerTask, "flushStepBoundary");
+    const flushRunner = createWorkflowsRunner({ fragment, workflows, runtime });
+    flushSpy.mockClear();
+
+    try {
+      const id = await createInstance("distinct-step-workflow", {});
+
+      const processed = await flushRunner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
+      expect(distinctCallCount).toBe(2);
+      expect(flushSpy).toHaveBeenCalledTimes(2);
+
+      const instance = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "distinct-step-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+      expect(instance?.status).toBe("complete");
+    } finally {
+      flushSpy.mockRestore();
+    }
   });
 
   test("tick should cache steps by name", async () => {
@@ -1356,6 +1677,9 @@ describe("Workflows Runner", () => {
     );
 
     expect(terminated?.status).toBe("terminated");
+
+    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(step).toMatchObject({ stepKey: "terminate-boundary", status: "completed" });
 
     const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
     expect(tasks).toHaveLength(0);

@@ -9,6 +9,7 @@ import type {
   WorkflowStepRecord,
   WorkflowStepUpdate,
 } from "./types";
+import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 export type WorkflowStepSnapshot = Partial<Omit<WorkflowStepRecord, "id">> & {
   id?: WorkflowStepRecord["id"];
@@ -33,6 +34,16 @@ export type RunnerMutationBuffer = {
   logs: WorkflowLogCreate[];
 };
 
+export type RunnerStepMutationBuffer = {
+  serviceCalls: Array<() => readonly TxResult<unknown, unknown>[]>;
+  mutations: Array<(ctx: HandlerTxContext<HooksMap>) => void | Promise<void>>;
+};
+
+type RunnerStepMutationEntry = {
+  attempt: number | null;
+  buffer: RunnerStepMutationBuffer;
+};
+
 export type RunnerState = {
   instance: WorkflowInstanceRecord;
   remoteState: {
@@ -47,7 +58,20 @@ export type RunnerState = {
   stepsByKey: Map<string, WorkflowStepSnapshot>;
   events: WorkflowEventRecord[];
   mutations: RunnerMutationBuffer;
+  stepMutations: Map<string, RunnerStepMutationEntry>;
 };
+
+const createMutationBuffer = (): RunnerMutationBuffer => ({
+  stepCreates: new Map(),
+  stepUpdates: new Map(),
+  eventUpdates: new Map(),
+  logs: [],
+});
+
+const createStepMutationBuffer = (): RunnerStepMutationBuffer => ({
+  serviceCalls: [],
+  mutations: [],
+});
 
 export const createRunnerState = (
   instance: WorkflowInstanceRecord,
@@ -72,13 +96,13 @@ export const createRunnerState = (
     remoteStateRefreshedAt: instance.updatedAt ?? null,
     stepsByKey,
     events,
-    mutations: {
-      stepCreates: new Map(),
-      stepUpdates: new Map(),
-      eventUpdates: new Map(),
-      logs: [],
-    },
+    mutations: createMutationBuffer(),
+    stepMutations: new Map(),
   };
+};
+
+export const resetMutations = (state: RunnerState): void => {
+  state.mutations = createMutationBuffer();
 };
 
 export const updateRemoteState = (
@@ -103,6 +127,36 @@ export const updateRemoteState = (
 
 export const getStepSnapshot = (state: RunnerState, stepKey: string) =>
   state.stepsByKey.get(stepKey) ?? null;
+
+export const getStepMutationBuffer = (
+  state: RunnerState,
+  stepKey: string,
+  attempt: number | null,
+): RunnerStepMutationBuffer => {
+  const existing = state.stepMutations.get(stepKey);
+  if (!existing || existing.attempt !== attempt) {
+    const entry = { attempt, buffer: createStepMutationBuffer() };
+    state.stepMutations.set(stepKey, entry);
+    return entry.buffer;
+  }
+  return existing.buffer;
+};
+
+export const getStepMutationBufferIfExists = (
+  state: RunnerState,
+  stepKey: string,
+  attempt: number | null,
+): RunnerStepMutationBuffer | null => {
+  const existing = state.stepMutations.get(stepKey);
+  if (!existing || existing.attempt !== attempt) {
+    return null;
+  }
+  return existing.buffer;
+};
+
+export const clearStepMutationBuffer = (state: RunnerState, stepKey: string): void => {
+  state.stepMutations.delete(stepKey);
+};
 
 export const queueStepCreate = (
   state: RunnerState,

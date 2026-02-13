@@ -118,6 +118,7 @@ export {
   createHandlerTxBuilder,
   type TxResult,
   // Builder context types
+  type HandlerTxContext,
   type ServiceBuilderMutateContext,
   type HandlerBuilderMutateContext,
   type BuilderTransformContextWithMutate,

@@ -8,19 +8,29 @@ import type {
   WorkflowLogOptions,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowStepTx,
 } from "../workflow";
 import { NonRetryableError } from "../workflow";
 import type { WorkflowLogCreate, WorkflowStepRecord } from "./types";
-import { computeRetryDelayMs, normalizeRetryConfig, normalizeWaitTimeoutMs } from "./utils";
+import {
+  computeRetryDelayMs,
+  isUniqueConstraintError,
+  normalizeRetryConfig,
+  normalizeWaitTimeoutMs,
+} from "./utils";
 import { parseDurationMs } from "../utils";
 import { isTerminalStatus } from "./status";
 import type { RunnerState } from "./state";
 import {
+  clearStepMutationBuffer,
   getStepSnapshot,
+  getStepMutationBuffer,
+  getStepMutationBufferIfExists,
   queueEventUpdate,
   queueLogCreate,
   queueStepCreate,
   queueStepUpdate,
+  resetMutations,
 } from "./state";
 
 class WorkflowSuspend extends Error {
@@ -76,6 +86,12 @@ export class RunnerStep implements WorkflowStep {
   #stepCount = 0;
   #time: FragnoRuntime["time"];
   #getDbNow: () => Promise<Date>;
+  #flushStepBoundary:
+    | ((
+        mutations: RunnerState["mutations"],
+        stepMutations: ReturnType<typeof getStepMutationBufferIfExists>,
+      ) => Promise<boolean>)
+    | null = null;
   #activeStepKey: string | null = null;
   #activeAttempt: number | null = null;
 
@@ -88,6 +104,10 @@ export class RunnerStep implements WorkflowStep {
     maxSteps: number;
     time: FragnoRuntime["time"];
     getDbNow: () => Promise<Date>;
+    flushStepBoundary: (
+      mutations: RunnerState["mutations"],
+      stepMutations: ReturnType<typeof getStepMutationBufferIfExists>,
+    ) => Promise<boolean>;
   }) {
     this.#state = options.state;
     this.#workflowName = options.workflowName;
@@ -97,6 +117,7 @@ export class RunnerStep implements WorkflowStep {
     this.#maxSteps = options.maxSteps;
     this.#time = options.time;
     this.#getDbNow = options.getDbNow;
+    this.#flushStepBoundary = options.flushStepBoundary;
     this.log = {
       debug: (message, data, opts) => this.#writeLog("debug", message, data, opts),
       info: (message, data, opts) => this.#writeLog("info", message, data, opts),
@@ -107,8 +128,8 @@ export class RunnerStep implements WorkflowStep {
 
   async do<T>(
     name: string,
-    configOrCallback: WorkflowStepConfig | (() => Promise<T> | T),
-    maybeCallback?: () => Promise<T> | T,
+    configOrCallback: WorkflowStepConfig | ((tx: WorkflowStepTx) => Promise<T> | T),
+    maybeCallback?: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T> {
     const { config, callback } =
       typeof configOrCallback === "function"
@@ -130,18 +151,21 @@ export class RunnerStep implements WorkflowStep {
       }
 
       if (existing?.status === "completed") {
+        clearStepMutationBuffer(this.#state, name);
         await this.#throwIfPauseRequested();
         return existing.result as T;
       }
 
       if (existing?.status === "waiting" && existing.nextRetryAt) {
         if (existing.nextRetryAt > dbNow) {
+          clearStepMutationBuffer(this.#state, name);
           await this.#throwIfPauseRequested();
           throw new WorkflowSuspend("retry", existing.nextRetryAt);
         }
       }
 
       if (existing?.status === "errored") {
+        clearStepMutationBuffer(this.#state, name);
         const err = new Error(existing.errorMessage ?? "STEP_FAILED");
         err.name = existing.errorName ?? "Error";
         throw err;
@@ -201,10 +225,11 @@ export class RunnerStep implements WorkflowStep {
         });
       }
 
+      clearStepMutationBuffer(this.#state, name);
       this.#setStepContext(name, attempt);
 
       try {
-        const result = await this.#runWithTimeout(callback, timeoutMs);
+        const result = await this.#runWithTimeout(() => callback(this.#createStepTx()), timeoutMs);
         const completionUpdate = {
           status: "completed",
           result,
@@ -212,6 +237,7 @@ export class RunnerStep implements WorkflowStep {
         };
         const snapshot = getStepSnapshot(this.#state, name);
         queueStepUpdate(this.#state, name, snapshot?.id, completionUpdate);
+        await this.#flushBoundary();
         await this.#throwIfPauseRequested();
         return result;
       } catch (err) {
@@ -251,15 +277,36 @@ export class RunnerStep implements WorkflowStep {
         queueStepUpdate(this.#state, name, snapshot?.id, failureUpdate);
 
         if (shouldRetry && nextRetryAt) {
+          clearStepMutationBuffer(this.#state, name);
           await this.#throwIfPauseRequested();
           throw new WorkflowSuspend("retry", nextRetryAt);
         }
 
+        clearStepMutationBuffer(this.#state, name);
         throw error;
       }
     } finally {
       this.#endStep(name);
     }
+  }
+
+  #createStepTx(): WorkflowStepTx {
+    return {
+      serviceCalls: (factory) => {
+        if (!this.#activeStepKey || this.#activeAttempt === null) {
+          throw new Error("STEP_TX_UNAVAILABLE");
+        }
+        const buffer = getStepMutationBuffer(this.#state, this.#activeStepKey, this.#activeAttempt);
+        buffer.serviceCalls.push(factory);
+      },
+      mutate: (fn) => {
+        if (!this.#activeStepKey || this.#activeAttempt === null) {
+          throw new Error("STEP_TX_UNAVAILABLE");
+        }
+        const buffer = getStepMutationBuffer(this.#state, this.#activeStepKey, this.#activeAttempt);
+        buffer.mutations.push(fn);
+      },
+    };
   }
 
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
@@ -359,6 +406,7 @@ export class RunnerStep implements WorkflowStep {
           });
         }
 
+        await this.#flushBoundary();
         await this.#throwIfPauseRequested();
         return { ...result, timestamp: coerceEventTimestamp(result.timestamp) };
       }
@@ -438,6 +486,7 @@ export class RunnerStep implements WorkflowStep {
             updatedAt: now,
           });
         }
+        await this.#flushBoundary();
         await this.#throwIfPauseRequested();
         return;
       }
@@ -570,6 +619,51 @@ export class RunnerStep implements WorkflowStep {
     };
 
     queueLogCreate(this.#state, log);
+  }
+
+  async #flushBoundary(): Promise<void> {
+    if (!this.#flushStepBoundary) {
+      return;
+    }
+
+    const stepMutations =
+      this.#activeStepKey && this.#activeAttempt !== null
+        ? getStepMutationBufferIfExists(this.#state, this.#activeStepKey, this.#activeAttempt)
+        : null;
+    const hasStepMutations =
+      !!stepMutations &&
+      (stepMutations.serviceCalls.length > 0 || stepMutations.mutations.length > 0);
+
+    const { stepCreates, stepUpdates, eventUpdates, logs } = this.#state.mutations;
+    if (
+      !hasStepMutations &&
+      stepCreates.size === 0 &&
+      stepUpdates.size === 0 &&
+      eventUpdates.size === 0 &&
+      logs.length === 0
+    ) {
+      return;
+    }
+
+    try {
+      const ok = await this.#flushStepBoundary(this.#state.mutations, stepMutations);
+      if (!ok) {
+        throw new WorkflowAbort();
+      }
+    } catch (err) {
+      if (err instanceof WorkflowAbort) {
+        throw err;
+      }
+      if (isUniqueConstraintError(err)) {
+        throw new NonRetryableError("STEP_UNIQUE_CONSTRAINT_VIOLATION", "UniqueConstraintError");
+      }
+      throw err;
+    }
+
+    resetMutations(this.#state);
+    if (this.#activeStepKey) {
+      clearStepMutationBuffer(this.#state, this.#activeStepKey);
+    }
   }
 }
 
