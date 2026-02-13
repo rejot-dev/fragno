@@ -1,4 +1,4 @@
-import type { Role } from "../types";
+import type { Role, UserSummary } from "../types";
 
 export type DefaultOrganizationRole = "owner" | "admin" | "member";
 export type OrganizationRoleName<TRole extends string = DefaultOrganizationRole> = TRole;
@@ -24,6 +24,11 @@ export interface OrganizationMember<TRole extends string = DefaultOrganizationRo
   updatedAt: Date;
 }
 
+export type OrganizationMemberSummary<TRole extends string = DefaultOrganizationRole> = Omit<
+  OrganizationMember<TRole>,
+  "roles"
+>;
+
 export type OrganizationInvitationStatus =
   | "pending"
   | "accepted"
@@ -44,6 +49,11 @@ export interface OrganizationInvitation<TRole extends string = DefaultOrganizati
   respondedAt?: Date | null;
 }
 
+export type OrganizationInvitationSummary<TRole extends string = DefaultOrganizationRole> = Omit<
+  OrganizationInvitation<TRole>,
+  "token"
+>;
+
 export interface AuthMeResponse<TRole extends string = DefaultOrganizationRole> {
   user: { id: string; email: string; role: Role };
   organizations: Array<{
@@ -55,31 +65,26 @@ export interface AuthMeResponse<TRole extends string = DefaultOrganizationRole> 
     member: OrganizationMember<TRole>;
   } | null;
   invitations: Array<{
-    invitation: OrganizationInvitation<TRole>;
+    invitation: OrganizationInvitationSummary<TRole>;
     organization: Organization;
   }>;
 }
 
 export interface OrganizationHookPayload {
-  organizationId: string;
-  name: string;
-  slug: string;
-  createdBy: string;
+  organization: Organization;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationMemberHookPayload<TRole extends string = DefaultOrganizationRole> {
-  organizationId: string;
-  memberId: string;
-  userId: string;
-  roles: OrganizationRoleName<TRole>[];
+  organization: Organization;
+  member: OrganizationMember<TRole>;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationInvitationHookPayload<TRole extends string = DefaultOrganizationRole> {
-  organizationId: string;
-  invitationId: string;
-  email: string;
-  roles: OrganizationRoleName<TRole>[];
-  inviterId: string;
+  organization: Organization;
+  invitation: OrganizationInvitation<TRole>;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationHooks<TRole extends string = DefaultOrganizationRole> {
@@ -116,17 +121,7 @@ export interface OrganizationConfig<TRole extends string = DefaultOrganizationRo
     | boolean
     | ((ctx: { userId: string; userRole: Role }) => Promise<boolean>);
   invitationExpiresInDays?: number;
-  autoCreateOrganization?:
-    | false
-    | {
-        name?: (ctx: { userId: string; email: string }) => string;
-        slug?: (ctx: { userId: string; email: string }) => string;
-        logoUrl?: (ctx: { userId: string; email: string }) => string | null | undefined;
-        metadata?: (ctx: {
-          userId: string;
-          email: string;
-        }) => Record<string, unknown> | null | undefined;
-      };
+  autoCreateOrganization?: false | AutoCreateOrganizationConfig;
   limits?: {
     organizationsPerUser?: number;
     membersPerOrganization?: number;

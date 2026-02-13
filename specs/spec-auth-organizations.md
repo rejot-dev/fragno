@@ -203,8 +203,8 @@ Add service methods that create and manage each new object type. Example list:
 
 - `createOrganization({ name, slug, creatorUserId, metadata })`
 - `createOrganizationMember({ organizationId, userId, roles })`
-- `createOrganizationMemberRole({ memberId, role })`
-- `removeOrganizationMemberRole({ memberId, role })`
+- `createOrganizationMemberRole({ organizationId, memberId, role, actor })`
+- `removeOrganizationMemberRole({ organizationId, memberId, role, actor })`
 - `createOrganizationInvitation({ organizationId, email, roles, inviterId })`
 - `getOrganizationsForUser({ userId, cursor, pageSize })`
 - `getOrganizationById({ organizationId })`
@@ -214,7 +214,7 @@ Add service methods that create and manage each new object type. Example list:
 - `updateOrganizationMemberRoles({ memberId, roles })`
 - `removeOrganizationMember({ memberId })`
 - `listOrganizationInvitations({ organizationId, status })`
-- `listOrganizationInvitationsForUser({ email })`
+- `listOrganizationInvitationsForUser({ email, status })`
 - `respondToOrganizationInvitation({ invitationId, token, action })`
 - `setActiveOrganization({ sessionId, organizationId })`
 - `getActiveOrganization({ sessionId })`
@@ -228,25 +228,20 @@ Define durable hooks via `provideHooks`, triggered with `uow.triggerHook` inside
 
 ```ts
 export interface OrganizationHookPayload {
-  organizationId: string;
-  name: string;
-  slug: string;
-  createdBy: string;
+  organization: Organization;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationMemberHookPayload<TRole extends string = DefaultOrganizationRole> {
-  organizationId: string;
-  memberId: string;
-  userId: string;
-  roles: OrganizationRoleName<TRole>[];
+  organization: Organization;
+  member: OrganizationMember<TRole>;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationInvitationHookPayload<TRole extends string = DefaultOrganizationRole> {
-  organizationId: string;
-  invitationId: string;
-  email: string;
-  roles: OrganizationRoleName<TRole>[];
-  inviterId: string;
+  organization: Organization;
+  invitation: OrganizationInvitation<TRole>;
+  actor: UserSummary | null;
 }
 
 export interface OrganizationHooks<TRole extends string = DefaultOrganizationRole> {

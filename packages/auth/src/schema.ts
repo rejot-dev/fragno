@@ -19,13 +19,20 @@ export const authSchema = schema("auth", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("userId", referenceColumn())
-        .addColumn("activeOrganizationId", referenceColumn().nullable())
         .addColumn("expiresAt", column("timestamp"))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_session_user", ["userId"]);
+    })
+    .alterTable("user", (t) => {
+      return t
+        .addColumn("bannedAt", column("timestamp").nullable())
+        .createIndex("idx_user_createdAt", ["createdAt"]);
+    })
+    .alterTable("session", (t) => {
+      return t.addColumn("activeOrganizationId", referenceColumn().nullable());
     })
     .addTable("organization", (t) => {
       return t
@@ -78,7 +85,8 @@ export const authSchema = schema("auth", (s) => {
         .createIndex("idx_org_member_role_member_role", ["memberId", "role"], {
           unique: true,
         })
-        .createIndex("idx_org_member_role_member", ["memberId"]);
+        .createIndex("idx_org_member_role_member", ["memberId"])
+        .createIndex("idx_org_member_role_role", ["role"]);
     })
     .addTable("organizationInvitation", (t) => {
       return t
@@ -97,7 +105,8 @@ export const authSchema = schema("auth", (s) => {
         .addColumn("respondedAt", column("timestamp").nullable())
         .createIndex("idx_org_invitation_token", ["token"], { unique: true })
         .createIndex("idx_org_invitation_org_status", ["organizationId", "status"])
-        .createIndex("idx_org_invitation_email", ["email"]);
+        .createIndex("idx_org_invitation_email", ["email"])
+        .createIndex("idx_org_invitation_email_status", ["email", "status"]);
     })
     .addReference("sessionOwner", {
       from: {
@@ -186,8 +195,5 @@ export const authSchema = schema("auth", (s) => {
         column: "id",
       },
       type: "one",
-    })
-    .alterTable("user", (t) => {
-      return t.createIndex("idx_user_createdAt", ["createdAt"]);
     });
 });

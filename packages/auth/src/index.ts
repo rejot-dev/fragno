@@ -119,22 +119,18 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
                   ? organizationConfig.autoCreateOrganization
                   : undefined,
               creatorRoles: organizationConfig?.creatorRoles,
-              organizationHooksEnabled: organizationsEnabled,
             }
           : undefined,
       ),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
       ...createOrganizationServices({
-        hooksEnabled: organizationsEnabled,
         organizationConfig: organizationConfigResolved,
       }),
       ...createOrganizationMemberServices({
-        hooksEnabled: organizationsEnabled,
         organizationConfig: organizationConfigResolved,
       }),
       ...createOrganizationInvitationServices({
-        hooksEnabled: organizationsEnabled,
         organizationConfig: organizationConfigResolved,
       }),
       ...createActiveOrganizationServices(),
@@ -157,8 +153,6 @@ export function createAuthFragment(
         : "simple-auth-db",
   };
 
-  const organizationsEnabled = config.organizations !== false;
-
   return instantiate(authFragmentDefinition)
     .withConfig(config)
     .withOptions(options)
@@ -166,7 +160,7 @@ export function createAuthFragment(
       userActionsRoutesFactory,
       sessionRoutesFactory,
       userOverviewRoutesFactory,
-      ...(organizationsEnabled ? [organizationRoutesFactory] : []),
+      organizationRoutesFactory,
     ])
     .build();
 }
@@ -208,32 +202,140 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const useChangePassword = b.createMutator("POST", "/change-password");
   const useOrganizations = b.createHook("/organizations");
   const useOrganization = b.createHook("/organizations/:organizationId");
-  const useCreateOrganization = b.createMutator("POST", "/organizations");
-  const useUpdateOrganization = b.createMutator("PATCH", "/organizations/:organizationId");
-  const useDeleteOrganization = b.createMutator("DELETE", "/organizations/:organizationId");
+  const useCreateOrganization = b.createMutator("POST", "/organizations", (invalidate) => {
+    invalidate("GET", "/organizations", {});
+    invalidate("GET", "/organizations/active", {});
+    invalidate("GET", "/me", {});
+  });
+  const useUpdateOrganization = b.createMutator(
+    "PATCH",
+    "/organizations/:organizationId",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (organizationId) {
+        invalidate("GET", "/organizations/:organizationId", {
+          pathParams: { organizationId },
+        });
+        invalidate("GET", "/organizations/:organizationId/members", {
+          pathParams: { organizationId },
+        });
+        invalidate("GET", "/organizations/:organizationId/invitations", {
+          pathParams: { organizationId },
+        });
+      }
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/organizations/active", {});
+      invalidate("GET", "/me", {});
+    },
+  );
+  const useDeleteOrganization = b.createMutator(
+    "DELETE",
+    "/organizations/:organizationId",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (organizationId) {
+        invalidate("GET", "/organizations/:organizationId", {
+          pathParams: { organizationId },
+        });
+        invalidate("GET", "/organizations/:organizationId/members", {
+          pathParams: { organizationId },
+        });
+        invalidate("GET", "/organizations/:organizationId/invitations", {
+          pathParams: { organizationId },
+        });
+      }
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/organizations/active", {});
+      invalidate("GET", "/me", {});
+    },
+  );
   const useActiveOrganization = b.createHook("/organizations/active");
-  const useSetActiveOrganization = b.createMutator("POST", "/organizations/active");
+  const useSetActiveOrganization = b.createMutator(
+    "POST",
+    "/organizations/active",
+    (invalidate) => {
+      invalidate("GET", "/organizations/active", {});
+      invalidate("GET", "/me", {});
+    },
+  );
   const useOrganizationMembers = b.createHook("/organizations/:organizationId/members");
   const useAddOrganizationMember = b.createMutator(
     "POST",
     "/organizations/:organizationId/members",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (!organizationId) {
+        return;
+      }
+      invalidate("GET", "/organizations/:organizationId/members", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations/:organizationId", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/me", {});
+    },
   );
   const useUpdateOrganizationMemberRoles = b.createMutator(
     "PATCH",
     "/organizations/:organizationId/members/:memberId",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (!organizationId) {
+        return;
+      }
+      invalidate("GET", "/organizations/:organizationId/members", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations/:organizationId", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/me", {});
+    },
   );
   const useRemoveOrganizationMember = b.createMutator(
     "DELETE",
     "/organizations/:organizationId/members/:memberId",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (!organizationId) {
+        return;
+      }
+      invalidate("GET", "/organizations/:organizationId/members", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations/:organizationId", {
+        pathParams: { organizationId },
+      });
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/me", {});
+    },
   );
   const useOrganizationInvitations = b.createHook("/organizations/:organizationId/invitations");
   const useInviteOrganizationMember = b.createMutator(
     "POST",
     "/organizations/:organizationId/invitations",
+    (invalidate, params) => {
+      const organizationId = params.pathParams.organizationId;
+      if (!organizationId) {
+        return;
+      }
+      invalidate("GET", "/organizations/:organizationId/invitations", {
+        pathParams: { organizationId },
+      });
+    },
   );
   const useRespondOrganizationInvitation = b.createMutator(
     "PATCH",
     "/organizations/invitations/:invitationId",
+    (invalidate) => {
+      invalidate("GET", "/organizations/invitations", {});
+      invalidate("GET", "/organizations", {});
+      invalidate("GET", "/organizations/active", {});
+      invalidate("GET", "/me", {});
+    },
   );
   const useUserInvitations = b.createHook("/organizations/invitations");
 
@@ -312,7 +414,8 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
-export type { AuthHooks, SessionHookPayload, UserHookPayload } from "./hooks";
+export type { AuthHooks, SessionHookPayload, UserHookPayload, SessionSummary } from "./hooks";
+export type { UserSummary } from "./types";
 export type {
   AuthMeResponse,
   AutoCreateOrganizationConfig,
@@ -322,9 +425,11 @@ export type {
   OrganizationHookPayload,
   OrganizationHooks,
   OrganizationInvitation,
+  OrganizationInvitationSummary,
   OrganizationInvitationHookPayload,
   OrganizationInvitationStatus,
   OrganizationMember,
+  OrganizationMemberSummary,
   OrganizationMemberHookPayload,
   OrganizationRoleName,
 } from "./organization/types";

@@ -4,17 +4,23 @@ import type {
   OrganizationInvitationHookPayload,
   OrganizationMemberHookPayload,
 } from "./organization/types";
-import type { Role } from "./types";
+import type { UserSummary } from "./types";
 
 export interface UserHookPayload {
-  userId: string;
-  email: string;
-  role: Role;
+  user: UserSummary;
+  actor: UserSummary | null;
+}
+
+export interface SessionSummary {
+  id: string;
+  user: UserSummary;
+  expiresAt: Date;
+  activeOrganizationId: string | null;
 }
 
 export interface SessionHookPayload {
-  sessionId: string;
-  userId: string;
+  session: SessionSummary;
+  actor: UserSummary | null;
 }
 
 export interface AuthHooks {

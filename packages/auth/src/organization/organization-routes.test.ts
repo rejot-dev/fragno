@@ -39,7 +39,11 @@ describe("organization routes", async () => {
         .execute();
     });
 
-    return { user, sessionId: session.id };
+    if (!session.ok) {
+      throw new Error(`Failed to create session: ${session.code}`);
+    }
+
+    return { user, sessionId: session.session.id };
   };
 
   const createOrganization = async (sessionId: string, name?: string, slug?: string) => {
@@ -184,6 +188,73 @@ describe("organization routes", async () => {
     expect(inviteeMember?.roles).toEqual(["member"]);
   });
 
+  it("accepting an invitation is idempotent for existing members", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession("idempotent-owner@test.com");
+    const { user: invitedUser, sessionId: invitedSessionId } = await createUserWithSession(
+      "idempotent-invitee@test.com",
+    );
+
+    const createResponse = await fragment.callRoute("POST", "/organizations", {
+      query: { sessionId: ownerSessionId },
+      body: {
+        name: "Idempotent Org",
+        slug: "idempotent-org",
+      },
+    });
+
+    assert(createResponse.type === "json");
+    const orgId = createResponse.data.organization.id;
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: {
+          email: invitedUser.email,
+          roles: ["member"],
+        },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const addMemberResponse = await addMember(ownerSessionId, orgId, invitedUser.id, ["member"]);
+    assert(addMemberResponse.type === "json");
+
+    const acceptResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: invitedSessionId },
+        body: {
+          action: "accept",
+          token: inviteResponse.data.invitation.token,
+        },
+      },
+    );
+
+    assert(acceptResponse.type === "json");
+    expect(acceptResponse.data.invitation.status).toBe("accepted");
+
+    const membersResponse = await fragment.callRoute(
+      "GET",
+      "/organizations/:organizationId/members",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+      },
+    );
+
+    assert(membersResponse.type === "json");
+    const inviteeMembers = membersResponse.data.members.filter(
+      (member: { userId: string }) => member.userId === invitedUser.id,
+    );
+    expect(inviteeMembers).toHaveLength(1);
+  });
+
   it("sets active organization explicitly and enforces membership", async () => {
     const { sessionId } = await createUserWithSession("active-owner@test.com");
     const { sessionId: nonMemberSessionId } = await createUserWithSession(
@@ -237,6 +308,7 @@ describe("organization routes", async () => {
 
     assert(detailResponse.type === "error");
     expect(detailResponse.error.code).toBe("permission_denied");
+    expect(detailResponse.status).toBe(403);
   });
 
   it("updates and deletes organizations with permission checks", async () => {
@@ -262,6 +334,7 @@ describe("organization routes", async () => {
 
     assert(deniedUpdate.type === "error");
     expect(deniedUpdate.error.code).toBe("permission_denied");
+    expect(deniedUpdate.status).toBe(403);
 
     const updateResponse = await fragment.callRoute("PATCH", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -279,6 +352,7 @@ describe("organization routes", async () => {
 
     assert(deniedDelete.type === "error");
     expect(deniedDelete.error.code).toBe("permission_denied");
+    expect(deniedDelete.status).toBe(403);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },

@@ -10,42 +10,12 @@ import {
   serializeMember,
   serializeOrganization,
 } from "./serializers";
-
-const organizationSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  logoUrl: z.string().nullable(),
-  metadata: z.record(z.string(), z.unknown()).nullable(),
-  createdBy: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  deletedAt: z.string().nullable(),
-});
-
-const memberSchema = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  userId: z.string(),
-  roles: z.array(z.string()),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
-
-const invitationSchema = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  email: z.string(),
-  roles: z.array(z.string()),
-  status: z.enum(["pending", "accepted", "rejected", "canceled", "expired"]),
-  token: z.string(),
-  inviterId: z.string(),
-  expiresAt: z.string(),
-  createdAt: z.string(),
-  respondedAt: z.string().nullable(),
-});
-
-const invitationSummarySchema = invitationSchema.omit({ token: true });
+import {
+  invitationSchema,
+  invitationSummarySchema,
+  memberSchema,
+  organizationSchema,
+} from "./schemas";
 
 const createOrganizationInputSchema = z.object({
   name: z.string().min(1).max(120),
@@ -81,9 +51,27 @@ const parseCursor = (cursorParam: string | null): Cursor | undefined => {
 };
 
 export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
-  ({ services }) => {
-    return [
+  ({ services, config }) => {
+    const organizationsEnabled = config.organizations !== false;
+    const defineOrganizationRoute = ((route: Parameters<typeof defineRoute>[0]) =>
       defineRoute({
+        ...route,
+        errorCodes: route.errorCodes
+          ? Array.from(new Set([...route.errorCodes, "feature_disabled"]))
+          : ["feature_disabled"],
+        handler: async function (input, helpers) {
+          if (!organizationsEnabled) {
+            return helpers.error(
+              { message: "Organizations are disabled", code: "feature_disabled" },
+              403,
+            );
+          }
+          return (route.handler as typeof route.handler).call(this, input, helpers);
+        },
+      })) as typeof defineRoute;
+
+    return [
+      defineOrganizationRoute({
         method: "POST",
         path: "/organizations",
         inputSchema: createOrganizationInputSchema,
@@ -143,7 +131,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Limit reached", code: "limit_reached" }, 400);
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({
@@ -153,7 +141,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations",
         queryParameters: ["pageSize", "cursor", "sessionId"],
@@ -217,7 +205,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations/active",
         queryParameters: ["sessionId"],
@@ -285,7 +273,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "POST",
         path: "/organizations/active",
         queryParameters: ["sessionId"],
@@ -337,11 +325,18 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Membership not found", code: "membership_not_found" }, 404);
           }
 
-          await this.handlerTx()
+          const [setResult] = await this.handlerTx()
             .withServiceCalls(() => [
               services.setActiveOrganization(sessionId, body.organizationId),
             ])
             .execute();
+
+          if (!setResult.ok) {
+            if (setResult.code === "membership_not_found") {
+              return error({ message: "Membership not found", code: "membership_not_found" }, 404);
+            }
+            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+          }
 
           const [rolesResult] = await this.handlerTx()
             .withServiceCalls(() => [services.listOrganizationMemberRoles(memberResult.id)])
@@ -357,7 +352,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations/invitations",
         queryParameters: ["sessionId"],
@@ -386,13 +381,16 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.listOrganizationInvitationsForUser(session.user.email),
+              services.listOrganizationInvitationsForUser({
+                email: session.user.email,
+                status: "pending",
+              }),
             ])
             .execute();
 
           return json({
             invitations: result.invitations
-              .filter((entry) => entry.organization && entry.invitation.status === "pending")
+              .filter((entry) => entry.organization)
               .map((entry) => ({
                 invitation: serializeInvitation(entry.invitation),
                 organization: serializeOrganization(entry.organization!),
@@ -401,7 +399,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/invitations/:invitationId",
         queryParameters: ["sessionId"],
@@ -450,6 +448,15 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Invitation not found", code: "invitation_not_found" }, 404);
           }
 
+          const [memberResult] = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.getOrganizationMemberByUser({
+                organizationId: invitationLookup.invitation.organizationId,
+                userId: session.user.id,
+              }),
+            ])
+            .execute();
+
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
               services.respondToOrganizationInvitation({
@@ -458,6 +465,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                 token: body.token,
                 actor: { userId: session.user.id, userRole: session.user.role as Role },
                 organizationId: invitationLookup.invitation.organizationId,
+                actorMemberId: memberResult?.id,
               }),
             ])
             .execute();
@@ -476,7 +484,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             }
 
             if (result.code === "permission_denied") {
-              return error({ message: "Permission denied", code: "permission_denied" }, 401);
+              return error({ message: "Permission denied", code: "permission_denied" }, 403);
             }
 
             return error({ message: "Invitation not found", code: "invitation_not_found" }, 404);
@@ -488,7 +496,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId",
         queryParameters: ["sessionId"],
@@ -532,7 +540,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           const [rolesResult] = await this.handlerTx()
@@ -549,7 +557,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/:organizationId",
         queryParameters: ["sessionId"],
@@ -604,7 +612,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             }
 
             if (result.code === "permission_denied") {
-              return error({ message: "Permission denied", code: "permission_denied" }, 401);
+              return error({ message: "Permission denied", code: "permission_denied" }, 403);
             }
 
             return error({ message: "Invalid input", code: "invalid_input" }, 400);
@@ -616,7 +624,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "DELETE",
         path: "/organizations/:organizationId",
         queryParameters: ["sessionId"],
@@ -655,14 +663,14 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               );
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({ success: true });
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId/members",
         queryParameters: ["pageSize", "cursor", "sessionId"],
@@ -717,7 +725,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           const cursor = parseCursor(query.get("cursor"));
@@ -749,7 +757,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "POST",
         path: "/organizations/:organizationId/members",
         queryParameters: ["sessionId"],
@@ -816,7 +824,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Limit reached", code: "limit_reached" }, 400);
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({
@@ -825,7 +833,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/:organizationId/members/:memberId",
         queryParameters: ["sessionId"],
@@ -871,7 +879,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Last owner", code: "last_owner" }, 400);
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({
@@ -880,7 +888,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "DELETE",
         path: "/organizations/:organizationId/members/:memberId",
         queryParameters: ["sessionId"],
@@ -921,14 +929,14 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Last owner", code: "last_owner" }, 400);
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({ success: true });
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId/invitations",
         queryParameters: ["sessionId"],
@@ -971,7 +979,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           const [result] = await this.handlerTx()
@@ -988,7 +996,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         },
       }),
 
-      defineRoute({
+      defineOrganizationRoute({
         method: "POST",
         path: "/organizations/:organizationId/invitations",
         queryParameters: ["sessionId"],
@@ -1030,6 +1038,19 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             );
           }
 
+          const [memberResult] = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.getOrganizationMemberByUser({
+                organizationId: pathParams.organizationId,
+                userId: session.user.id,
+              }),
+            ])
+            .execute();
+
+          if (!memberResult) {
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
+          }
+
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
@@ -1039,6 +1060,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                 roles: body.roles,
                 inviterId: session.user.id,
                 actor: { userId: session.user.id, userRole: session.user.role as Role },
+                actorMemberId: memberResult.id,
               }),
             ])
             .execute();
@@ -1048,7 +1070,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Limit reached", code: "limit_reached" }, 400);
             }
 
-            return error({ message: "Permission denied", code: "permission_denied" }, 401);
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
           return json({

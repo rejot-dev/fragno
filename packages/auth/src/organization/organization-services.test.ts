@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, assert, describe, expect, it } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { authFragmentDefinition } from "..";
@@ -110,6 +110,43 @@ describe("organization services", async () => {
     }
   });
 
+  it("allows updating organization with the same slug", async () => {
+    const user = await createUser("same-slug@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Stable Org",
+            slug: "stable-org",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [updateResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.updateOrganization(
+            organizationResult.organization.id,
+            { slug: "stable-org" },
+            { userId: user.id, userRole: user.role },
+          ),
+        ])
+        .execute();
+    });
+
+    expect(updateResult.ok).toBe(true);
+    if (!updateResult.ok) {
+      return;
+    }
+    expect(updateResult.organization.slug).toBe("stable-org");
+  });
+
   it("updates member roles", async () => {
     const owner = await createUser("roles-owner@test.com");
     const memberUser = await createUser("roles-member@test.com");
@@ -177,6 +214,148 @@ describe("organization services", async () => {
     });
 
     expect(rolesResult.roles).toEqual(["admin", "member"]);
+  });
+
+  it("guards direct member role mutations", async () => {
+    const owner = await createUser("role-guard-owner@test.com");
+    const memberUser = await createUser("role-guard-member@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Role Guard Org",
+            slug: "role-guard-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(organizationResult.ok).toBe(true);
+    if (!organizationResult.ok) {
+      return;
+    }
+
+    const [memberResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMember({
+            organizationId: organizationResult.organization.id,
+            userId: memberUser.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(memberResult.ok).toBe(true);
+    if (!memberResult.ok) {
+      return;
+    }
+
+    const [denied] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMemberRole({
+            organizationId: organizationResult.organization.id,
+            memberId: memberResult.member.id,
+            role: "admin",
+            actor: { userId: memberUser.id, userRole: memberUser.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) {
+      expect(denied.code).toBe("permission_denied");
+    }
+
+    const [added] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMemberRole({
+            organizationId: organizationResult.organization.id,
+            memberId: memberResult.member.id,
+            role: "admin",
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(added.ok).toBe(true);
+
+    const [addedAgain] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMemberRole({
+            organizationId: organizationResult.organization.id,
+            memberId: memberResult.member.id,
+            role: "admin",
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(addedAgain.ok).toBe(true);
+
+    const [rolesAfterAdd] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationMemberRoles(memberResult.member.id),
+        ])
+        .execute();
+    });
+
+    expect(rolesAfterAdd.roles).toEqual(expect.arrayContaining(["member", "admin"]));
+
+    const [removed] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.removeOrganizationMemberRole({
+            organizationId: organizationResult.organization.id,
+            memberId: memberResult.member.id,
+            role: "admin",
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(removed.ok).toBe(true);
+
+    const [rolesAfterRemove] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationMemberRoles(memberResult.member.id),
+        ])
+        .execute();
+    });
+
+    expect(rolesAfterRemove.roles).toEqual(["member"]);
+
+    const [lastOwner] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.removeOrganizationMemberRole({
+            organizationId: organizationResult.organization.id,
+            memberId: organizationResult.member.id,
+            role: "owner",
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(lastOwner.ok).toBe(false);
+    if (!lastOwner.ok) {
+      expect(lastOwner.code).toBe("last_owner");
+    }
   });
 
   it("rejects organization updates by non-admin members", async () => {
@@ -304,6 +483,7 @@ describe("organization services", async () => {
             inviterId: owner.id,
             roles: ["member"],
             actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
           }),
         ])
         .execute();
@@ -405,7 +585,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(firstOrg.ok).toBe(true);
+    assert(firstOrg.ok);
     expect(secondOrg.ok).toBe(true);
 
     const [firstPage] = await test.inContext(function () {
@@ -506,6 +686,7 @@ describe("organization services", async () => {
             inviterId: owner.id,
             roles: ["member"],
             actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
           }),
         ])
         .execute();
@@ -529,7 +710,9 @@ describe("organization services", async () => {
     const [userInvites] = await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
-          fragment.services.listOrganizationInvitationsForUser(invitedUser.email),
+          fragment.services.listOrganizationInvitationsForUser({
+            email: invitedUser.email,
+          }),
         ])
         .execute();
     });
@@ -809,6 +992,7 @@ describe("organization service role defaults", async () => {
             email: "config-invitee@test.com",
             inviterId: owner.id,
             actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
           }),
         ])
         .execute();
@@ -873,7 +1057,7 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(firstOrg.ok).toBe(true);
+    assert(firstOrg.ok);
 
     const [secondOrg] = await test.inContext(function () {
       return this.handlerTx()
@@ -891,10 +1075,6 @@ describe("organization service limits", async () => {
     expect(secondOrg.ok).toBe(false);
     if (!secondOrg.ok) {
       expect(secondOrg.code).toBe("limit_reached");
-    }
-
-    if (!firstOrg.ok) {
-      throw new Error("Expected first organization to be created");
     }
 
     const [memberResult] = await test.inContext(function () {
@@ -944,6 +1124,7 @@ describe("organization service limits", async () => {
             email: "invitee-1@test.com",
             inviterId: owner.id,
             actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: orgResult.member.id,
           }),
         ])
         .execute();
@@ -959,6 +1140,7 @@ describe("organization service limits", async () => {
             email: "invitee-2@test.com",
             inviterId: owner.id,
             actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: orgResult.member.id,
           }),
         ])
         .execute();
