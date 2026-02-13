@@ -589,6 +589,26 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps.schema).toBeDefined();
       expect(typeof deps.createUnitOfWork).toBe("function");
     });
+
+    it("should throw on deps.db access when shardingStrategy is set", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: {
+          databaseAdapter: mockAdapter,
+          shardingStrategy: { mode: "row" },
+        },
+      });
+
+      expect(() => {
+        // Accessing any db property should throw.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        deps.db.createUnitOfWork;
+      }).toThrowError(/deps\.db access is disabled/i);
+    });
   });
 
   describe("providesBaseService", () => {

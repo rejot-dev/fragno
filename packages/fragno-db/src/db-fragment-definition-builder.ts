@@ -87,9 +87,15 @@ type AnyFragnoRouteConfig = FragnoRouteConfig<
  * Extended FragnoPublicConfig for database fragments.
  * If databaseAdapter is omitted and better-sqlite3 is available, a default SQLite adapter is used.
  */
+export type ShardingStrategy = { mode: "row" } | { mode: "adapter"; identifier: string };
+
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter?: DatabaseAdapter<any>;
+  /**
+   * Optional sharding strategy for row-level or adapter-level sharding.
+   */
+  shardingStrategy?: ShardingStrategy;
   /**
    * Optional outbox configuration for this fragment.
    */
@@ -117,6 +123,11 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    * Database adapter instance.
    */
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  /**
+   * Query interface for this fragment's schema.
+   * When shardingStrategy is set, this is a proxy that throws on access.
+   */
+  db: SimpleQueryInterface<TSchema>;
   /**
    * The schema definition for this fragment.
    */
@@ -240,6 +251,18 @@ function createDatabaseContext<TSchema extends AnySchema>(
   return { databaseAdapter, db };
 }
 
+const SHARDING_DB_DISABLED_ERROR =
+  "Direct deps.db access is disabled when shardingStrategy is set. " +
+  "Use handlerTx/serviceTx so shard context is enforced.";
+
+function createShardingDisabledDbProxy<TSchema extends AnySchema>(): SimpleQueryInterface<TSchema> {
+  return new Proxy({} as SimpleQueryInterface<TSchema>, {
+    get() {
+      throw new Error(SHARDING_DB_DISABLED_ERROR);
+    },
+  });
+}
+
 function resolveDatabaseNamespace<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
@@ -354,11 +377,16 @@ export class DatabaseFragmentDefinitionBuilder<
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
       const dbContext = createDatabaseContext(context.options, this.#schema);
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const db =
+        context.options.shardingStrategy === undefined
+          ? dbContext.db
+          : createShardingDisabledDbProxy<TSchema>();
 
       // Call user function with enriched context
       const userDeps = fn({
         config: context.config,
         options: context.options,
+        db,
         databaseAdapter: dbContext.databaseAdapter,
       });
 
@@ -366,6 +394,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const createUow = () => dbContext.db.createUnitOfWork();
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
+        db,
         schema: this.#schema,
         namespace,
         createUnitOfWork: createUow,
@@ -731,7 +760,10 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const dbContext = createDatabaseContext(context.options, this.#schema);
-      const { db } = dbContext;
+      const db =
+        context.options.shardingStrategy === undefined
+          ? dbContext.db
+          : createShardingDisabledDbProxy<TSchema>();
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
       const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
@@ -766,9 +798,10 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
+        db,
         schema: this.#schema,
         namespace,
-        createUnitOfWork: () => db.createUnitOfWork(),
+        createUnitOfWork: () => dbContext.db.createUnitOfWork(),
       };
 
       return {
