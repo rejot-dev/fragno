@@ -2,11 +2,11 @@ import { type MigrationOperation } from "./shared";
 import type { AnySchema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
 import {
-  buildInternalMigrationOperations,
-  resolveInternalMigrationRange,
-  type InternalMigration,
-  type InternalMigrationContext,
-} from "./internal-migrations";
+  buildSystemMigrationOperations,
+  resolveSystemMigrationRange,
+  type SystemMigration,
+  type SystemMigrationContext,
+} from "./system-migrations";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -23,12 +23,20 @@ export interface MigrateOptions {
    */
   updateSettings?: boolean;
   /**
-   * Internal migration version currently stored in the database.
-   * If omitted, internal migrations are skipped unless an internal getVersion is provided.
+   * System migration version currently stored in the database.
+   * If omitted, system migrations are skipped unless a system getVersion is provided.
+   */
+  systemFromVersion?: number;
+  /**
+   * Override the target system migration version.
+   */
+  systemToVersion?: number;
+  /**
+   * @deprecated Use systemFromVersion.
    */
   internalFromVersion?: number;
   /**
-   * Override the target internal migration version.
+   * @deprecated Use systemToVersion.
    */
   internalToVersion?: number;
 }
@@ -83,31 +91,11 @@ export interface MigrationEngineOptions {
     ) => Awaitable<MigrationOperation[]>;
   };
 
-  internal?: {
-    /**
-     * Internal migration list for this dialect.
-     */
-    migrations: InternalMigration[];
-
-    /**
-     * Get current internal migration version from database (0 if not initialized)
-     */
-    getVersion: () => Promise<number>;
-
-    /**
-     * Update internal migration version in settings table.
-     */
-    updateSettingsInMigration: (
-      fromVersion: number,
-      toVersion: number,
-    ) => Awaitable<MigrationOperation[]>;
-
-    /**
-     * Override namespace for internal migration keys.
-     * Defaults to schema.name when omitted.
-     */
-    namespace?: string;
-  };
+  system?: SystemMigrationConfig;
+  /**
+   * @deprecated Use system.
+   */
+  internal?: SystemMigrationConfig;
 
   sql?: {
     toSql: (operations: MigrationOperation[]) => string;
@@ -143,6 +131,32 @@ export interface MigrationTransformer {
   ) => MigrationOperation[];
 }
 
+type SystemMigrationConfig = {
+  /**
+   * System migration list for this dialect.
+   */
+  migrations: SystemMigration[];
+
+  /**
+   * Get current system migration version from database (0 if not initialized)
+   */
+  getVersion: () => Promise<number>;
+
+  /**
+   * Update system migration version in settings table.
+   */
+  updateSettingsInMigration: (
+    fromVersion: number,
+    toVersion: number,
+  ) => Awaitable<MigrationOperation[]>;
+
+  /**
+   * Override namespace for system migration keys.
+   * Defaults to schema.name when omitted.
+   */
+  namespace?: string;
+};
+
 export function createMigrator({
   settings,
   generateMigrationFromSchema = defaultGenerateMigrationFromSchema,
@@ -150,8 +164,11 @@ export function createMigrator({
   executor,
   sql: sqlConfig,
   transformers = [],
-  internal,
+  system,
+  internal: legacyInternal,
 }: MigrationEngineOptions): Migrator {
+  const systemConfig = system ?? legacyInternal;
+
   const instance: Migrator = {
     getVersion() {
       return settings.getVersion();
@@ -163,9 +180,14 @@ export function createMigrator({
       const {
         updateSettings: updateVersion = true,
         fromVersion: providedFromVersion,
-        internalFromVersion: providedInternalFromVersion,
-        internalToVersion: providedInternalToVersion,
+        systemFromVersion,
+        systemToVersion,
+        internalFromVersion,
+        internalToVersion,
       } = options;
+
+      const providedSystemFromVersion = systemFromVersion ?? internalFromVersion;
+      const providedSystemToVersion = systemToVersion ?? internalToVersion;
 
       // Use provided fromVersion if available, otherwise query the database
       const fromVersion = providedFromVersion ?? (await settings.getVersion());
@@ -196,28 +218,29 @@ export function createMigrator({
         );
       }
 
-      let internalRange:
+      let systemRange:
         | {
             fromVersion: number;
             toVersion: number;
-            context: InternalMigrationContext;
+            context: SystemMigrationContext;
           }
         | undefined;
 
-      if (internal) {
-        const internalFromVersion = providedInternalFromVersion ?? (await internal.getVersion());
-        const resolvedRange = resolveInternalMigrationRange(
-          internal.migrations,
-          internalFromVersion,
-          providedInternalToVersion,
+      if (systemConfig) {
+        const resolvedSystemFromVersion =
+          providedSystemFromVersion ?? (await systemConfig.getVersion());
+        const resolvedRange = resolveSystemMigrationRange(
+          systemConfig.migrations,
+          resolvedSystemFromVersion,
+          providedSystemToVersion,
         );
 
         if (resolvedRange) {
-          internalRange = {
+          systemRange = {
             ...resolvedRange,
             context: {
               schema: targetSchema,
-              namespace: internal.namespace ?? targetSchema.name,
+              namespace: systemConfig.namespace ?? targetSchema.name,
             },
           };
         }
@@ -225,7 +248,7 @@ export function createMigrator({
 
       if (
         toVersion === fromVersion &&
-        (!internalRange || internalRange.fromVersion === internalRange.toVersion)
+        (!systemRange || systemRange.fromVersion === systemRange.toVersion)
       ) {
         // Already at target version, return empty migration
         return {
@@ -256,19 +279,19 @@ export function createMigrator({
         },
       };
 
-      const internalOperations =
-        internal && internalRange
-          ? buildInternalMigrationOperations(
-              internal.migrations,
-              internalRange.context,
-              internalRange.fromVersion,
-              internalRange.toVersion,
+      const systemOperations =
+        systemConfig && systemRange
+          ? buildSystemMigrationOperations(
+              systemConfig.migrations,
+              systemRange.context,
+              systemRange.fromVersion,
+              systemRange.toVersion,
             )
           : [];
 
       let operations = await context.auto();
-      if (internalOperations.length > 0) {
-        operations = [...operations, ...internalOperations];
+      if (systemOperations.length > 0) {
+        operations = [...operations, ...systemOperations];
       }
 
       if (updateVersion) {
@@ -279,12 +302,12 @@ export function createMigrator({
           ];
         }
 
-        if (internal && internalRange && internalRange.fromVersion !== internalRange.toVersion) {
+        if (systemConfig && systemRange && systemRange.fromVersion !== systemRange.toVersion) {
           operations = [
             ...operations,
-            ...(await internal.updateSettingsInMigration(
-              internalRange.fromVersion,
-              internalRange.toVersion,
+            ...(await systemConfig.updateSettingsInMigration(
+              systemRange.fromVersion,
+              systemRange.toVersion,
             )),
           ];
         }

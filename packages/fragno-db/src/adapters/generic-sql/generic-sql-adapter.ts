@@ -19,7 +19,7 @@ import {
   type PrepareMigrationsOptions,
   type PreparedMigrations,
 } from "./migration/prepared-migrations";
-import type { InternalMigration } from "../../migration-engine/internal-migrations";
+import type { SystemMigration } from "../../migration-engine/system-migrations";
 import type { DriverConfig } from "./driver-config";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
@@ -51,7 +51,11 @@ export interface SqlAdapterOptions {
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
-  internalMigrations?: InternalMigration[];
+  systemMigrations?: SystemMigration[];
+  /**
+   * @deprecated Use systemMigrations.
+   */
+  internalMigrations?: SystemMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -67,7 +71,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
-  readonly internalMigrations?: InternalMigration[];
+  readonly systemMigrations?: SystemMigration[];
+  /**
+   * @deprecated Use systemMigrations.
+   */
+  readonly internalMigrations?: SystemMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -81,6 +89,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
+    systemMigrations,
     internalMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
@@ -110,7 +119,9 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
-    this.internalMigrations = internalMigrations;
+    const resolvedSystemMigrations = systemMigrations ?? internalMigrations;
+    this.systemMigrations = resolvedSystemMigrations;
+    this.internalMigrations = resolvedSystemMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -153,7 +164,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
-      internalMigrations: options?.internalMigrations ?? this.internalMigrations,
+      systemMigrations:
+        options?.systemMigrations ??
+        options?.internalMigrations ??
+        this.systemMigrations ??
+        this.internalMigrations,
     });
   }
 

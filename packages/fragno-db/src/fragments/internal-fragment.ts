@@ -14,6 +14,7 @@ import { dbNow } from "../query/db-now";
 import {
   internalSchema,
   INTERNAL_MIGRATION_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
@@ -63,7 +64,13 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, INTERNAL_MIGRATION_VERSION_KEY, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export {
+  internalSchema,
+  INTERNAL_MIGRATION_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+};
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
@@ -609,13 +616,18 @@ export async function getSchemaVersionFromDatabase(
   }
 }
 
-export async function getInternalMigrationVersionFromDatabase(
+export async function getSystemMigrationVersionFromDatabase(
   fragment: InternalFragmentInstance,
   namespace: string,
 ): Promise<number> {
   try {
-    const value = await readNumericSetting(fragment, namespace, INTERNAL_MIGRATION_VERSION_KEY);
-    return value ?? 0;
+    const primary = await readNumericSetting(fragment, namespace, SYSTEM_MIGRATION_VERSION_KEY);
+    if (primary !== undefined) {
+      return primary;
+    }
+
+    const legacy = await readNumericSetting(fragment, namespace, INTERNAL_MIGRATION_VERSION_KEY);
+    return legacy ?? 0;
   } catch {
     return 0;
   }

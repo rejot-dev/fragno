@@ -38,8 +38,8 @@ describe("createDurableHooksProcessor", () => {
       driverConfig: new BetterSQLite3DriverConfig(),
     });
 
-    const internalMigrations = adapter.prepareMigrations(internalSchema, null);
-    await internalMigrations.executeWithDriver(adapter.driver, 0);
+    const systemMigrations = adapter.prepareMigrations(internalSchema, null);
+    await systemMigrations.executeWithDriver(adapter.driver, 0);
 
     const testMigrations = adapter.prepareMigrations(testSchema, "test");
     await testMigrations.executeWithDriver(adapter.driver, 0);

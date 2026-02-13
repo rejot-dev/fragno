@@ -13,7 +13,7 @@ import type {
   MigrationOperation,
 } from "../../../migration-engine/shared";
 import {
-  INTERNAL_MIGRATION_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_TABLE_NAME,
 } from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
@@ -120,14 +120,14 @@ export abstract class SQLGenerator {
   }
 
   /**
-   * Generate SQL for updating the internal migration version in the settings table.
+   * Generate SQL for updating the system migration version in the settings table.
    */
-  generateInternalMigrationUpdateSQL(
+  generateSystemMigrationUpdateSQL(
     namespace: string,
     fromVersion: number,
     toVersion: number,
   ): CompiledQuery {
-    const key = `${namespace}.${INTERNAL_MIGRATION_VERSION_KEY}`;
+    const key = `${namespace}.${SYSTEM_MIGRATION_VERSION_KEY}`;
     return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
   }
 

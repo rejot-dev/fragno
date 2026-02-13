@@ -10,7 +10,7 @@ import type {
 } from "./db-fragment-definition-builder";
 import {
   getSchemaVersionFromDatabase,
-  getInternalMigrationVersionFromDatabase,
+  getSystemMigrationVersionFromDatabase,
 } from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 
@@ -244,7 +244,7 @@ export async function migrate<TSchema extends AnySchema>(
     internalFragment,
     internalNamespace,
   );
-  const internalMigrationVersion = await getInternalMigrationVersionFromDatabase(
+  const systemMigrationVersion = await getSystemMigrationVersionFromDatabase(
     internalFragment,
     internalNamespace,
   );
@@ -255,14 +255,14 @@ export async function migrate<TSchema extends AnySchema>(
     );
   }
 
-  const internalMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
-  await internalMigrations.execute(internalCurrentVersion, internalSchema.version, {
-    internalFromVersion: internalMigrationVersion,
+  const systemMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
+  await systemMigrations.execute(internalCurrentVersion, internalSchema.version, {
+    systemFromVersion: systemMigrationVersion,
   });
 
   // Step 2: Get current database version for this fragment's namespace
   const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespace);
-  const internalFromVersion = await getInternalMigrationVersionFromDatabase(
+  const systemFromVersion = await getSystemMigrationVersionFromDatabase(
     internalFragment,
     namespace,
   );
@@ -278,6 +278,6 @@ export async function migrate<TSchema extends AnySchema>(
 
   const migrations = adapter.prepareMigrations(schema, namespace);
   await migrations.execute(currentVersion, targetVersion, {
-    internalFromVersion,
+    systemFromVersion,
   });
 }

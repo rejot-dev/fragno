@@ -4,6 +4,10 @@ import { schema, idColumn, column } from "../schema/create";
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 // FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
+export const SYSTEM_MIGRATION_VERSION_KEY = "system_migration_version" as const;
+/**
+ * @deprecated Use SYSTEM_MIGRATION_VERSION_KEY.
+ */
 export const INTERNAL_MIGRATION_VERSION_KEY = "internal_migration_version" as const;
 
 export const internalSchema = schema("fragno_internal", (s) => {
