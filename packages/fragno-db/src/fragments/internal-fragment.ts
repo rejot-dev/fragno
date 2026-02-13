@@ -8,9 +8,10 @@ import {
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
-import { FragnoId } from "../schema/create";
+import { FragnoId, type AnyColumn } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
+import type { ConditionBuilder } from "../query/condition-builder";
 import {
   internalSchema,
   INTERNAL_MIGRATION_VERSION_KEY,
@@ -526,15 +527,34 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              let builder = afterValue
-                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterValue),
-                  )
-                : b.whereIndex("idx_outbox_versionstamp");
+              const applyShard = shardScope === "scoped" && shard !== null;
+              let builder;
+
+              if (afterValue || applyShard) {
+                builder = b.whereIndex("idx_outbox_versionstamp", ((
+                  eb: ConditionBuilder<Record<string, AnyColumn>>,
+                ) => {
+                  const conditions: Array<ReturnType<typeof eb>> = [];
+                  if (applyShard) {
+                    conditions.push(eb("_shard", "=", shard));
+                  }
+                  if (afterValue) {
+                    conditions.push(eb("versionstamp", ">", afterValue));
+                  }
+                  if (conditions.length === 1) {
+                    return conditions[0];
+                  }
+                  return eb.and(...conditions);
+                }) as never);
+              } else {
+                builder = b.whereIndex("idx_outbox_versionstamp");
+              }
 
               builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
               if (limit !== undefined) {

@@ -1,6 +1,6 @@
 import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
-import type { DatabaseAdapter } from "./adapters/adapters";
+import type { DatabaseAdapter, ShardScope } from "./adapters/adapters";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
@@ -8,6 +8,7 @@ import type {
   AnyRouteOrFactory,
   FragnoRouteConfig,
 } from "@fragno-dev/core";
+import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
@@ -137,6 +138,10 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    */
   namespace: string | null;
   /**
+   * Shard context helpers bound to the current request storage.
+   */
+  shardContext: ShardContext;
+  /**
    * Create a new Unit of Work for database operations.
    */
   createUnitOfWork: () => IUnitOfWork;
@@ -179,6 +184,12 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
     false,
     THooks
   >;
+  getShard(): string | null;
+  setShard(shard: string | null): void;
+  withShard<T>(shard: string | null, fn: () => T | Promise<T>): T | Promise<T>;
+  getShardScope(): ShardScope;
+  setShardScope(scope: ShardScope): void;
+  withShardScope<T>(scope: ShardScope, fn: () => T | Promise<T>): T | Promise<T>;
 };
 
 /**
@@ -219,6 +230,12 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
      */
     serviceCalls: () => TServiceCalls,
   ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
+  getShard(): string | null;
+  setShard(shard: string | null): void;
+  withShard<T>(shard: string | null, fn: () => T | Promise<T>): T | Promise<T>;
+  getShardScope(): ShardScope;
+  setShardScope(scope: ShardScope): void;
+  withShardScope<T>(scope: ShardScope, fn: () => T | Promise<T>): T | Promise<T>;
 };
 
 /**
@@ -251,6 +268,80 @@ function createDatabaseContext<TSchema extends AnySchema>(
   return { databaseAdapter, db };
 }
 
+type ShardContextStorage = {
+  shard: string | null;
+  shardScope: ShardScope;
+};
+
+const SHARD_MAX_LENGTH = 64;
+
+function validateShard(shard: string | null): void {
+  if (shard === null) {
+    return;
+  }
+  if (shard.length === 0) {
+    throw new Error("Shard must be a non-empty string.");
+  }
+  if (shard.length > SHARD_MAX_LENGTH) {
+    throw new Error(`Shard must be at most ${SHARD_MAX_LENGTH} characters.`);
+  }
+}
+
+function createShardContextHelpers<TStorage extends ShardContextStorage>(
+  storage: RequestContextStorage<TStorage>,
+): ShardContext {
+  const getStore = () => storage.getStore();
+
+  const withValue = <TValue, TReturn>(
+    getter: () => TValue,
+    setter: (value: TValue) => void,
+    value: TValue,
+    fn: () => TReturn | Promise<TReturn>,
+  ): TReturn | Promise<TReturn> => {
+    const previous = getter();
+    setter(value);
+    const result = fn();
+    if (result && typeof (result as Promise<TReturn>).then === "function") {
+      return (result as Promise<TReturn>).finally(() => {
+        setter(previous);
+      });
+    }
+    setter(previous);
+    return result as TReturn;
+  };
+
+  return {
+    get: () => getStore().shard,
+    set: (shard) => {
+      validateShard(shard);
+      getStore().shard = shard;
+    },
+    with: (shard, fn) =>
+      withValue(
+        () => getStore().shard,
+        (value) => {
+          validateShard(value);
+          getStore().shard = value;
+        },
+        shard,
+        fn,
+      ),
+    getScope: () => getStore().shardScope,
+    setScope: (scope) => {
+      getStore().shardScope = scope;
+    },
+    withScope: (scope, fn) =>
+      withValue(
+        () => getStore().shardScope,
+        (value) => {
+          getStore().shardScope = value;
+        },
+        scope,
+        fn,
+      ),
+  };
+}
+
 const SHARDING_DB_DISABLED_ERROR =
   "Direct deps.db access is disabled when shardingStrategy is set. " +
   "Use handlerTx/serviceTx so shard context is enforced.";
@@ -281,6 +372,17 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
  */
 export type DatabaseRequestStorage = {
   uow: IUnitOfWork;
+  shard: string | null;
+  shardScope: ShardScope;
+};
+
+export type ShardContext = {
+  get: () => string | null;
+  set: (shard: string | null) => void;
+  with: <T>(shard: string | null, fn: () => T | Promise<T>) => T | Promise<T>;
+  getScope: () => ShardScope;
+  setScope: (scope: ShardScope) => void;
+  withScope: <T>(scope: ShardScope, fn: () => T | Promise<T>) => T | Promise<T>;
 };
 
 /**
@@ -392,11 +494,13 @@ export class DatabaseFragmentDefinitionBuilder<
 
       // Create implicit dependencies
       const createUow = () => dbContext.db.createUnitOfWork();
+      const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         db,
         schema: this.#schema,
         namespace,
+        shardContext,
         createUnitOfWork: createUow,
       };
 
@@ -801,6 +905,7 @@ export class DatabaseFragmentDefinitionBuilder<
         db,
         schema: this.#schema,
         namespace,
+        shardContext: createShardContextHelpers(dbContext.databaseAdapter.contextStorage),
         createUnitOfWork: () => dbContext.db.createUnitOfWork(),
       };
 
@@ -827,7 +932,7 @@ export class DatabaseFragmentDefinitionBuilder<
         // Create a new Unit of Work for this request
         const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork();
 
-        return { uow };
+        return { uow, shard: null, shardScope: "scoped" };
       },
     );
 
@@ -928,6 +1033,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const internalFragment = isInternalFragment
         ? undefined
         : (hooksConfig?.internalFragment ?? registryResolver?.getInternalFragment(databaseAdapter));
+      const shardContext = createShardContextHelpers(storage);
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -942,6 +1048,12 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const serviceContext: DatabaseServiceContext<THooks> = {
         serviceTx,
+        getShard: shardContext.get,
+        setShard: shardContext.set,
+        withShard: shardContext.with,
+        getShardScope: shardContext.getScope,
+        setShardScope: shardContext.setScope,
+        withShardScope: shardContext.withScope,
       };
 
       // Builder API: handlerTx using createHandlerTxBuilder
@@ -1024,6 +1136,12 @@ export class DatabaseFragmentDefinitionBuilder<
       const handlerContext: DatabaseHandlerContext<THooks> = {
         handlerTx,
         callServices,
+        getShard: shardContext.get,
+        setShard: shardContext.set,
+        withShard: shardContext.with,
+        getShardScope: shardContext.getScope,
+        setShardScope: shardContext.setScope,
+        withShardScope: shardContext.withScope,
       };
 
       return { serviceContext, handlerContext };

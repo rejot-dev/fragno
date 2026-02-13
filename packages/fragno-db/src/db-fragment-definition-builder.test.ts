@@ -771,6 +771,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       expect(storage).toBeDefined();
       expect(storage.uow).toBeDefined();
+      expect(storage.shard).toBeNull();
+      expect(storage.shardScope).toBe("scoped");
     });
 
     it("should provide DatabaseServiceContext with serviceTx and DatabaseHandlerContext with handlerTx", () => {
@@ -782,6 +784,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
       } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -953,6 +957,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
@@ -1004,6 +1010,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
