@@ -238,13 +238,24 @@ node packages/lofi/bin/run.js --help
 
 ```bash
 # Use the CLI
-fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --timeout 5
+fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --module ./client.ts --timeout 5
 ```
 
 Notes:
 
 - `--endpoint` can be the fragment base URL or the full `/_internal/outbox` URL.
 - Use `--endpoint-name` to override the local endpoint key used for IndexedDB storage.
+- `--module` is required and must export `schema` or `schemas` (and optional `commands`).
+
+Example `client.ts` module:
+
+```ts
+import { schema, idColumn, column } from "@fragno-dev/db/schema";
+
+export const schema = schema("app", (s) =>
+  s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+);
+```
 
 ## Exports
 

@@ -23,7 +23,7 @@ const printMainHelp = () => {
   console.log("");
   console.log("USAGE:");
   console.log("  fragno-lofi <COMMAND>");
-  console.log("  fragno-lofi --endpoint <url> [options]");
+  console.log("  fragno-lofi --endpoint <url> --module <path> [options]");
   console.log("");
   console.log("COMMANDS:");
   console.log("  serve                 Start a local server");
@@ -35,10 +35,12 @@ const printMainHelp = () => {
   console.log("  -h, --help            Show help");
   console.log("");
   console.log("EXAMPLES:");
-  console.log("  fragno-lofi client --endpoint http://localhost:4100");
+  console.log("  fragno-lofi client --endpoint http://localhost:4100 --module ./client.ts");
   console.log("  fragno-lofi serve --module ./server.ts --port 4100");
   console.log("  fragno-lofi scenario --file ./scenario.ts");
-  console.log("  fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --timeout 5");
+  console.log(
+    "  fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --module ./client.ts --timeout 5",
+  );
 };
 
 const printClientHelp = () => {
@@ -53,7 +55,7 @@ const printClientHelp = () => {
   console.log("  -i, --poll-interval   Poll interval in ms (default: 1000)");
   console.log("  --limit               Outbox page size (default: 500)");
   console.log("  --endpoint-name       Override local endpoint name");
-  console.log("  --module              Path to client module with schemas/commands");
+  console.log("  --module              Path to client module with schemas/commands (required)");
   console.log("  --command             Queue a command by name before syncing");
   console.log("  --input               JSON input payload for --command");
   console.log("  --submit              Submit queued commands before syncing");
@@ -61,7 +63,7 @@ const printClientHelp = () => {
   console.log("");
   console.log("EXAMPLES:");
   console.log(
-    "  fragno-lofi client --endpoint http://localhost:3000/api/fragno-db-comment --timeout 5",
+    "  fragno-lofi client --endpoint http://localhost:3000/api/fragno-db-comment --module ./client.ts --timeout 5",
   );
 };
 

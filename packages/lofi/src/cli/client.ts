@@ -2,8 +2,6 @@ import { define } from "gunshi";
 import { openDB, type IDBPDatabase } from "idb";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { commentSchema } from "@fragno-dev/fragno-db-library";
-import { upvoteSchema } from "@fragno-dev/fragno-db-library/upvote";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import { IndexedDbAdapter, LofiClient, LofiSubmitClient } from "../mod.js";
 import type { LofiSchemaRegistration, LofiSubmitCommandDefinition } from "../types.js";
@@ -32,8 +30,6 @@ type LofiRow = {
   };
 };
 
-const ALL_SCHEMAS: LofiSchemaRegistration[] = [{ schema: commentSchema }, { schema: upvoteSchema }];
-
 const openDb = (name: string): Promise<IDBPDatabase> => openDB(name);
 
 const getAllRows = async (db: IDBPDatabase): Promise<LofiRow[]> => {
@@ -44,9 +40,9 @@ const getAllRows = async (db: IDBPDatabase): Promise<LofiRow[]> => {
   return rows;
 };
 
-const normalizeSchemas = (value: unknown, fallback: LofiSchemaRegistration[]) => {
+const normalizeSchemas = (value: unknown) => {
   if (!value) {
-    return fallback;
+    return undefined;
   }
   if (Array.isArray(value)) {
     return value.map((entry) => {
@@ -112,6 +108,7 @@ export const clientCommand = define({
     module: {
       type: "string" as const,
       description: "Path to a client module that exports schemas/commands",
+      required: true as const,
     },
     command: {
       type: "string" as const,
@@ -155,9 +152,15 @@ export const clientCommand = define({
     installIndexedDbGlobals();
 
     const outboxUrl = buildOutboxUrl(endpoint);
-    const moduleConfig = modulePath ? await resolveModule(modulePath) : undefined;
-    const schemas =
-      normalizeSchemas(moduleConfig?.schemas ?? moduleConfig?.schema, ALL_SCHEMAS) ?? ALL_SCHEMAS;
+    if (!modulePath) {
+      throw new Error("Missing --module. Provide a client module that exports schemas.");
+    }
+
+    const moduleConfig = await resolveModule(modulePath);
+    const schemas = normalizeSchemas(moduleConfig.schemas ?? moduleConfig.schema);
+    if (!schemas || schemas.length === 0) {
+      throw new Error("Client module must export `schema` or `schemas`.");
+    }
 
     const endpointName =
       endpointOverride ?? moduleConfig?.endpointName ?? deriveEndpointName(outboxUrl);

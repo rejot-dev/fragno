@@ -1932,9 +1932,6 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
-      '@fragno-dev/fragno-db-library':
-        specifier: workspace:*
-        version: link:../../example-fragments/fragno-db-library
       '@fragno-dev/node':
         specifier: workspace:*
         version: link:../fragno-node
