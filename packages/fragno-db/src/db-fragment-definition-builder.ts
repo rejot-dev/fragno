@@ -1,6 +1,7 @@
 import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
-import type { DatabaseAdapter, ShardScope } from "./adapters/adapters";
+import type { DatabaseAdapter } from "./adapters/adapters";
+import type { ShardScope, ShardingStrategy } from "./sharding";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
@@ -65,6 +66,7 @@ type RegistryResolver = {
       fragment: RegistryFragmentMeta,
       options?: { outboxEnabled?: boolean },
     ) => void;
+    registerShardingStrategy: (strategy?: ShardingStrategy) => void;
     registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
   };
   getInternalFragment: <TUOWConfig>(
@@ -88,8 +90,6 @@ type AnyFragnoRouteConfig = FragnoRouteConfig<
  * Extended FragnoPublicConfig for database fragments.
  * If databaseAdapter is omitted and better-sqlite3 is available, a default SQLite adapter is used.
  */
-export type ShardingStrategy = { mode: "row" } | { mode: "adapter"; identifier: string };
-
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter?: DatabaseAdapter<any>;
@@ -128,7 +128,7 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    * Database query engine for the fragment's schema.
    * @deprecated Prefer handlerTx/serviceTx instead of direct db usage.
    */
-  db: SimpleQueryInterface<TSchema>;
+  db: SimpleQueryInterface<TSchema, unknown>;
   /**
    * The schema definition for this fragment.
    */
@@ -249,7 +249,7 @@ export type DatabaseFragmentContext<TSchema extends AnySchema> = {
   /**
    * ORM query engine for the fragment's schema.
    */
-  db: SimpleQueryInterface<TSchema>;
+  db: SimpleQueryInterface<TSchema, unknown>;
 };
 
 /**
@@ -346,8 +346,11 @@ const SHARDING_DB_DISABLED_ERROR =
   "Direct deps.db access is disabled when shardingStrategy is set. " +
   "Use handlerTx/serviceTx so shard context is enforced.";
 
-function createShardingDisabledDbProxy<TSchema extends AnySchema>(): SimpleQueryInterface<TSchema> {
-  return new Proxy({} as SimpleQueryInterface<TSchema>, {
+function createShardingDisabledDbProxy<TSchema extends AnySchema>(): SimpleQueryInterface<
+  TSchema,
+  unknown
+> {
+  return new Proxy({} as SimpleQueryInterface<TSchema, unknown>, {
     get() {
       throw new Error(SHARDING_DB_DISABLED_ERROR);
     },
@@ -460,7 +463,7 @@ export class DatabaseFragmentDefinitionBuilder<
     fn: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
-      db: SimpleQueryInterface<TSchema>;
+      db: SimpleQueryInterface<TSchema, unknown>;
       databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     }) => TNewDeps,
   ): DatabaseFragmentDefinitionBuilder<
@@ -494,8 +497,13 @@ export class DatabaseFragmentDefinitionBuilder<
       });
 
       // Create implicit dependencies
-      const createUow = () => dbContext.db.createUnitOfWork();
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const createUow = () =>
+        dbContext.db.createUnitOfWork(undefined, {
+          shardingStrategy: context.options.shardingStrategy,
+          getShard: shardContext.get,
+          getShardScope: shardContext.getScope,
+        });
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         db,
@@ -877,6 +885,7 @@ export class DatabaseFragmentDefinitionBuilder<
         const registry = this.#registryResolver.getRegistryForAdapterSync(
           dbContext.databaseAdapter,
         );
+        registry.registerShardingStrategy(context.options.shardingStrategy);
         const outboxEnabled = context.options.outbox?.enabled ?? false;
         registry.registerSchema(
           {
@@ -901,13 +910,19 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
+      const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         db,
         schema: this.#schema,
         namespace,
-        shardContext: createShardContextHelpers(dbContext.databaseAdapter.contextStorage),
-        createUnitOfWork: () => dbContext.db.createUnitOfWork(),
+        shardContext,
+        createUnitOfWork: () =>
+          dbContext.db.createUnitOfWork(undefined, {
+            shardingStrategy: context.options.shardingStrategy,
+            getShard: shardContext.get,
+            getShardScope: shardContext.getScope,
+          }),
       };
 
       return {
@@ -931,7 +946,14 @@ export class DatabaseFragmentDefinitionBuilder<
         const dbContextForStorage = createDatabaseContext(options, this.#schema);
 
         // Create a new Unit of Work for this request
-        const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork();
+        const shardContext = createShardContextHelpers(
+          dbContextForStorage.databaseAdapter.contextStorage,
+        );
+        const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork(undefined, {
+          shardingStrategy: options.shardingStrategy,
+          getShard: shardContext.get,
+          getShardScope: shardContext.getScope,
+        });
 
         return { uow, shard: null, shardScope: "scoped" };
       },
@@ -971,10 +993,17 @@ export class DatabaseFragmentDefinitionBuilder<
         throw new Error("Adapter registry resolver is missing for durable hooks.");
       }
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
+      const hookStorage = dbContextForHooks.databaseAdapter.contextStorage;
+      const hookShardContext = createShardContextHelpers(hookStorage);
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
         namespace: namespaceKey,
         internalFragment: registryResolver.getInternalFragment(hookAdapter),
+        shardContext: {
+          hasStore: () => hookStorage.hasStore(),
+          get: hookShardContext.get,
+          getScope: hookShardContext.getScope,
+        },
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -982,7 +1011,11 @@ export class DatabaseFragmentDefinitionBuilder<
           return createHandlerTxBuilder<THooks>({
             ...execOptions,
             createUnitOfWork: () => {
-              const uow = dbContextForHooks.db.createUnitOfWork();
+              const uow = dbContextForHooks.db.createUnitOfWork(undefined, {
+                shardingStrategy: hookOptions.shardingStrategy,
+                getShard: hookShardContext.get,
+                getShardScope: hookShardContext.getScope,
+              });
               uow.registerSchema(
                 hooksConfig.internalFragment.$internal.deps.schema,
                 hooksConfig.internalFragment.$internal.deps.namespace,
