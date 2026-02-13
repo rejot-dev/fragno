@@ -24,6 +24,8 @@ import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import type { Prettify } from "../../util/types";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
+import type { ShardScope, ShardingStrategy } from "../../sharding";
+import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -153,10 +155,17 @@ type FindOptions<
  */
 export type UOWState = "building-retrieval" | "building-mutation" | "executed";
 
+type UOWShardMetadata = {
+  shard: string | null;
+  shardScope: ShardScope;
+  shardingStrategy?: ShardingStrategy;
+  shardFilterExempt?: boolean;
+};
+
 /**
  * Retrieval operation - read operations in the first phase
  */
-export type RetrievalOperation<
+type RetrievalOperationInput<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
 > =
@@ -180,10 +189,15 @@ export type RetrievalOperation<
       options: Pick<FindOptions<TTable>, "where" | "useIndex">;
     };
 
+export type RetrievalOperation<
+  TSchema extends AnySchema,
+  TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
+> = RetrievalOperationInput<TSchema, TTable> & UOWShardMetadata;
+
 /**
  * Mutation operations - write operations in the second phase
  */
-export type MutationOperation<
+type MutationOperationInput<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
 > =
@@ -219,6 +233,11 @@ export type MutationOperation<
       table: TTable["name"];
       id: FragnoId;
     };
+
+export type MutationOperation<
+  TSchema extends AnySchema,
+  TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
+> = MutationOperationInput<TSchema, TTable> & UOWShardMetadata;
 
 /**
  * Compiled mutation with metadata for execution
@@ -1024,6 +1043,9 @@ export interface UnitOfWorkConfig {
   idempotencyKey?: string;
   instrumentation?: UOWInstrumentation;
   instrumentationFinalizer?: UOWInstrumentationFinalizer;
+  shardingStrategy?: ShardingStrategy;
+  getShard?: () => string | null;
+  getShardScope?: () => ShardScope;
 }
 
 function isUowInstrumentationInjection(value: unknown): value is UOWInstrumentationInjection {
@@ -1309,6 +1331,38 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#name = name;
     this.#config = config;
     this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
+  }
+
+  #getShardContext(): {
+    shard: string | null;
+    shardScope: ShardScope;
+    shardingStrategy?: ShardingStrategy;
+  } {
+    return {
+      shard: this.#config?.getShard?.() ?? null,
+      shardScope: this.#config?.getShardScope?.() ?? "scoped",
+      shardingStrategy: this.#config?.shardingStrategy,
+    };
+  }
+
+  #isAdapterScopedTable(tableName: string): boolean {
+    return tableName === SETTINGS_TABLE_NAME;
+  }
+
+  #assertShardRequired(shardContext: {
+    shard: string | null;
+    shardScope: ShardScope;
+    shardingStrategy?: ShardingStrategy;
+  }): void {
+    if (
+      shardContext.shardingStrategy?.mode === "adapter" &&
+      shardContext.shardScope !== "global" &&
+      shardContext.shard === null
+    ) {
+      throw new Error(
+        'Shard must be set when shardingStrategy mode is "adapter" unless shardScope is "global".',
+      );
+    }
   }
 
   #createInstrumentationContext(phase: UOWInstrumentationPhase): UOWInstrumentationContext {
@@ -1751,13 +1805,21 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * @internal
    * Add a retrieval operation (used by TypedUnitOfWork)
    */
-  addRetrievalOperation(op: RetrievalOperation<AnySchema>): number {
+  addRetrievalOperation(op: RetrievalOperationInput<AnySchema>): number {
     if (this.state !== "building-retrieval") {
       throw new Error(
         `Cannot add retrieval operation in state ${this.state}. Must be in building-retrieval state.`,
       );
     }
-    this.#retrievalOps.push(op);
+    const shardContext = this.#getShardContext();
+    this.#assertShardRequired(shardContext);
+    this.#retrievalOps.push({
+      ...op,
+      shard: shardContext.shard,
+      shardScope: shardContext.shardScope,
+      shardingStrategy: shardContext.shardingStrategy,
+      shardFilterExempt: this.#isAdapterScopedTable(op.table.name),
+    });
     return this.#retrievalOps.length - 1;
   }
 
@@ -1765,11 +1827,35 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * @internal
    * Add a mutation operation (used by TypedUnitOfWork)
    */
-  addMutationOperation(op: MutationOperation<AnySchema>): void {
+  addMutationOperation(op: MutationOperationInput<AnySchema>): void {
     if (this.state === "executed") {
       throw new Error(`Cannot add mutation operation in executed state.`);
     }
-    this.#mutationOps.push(op);
+    const shardContext = this.#getShardContext();
+    this.#assertShardRequired(shardContext);
+    let updatedOp = op;
+
+    if (shardContext.shardingStrategy && op.type === "create") {
+      const values = op.values as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(values, "_shard")) {
+        throw new Error("Cannot set _shard explicitly. It is managed by the shard context.");
+      }
+      updatedOp = {
+        ...op,
+        values: {
+          ...(op.values as Record<string, unknown>),
+          _shard: shardContext.shard,
+        },
+      } as MutationOperationInput<AnySchema>;
+    }
+
+    this.#mutationOps.push({
+      ...updatedOp,
+      shard: shardContext.shard,
+      shardScope: shardContext.shardScope,
+      shardingStrategy: shardContext.shardingStrategy,
+      shardFilterExempt: this.#isAdapterScopedTable(updatedOp.table),
+    });
   }
 
   /**

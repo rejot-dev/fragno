@@ -5,9 +5,13 @@ import { Cursor } from "./query/cursor";
 import { dbNow, type DbNow } from "./query/db-now";
 import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
 import type {
+  DatabaseHandlerContext,
+  DatabaseRequestStorage,
+  DatabaseServiceContext,
   FragnoPublicConfigWithDatabase,
   ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
+import type { HooksMap } from "./hooks/hooks";
 import {
   getSchemaVersionFromDatabase,
   getSystemMigrationVersionFromDatabase,
@@ -18,6 +22,7 @@ export type { DatabaseAdapter, CursorResult };
 export { Cursor };
 export { dbNow };
 export type { DbNow };
+export type { ShardingStrategy } from "./sharding";
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
@@ -177,12 +182,9 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
     ImplicitDatabaseDependencies<TSchema>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
+    DatabaseServiceContext<HooksMap>,
+    DatabaseHandlerContext,
+    DatabaseRequestStorage,
     FragnoPublicConfigWithDatabase
   >;
 
