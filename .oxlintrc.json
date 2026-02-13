@@ -3,7 +3,8 @@
   "plugins": ["typescript", "unicorn"],
   "jsPlugins": [
     "./packages-private/oxlint-plugins/tsdown-exports-sync.js",
-    "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js"
+    "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js",
+    "./packages-private/oxlint-plugins/docs-icons-sync.js"
   ],
   "env": {
     "builtin": true
@@ -27,6 +28,7 @@
   "rules": {
     "tsdown-exports-sync/exports-match": "error",
     "fragment-dev-browser-exports/exports-match": "error",
+    "docs-icons-sync/used-icons": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",

@@ -63,7 +63,7 @@ function hydrateIcons(node: unknown): unknown {
       hydrated.icon = createElement(IconComponent);
     } else {
       throw new Error(
-        `Icon ${iconName} not found in client bundle. Add it to the iconComponents object in app/docs/page.tsx.`,
+        `Icon ${iconName} not found in client bundle. Add it to the iconComponents object in app/lib/icons.tsx.`,
       );
     }
   }

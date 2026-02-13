@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./tsdown-exports-sync": "./tsdown-exports-sync.js",
-    "./fragment-dev-browser-exports": "./fragment-dev-browser-exports.js"
+    "./fragment-dev-browser-exports": "./fragment-dev-browser-exports.js",
+    "./docs-icons-sync": "./docs-icons-sync.js"
   },
   "scripts": {
     "types:check": "tsc --noEmit"
