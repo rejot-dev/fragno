@@ -98,6 +98,7 @@ export function createOrganizationInvitationServices(
   const hooksEnabled = options.hooksEnabled ?? false;
   const limits = options.organizationConfig?.limits;
   const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
+  const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   return {
     getOrganizationInvitationById: function (this: AuthServiceContext, invitationId: string) {
       return this.serviceTx(authSchema)
@@ -131,7 +132,7 @@ export function createOrganizationInvitationServices(
       this: AuthServiceContext,
       input: CreateInvitationInput,
     ) {
-      const roles = normalizeRoleNames(input.roles, DEFAULT_MEMBER_ROLES);
+      const roles = normalizeRoleNames(input.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
       const now = new Date();
       const token = randomBytes(32).toString("hex");
       const expiresAt = buildExpiresAt({
@@ -266,19 +267,23 @@ export function createOrganizationInvitationServices(
               createdAt: invitation.createdAt,
               respondedAt: invitation.respondedAt,
             }),
-            organization: invitation.organizationInvitationOrganization
-              ? {
-                  id: toExternalId(invitation.organizationInvitationOrganization.id),
-                  name: invitation.organizationInvitationOrganization.name,
-                  slug: invitation.organizationInvitationOrganization.slug,
-                  logoUrl: invitation.organizationInvitationOrganization.logoUrl ?? null,
-                  metadata: invitation.organizationInvitationOrganization.metadata ?? null,
-                  createdBy: toExternalId(invitation.organizationInvitationOrganization.createdBy),
-                  createdAt: invitation.organizationInvitationOrganization.createdAt,
-                  updatedAt: invitation.organizationInvitationOrganization.updatedAt,
-                  deletedAt: invitation.organizationInvitationOrganization.deletedAt ?? null,
-                }
-              : null,
+            organization:
+              invitation.organizationInvitationOrganization &&
+              invitation.organizationInvitationOrganization.deletedAt == null
+                ? {
+                    id: toExternalId(invitation.organizationInvitationOrganization.id),
+                    name: invitation.organizationInvitationOrganization.name,
+                    slug: invitation.organizationInvitationOrganization.slug,
+                    logoUrl: invitation.organizationInvitationOrganization.logoUrl ?? null,
+                    metadata: invitation.organizationInvitationOrganization.metadata ?? null,
+                    createdBy: toExternalId(
+                      invitation.organizationInvitationOrganization.createdBy,
+                    ),
+                    createdAt: invitation.organizationInvitationOrganization.createdAt,
+                    updatedAt: invitation.organizationInvitationOrganization.updatedAt,
+                    deletedAt: invitation.organizationInvitationOrganization.deletedAt ?? null,
+                  }
+                : null,
           })),
         }))
         .build();

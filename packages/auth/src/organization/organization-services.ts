@@ -98,6 +98,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
   const organizationConfig = options.organizationConfig;
   const allowUserToCreateOrganization = organizationConfig?.allowUserToCreateOrganization;
   const limits = organizationConfig?.limits;
+  const defaultCreatorRoles = organizationConfig?.creatorRoles;
 
   const resolveAllowUserToCreateOrganization = async (ctx: { userId: string; userRole: Role }) => {
     if (allowUserToCreateOrganization === undefined) {
@@ -121,7 +122,10 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           .build();
       }
 
-      const creatorRoles = normalizeRoleNames(input.creatorRoles, DEFAULT_CREATOR_ROLES);
+      const creatorRoles = normalizeRoleNames(
+        input.creatorRoles ?? defaultCreatorRoles,
+        DEFAULT_CREATOR_ROLES,
+      );
       const now = new Date();
 
       return this.serviceTx(authSchema)
@@ -239,7 +243,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           ),
         )
         .transformRetrieve(([organization]) =>
-          organization
+          organization && organization.deletedAt == null
             ? {
                 organization: mapOrganization({
                   id: organization.id,
@@ -273,7 +277,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           ),
         )
         .transformRetrieve(([organization]) =>
-          organization
+          organization && organization.deletedAt == null
             ? {
                 organization: mapOrganization({
                   id: organization.id,
@@ -354,8 +358,8 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           const updated = {
             name: patch.name ?? existing.name,
             slug: nextSlug ?? existing.slug,
-            logoUrl: patch.logoUrl ?? existing.logoUrl,
-            metadata: patch.metadata ?? existing.metadata,
+            logoUrl: patch.logoUrl !== undefined ? patch.logoUrl : existing.logoUrl,
+            metadata: patch.metadata !== undefined ? patch.metadata : existing.metadata,
             createdBy: existing.createdBy,
             createdAt: existing.createdAt,
             updatedAt: now,
@@ -477,7 +481,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         )
         .transformRetrieve(([result]) => {
           const organizations = result.items
-            .filter((member) => member.organizationMemberOrganization)
+            .filter(
+              (member) =>
+                member.organizationMemberOrganization &&
+                member.organizationMemberOrganization.deletedAt == null,
+            )
             .map((member) => {
               const organization = member.organizationMemberOrganization;
               const memberUserId = member.organizationMemberUser

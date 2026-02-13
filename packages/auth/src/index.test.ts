@@ -3,10 +3,27 @@ import { authFragmentDefinition } from ".";
 import { userActionsRoutesFactory } from "./user/user-actions";
 import { sessionRoutesFactory } from "./session/session";
 import { userOverviewRoutesFactory } from "./user/user-overview";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { hashPassword } from "./user/password";
 import { getInternalFragment } from "@fragno-dev/db";
+import { organizationRoutesFactory } from "./organization/routes";
+import { authSchema } from "./schema";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const preOrganizationSchemaVersion = (() => {
+  const index = authSchema.operations.findIndex(
+    (operation) => operation.type === "add-table" && operation.tableName === "organization",
+  );
+  if (index === -1) {
+    throw new Error("Expected auth schema to include organization table operations.");
+  }
+  if (index < 2) {
+    throw new Error("Expected organization table to be added after user and session tables.");
+  }
+  return index;
+})();
 
 describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -483,5 +500,145 @@ describe("auth-fragment", async () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe("auth-fragment organization upgrades", async () => {
+  const databasePath = join(
+    tmpdir(),
+    `fragno-auth-upgrade-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
+
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite", databasePath })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({ organizations: false })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory]),
+      { migrateToVersion: preOrganizationSchemaVersion },
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("supports enabling organizations after upgrading", async () => {
+    const signUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "upgrade-user@test.com", password: "password" },
+    });
+
+    assert(signUpResponse.type === "json");
+    const sessionId = signUpResponse.data.sessionId as string;
+
+    const meBeforeUpgrade = await fragment.callRoute("GET", "/me", {
+      query: { sessionId },
+    });
+
+    assert(meBeforeUpgrade.type === "json");
+    expect(meBeforeUpgrade.data.organizations).toHaveLength(0);
+    expect(meBeforeUpgrade.data.activeOrganization).toBeNull();
+
+    if (!test.adapter.prepareMigrations) {
+      throw new Error("Adapter does not support migrations in upgrade test.");
+    }
+    const migrations = test.adapter.prepareMigrations(authSchema, "auth");
+    await migrations.execute(preOrganizationSchemaVersion, authSchema.version, {
+      updateVersionInMigration: false,
+    });
+
+    const upgradedFragment = instantiate(authFragmentDefinition)
+      .withConfig({ organizations: {} })
+      .withOptions({ databaseAdapter: test.adapter })
+      .withRoutes([userActionsRoutesFactory, sessionRoutesFactory, organizationRoutesFactory])
+      .build();
+
+    const meAfterUpgrade = await upgradedFragment.callRoute("GET", "/me", {
+      query: { sessionId },
+    });
+
+    assert(meAfterUpgrade.type === "json");
+    expect(meAfterUpgrade.data.organizations).toHaveLength(0);
+    expect(meAfterUpgrade.data.activeOrganization).toBeNull();
+
+    const createResponse = await upgradedFragment.callRoute("POST", "/organizations", {
+      query: { sessionId },
+      body: { name: "Upgraded Org", slug: "upgraded-org" },
+    });
+
+    assert(createResponse.type === "json");
+    const createdOrgId = createResponse.data.organization.id as string;
+
+    const meAfterCreate = await upgradedFragment.callRoute("GET", "/me", {
+      query: { sessionId },
+    });
+
+    assert(meAfterCreate.type === "json");
+    expect(meAfterCreate.data.organizations).toHaveLength(1);
+    expect(meAfterCreate.data.organizations[0]?.organization.id).toBe(createdOrgId);
+
+    const setActiveResponse = await upgradedFragment.callRoute("POST", "/organizations/active", {
+      query: { sessionId },
+      body: { organizationId: createdOrgId },
+    });
+
+    assert(setActiveResponse.type === "json");
+
+    const meAfterActive = await upgradedFragment.callRoute("GET", "/me", {
+      query: { sessionId },
+    });
+
+    assert(meAfterActive.type === "json");
+    expect(meAfterActive.data.activeOrganization?.organization.id).toBe(createdOrgId);
+
+    await drainDurableHooks(upgradedFragment);
+  });
+});
+
+describe("auth-fragment auto-create organizations", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: {
+            autoCreateOrganization: {
+              name: ({ email }) => `${email.split("@")[0] ?? "user"} Workspace`,
+              slug: ({ email }) => `${email.split("@")[0] ?? "user"}-workspace`,
+            },
+          },
+        })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("creates a default organization on sign up", async () => {
+    const signUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "auto-org-user@test.com", password: "password" },
+    });
+
+    assert(signUpResponse.type === "json");
+    const sessionId = signUpResponse.data.sessionId as string;
+
+    const meResponse = await fragment.callRoute("GET", "/me", {
+      query: { sessionId },
+    });
+
+    assert(meResponse.type === "json");
+    expect(meResponse.data.organizations).toHaveLength(1);
+    expect(meResponse.data.organizations[0]?.organization.slug).toBe("auto-org-user-workspace");
+    expect(meResponse.data.activeOrganization?.organization.id).toBe(
+      meResponse.data.organizations[0]?.organization.id ?? null,
+    );
   });
 });
