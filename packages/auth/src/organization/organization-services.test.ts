@@ -605,6 +605,222 @@ describe("organization services", async () => {
     const remainingUserIds = membersResult.members.map((member) => member.userId);
     expect(remainingUserIds).not.toContain(memberUser.id);
   });
+
+  it("hides soft-deleted organizations from lookups", async () => {
+    const owner = await createUser("deleted-owner@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Deleted Org",
+            slug: "deleted-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for deletion test");
+    }
+
+    const [deleteResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.deleteOrganization(organizationResult.organization.id, {
+            userId: owner.id,
+            userRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(deleteResult.ok).toBe(true);
+
+    const [getResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationById(organizationResult.organization.id),
+        ])
+        .execute();
+    });
+
+    expect(getResult).toBeNull();
+
+    const [listResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationsForUser({
+            userId: owner.id,
+            pageSize: 10,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(listResult.organizations).toHaveLength(0);
+  });
+
+  it("allows clearing nullable organization fields", async () => {
+    const owner = await createUser("clear-owner@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Clear Org",
+            slug: "clear-org",
+            logoUrl: "https://example.com/logo.png",
+            metadata: { tier: "gold" },
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for clear test");
+    }
+
+    const [updateResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.updateOrganization(
+            organizationResult.organization.id,
+            { logoUrl: null, metadata: null },
+            { userId: owner.id, userRole: owner.role },
+          ),
+        ])
+        .execute();
+    });
+
+    expect(updateResult.ok).toBe(true);
+    if (!updateResult.ok) {
+      return;
+    }
+
+    expect(updateResult.organization.logoUrl).toBeNull();
+    expect(updateResult.organization.metadata).toBeNull();
+  });
+});
+
+describe("organization service role defaults", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition).withConfig({
+        organizations: {
+          creatorRoles: ["owner", "admin"],
+          defaultMemberRoles: ["member", "admin"],
+        },
+      }),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  const createUser = async (email: string) => {
+    const passwordHash = await hashPassword("password");
+    const [user] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+        .execute();
+    });
+    return user;
+  };
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("applies configured creator roles when omitted", async () => {
+    const user = await createUser("config-owner@test.com");
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Config Org",
+            slug: "config-org",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.member.roles).toEqual(["owner", "admin"]);
+  });
+
+  it("applies configured default member roles for members and invitations", async () => {
+    const owner = await createUser("config-owner-2@test.com");
+    const memberUser = await createUser("config-member@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Defaults Org",
+            slug: "defaults-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    if (!organizationResult.ok) {
+      throw new Error("Failed to create organization for default role test");
+    }
+
+    const [memberResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMember({
+            organizationId: organizationResult.organization.id,
+            userId: memberUser.id,
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(memberResult.ok).toBe(true);
+    if (!memberResult.ok) {
+      return;
+    }
+
+    expect(memberResult.member.roles).toEqual(["member", "admin"]);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: "config-invitee@test.com",
+            inviterId: owner.id,
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(invitationResult.ok).toBe(true);
+    if (!invitationResult.ok) {
+      return;
+    }
+
+    expect(invitationResult.invitation.roles).toEqual(["member", "admin"]);
+  });
 });
 
 describe("organization service limits", async () => {

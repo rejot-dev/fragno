@@ -83,6 +83,7 @@ const filterOwnerMemberIds = (
 export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
   const hooksEnabled = options.hooksEnabled ?? false;
   const limits = options.organizationConfig?.limits;
+  const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   return {
     getOrganizationMemberByUser: function (
       this: AuthServiceContext,
@@ -117,7 +118,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     },
 
     createOrganizationMember: function (this: AuthServiceContext, input: CreateMemberInput) {
-      const roles = normalizeRoleNames(input.roles, DEFAULT_MEMBER_ROLES);
+      const roles = normalizeRoleNames(input.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
       const now = new Date();
 
       return this.serviceTx(authSchema)
