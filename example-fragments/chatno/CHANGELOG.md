@@ -1,5 +1,16 @@
 # @fragno-dev/chatno
 
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [3e2ff94]
+- Updated dependencies [c8841b5]
+- Updated dependencies [9eeba53]
+- Updated dependencies [0f9b7ef]
+- Updated dependencies [7bda0b2]
+  - @fragno-dev/core@0.2.1
+
 ## 0.0.20
 
 ### Patch Changes
