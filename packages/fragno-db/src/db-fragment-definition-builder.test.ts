@@ -799,6 +799,77 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(typeof contexts.serviceContext.serviceTx).toBe("function");
       expect(typeof contexts.handlerContext.handlerTx).toBe("function");
     });
+
+    it("should expose shard context helpers via implicit deps and handler/service contexts", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+      });
+
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        storage: mockAdapter.contextStorage,
+      });
+
+      mockAdapter.contextStorage.run(storage, () => {
+        expect(deps.shardContext.get()).toBeNull();
+        deps.shardContext.set("tenant_1");
+        expect(deps.shardContext.get()).toBe("tenant_1");
+
+        deps.shardContext.setScope("global");
+        expect(deps.shardContext.getScope()).toBe("global");
+
+        deps.shardContext.with("tenant_2", () => {
+          expect(deps.shardContext.get()).toBe("tenant_2");
+        });
+        expect(deps.shardContext.get()).toBe("tenant_1");
+
+        deps.shardContext.withScope("scoped", () => {
+          expect(deps.shardContext.getScope()).toBe("scoped");
+        });
+        expect(deps.shardContext.getScope()).toBe("global");
+
+        contexts.serviceContext.setShard("tenant_3");
+        expect(contexts.handlerContext.getShard()).toBe("tenant_3");
+        contexts.handlerContext.setShardScope("scoped");
+        expect(contexts.serviceContext.getShardScope()).toBe("scoped");
+      });
+    });
+
+    it("should validate shard values when setting shard context", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+      });
+
+      mockAdapter.contextStorage.run(storage, () => {
+        expect(() => deps.shardContext.set("")).toThrowError(/non-empty/i);
+        const tooLongShard = "a".repeat(65);
+        expect(() => deps.shardContext.set(tooLongShard)).toThrowError(/at most 64/i);
+      });
+    });
   });
 
   describe("complex database fragment", () => {
