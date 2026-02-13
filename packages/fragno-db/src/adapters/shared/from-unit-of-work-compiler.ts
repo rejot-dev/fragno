@@ -1,4 +1,5 @@
 import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
+import { dbNow } from "../../query/db-now";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -91,6 +92,10 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
   set(values: TableToUpdateValues<TTable>): this {
     this.#setValues = values;
     return this;
+  }
+
+  now() {
+    return dbNow();
   }
 
   getConfig() {

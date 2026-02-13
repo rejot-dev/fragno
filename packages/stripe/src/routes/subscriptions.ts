@@ -6,7 +6,19 @@ import {
 } from "../models/subscriptions";
 import { stripeToApiError } from "./errors";
 import { defineRoutes } from "@fragno-dev/core";
+import type { DatabaseRequestContext } from "@fragno-dev/db";
 import { stripeFragmentDefinition } from "../definition";
+import type { StripeServiceCall } from "../types";
+
+const callService = async <T, TRetrieve>(
+  handlerTx: DatabaseRequestContext["handlerTx"],
+  call: () => StripeServiceCall<T, TRetrieve>,
+) => {
+  return handlerTx()
+    .withServiceCalls(() => [call()] as const)
+    .transform(({ serviceResult: [result] }) => result)
+    .execute();
+};
 
 export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
   ({ deps, services, config, defineRoute }) => {
@@ -14,17 +26,18 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
       defineRoute({
         method: "GET",
         path: "/admin/subscriptions",
+        errorCodes: ["UNAUTHORIZED"] as const,
         outputSchema: z.object({
           subscriptions: z.array(SubscriptionReponseSchema),
         }),
-        handler: async (_, { json, error }) => {
+        handler: async function (_, { json, error }) {
           if (!config.enableAdminRoutes) {
             return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
           }
 
           // TODO: Implement pagination
           return json({
-            subscriptions: await services.getAllSubscriptions(),
+            subscriptions: await callService(this.handlerTx, () => services.getAllSubscriptions()),
           });
         },
       }),
@@ -48,7 +61,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
           "NO_ACTIVE_SUBSCRIPTIONS",
         ] as const,
-        handler: async (context, { json, error }) => {
+        handler: async function (context, { json, error }) {
           const body = await context.input.valid();
           const entity = await config.resolveEntityFromRequest(context);
 
@@ -56,9 +69,10 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           let existingSubscription: SubscriptionResponse | null = null;
 
           // Step 1: Get active subscriptions
-          if (entity.stripeCustomerId) {
-            const existingSubscriptions = await services.getSubscriptionsByStripeCustomerId(
-              entity.stripeCustomerId,
+          const stripeCustomerId = entity.stripeCustomerId;
+          if (stripeCustomerId) {
+            const existingSubscriptions = await callService(this.handlerTx, () =>
+              services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
             );
 
             // Cannot upgrade cancelled subscriptions
@@ -88,11 +102,21 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
                 400,
               );
             }
-            existingSubscription = activeSubscriptions[0];
+            const activeSubscription = activeSubscriptions[0];
+            if (!activeSubscription) {
+              return error(
+                {
+                  message: "No active subscriptions found for customer",
+                  code: "NO_ACTIVE_SUBSCRIPTIONS",
+                },
+                400,
+              );
+            }
+            existingSubscription = activeSubscription;
 
             if (
               customerId &&
-              existingSubscription.stripeCustomerId &&
+              existingSubscription?.stripeCustomerId &&
               existingSubscription.stripeCustomerId !== customerId
             ) {
               return error(
@@ -105,7 +129,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
               );
             }
 
-            customerId = existingSubscription.stripeCustomerId;
+            customerId = activeSubscription.stripeCustomerId;
           }
 
           // Step 2: Get or Create customer if not found
@@ -163,8 +187,8 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
 
           // Step 4: If existing subscription is active, modify using billing portal
           if (
-            existingSubscription?.status === "active" ||
-            existingSubscription?.status === "trialing"
+            existingSubscription &&
+            (existingSubscription.status === "active" || existingSubscription.status === "trialing")
           ) {
             const stripeSubscription = await deps.stripe.subscriptions.retrieve(
               existingSubscription.stripeSubscriptionId,
@@ -270,7 +294,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           "NO_STRIPE_CUSTOMER_LINKED",
           "MULTIPLE_SUBSCRIPTIONS_FOUND",
         ] as const,
-        handler: async (context, { json, error }) => {
+        handler: async function (context, { json, error }) {
           const body = await context.input.valid();
           const { stripeCustomerId } = await config.resolveEntityFromRequest(context);
 
@@ -282,7 +306,9 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           }
 
           let activeSubscriptions = (
-            await services.getSubscriptionsByStripeCustomerId(stripeCustomerId)
+            await callService(this.handlerTx, () =>
+              services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
+            )
           ).filter((s) => s.status === "active");
 
           // A specific active subscription was requested

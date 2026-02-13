@@ -167,11 +167,11 @@ describe("db-fragment-instantiator", () => {
   });
 
   describe("implicit database dependencies", () => {
-    it("should provide db dependency to services", () => {
+    it("should provide databaseAdapter dependency to services", () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .providesBaseService(({ deps }) => ({
-          getDb: () => deps.db,
+          getAdapter: () => deps.databaseAdapter,
         }))
         .build();
 
@@ -180,9 +180,8 @@ describe("db-fragment-instantiator", () => {
         .withOptions({ databaseAdapter: mockAdapter })
         .build();
 
-      const db = fragment.services.getDb();
-      expect(db).toBeDefined();
-      expect(db.createUnitOfWork).toBeDefined();
+      const adapter = fragment.services.getAdapter();
+      expect(adapter).toBe(mockAdapter);
     });
 
     it("should provide schema dependency to services", () => {
@@ -408,24 +407,22 @@ describe("db-fragment-instantiator", () => {
   });
 
   describe("withDependencies with database context", () => {
-    it("should provide db and databaseAdapter in withDependencies context", () => {
+    it("should provide databaseAdapter in withDependencies context", () => {
       interface Config {
         prefix: string;
       }
 
       const definition = defineFragment<Config>("test-db-fragment")
         .extend(withDatabase(testSchema))
-        .withDependencies(({ config, db, databaseAdapter }) => ({
+        .withDependencies(({ config, databaseAdapter }) => ({
           userService: {
             prefix: config.prefix,
             hasAdapter: !!databaseAdapter,
-            hasDb: !!db,
           },
         }))
         .providesBaseService(({ deps }) => ({
           getUserServicePrefix: () => deps.userService.prefix,
           hasAdapter: () => deps.userService.hasAdapter,
-          hasDb: () => deps.userService.hasDb,
         }))
         .build();
 
@@ -437,7 +434,6 @@ describe("db-fragment-instantiator", () => {
 
       expect(fragment.services.getUserServicePrefix()).toBe("USER_");
       expect(fragment.services.hasAdapter()).toBe(true);
-      expect(fragment.services.hasDb()).toBe(true);
     });
   });
 
@@ -453,7 +449,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       expect(fragment.$internal.deps).toBeDefined();
-      expect(fragment.$internal.deps).toHaveProperty("db");
+      expect(fragment.$internal.deps).toHaveProperty("databaseAdapter");
       expect(fragment.$internal.deps).toHaveProperty("schema");
       expect(fragment.$internal.deps).toHaveProperty("namespace");
       expect(fragment.$internal.deps).toHaveProperty("createUnitOfWork");
@@ -573,7 +569,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       expect(fragment.$internal.deps).toBeDefined();
-      expect(fragment.$internal.deps).toHaveProperty("db");
+      expect(fragment.$internal.deps).toHaveProperty("databaseAdapter");
       expect(fragment.$internal.deps).toHaveProperty("schema");
       expect(fragment.$internal.deps).toHaveProperty("namespace");
       expect(fragment.$internal.deps).toHaveProperty("createUnitOfWork");
@@ -595,7 +591,8 @@ describe("db-fragment-instantiator", () => {
       try {
         const fragment = instantiate(definition).withOptions({}).build();
         expect(fragment.$internal.options.databaseAdapter).toBeDefined();
-        expect(fragment.$internal.deps.db).toBeDefined();
+        expect(fragment.$internal.deps.databaseAdapter).toBeDefined();
+        expect(fragment.$internal.deps.createUnitOfWork).toBeDefined();
       } finally {
         if (previous === undefined) {
           delete process.env["FRAGNO_DATA_DIR"];

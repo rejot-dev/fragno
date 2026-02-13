@@ -1,6 +1,8 @@
 import type { Stripe } from "stripe";
+import type { DatabaseRequestContext } from "@fragno-dev/db";
 import type { StripeFragmentConfig, StripeFragmentDeps, StripeFragmentServices } from "../types";
 import { FragnoApiError } from "@fragno-dev/core/api";
+import { stripeSchema } from "../database/schema";
 import { getId, stripeSubscriptionToInternalSubscription } from "../utils";
 
 export interface StripeEventHandler {
@@ -8,6 +10,7 @@ export interface StripeEventHandler {
   services: StripeFragmentServices;
   deps: StripeFragmentDeps;
   config: StripeFragmentConfig;
+  handlerTx: DatabaseRequestContext["handlerTx"];
 }
 
 // https://docs.stripe.com/api/events/types
@@ -44,6 +47,7 @@ export async function checkoutSessionCompletedHandler({
   event,
   services,
   deps,
+  handlerTx,
 }: StripeEventHandler) {
   const checkoutSession = event.data.object as Stripe.Checkout.Session;
 
@@ -86,23 +90,35 @@ export async function checkoutSessionCompletedHandler({
 
   // If we have an existing subscription ID, try to update it
   if (existingSubscriptionId) {
-    await services.updateSubscription(existingSubscriptionId, subscriptionData);
+    await handlerTx()
+      .withServiceCalls(
+        () => [services.updateSubscription(existingSubscriptionId, subscriptionData)] as const,
+      )
+      .execute();
     deps.log.info(`Updated subscription ${existingSubscriptionId} for customer ${customerId}`);
     return;
   }
 
-  // Otherwise, check if subscription already exists by Stripe subscription ID
-  const existing = await services.getSubscriptionByStripeId(stripeSubscription.id);
-  if (existing) {
+  const result = await handlerTx()
+    .withServiceCalls(() => [services.getSubscriptionByStripeId(stripeSubscription.id)] as const)
+    .mutate(({ forSchema, serviceIntermediateResult: [existing] }) => {
+      if (existing) {
+        return { action: "exists" as const, id: existing.id };
+      }
+
+      const created = forSchema(stripeSchema).create("subscription", subscriptionData);
+      return { action: "created" as const, id: created.externalId };
+    })
+    .execute();
+
+  if (result.action === "exists") {
     // TODO: update that subscription's data?
     deps.log.info(`Subscription already exists for Stripe ID ${stripeSubscription.id}`);
     return;
   }
 
-  // Create new subscription record
-  const createdSubscriptionId = await services.createSubscription(subscriptionData);
   deps.log.info(
-    `Created subscription ${createdSubscriptionId} for customer ${customerId} (Stripe ID: ${stripeSubscription.id})`,
+    `Created subscription ${result.id} for customer ${customerId} (Stripe ID: ${stripeSubscription.id})`,
   );
 }
 
@@ -174,6 +190,7 @@ export async function customerSubscriptionUpdatedHandler({
   event,
   services,
   deps,
+  handlerTx,
 }: StripeEventHandler) {
   deps.log.info(`Processing ${event.type}: ${event.id}`);
 
@@ -189,50 +206,67 @@ export async function customerSubscriptionUpdatedHandler({
 
   const customerId = getId(stripeSubscription.customer);
 
-  // Try to find existing subscription
-  let subscription = await services.getSubscriptionByStripeId(stripeSubscription.id);
+  const subscriptionPayload = stripeSubscriptionToInternalSubscription(stripeSubscription);
+  const referenceId = stripeSubscription.metadata?.["referenceId"] ?? null;
 
-  // If not found by Stripe ID, try to find by customer ID
-  if (!subscription) {
-    const customerSubs = await services.getSubscriptionsByStripeCustomerId(customerId);
-
-    if (customerSubs.length > 1) {
-      subscription =
-        customerSubs.find((sub) => sub.status === "active" || sub.status === "trialing") ?? null;
+  const result = await handlerTx()
+    .withServiceCalls(
+      () =>
+        [
+          services.getSubscriptionByStripeId(stripeSubscription.id),
+          services.getSubscriptionsByStripeCustomerId(customerId),
+        ] as const,
+    )
+    .mutate(({ forSchema, serviceIntermediateResult: [byStripeId, byCustomerId] }) => {
+      let subscription = byStripeId;
 
       if (!subscription) {
-        deps.log.warn(
-          `Multiple subscriptions found for customer ${customerId} but none active or trialing`,
-        );
-        return;
+        if (byCustomerId.length > 1) {
+          subscription =
+            byCustomerId.find((sub) => sub.status === "active" || sub.status === "trialing") ??
+            null;
+
+          if (!subscription) {
+            return { action: "skipped" as const };
+          }
+        } else {
+          subscription = byCustomerId[0] ?? null;
+        }
       }
-    } else {
-      subscription = customerSubs[0] ?? null;
-    }
-  }
 
-  if (!subscription) {
+      if (!subscription) {
+        const created = forSchema(stripeSchema).create("subscription", {
+          ...subscriptionPayload,
+          referenceId,
+        });
+        return { action: "created" as const, id: created.externalId };
+      }
+
+      forSchema(stripeSchema).update("subscription", subscription.id, (b) =>
+        b.set({ ...subscriptionPayload, updatedAt: new Date() }),
+      );
+      return { action: "updated" as const, id: subscription.id };
+    })
+    .execute();
+
+  if (result.action === "skipped") {
     deps.log.warn(
-      `No subscription found for Stripe ID ${stripeSubscription.id}, creating new record`,
-    );
-
-    const createdSubscriptionId = await services.createSubscription({
-      ...stripeSubscriptionToInternalSubscription(stripeSubscription),
-      referenceId: stripeSubscription.metadata?.["referenceId"] ?? null,
-    });
-
-    deps.log.info(
-      `Created subscription ${createdSubscriptionId} for customer ${customerId} (Stripe ID: ${stripeSubscription.id})`,
+      `Multiple subscriptions found for customer ${customerId} but none active or trialing`,
     );
     return;
   }
 
-  await services.updateSubscription(
-    subscription.id,
-    stripeSubscriptionToInternalSubscription(stripeSubscription),
-  );
+  if (result.action === "created") {
+    deps.log.warn(
+      `No subscription found for Stripe ID ${stripeSubscription.id}, creating new record`,
+    );
+    deps.log.info(
+      `Created subscription ${result.id} for customer ${customerId} (Stripe ID: ${stripeSubscription.id})`,
+    );
+    return;
+  }
 
-  deps.log.info(`Updated subscription ${subscription.id} (Stripe ID: ${stripeSubscription.id})`);
+  deps.log.info(`Updated subscription ${result.id} (Stripe ID: ${stripeSubscription.id})`);
 }
 
 /**
@@ -244,26 +278,33 @@ export async function customerSubscriptionDeletedHandler({
   event,
   services,
   deps,
+  handlerTx,
 }: StripeEventHandler) {
   deps.log.info(`Processing customer.subscription.deleted: ${event.id}`);
 
   const stripeSubscription = event.data.object as Stripe.Subscription;
 
-  // Find existing subscription
-  const subscription = await services.getSubscriptionByStripeId(stripeSubscription.id);
+  const result = await handlerTx()
+    .withServiceCalls(() => [services.getSubscriptionByStripeId(stripeSubscription.id)] as const)
+    .mutate(({ forSchema, serviceIntermediateResult: [subscription] }) => {
+      if (!subscription) {
+        return { action: "missing" as const };
+      }
 
-  if (!subscription) {
+      forSchema(stripeSchema).update("subscription", subscription.id, (b) =>
+        b.set({ status: "canceled", updatedAt: new Date() }),
+      );
+      return { action: "canceled" as const, id: subscription.id };
+    })
+    .execute();
+
+  if (result.action === "missing") {
     deps.log.warn(`No subscription found for Stripe ID ${stripeSubscription.id}`);
     return;
   }
 
-  // Update status to canceled
-  await services.updateSubscription(subscription.id, {
-    status: "canceled",
-  });
-
   deps.log.info(
-    `Marked subscription ${subscription.id} as canceled (Stripe ID: ${stripeSubscription.id})`,
+    `Marked subscription ${result.id} as canceled (Stripe ID: ${stripeSubscription.id})`,
   );
 }
 

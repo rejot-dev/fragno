@@ -206,14 +206,7 @@ export async function processHooks<THooks extends HooksMap>(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,
   );
-  const getDbNow = async () => {
-    const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
-    if (services.getDbNow) {
-      return services.getDbNow();
-    }
-    return new Date();
-  };
-  const dbNow = await getDbNow();
+  const dbNow = new Date();
 
   if (stuckProcessingTimeoutMinutes !== false) {
     const staleBefore = new Date(dbNow.getTime() - stuckProcessingTimeoutMinutes * 60_000);

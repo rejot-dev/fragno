@@ -14,6 +14,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   InMemoryAdapter,
   getInternalFragment,
+  type ImplicitDatabaseDependencies,
   type InternalFragmentInstance,
   type OutboxEntry,
   withDatabase,
@@ -74,10 +75,11 @@ async function buildOutboxContext(): Promise<OutboxContext> {
     .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
     .build();
 
-  const deps = fragment.$internal.deps as { db: OutboxContext["db"] };
+  const deps = fragment.$internal.deps as ImplicitDatabaseDependencies<typeof appSchema>;
+  const db = deps.databaseAdapter.createQueryEngine(deps.schema, deps.namespace);
 
   return {
-    db: deps.db,
+    db,
     internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
       await adapter.close();

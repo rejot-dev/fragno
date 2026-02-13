@@ -9,6 +9,7 @@ import type {
 import { FragnoId } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
 import type { Condition, ConditionBuilder } from "../condition-builder";
+import { dbNow, type DbNow } from "../db-now";
 import type {
   SelectClause,
   TableToInsertValues,
@@ -33,6 +34,7 @@ export interface UpdateManyBuilder<TTable extends AnyTable> {
     condition?: (eb: IndexSpecificConditionBuilder<TTable, TIndexName>) => Condition | boolean,
   ): this;
   set(values: TableToUpdateValues<TTable>): this;
+  now(): DbNow;
 }
 
 /**
@@ -574,6 +576,13 @@ export class UpdateBuilder<TTable extends AnyTable> {
   set(values: TableToUpdateValues<TTable>): this {
     this.#setValues = values;
     return this;
+  }
+
+  /**
+   * Database timestamp helper for mutation values.
+   */
+  now(): DbNow {
+    return dbNow();
   }
 
   /**

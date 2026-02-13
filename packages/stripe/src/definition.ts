@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import type { SimpleQueryInterface, TableToInsertValues } from "@fragno-dev/db/query";
+import type { TableToColumnValues, TableToInsertValues } from "@fragno-dev/db/query";
 import type {
   Logger,
   StripeFragmentConfig,
@@ -7,8 +7,9 @@ import type {
   StripeFragmentServices,
 } from "./types";
 import { stripeSchema } from "./database/schema";
+import type { SubscriptionResponse } from "./models/subscriptions";
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type DatabaseServiceContext } from "@fragno-dev/db";
 import { stripeSubscriptionToInternalSubscription } from "./utils";
 
 const LOG_PREFIX = "[Stripe Fragment]";
@@ -20,151 +21,187 @@ const defaultLogger: Logger = {
   log: (...data) => console.log(LOG_PREFIX, ...data),
 };
 
-const asExternalSubscription = <T extends { id: { externalId: string }; status: string }>(
-  subscription: T,
-) => ({
-  ...subscription,
+type SubscriptionRow = TableToColumnValues<typeof stripeSchema.tables.subscription>;
+
+const asExternalSubscription = (subscription: SubscriptionRow): SubscriptionResponse => ({
   id: subscription.id.externalId,
+  referenceId: subscription.referenceId,
+  stripePriceId: subscription.stripePriceId,
+  stripeCustomerId: subscription.stripeCustomerId,
+  stripeSubscriptionId: subscription.stripeSubscriptionId,
   status: subscription.status as Stripe.Subscription.Status,
+  periodStart: subscription.periodStart,
+  periodEnd: subscription.periodEnd,
+  trialStart: subscription.trialStart,
+  trialEnd: subscription.trialEnd,
+  cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+  cancelAt: subscription.cancelAt,
+  seats: subscription.seats,
+  createdAt: subscription.createdAt,
+  updatedAt: subscription.updatedAt,
 });
 
 function createStripeServices(
   deps: StripeFragmentDeps,
-  db: SimpleQueryInterface<typeof stripeSchema>,
+  defineService: <T>(svc: T & ThisType<DatabaseServiceContext<{}>>) => T,
 ): StripeFragmentServices {
-  const services: StripeFragmentServices = {
+  return defineService({
     getStripeClient(): Stripe {
       return deps.stripe;
     },
-    createSubscription: async (
+    createSubscription(
       data: Omit<
         TableToInsertValues<typeof stripeSchema.tables.subscription>,
         "id" | "createdAt" | "updatedAt"
       >,
-    ) => {
-      return (await db.create("subscription", data)).externalId;
+    ) {
+      return this.serviceTx(stripeSchema)
+        .mutate(({ uow }) => {
+          const created = uow.create("subscription", data);
+          return created.externalId;
+        })
+        .build();
     },
-    updateSubscription: async (
+    updateSubscription(
       id: string,
       data: Partial<Omit<TableToInsertValues<typeof stripeSchema.tables.subscription>, "id">>,
-    ) => {
-      await db.update("subscription", id, (b) => b.set({ ...data, updatedAt: new Date() }));
+    ) {
+      return this.serviceTx(stripeSchema)
+        .mutate(({ uow }) =>
+          uow.update("subscription", id, (b) => b.set({ ...data, updatedAt: new Date() })),
+        )
+        .build();
     },
 
-    getSubscriptionByStripeId: async (stripeSubscriptionId: string) => {
-      const result = await db.findFirst("subscription", (b) =>
-        b.whereIndex("idx_stripe_subscription_id", (eb) =>
-          eb("stripeSubscriptionId", "=", stripeSubscriptionId),
-        ),
-      );
-      if (!result) {
-        return null;
-      }
-
-      return asExternalSubscription(result);
-    },
-    getSubscriptionsByStripeCustomerId: async (stripeCustomerId: string) => {
-      return (
-        await db.find("subscription", (b) =>
-          b.whereIndex("idx_stripe_customer_id", (eb) =>
-            eb("stripeCustomerId", "=", stripeCustomerId),
+    getSubscriptionByStripeId(stripeSubscriptionId: string) {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.findFirst("subscription", (b) =>
+            b.whereIndex("idx_stripe_subscription_id", (eb) =>
+              eb("stripeSubscriptionId", "=", stripeSubscriptionId),
+            ),
           ),
         )
-      ).map(asExternalSubscription);
+        .transformRetrieve(([result]) => (result ? asExternalSubscription(result) : null))
+        .build();
     },
-    getSubscriptionById: async (id: string) => {
-      const result = await db.findFirst("subscription", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", id)),
-      );
-      if (!result) {
-        return null;
-      }
-      return asExternalSubscription(result);
+    getSubscriptionsByStripeCustomerId(stripeCustomerId: string) {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.find("subscription", (b) =>
+            b.whereIndex("idx_stripe_customer_id", (eb) =>
+              eb("stripeCustomerId", "=", stripeCustomerId),
+            ),
+          ),
+        )
+        .transformRetrieve(([result]) => result.map(asExternalSubscription))
+        .build();
     },
-    getSubscriptionsByReferenceId: async (referenceId: string) => {
-      const result = await db.find("subscription", (b) =>
-        b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
-      );
-      if (result.length == 0) {
-        return [];
-      }
-      return result.map(asExternalSubscription);
+    getSubscriptionById(id: string) {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.findFirst("subscription", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+        )
+        .transformRetrieve(([result]) => (result ? asExternalSubscription(result) : null))
+        .build();
     },
-
-    deleteSubscription: async (id: string) => {
-      await db.delete("subscription", id);
-    },
-
-    deleteSubscriptionsByReferenceId: async (referenceId: string) => {
-      const uow = db
-        .createUnitOfWork()
-        .find("subscription", (b) =>
-          b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
-        );
-
-      const [subscriptions] = await uow.executeRetrieve();
-      subscriptions.forEach((sub) => sub && uow.delete("subscription", sub.id));
-
-      return await uow.executeMutations();
+    getSubscriptionsByReferenceId(referenceId: string) {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.find("subscription", (b) =>
+            b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
+          ),
+        )
+        .transformRetrieve(([result]) => result.map(asExternalSubscription))
+        .build();
     },
 
-    getAllSubscriptions: async () => {
-      return (await db.find("subscription", (b) => b.whereIndex("primary"))).map(
-        asExternalSubscription,
-      );
+    deleteSubscription(id: string) {
+      return this.serviceTx(stripeSchema)
+        .mutate(({ uow }) => uow.delete("subscription", id))
+        .build();
     },
 
-    /* Retrieve Stripe Subscription and create/update/delete internal entity */
-    syncStripeSubscriptions: async (referenceId: string, stripeCustomerId: string) => {
-      const stripeSubscriptions = await deps.stripe.subscriptions.list({
-        customer: stripeCustomerId,
-        status: "all",
-      });
-
-      if (stripeSubscriptions.data.length === 0) {
-        await services.deleteSubscriptionsByReferenceId(referenceId);
-        return { success: true };
-      }
-
-      const uow = db
-        .createUnitOfWork()
-        .find("subscription", (b) =>
-          b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
-        );
-
-      const [existingSubscriptions] = await uow.executeRetrieve();
-
-      // Mutation phase: process all Stripe subscriptions (including canceled)
-      for (const stripeSubscription of stripeSubscriptions.data) {
-        const existingSubscription = existingSubscriptions.find(
-          (sub) => sub.stripeSubscriptionId === stripeSubscription.id,
-        );
-
-        if (existingSubscription) {
-          // Update existing subscription with optimistic concurrency control
-          uow.update("subscription", existingSubscription.id, (b) =>
-            b
-              .set({
-                ...stripeSubscriptionToInternalSubscription(stripeSubscription),
-                updatedAt: new Date(),
-              })
-              .check(),
-          );
-        } else {
-          // Create new subscription
-          uow.create("subscription", {
-            ...stripeSubscriptionToInternalSubscription(stripeSubscription),
-            referenceId: referenceId ?? null,
-            updatedAt: new Date(),
+    deleteSubscriptionsByReferenceId(referenceId: string) {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.find("subscription", (b) =>
+            b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [subscriptions] }) => {
+          subscriptions.forEach((sub) => {
+            uow.delete("subscription", sub.id);
           });
-        }
+          return { success: true };
+        })
+        .build();
+    },
+
+    getAllSubscriptions() {
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) => uow.find("subscription", (b) => b.whereIndex("primary")))
+        .transformRetrieve(([result]) => result.map(asExternalSubscription))
+        .build();
+    },
+
+    /* Create/update/delete internal entity based on provided Stripe subscriptions. */
+    syncStripeSubscriptions(
+      referenceId: string,
+      _stripeCustomerId: string,
+      stripeSubscriptions: Stripe.Subscription[],
+    ) {
+      if (stripeSubscriptions.length === 0) {
+        return this.serviceTx(stripeSchema)
+          .retrieve((uow) =>
+            uow.find("subscription", (b) =>
+              b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [subscriptions] }) => {
+            subscriptions.forEach((sub) => {
+              uow.delete("subscription", sub.id);
+            });
+            return { success: true };
+          })
+          .build();
       }
 
-      // Execute all mutations and return result
-      return uow.executeMutations();
+      return this.serviceTx(stripeSchema)
+        .retrieve((uow) =>
+          uow.find("subscription", (b) =>
+            b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [existingSubscriptions] }) => {
+          for (const stripeSubscription of stripeSubscriptions) {
+            const existingSubscription = existingSubscriptions.find(
+              (sub) => sub.stripeSubscriptionId === stripeSubscription.id,
+            );
+
+            if (existingSubscription) {
+              uow.update("subscription", existingSubscription.id, (b) =>
+                b
+                  .set({
+                    ...stripeSubscriptionToInternalSubscription(stripeSubscription),
+                    updatedAt: new Date(),
+                  })
+                  .check(),
+              );
+            } else {
+              uow.create("subscription", {
+                ...stripeSubscriptionToInternalSubscription(stripeSubscription),
+                referenceId: referenceId ?? null,
+                updatedAt: new Date(),
+              });
+            }
+          }
+
+          return { success: true };
+        })
+        .build();
     },
-  };
-  return services;
+  });
 }
 
 export const stripeFragmentDefinition = defineFragment<StripeFragmentConfig>("stripe")
@@ -177,9 +214,5 @@ export const stripeFragmentDefinition = defineFragment<StripeFragmentConfig>("st
       log: config.logger ? config.logger : defaultLogger,
     };
   })
-  .providesBaseService(({ deps }) => {
-    return {
-      ...createStripeServices(deps, deps.db),
-    };
-  })
+  .providesBaseService(({ deps, defineService }) => createStripeServices(deps, defineService))
   .build();

@@ -101,6 +101,12 @@ describe("ConditionBuilder", () => {
       });
     });
 
+    it("should expose db now helper", () => {
+      const builder = createBuilder(usersTable.columns);
+
+      expect(builder.now()).toEqual({ tag: "db-now" });
+    });
+
     it("should support boolean columns", () => {
       const postsTable = testSchema.tables.posts;
       const builder = createBuilder(postsTable.columns);

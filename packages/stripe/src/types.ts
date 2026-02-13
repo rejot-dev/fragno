@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
-import type { TableToInsertValues } from "@fragno-dev/db/query";
+import type { TxResult } from "@fragno-dev/db";
+import type { TableToColumnValues, TableToInsertValues } from "@fragno-dev/db/query";
 
 import type { stripeSchema } from "./database/schema";
 import type { SubscriptionResponse } from "./models/subscriptions";
@@ -85,7 +86,11 @@ export interface StripeFragmentDeps {
   log: Logger;
 }
 
-export interface StripeFragmentServices {
+export type StripeServiceCall<T, TRetrieve = T> = TxResult<T, TRetrieve>;
+
+type SubscriptionRow = TableToColumnValues<typeof stripeSchema.tables.subscription>;
+
+export interface StripeFragmentServices extends Record<string, unknown> {
   /**
    * Get the Stripe client instance
    */
@@ -99,37 +104,47 @@ export interface StripeFragmentServices {
       TableToInsertValues<typeof stripeSchema.tables.subscription>,
       "id" | "createdAt" | "updatedAt"
     >,
-  ): Promise<string>;
+  ): StripeServiceCall<string>;
   /**
    * Update an existing subscription record
    */
   updateSubscription(
     id: string,
     data: Partial<Omit<TableToInsertValues<typeof stripeSchema.tables.subscription>, "id">>,
-  ): Promise<void>;
+  ): StripeServiceCall<void>;
   /**
    * Find a subscription by Stripe subscription ID
    */
-  getSubscriptionByStripeId(stripeSubscriptionId: string): Promise<SubscriptionResponse | null>;
+  getSubscriptionByStripeId(
+    stripeSubscriptionId: string,
+  ): StripeServiceCall<SubscriptionResponse | null>;
   /**
    * Find all subscriptions for a Stripe customer ID
    */
-  getSubscriptionsByStripeCustomerId(stripeCustomerId: string): Promise<SubscriptionResponse[]>;
+  getSubscriptionsByStripeCustomerId(
+    stripeCustomerId: string,
+  ): StripeServiceCall<SubscriptionResponse[]>;
   /**
    * Delete a subscription record
    */
-  deleteSubscription(id: string): Promise<void>;
+  deleteSubscription(id: string): StripeServiceCall<void>;
 
-  deleteSubscriptionsByReferenceId(referenceId: string): Promise<{ success: boolean }>;
+  deleteSubscriptionsByReferenceId(
+    referenceId: string,
+  ): StripeServiceCall<{ success: boolean }, [SubscriptionRow[]]>;
   /**
    * Get all subscriptions
    */
-  getAllSubscriptions(): Promise<SubscriptionResponse[]>;
+  getAllSubscriptions(): StripeServiceCall<SubscriptionResponse[]>;
   /**
    * Get subscriptions by id (internal)
    */
-  getSubscriptionById(id: string): Promise<SubscriptionResponse | null>;
-  getSubscriptionsByReferenceId(referenceId: string): Promise<SubscriptionResponse[]>;
+  getSubscriptionById(id: string): StripeServiceCall<SubscriptionResponse | null>;
+  getSubscriptionsByReferenceId(referenceId: string): StripeServiceCall<SubscriptionResponse[]>;
 
-  syncStripeSubscriptions(referenceId: string, customerId: string): Promise<{ success: boolean }>;
+  syncStripeSubscriptions(
+    referenceId: string,
+    customerId: string,
+    stripeSubscriptions: Stripe.Subscription[],
+  ): StripeServiceCall<{ success: boolean }, [SubscriptionRow[]]>;
 }

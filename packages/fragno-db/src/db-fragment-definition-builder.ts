@@ -118,11 +118,6 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    */
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   /**
-   * Database query engine for the fragment's schema.
-   * @deprecated Prefer handlerTx/serviceTx instead of direct db usage.
-   */
-  db: SimpleQueryInterface<TSchema>;
-  /**
    * The schema definition for this fragment.
    */
   schema: TSchema;
@@ -218,14 +213,14 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
 /**
  * Database fragment context provided to user callbacks.
  */
-export type DatabaseFragmentContext<TSchema extends AnySchema> = {
+export type DatabaseFragmentContext = {
   /**
    * Database adapter instance.
    */
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  /**
-   * ORM query engine for the fragment's schema.
-   */
+};
+
+type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragmentContext & {
   db: SimpleQueryInterface<TSchema>;
 };
 
@@ -236,7 +231,7 @@ export type DatabaseFragmentContext<TSchema extends AnySchema> = {
 function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
-): DatabaseFragmentContext<TSchema> {
+): DatabaseFragmentContextInternal<TSchema> {
   const databaseAdapter = resolveDatabaseAdapter(options, schema);
 
   const namespace = resolveDatabaseNamespace(options, schema);
@@ -334,13 +329,12 @@ export class DatabaseFragmentDefinitionBuilder<
 
   /**
    * Define dependencies for this database fragment.
-   * The context includes database adapter and ORM instance.
+   * The context includes the database adapter.
    */
   withDependencies<TNewDeps>(
     fn: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
-      db: SimpleQueryInterface<TSchema>;
       databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     }) => TNewDeps,
   ): DatabaseFragmentDefinitionBuilder<
@@ -365,7 +359,6 @@ export class DatabaseFragmentDefinitionBuilder<
       const userDeps = fn({
         config: context.config,
         options: context.options,
-        db: dbContext.db,
         databaseAdapter: dbContext.databaseAdapter,
       });
 
@@ -373,7 +366,6 @@ export class DatabaseFragmentDefinitionBuilder<
       const createUow = () => dbContext.db.createUnitOfWork();
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
-        db: dbContext.db,
         schema: this.#schema,
         namespace,
         createUnitOfWork: createUow,
@@ -774,7 +766,6 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
-        db,
         schema: this.#schema,
         namespace,
         createUnitOfWork: () => db.createUnitOfWork(),

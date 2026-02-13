@@ -49,57 +49,71 @@ export interface SubmissionSortOptions {
 
 export const formsFragmentDef = defineFragment<FormsConfig>("forms")
   .extend(withDatabase(formsSchema))
-  .withDependencies(({ db }) => ({ db }))
-  .providesBaseService(({ deps }) => {
-    return {
-      createForm: async (input: NewForm) => {
-        return (await deps.db.create("form", input)).externalId;
+  .providesBaseService(({ defineService }) =>
+    defineService({
+      createForm: function (input: NewForm) {
+        return this.serviceTx(formsSchema)
+          .mutate(({ uow }) => uow.create("form", input))
+          .transform(({ mutateResult }) => mutateResult.externalId)
+          .build();
       },
 
-      getForm: async (id: string) => {
-        const form = await deps.db.findFirst("form", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", id)),
-        );
-        return form ? asExternalForm(form) : null;
+      getForm: function (id: string) {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          )
+          .transformRetrieve(([form]) => (form ? asExternalForm(form) : null))
+          .build();
       },
 
-      getFormBySlug: async (slug: string) => {
-        const form = await deps.db.findFirst("form", (b) =>
-          b.whereIndex("idx_form_slug", (eb) => eb("slug", "=", slug)),
-        );
-        return form ? asExternalForm(form) : null;
+      getFormBySlug: function (slug: string) {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("form", (b) =>
+              b.whereIndex("idx_form_slug", (eb) => eb("slug", "=", slug)),
+            ),
+          )
+          .transformRetrieve(([form]) => (form ? asExternalForm(form) : null))
+          .build();
       },
 
-      updateForm: async (id: string, input: UpdateForm) => {
-        const uow = deps.db
-          .createUnitOfWork()
-          .find("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+      updateForm: function (id: string, input: UpdateForm) {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) =>
+            uow.find("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          )
+          .mutate(({ uow, retrieveResult: [currentForms] }) => {
+            if (currentForms.length === 0) {
+              return { success: false };
+            }
+            // TODO: length > 1 ?
 
-        const [currentForms] = await uow.executeRetrieve();
+            const currentForm = currentForms[0];
 
-        if (currentForms.length === 0) {
-          return { success: false };
-        }
-        // TODO: length > 1 ?
+            // Only increment version if changing data schema
+            const newVersion = input.dataSchema ? currentForm.version + 1 : currentForm.version;
 
-        const currentForm = currentForms[0];
+            uow.update("form", currentForm.id, (b) => {
+              b.set({ ...input, version: newVersion, updatedAt: new Date() }).check();
+            });
 
-        // Only increment version if changing data schema
-        const newVersion = input.dataSchema ? currentForm.version + 1 : currentForm.version;
-
-        uow.update("form", currentForm.id, (b) => {
-          b.set({ ...input, version: newVersion, updatedAt: new Date() }).check();
-        });
-        return uow.executeMutations();
+            return { success: true };
+          })
+          .build();
       },
 
-      listForms: async () => {
-        const forms = await deps.db.find("form", (b) => b.whereIndex("primary"));
-        return forms.map(asExternalForm);
+      listForms: function () {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) => uow.find("form", (b) => b.whereIndex("primary")))
+          .transformRetrieve(([forms]) => forms.map(asExternalForm))
+          .build();
       },
 
-      deleteForm: async (id: string) => {
-        await deps.db.delete("form", id);
+      deleteForm: function (id: string) {
+        return this.serviceTx(formsSchema)
+          .mutate(({ uow }) => uow.delete("form", id))
+          .build();
       },
 
       validateData: (schema: JSONSchema, data: Record<string, unknown>): ValidationResult => {
@@ -122,45 +136,56 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
         };
       },
 
-      createResponse: async (
+      createResponse: function (
         formId: string,
         formVersion: number,
         data: ValidatedData,
         metadata?: { ip?: string | null; userAgent?: string | null },
-      ) => {
-        return (
-          await deps.db.create("response", {
-            formId,
-            formVersion,
-            data,
-            ip: metadata?.ip ?? null,
-            userAgent: metadata?.userAgent ?? null,
-          })
-        ).externalId;
+      ) {
+        return this.serviceTx(formsSchema)
+          .mutate(({ uow }) =>
+            uow.create("response", {
+              formId,
+              formVersion,
+              data,
+              ip: metadata?.ip ?? null,
+              userAgent: metadata?.userAgent ?? null,
+            }),
+          )
+          .transform(({ mutateResult }) => mutateResult.externalId)
+          .build();
       },
 
-      getResponse: async (id: string) => {
-        const response = await deps.db.findFirst("response", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", id)),
-        );
-        return response ? asExternalResponse(response) : null;
+      getResponse: function (id: string) {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("response", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          )
+          .transformRetrieve(([response]) => (response ? asExternalResponse(response) : null))
+          .build();
       },
 
-      listResponses: async (
+      listResponses: function (
         formId: string,
         sort: SubmissionSortOptions = { field: "submittedAt", order: "desc" },
-      ) => {
-        const responses = await deps.db.find("response", (b) =>
-          b
-            .whereIndex("idx_response_form", (eb) => eb("formId", "=", formId))
-            .orderByIndex("idx_response_submitted_at", sort.order),
-        );
-        return responses.map(asExternalResponse);
+      ) {
+        return this.serviceTx(formsSchema)
+          .retrieve((uow) =>
+            uow.find("response", (b) =>
+              b
+                .whereIndex("idx_response_form", (eb) => eb("formId", "=", formId))
+                .orderByIndex("idx_response_submitted_at", sort.order),
+            ),
+          )
+          .transformRetrieve(([responses]) => responses.map(asExternalResponse))
+          .build();
       },
 
-      deleteResponse: async (id: string) => {
-        return await deps.db.delete("response", id);
+      deleteResponse: function (id: string) {
+        return this.serviceTx(formsSchema)
+          .mutate(({ uow }) => uow.delete("response", id))
+          .build();
       },
-    };
-  })
+    }),
+  )
   .build();

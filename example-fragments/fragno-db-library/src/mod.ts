@@ -3,9 +3,9 @@ import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { defineSyncCommands } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import type { SimpleQueryInterface, TableToInsertValues } from "@fragno-dev/db/query";
+import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type DatabaseServiceContext } from "@fragno-dev/db";
 import { commentSchema } from "./schema/comment";
 
 type Prettify<T> = {
@@ -51,40 +51,33 @@ export interface CommentFragmentConfig {
 export const commentFragmentDef = defineFragment<CommentFragmentConfig>("fragno-db-comment")
   .extend(withDatabase(commentSchema))
   .withSyncCommands(commentSyncCommands)
-  .providesBaseService(({ deps }) => {
-    return {
-      ...createFragnoDatabaseLibrary(deps.db),
-    };
-  })
+  .providesBaseService(({ defineService }) => createFragnoDatabaseLibrary(defineService))
   .build();
 
-export function createFragnoDatabaseLibrary(db: SimpleQueryInterface<typeof commentSchema>) {
-  const internal = {
-    createComment: (comment: TableToInsertValues<typeof commentSchema.tables.comment>) => {
-      return db.create("comment", comment);
+export function createFragnoDatabaseLibrary(
+  defineService: <T>(svc: T & ThisType<DatabaseServiceContext<{}>>) => T,
+) {
+  return defineService({
+    createComment(comment: Prettify<TableToInsertValues<typeof commentSchema.tables.comment>>) {
+      return this.serviceTx(commentSchema)
+        .mutate(({ uow }) => uow.create("comment", comment))
+        .transform(({ mutateResult }) => ({
+          ...comment,
+          id: mutateResult.valueOf(),
+        }))
+        .build();
     },
-    getComments: (postReference: string) => {
-      return db.find("comment", (b) =>
-        b.whereIndex("idx_comment_post", (eb) => eb("postReference", "=", postReference)),
-      );
+    getComments(postReference: string) {
+      return this.serviceTx(commentSchema)
+        .retrieve((uow) =>
+          uow.find("comment", (b) =>
+            b.whereIndex("idx_comment_post", (eb) => eb("postReference", "=", postReference)),
+          ),
+        )
+        .transformRetrieve(([comments]) => comments.map((c) => ({ ...c, id: c.id.valueOf() })))
+        .build();
     },
-  };
-
-  return {
-    createComment: async (
-      comment: Prettify<TableToInsertValues<typeof commentSchema.tables.comment>>,
-    ) => {
-      const id = await internal.createComment(comment);
-      return {
-        ...comment,
-        id: id.valueOf(),
-      };
-    },
-    getComments: async (postReference: string) => {
-      const comments = await internal.getComments(postReference);
-      return comments.map((c) => ({ ...c, id: c.id.valueOf() }));
-    },
-  };
+  });
 }
 
 const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
@@ -101,7 +94,10 @@ const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
           if (!postReference) {
             throw new Error("postReference is required");
           }
-          const comments = await services.getComments(postReference);
+          const comments = await this.handlerTx()
+            .withServiceCalls(() => [services.getComments(postReference)] as const)
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
           return json(comments);
         },
       }),
@@ -117,12 +113,20 @@ const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
         }),
         outputSchema: z.any(),
         errorCodes: ["CREATION_FAILED", "INVALID_INPUT"] as const,
-        handler: async ({ input }, { json }) => {
+        handler: async function ({ input }, { json }) {
           const data = await input.valid();
-          const comment = await services.createComment({
-            ...data,
-            parentId: data.parentId || null,
-          });
+          const comment = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.createComment({
+                    ...data,
+                    parentId: data.parentId || null,
+                  }),
+                ] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
           return json(comment);
         },
       }),

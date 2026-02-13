@@ -2,6 +2,7 @@ import { test, describe, expect, beforeEach, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { stripeFragmentDefinition } from "../definition";
 import { instantiate } from "@fragno-dev/core";
+import type { StripeServiceCall } from "../types";
 
 import {
   customerSubscriptionUpdatedHandler,
@@ -107,6 +108,23 @@ describe("webhooks", async () => {
     .build();
 
   const fragment = fragments.stripe;
+  const callService = <T, TRetrieve>(call: () => StripeServiceCall<T, TRetrieve>) =>
+    fragment.fragment.callServices(call);
+  const runHandler = async (
+    handler: (args: Parameters<typeof customerSubscriptionUpdatedHandler>[0]) => Promise<void>,
+    event: ShallowStripeEvent,
+  ) => {
+    await fragment.fragment.inContext(async function () {
+      await handler({
+        // @ts-expect-error TS2322
+        event: event,
+        services: fragment.services,
+        deps: fragment.deps,
+        config,
+        handlerTx: this.handlerTx,
+      });
+    });
+  };
 
   beforeEach(() => {
     mockSubscriptionsRetrieve.mockClear();
@@ -117,21 +135,15 @@ describe("webhooks", async () => {
     const event = getEventJson("customer.subscription.updated");
 
     test("creates new subscription if missing", async () => {
-      await customerSubscriptionUpdatedHandler({
-        // @ts-expect-error TS2322
-        event: event,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(customerSubscriptionUpdatedHandler, event);
 
-      const subscription = await fragment.services.getAllSubscriptions();
+      const subscription = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscription).toHaveLength(1);
       expect(subscription[0].status).toBe("active");
     });
 
     test("updates existing subscription", async () => {
-      let subscriptions = await fragment.services.getAllSubscriptions();
+      let subscriptions = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscriptions).toHaveLength(1);
       expect(subscriptions[0].status).toBe("active");
 
@@ -146,15 +158,9 @@ describe("webhooks", async () => {
         },
       };
 
-      await customerSubscriptionUpdatedHandler({
-        // @ts-expect-error TS2322
-        event: updatedEvent,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(customerSubscriptionUpdatedHandler, updatedEvent);
 
-      subscriptions = await fragment.services.getAllSubscriptions();
+      subscriptions = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscriptions).toHaveLength(1);
       expect(subscriptions[0].status).toBe("inactive");
     });
@@ -164,34 +170,30 @@ describe("webhooks", async () => {
     const event = getEventJson("customer.subscription.deleted");
 
     test("ignores event if no existing subscription", async () => {
-      let subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
+      let subscription = await callService(() =>
+        fragment.services.getSubscriptionByStripeId(event.data.object.id),
+      );
       expect(subscription).toBeNull();
 
-      await customerSubscriptionDeletedHandler({
-        // @ts-expect-error TS2322
-        event: event,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(customerSubscriptionDeletedHandler, event);
       // Still not there
-      subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
+      subscription = await callService(() =>
+        fragment.services.getSubscriptionByStripeId(event.data.object.id),
+      );
       expect(subscription).toBeNull();
     });
 
     test("deletes existing subscription", async () => {
-      let subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
+      let subscription = await callService(() =>
+        fragment.services.getSubscriptionByStripeId(event.data.object.id),
+      );
       expect(subscription).toBeDefined();
 
-      await customerSubscriptionDeletedHandler({
-        // @ts-expect-error TS2322
-        event: event,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(customerSubscriptionDeletedHandler, event);
 
-      subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
+      subscription = await callService(() =>
+        fragment.services.getSubscriptionByStripeId(event.data.object.id),
+      );
       expect(subscription).toBeNull();
     });
   });
@@ -204,16 +206,10 @@ describe("webhooks", async () => {
         const eventName = `customer.subscription.${subEvent}`;
         const event = getEventJson(eventName);
         const handler = eventToHandler[eventName as SupportedStripeEvent];
-        await handler({
-          // @ts-expect-error TS2322
-          event: event,
-          services: fragment.services,
-          deps: fragment.deps,
-          config,
-        });
+        await runHandler(handler, event);
 
-        const subscription = await fragment.services.getSubscriptionByStripeId(
-          event.data.object.id,
+        const subscription = await callService(() =>
+          fragment.services.getSubscriptionByStripeId(event.data.object.id),
         );
         expect(subscription).toBeDefined();
         expect(subscription?.status).toBe(event.data.object.status);
@@ -225,28 +221,16 @@ describe("webhooks", async () => {
   describe("checkout.session.completed", async () => {
     test("ignores non-subscription checkout sessions", async () => {
       const event = getEventJson("checkout.session.completed", "payment");
-      await checkoutSessionCompletedHandler({
-        // @ts-expect-error TS2322
-        event: event,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(checkoutSessionCompletedHandler, event);
       expect(true);
     });
 
     test("Creates subscription from checkout session", async () => {
       const event = getEventJson("checkout.session.completed", "subscription");
-      await checkoutSessionCompletedHandler({
-        // @ts-expect-error TS2322
-        event: event,
-        services: fragment.services,
-        deps: fragment.deps,
-        config,
-      });
+      await runHandler(checkoutSessionCompletedHandler, event);
 
-      const subscription = await fragment.services.getSubscriptionByStripeId(
-        event.data.object.subscription,
+      const subscription = await callService(() =>
+        fragment.services.getSubscriptionByStripeId(event.data.object.subscription),
       );
       expect(subscription).toBeDefined();
       expect(mockSubscriptionsRetrieve).toHaveBeenCalledWith(event.data.object.subscription);

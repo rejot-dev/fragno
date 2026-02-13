@@ -34,6 +34,8 @@ export {
   type CursorResult,
 } from "../query/cursor";
 
+export { dbNow, type DbNow } from "../query/db-now";
+
 export const withDatabase: typeof withDatabaseType = () => {
   throw new Error("withDatabase is not available in browser builds.");
 };

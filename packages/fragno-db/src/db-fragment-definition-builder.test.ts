@@ -95,8 +95,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const definition = defineFragment("test-frag")
         .extend(withDatabase(testSchema))
-        .withDependencies(({ db }) => {
-          expect(db).toBeDefined();
+        .withDependencies(({ databaseAdapter }) => {
+          expect(databaseAdapter).toBeDefined();
           return {
             customDep: "value",
           };
@@ -109,7 +109,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       expect(deps.customDep).toBe("value");
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
+      expect(deps.createUnitOfWork).toBeDefined();
       expect(deps.schema).toBeDefined();
     });
 
@@ -129,7 +130,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       expect(deps.apiKey).toBe("key123");
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
+      expect(deps.createUnitOfWork).toBeDefined();
       expect(deps.schema).toBeDefined();
     });
 
@@ -139,7 +141,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const definition = defineFragment("test-frag")
         .extend(withDatabase(testSchema))
         .providesService("users", ({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             list: () => "users list",
           };
@@ -172,7 +174,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         }))
         .extend(withDatabase(testSchema))
         .providesService("users", ({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             list: () => "users list",
           };
@@ -246,7 +248,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const definition = defineFragment("test-frag")
         .extend(withDatabase(testSchema))
         .providesBaseService(({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             healthCheck: () => "healthy",
           };
@@ -279,7 +281,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         }))
         .extend(withDatabase(testSchema))
         .providesBaseService(({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             status: () => "ok",
           };
@@ -314,8 +316,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const definition = defineFragment("test-frag")
         .extend(withDatabase(testSchema))
-        .withDependencies(({ db }) => {
-          expect(db).toBeDefined();
+        .withDependencies(({ databaseAdapter }) => {
+          expect(databaseAdapter).toBeDefined();
           return {
             apiKey: "secret",
           };
@@ -330,7 +332,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           },
         }))
         .providesService("data", ({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             fetch: () => `Fetching with ${deps.apiKey}`,
           };
@@ -383,15 +385,15 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           baseConfig: "config1",
         }))
         .extend(withDatabase(testSchema))
-        .withDependencies(({ db }) => {
-          expect(db).toBeDefined();
+        .withDependencies(({ databaseAdapter }) => {
+          expect(databaseAdapter).toBeDefined();
           // Second withDependencies replaces the first one
           return {
             enhancedConfig: "enhanced",
           };
         })
         .providesService("combined", ({ deps }) => {
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           return {
             getConfig: () => deps.enhancedConfig,
           };
@@ -406,7 +408,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Only the second withDependencies is used (plus implicit deps)
       expect(deps).not.toHaveProperty("baseConfig");
       expect(deps.enhancedConfig).toBe("enhanced");
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
 
       const combinedService = definition.namedServices!.combined({
         config: {},
@@ -436,9 +438,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           };
         })
         .extend(withDatabase(testSchema))
-        .withDependencies(({ config, db }) => {
+        .withDependencies(({ config, databaseAdapter }) => {
           expectTypeOf(config).toExtend<MyConfig>();
-          expect(db).toBeDefined();
+          expect(databaseAdapter).toBeDefined();
           // Second withDependencies replaces the first, so combine them here
           return {
             connectionTimeout: config.timeout,
@@ -454,7 +456,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       expect(deps.connectionTimeout).toBe(5000);
       expect(deps.dbConnectionString).toBe("postgres://localhost");
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
     });
 
     it("recommended pattern: extend first then configure", () => {
@@ -471,8 +473,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Best practice: .extend() early, then add all your features
       const definition = defineFragment("best-practice")
         .extend(withDatabase(testSchema))
-        .withDependencies(({ db }) => {
-          expect(db).toBeDefined();
+        .withDependencies(({ databaseAdapter }) => {
+          expect(databaseAdapter).toBeDefined();
           return {
             apiKey: "secret",
             timeout: 5000,
@@ -482,7 +484,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         .usesOptionalService<"auth", AuthService>("auth")
         .providesBaseService(({ deps }) => ({
           healthCheck: () => {
-            expect(deps.db).toBeDefined();
+            expect(deps.databaseAdapter).toBeDefined();
             return `OK (timeout: ${deps.timeout})`;
           },
         }))
@@ -505,7 +507,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Verify all dependencies including implicit ones
       expect(deps.apiKey).toBe("secret");
       expect(deps.timeout).toBe(5000);
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
       expect(deps.schema).toBeDefined();
       expect(deps.createUnitOfWork).toBeDefined();
 
@@ -545,8 +547,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockAdapter = createMockAdapter();
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag"))
-        .withDependencies(({ db, databaseAdapter }) => {
-          expect(db).toBeDefined();
+        .withDependencies(({ databaseAdapter }) => {
           expect(databaseAdapter).toBeDefined();
           return {
             customDep: "test",
@@ -563,7 +564,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       // Should have implicit deps
-      expect(deps).toHaveProperty("db");
+      expect(deps).toHaveProperty("databaseAdapter");
       expect(deps).toHaveProperty("schema");
       expect(deps).toHaveProperty("createUnitOfWork");
       expect(deps).toHaveProperty("customDep");
@@ -584,7 +585,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       // Check implicit dependencies structure
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
       expect(deps.schema).toBeDefined();
       expect(typeof deps.createUnitOfWork).toBe("function");
     });
@@ -598,7 +599,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         .withDependencies(() => ({ apiKey: "key" }))
         .providesBaseService(({ deps, defineService }) => {
           expect(deps.apiKey).toBe("key");
-          expect(deps.db).toBeDefined();
+          expect(deps.databaseAdapter).toBeDefined();
           expect(defineService).toBeDefined();
 
           return defineService({
@@ -871,7 +872,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           options: {},
         });
 
-        expect(deps.db).toBeDefined();
+        expect(deps.databaseAdapter).toBeDefined();
         expect(deps.createUnitOfWork).toBeDefined();
       } finally {
         if (previous === undefined) {
@@ -905,7 +906,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       >();
 
       expect(deps.customDep).toBe("test");
-      expect(deps.db).toBeDefined();
+      expect(deps.databaseAdapter).toBeDefined();
     });
   });
 

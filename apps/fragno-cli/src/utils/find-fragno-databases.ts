@@ -201,13 +201,15 @@ export function findFragnoDatabases(
       const options = internal.options as Record<string, unknown>;
 
       // Check if this is a database fragment by looking for implicit database dependencies
-      if (!deps["db"] || !deps["schema"]) {
+      if (!deps["schema"]) {
         continue;
       }
 
       const schema = deps["schema"] as AnySchema;
-      const namespace = deps["namespace"] as string;
-      const databaseAdapter = options["databaseAdapter"] as DatabaseAdapter | undefined;
+      const namespace = deps["namespace"] as string | null;
+      const databaseAdapter =
+        (deps["databaseAdapter"] as DatabaseAdapter | undefined) ??
+        (options["databaseAdapter"] as DatabaseAdapter | undefined);
 
       if (!databaseAdapter) {
         console.warn(

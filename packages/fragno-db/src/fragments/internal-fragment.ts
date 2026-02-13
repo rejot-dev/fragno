@@ -87,14 +87,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   >("$fragno-internal-fragment"),
   internalSchema,
 )
-  .providesBaseService(({ deps }) => ({
-    getDbNow: async () => {
-      if (deps.db.now) {
-        return deps.db.now();
-      }
-      return new Date();
-    },
-  }))
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
       /**

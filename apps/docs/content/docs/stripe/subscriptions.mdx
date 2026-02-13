@@ -289,9 +289,9 @@ the checkout success page.
 
 ### Using `syncStripeSubscriptions`
 
-The fragment provides the `syncStripeSubscriptions` method as a fragment service. This method will
-fetch the latest subscriptions from Stripe and write it to your database. If no subscriptions are
-found for a customer, then the subscription will be dropped from the database.
+The fragment provides the `syncStripeSubscriptions` method as a fragment service. This method takes
+Stripe subscriptions you have already fetched and writes them to your database. If no subscriptions
+are provided for a customer, then the subscription will be dropped from the database.
 
 ```typescript
 import { stripeFragment } from "@/lib/stripe";
@@ -300,11 +300,17 @@ import { getSession } from "@/lib/auth";
 /* ... */
 
 const session = await getSession();
+const stripeClient = stripeFragment.services.getStripeClient();
+const stripeSubscriptions = await stripeClient.subscriptions.list({
+  customer: session.user.stripeCustomerId,
+  status: "all",
+});
 
-// Fetch latest subscription data from Stripe and sync to database
+// Sync latest subscription data to the database
 await stripeFragment.services.syncStripeSubscriptions(
   session.user.id, // referenceId
   session.user.stripeCustomerId, // stripeCustomerId
+  stripeSubscriptions.data,
 );
 
 // Now you can assume the db state is recent

@@ -10,12 +10,14 @@ describe("comment-fragment", () => {
       .withFragment("comment", instantiate(commentFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
-    const query = await fragments.comment.services.createComment({
-      title: "Test comment",
-      content: "Test content",
-      postReference: "123",
-      userReference: "456",
-    });
+    const query = await fragments.comment.fragment.callServices(() =>
+      fragments.comment.services.createComment({
+        title: "Test comment",
+        content: "Test content",
+        postReference: "123",
+        userReference: "456",
+      }),
+    );
 
     expect(query).toMatchObject({
       id: expect.any(String),
@@ -25,7 +27,9 @@ describe("comment-fragment", () => {
       userReference: "456",
     });
 
-    const comments = await fragments.comment.services.getComments("123");
+    const comments = await fragments.comment.fragment.callServices(() =>
+      fragments.comment.services.getComments("123"),
+    );
     expect(comments).toMatchObject([query]);
 
     await test.cleanup();
@@ -53,7 +57,9 @@ describe("comment-fragment", () => {
       });
     });
 
-    const comments = await fragments.comment.services.getComments("post-sync");
+    const comments = await fragments.comment.fragment.callServices(() =>
+      fragments.comment.services.getComments("post-sync"),
+    );
     expect(comments).toHaveLength(1);
     expect(comments[0]).toMatchObject({
       title: "Sync comment",
