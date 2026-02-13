@@ -328,13 +328,34 @@ describe("db-fragment-instantiator", () => {
         .withOptions({ databaseAdapter: mockAdapter })
         .build();
 
-      const result = await fragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(() => [fragment.services.getUowExists()] as const)
-          .transform(({ serviceResult: [exists] }) => exists)
-          .execute();
-      });
+      const result = await fragment.callServices(() => fragment.services.getUowExists());
       expect(result).toBe(true);
+    });
+
+    it("should allow calling multiple services at once via callServices", async () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            getUowExists: function () {
+              return this.serviceTx(testSchema)
+                .mutate(({ uow }) => !!uow)
+                .build();
+            },
+          }),
+        )
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ databaseAdapter: mockAdapter })
+        .build();
+
+      const results = await fragment.callServices(
+        () => [fragment.services.getUowExists(), fragment.services.getUowExists()] as const,
+      );
+
+      expect(results).toEqual([true, true]);
     });
   });
 

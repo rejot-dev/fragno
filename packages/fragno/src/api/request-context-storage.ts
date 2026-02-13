@@ -29,6 +29,13 @@ export class RequestContextStorage<TRequestStorage> {
   }
 
   /**
+   * Check whether a store is currently active.
+   */
+  hasStore(): boolean {
+    return this.#storage.getStore() !== undefined;
+  }
+
+  /**
    * Get the current stored data from AsyncLocalStorage.
    * @throws an error if called outside of a run() callback.
    *
