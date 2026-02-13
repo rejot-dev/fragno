@@ -1,3 +1,4 @@
+import { dbNow, type DbNow } from "@fragno-dev/db";
 import type { AnyColumn } from "@fragno-dev/db/schema";
 
 export type ConditionType = "compare" | "and" | "or" | "not";
@@ -39,6 +40,7 @@ export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
 
   isNull: (a: keyof Columns) => Condition;
   isNotNull: (a: keyof Columns) => Condition;
+  now: () => DbNow;
 };
 
 const stringOperators = [
@@ -97,6 +99,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
 
   builder.isNull = (a) => builder(a, "is", null);
   builder.isNotNull = (a) => builder(a, "is not", null);
+  builder.now = () => dbNow();
   builder.not = (condition) => {
     if (typeof condition === "boolean") {
       return !condition;

@@ -2,6 +2,7 @@ import { describe, test, expect, afterAll, assert } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { formsFragmentDef, routes } from "./index";
+import { formsSchema } from "./schema";
 
 // Example JSON Schema from jsonforms.io - Person form
 const personDataSchema = {
@@ -241,7 +242,8 @@ describe("Forms Fragment", () => {
       // Response is now just the ID string
       const formId = createResponse.data;
 
-      // Update it via direct db (UnitOfWork with .check() doesn't work in test adapter)
+      // Update it via handlerTx (UnitOfWork with .check() doesn't work in test adapter)
+      // TODO: Add coverage for services.updateForm once the test adapter supports .check().
       const form = await formsFragment.db.findFirst("form", (b) =>
         b.whereIndex("primary", (eb) => eb("id", "=", formId)),
       );
@@ -594,85 +596,115 @@ describe("Forms Fragment", () => {
     });
 
     test("should create form via service", async () => {
-      const formId = await formsFragment.services.createForm({
-        title: "Service Created Form",
-        slug: "service-form",
-        description: null,
-        status: "draft",
-        dataSchema: surveyDataSchema,
-        uiSchema: surveyUiSchema,
-      });
+      const formId = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.createForm({
+          title: "Service Created Form",
+          slug: "service-form",
+          description: null,
+          status: "draft",
+          dataSchema: surveyDataSchema,
+          uiSchema: surveyUiSchema,
+        }),
+      );
 
       // createForm now returns just the ID string
       expect(formId).toEqual(expect.any(String));
     });
 
     test("should get form via service", async () => {
-      const createdId = await formsFragment.services.createForm({
-        title: "Get Test",
-        slug: "get-test",
-        description: null,
-        status: "draft",
-        dataSchema: { type: "object" },
-        uiSchema: { type: "VerticalLayout", elements: [] },
-      });
+      const createdId = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.createForm({
+          title: "Get Test",
+          slug: "get-test",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object" },
+          uiSchema: { type: "VerticalLayout", elements: [] },
+        }),
+      );
       assert(createdId);
 
-      const form = await formsFragment.services.getForm(createdId);
+      const form = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.getForm(createdId),
+      );
       expect(form?.title).toBe("Get Test");
     });
 
     test("should list forms via service", async () => {
-      const forms = await formsFragment.services.listForms();
+      const forms = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.listForms(),
+      );
       expect(forms.length).toBeGreaterThanOrEqual(2);
     });
 
-    test("should update form via service", async () => {
-      const createdId = await formsFragment.services.createForm({
-        title: "Update Test",
-        slug: "update-test",
-        description: null,
-        status: "draft",
-        dataSchema: { type: "object" },
-        uiSchema: { type: "VerticalLayout", elements: [] },
-      });
-      assert(createdId);
-
-      // Update via direct db (UnitOfWork with .check() doesn't work in test adapter)
-      const form = await formsFragment.db.findFirst("form", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", createdId)),
-      );
-      assert(form);
-
-      await formsFragment.db.update("form", form.id, (b) =>
-        b.set({
-          title: "Updated Title",
-          version: form.version + 1,
-          updatedAt: new Date(),
+    test("should update form via handlerTx", async () => {
+      const createdId = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.createForm({
+          title: "Update Test",
+          slug: "update-test",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object" },
+          uiSchema: { type: "VerticalLayout", elements: [] },
         }),
       );
+      assert(createdId);
+
+      // Update via handlerTx (UnitOfWork with .check() doesn't work in test adapter)
+      // TODO: Add coverage for services.updateForm once the test adapter supports .check().
+      const form = await formsFragment.fragment.inContext(async function () {
+        return await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(formsSchema).findFirst("form", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", createdId)),
+            ),
+          )
+          .transformRetrieve(([result]) => result)
+          .execute();
+      });
+      assert(form);
+
+      await formsFragment.fragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(formsSchema).update("form", form.id, (b) =>
+              b.set({
+                title: "Updated Title",
+                version: form.version + 1,
+                updatedAt: new Date(),
+              }),
+            );
+          })
+          .execute();
+      });
 
       // Verify via getForm service
-      const updated = await formsFragment.services.getForm(createdId);
+      const updated = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.getForm(createdId),
+      );
       expect(updated?.title).toBe("Updated Title");
       expect(updated?.version).toBe(2);
     });
 
     test("should delete form via service", async () => {
-      const createdId = await formsFragment.services.createForm({
-        title: "Delete Test",
-        slug: "delete-test",
-        description: null,
-        status: "draft",
-        dataSchema: { type: "object" },
-        uiSchema: { type: "VerticalLayout", elements: [] },
-      });
+      const createdId = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.createForm({
+          title: "Delete Test",
+          slug: "delete-test",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object" },
+          uiSchema: { type: "VerticalLayout", elements: [] },
+        }),
+      );
       assert(createdId);
 
       // deleteForm returns void
-      await formsFragment.services.deleteForm(createdId);
+      await formsFragment.fragment.callServices(() => formsFragment.services.deleteForm(createdId));
 
-      const form = await formsFragment.services.getForm(createdId);
+      const form = await formsFragment.fragment.callServices(() =>
+        formsFragment.services.getForm(createdId),
+      );
       expect(form).toBeNull();
     });
 

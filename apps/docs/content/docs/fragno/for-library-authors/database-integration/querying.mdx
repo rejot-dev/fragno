@@ -110,6 +110,20 @@ const [user] = await this.handlerTx()
 // user is User | null
 ```
 
+### Database Time in Queries
+
+Use `eb.now()` when you need the database’s notion of “now” inside query conditions:
+
+```typescript
+const [activeUsers] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) =>
+      b.whereIndex("idx_expires_at", (eb) => eb("expiresAt", ">", eb.now())),
+    ),
+  )
+  .execute();
+```
+
 ### Cursor-Based Pagination
 
 Use cursor-based pagination for efficient paging through large result sets. Fragno DB provides
@@ -199,6 +213,18 @@ const { userId } = await this.handlerTx()
 await this.handlerTx()
   .mutate(({ forSchema }) => {
     forSchema(mySchema).update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+  })
+  .execute();
+```
+
+Use `b.now()` when writing database timestamps in mutations:
+
+```typescript
+await this.handlerTx()
+  .mutate(({ forSchema }) => {
+    forSchema(mySchema).update("users", userId, (b) =>
+      b.set({ updatedAt: b.now(), name: "Alice Updated" }),
+    );
   })
   .execute();
 ```

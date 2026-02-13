@@ -26,7 +26,9 @@ describe("rating-fragment sync commands", () => {
       });
     });
 
-    const total = await fragments.rating.services.getRating("post-1");
+    const total = await fragments.rating.fragment.callServices(() =>
+      fragments.rating.services.getRating("post-1"),
+    );
     expect(total).toBe(1);
 
     const upvotes = await test.inContext(function () {

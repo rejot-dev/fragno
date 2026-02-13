@@ -31,14 +31,16 @@ const commentCreateCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createCommentFragmentServer().services;
+    const fragment = createCommentFragmentServer();
 
-    const comment = await services.createComment({
-      title: ctx.values["title"] as string,
-      content: ctx.values["content"] as string,
-      postReference: ctx.values["postReference"] as string,
-      userReference: ctx.values["userReference"] as string,
-    });
+    const comment = await fragment.callServices(() =>
+      fragment.services.createComment({
+        title: ctx.values["title"] as string,
+        content: ctx.values["content"] as string,
+        postReference: ctx.values["postReference"] as string,
+        userReference: ctx.values["userReference"] as string,
+      }),
+    );
 
     console.log("Created comment:");
     console.log(JSON.stringify(comment, null, 2));
@@ -56,9 +58,11 @@ const commentListCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createCommentFragmentServer().services;
+    const fragment = createCommentFragmentServer();
     const postReference = ctx.values["postReference"] as string;
-    const comments = await services.getComments(postReference);
+    const comments = await fragment.callServices(() =>
+      fragment.services.getComments(postReference),
+    );
     console.log(`Comments for post ${postReference}:`);
     console.log(JSON.stringify(comments, null, 2));
   },

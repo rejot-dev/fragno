@@ -219,10 +219,11 @@ Fragments support three kinds of services:
 
 ## Database Integration
 
-Fragments with database layers have access to an additional `db` object in both `withDependencies()`
-and `providesService()` contexts. The `db` object provides type-safe database operations:
+Database fragments use the transaction builders exposed on the service/handler context:
+`this.serviceTx(schema)` inside services and `this.handlerTx()` inside handlers.
 
-Note that when using `withDatabase`, the database context is available in dependencies and services.
+For advanced cases, dependencies include `databaseAdapter`, `schema`, `namespace`, and
+`createUnitOfWork`, but the recommended path is the builder API.
 
 ```typescript
 import { defineFragment } from "@fragno-dev/core";
@@ -230,24 +231,20 @@ import { withDatabase } from "@fragno-dev/db";
 
 const fragmentDef = defineFragment("my-fragment")
   .extend(withDatabase(mySchema))
-  .withDependencies(({ config, db }) => {
-    // DB available in dependencies
-    return {
-      commentRepo: {
-        create: (data) => db.create("comment", data),
+  .providesBaseService(({ defineService }) =>
+    defineService({
+      createComment: function (data) {
+        return this.serviceTx(mySchema)
+          .mutate(({ uow }) => uow.create("comment", data))
+          .transform(({ mutateResult }) => ({ id: mutateResult.toString(), ...data }))
+          .build();
       },
-    };
-  })
-  .providesBaseService(({ config, deps, db }) => {
-    // DB available in services
-    return {
-      createComment: async (data) => {
-        const id = await deps.commentRepo.create(data);
-        return { id: id.toJSON(), ...data };
-      },
-    };
-  });
+    }),
+  );
 ```
+
+Use `function` (not an arrow function) for service or handler methods that call
+`this.serviceTx(...)` or `this.handlerTx()`. Arrow functions do not bind `this`.
 
 For more information, see the
 [Database Integration](/docs/fragno/for-library-authors/database-integration/overview) section.

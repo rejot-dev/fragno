@@ -14,7 +14,7 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
           success: z.boolean(),
         }),
         errorCodes: ["MISSING_SIGNATURE", "WEBHOOK_SIGNATURE_INVALID", "WEBHOOK_ERROR"] as const,
-        handler: async ({ headers, rawBody }, { json, error }) => {
+        handler: async function ({ headers, rawBody }, { json, error }) {
           // Get the signature
           const signature = headers.get("stripe-signature");
 
@@ -76,7 +76,7 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
           }
 
           deps.log.info(`Executing event handler for ${event.type}: ${event.id}`);
-          await eventHandler({ event, services, deps, config });
+          await eventHandler({ event, services, deps, config, handlerTx: this.handlerTx });
 
           return json({ success: true });
         },

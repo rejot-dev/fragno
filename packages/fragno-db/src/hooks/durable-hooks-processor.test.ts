@@ -88,8 +88,7 @@ describe("createDurableHooksProcessor", () => {
     expect(processor).not.toBeNull();
 
     const internalFragment = getInternalFragment(adapter);
-    const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
-    const baseNow = services.getDbNow ? await services.getDbNow() : new Date();
+    const baseNow = new Date();
 
     await internalFragment.inContext(async function () {
       await this.handlerTx()
@@ -113,6 +112,6 @@ describe("createDurableHooksProcessor", () => {
 
     const wakeAt = await processor!.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
-    expect(wakeAt!.getTime()).toBeLessThanOrEqual(baseNow.getTime());
+    expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
   });
 });

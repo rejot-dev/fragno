@@ -437,11 +437,12 @@ export class FragnoInstantiatedFragment<
 
     let callWasArray = false;
     const execute = () => {
-      const calls = serviceCalls();
-      callWasArray = Array.isArray(calls);
-      const callArray = (callWasArray ? calls : [calls]) as readonly unknown[];
       return handlerContext.handlerTx!()
-        .withServiceCalls(() => callArray)
+        .withServiceCalls(() => {
+          const calls = serviceCalls();
+          callWasArray = Array.isArray(calls);
+          return (callWasArray ? calls : [calls]) as readonly unknown[];
+        })
         .execute();
     };
 

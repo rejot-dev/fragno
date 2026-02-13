@@ -86,20 +86,22 @@ describe("subscription handlers", async () => {
 
     test("should return all subscriptions after creating one", async () => {
       // Create test subscription
-      await fragment.services.createSubscription({
-        referenceId: "user_1",
-        stripePriceId: "price_1",
-        stripeCustomerId: "cus_1",
-        stripeSubscriptionId: "sub_1",
-        status: "active",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        seats: 1,
-      });
+      await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription({
+          referenceId: "user_1",
+          stripePriceId: "price_1",
+          stripeCustomerId: "cus_1",
+          stripeSubscriptionId: "sub_1",
+          status: "active",
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          trialStart: null,
+          trialEnd: null,
+          cancelAtPeriodEnd: false,
+          cancelAt: null,
+          seats: 1,
+        }),
+      );
 
       const response = await fragment.callRoute("GET", "/admin/subscriptions");
 
@@ -257,20 +259,22 @@ describe("subscription handlers", async () => {
 
     test("should upgrade existing active subscription using billing portal", async () => {
       // Create existing subscription
-      const subscription = await fragment.services.createSubscription({
-        referenceId: "user_123",
-        stripePriceId: "price_old",
-        stripeCustomerId: "cus_123",
-        stripeSubscriptionId: "sub_123",
-        status: "active",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        seats: 1,
-      });
+      const subscription = await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription({
+          referenceId: "user_123",
+          stripePriceId: "price_old",
+          stripeCustomerId: "cus_123",
+          stripeSubscriptionId: "sub_123",
+          status: "active",
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          trialStart: null,
+          trialEnd: null,
+          cancelAtPeriodEnd: false,
+          cancelAt: null,
+          seats: 1,
+        }),
+      );
 
       // Mock auth middleware to return user with existing subscription
       mockResolveEntityFromRequest.mockResolvedValue({
@@ -343,20 +347,22 @@ describe("subscription handlers", async () => {
   describe("POST /subscription/cancel", () => {
     test("should cancel active subscription", async () => {
       // Create active subscription
-      await fragment.services.createSubscription({
-        referenceId: "user_123",
-        stripePriceId: "price_123",
-        stripeCustomerId: "cust_active_1",
-        stripeSubscriptionId: "sub_123",
-        status: "active",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        seats: 1,
-      });
+      await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription({
+          referenceId: "user_123",
+          stripePriceId: "price_123",
+          stripeCustomerId: "cust_active_1",
+          stripeSubscriptionId: "sub_123",
+          status: "active",
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          trialStart: null,
+          trialEnd: null,
+          cancelAtPeriodEnd: false,
+          cancelAt: null,
+          seats: 1,
+        }),
+      );
 
       // Mock auth middleware to return user with active subscription
       mockResolveEntityFromRequest.mockResolvedValue({
@@ -425,20 +431,22 @@ describe("subscription handlers", async () => {
 
     test("should return error when subscription already canceled", async () => {
       // Create canceled subscription
-      await fragment.services.createSubscription({
-        referenceId: "user_123",
-        stripePriceId: "price_123",
-        stripeCustomerId: "cus_of_cancelled_sub",
-        stripeSubscriptionId: "sub_123",
-        status: "canceled",
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: true,
-        cancelAt: new Date(),
-        seats: 1,
-      });
+      await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription({
+          referenceId: "user_123",
+          stripePriceId: "price_123",
+          stripeCustomerId: "cus_of_cancelled_sub",
+          stripeSubscriptionId: "sub_123",
+          status: "canceled",
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          trialStart: null,
+          trialEnd: null,
+          cancelAtPeriodEnd: true,
+          cancelAt: new Date(),
+          seats: 1,
+        }),
+      );
 
       // Mock auth middleware to return user with canceled subscription
       mockResolveEntityFromRequest.mockResolvedValue({
@@ -476,11 +484,15 @@ describe("subscription handlers", async () => {
         cancelAt: null,
         seats: 1,
       };
-      const sub1 = await fragment.services.createSubscription(subscriptionData);
-      const _sub2 = await fragment.services.createSubscription({
-        ...subscriptionData,
-        stripeSubscriptionId: "sub_456",
-      });
+      const sub1 = await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription(subscriptionData),
+      );
+      const _sub2 = await fragment.fragment.callServices(() =>
+        fragment.services.createSubscription({
+          ...subscriptionData,
+          stripeSubscriptionId: "sub_456",
+        }),
+      );
 
       mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",

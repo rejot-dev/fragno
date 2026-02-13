@@ -12,12 +12,12 @@ const ratingUpvoteCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createRatingFragmentServer().services;
+    const fragment = createRatingFragmentServer();
     const reference = ctx.values["reference"] as string;
 
-    await services.postUpvote(reference);
+    await fragment.callServices(() => fragment.services.postUpvote(reference));
 
-    const total = await services.getRating(reference);
+    const total = await fragment.callServices(() => fragment.services.getRating(reference));
     console.log(`Upvoted reference: ${reference}`);
     console.log(`Current rating: ${total}`);
   },
@@ -34,12 +34,12 @@ const ratingDownvoteCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createRatingFragmentServer().services;
+    const fragment = createRatingFragmentServer();
     const reference = ctx.values["reference"] as string;
 
-    await services.postDownvote(reference);
+    await fragment.callServices(() => fragment.services.postDownvote(reference));
 
-    const total = await services.getRating(reference);
+    const total = await fragment.callServices(() => fragment.services.getRating(reference));
     console.log(`Downvoted reference: ${reference}`);
     console.log(`Current rating: ${total}`);
   },
@@ -56,10 +56,10 @@ const ratingGetCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createRatingFragmentServer().services;
+    const fragment = createRatingFragmentServer();
     const reference = ctx.values["reference"] as string;
 
-    const total = await services.getRating(reference);
+    const total = await fragment.callServices(() => fragment.services.getRating(reference));
     console.log(`Rating for reference ${reference}: ${total}`);
   },
 };

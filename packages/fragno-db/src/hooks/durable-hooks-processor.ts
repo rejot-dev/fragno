@@ -45,8 +45,7 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
     process: async () => scheduler.schedule(),
     drain: async () => scheduler.drain(),
     getNextWakeAt: async () => {
-      const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
-      const now = services.getDbNow ? await services.getDbNow() : new Date();
+      const now = new Date();
       return await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(

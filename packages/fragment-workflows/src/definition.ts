@@ -294,9 +294,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       await config.runner?.tick();
     }),
   }))
-  .providesBaseService(({ defineService, config, deps }) => {
+  .providesBaseService(({ defineService, config }) => {
     const getNow = () => config.runtime.time.now();
-    const getDbNow = async () => (deps.db.now ? deps.db.now() : getNow());
+    const getDbNow = async () => getNow();
     const getRunAtNow = () => config.dbNow?.() ?? dbNow();
     const randomFloat = () => config.runtime.random.float();
     const workflowsByName = new Map<string, WorkflowRegistryEntry>();

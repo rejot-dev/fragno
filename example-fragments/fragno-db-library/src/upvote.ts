@@ -1,7 +1,6 @@
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { defineSyncCommands, withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { upvoteSchema } from "./schema/upvote";
 import { z } from "zod";
 
@@ -62,63 +61,104 @@ export interface RatingFragmentConfig {
 export const ratingFragmentDef = defineFragment<RatingFragmentConfig>("fragno-db-rating")
   .extend(withDatabase(upvoteSchema))
   .withSyncCommands(ratingSyncCommands)
-  .withDependencies(({ db }) => {
-    return {
+  .providesBaseService(({ defineService }) =>
+    defineService({
       /**
        * @throws {Error} If the upvote fails due to a race condition or unique constraint violation.
-       * @param upvote
-       * @returns
        */
-      postUpvote: async (upvote: TableToInsertValues<typeof upvoteSchema.tables.upvote>) => {
-        const uow = db
-          .createUnitOfWork()
-          .find("upvote_total", (b) =>
-            b.whereIndex("idx_upvote_total_reference", (eb) =>
-              eb("reference", "=", upvote.reference),
+      postUpvote(reference: string) {
+        return this.serviceTx(upvoteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("upvote_total", (b) =>
+              b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
             ),
-          );
-        const [upvoteTotals] = await uow.executeRetrieve();
-        const upvoteTotal = upvoteTotals[0];
+          )
+          .transformRetrieve(([result]) => result ?? null)
+          .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult) {
+              uow.update("upvote_total", retrieveResult.id, (b) =>
+                b.set({ total: retrieveResult.total + 1 }).check(),
+              );
+            } else {
+              uow.create("upvote_total", { reference, total: 1 });
+            }
 
-        if (upvoteTotal) {
-          uow.update("upvote_total", upvoteTotal.id, (b) =>
-            b.set({ total: upvoteTotal.total + 1 }).check(),
-          );
-        } else {
-          uow.create("upvote_total", { reference: upvote.reference, total: 1 });
-        }
+            uow.create("upvote", {
+              reference,
+              ownerReference: crypto.randomUUID(),
+              rating: 1,
+            });
 
-        uow.create("upvote", upvote);
-
-        // NOTE: In a race condition (check fails or unique constraint fails), this will throw.
-        return uow.executeMutations();
+            return { success: true };
+          })
+          .build();
       },
-      getUpvoteTotal: (reference: string) => {
-        return db.findFirst("upvote_total", (b) =>
-          b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
-        );
+      postDownvote(reference: string) {
+        return this.serviceTx(upvoteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("upvote_total", (b) =>
+              b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
+            ),
+          )
+          .transformRetrieve(([result]) => result ?? null)
+          .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult) {
+              uow.update("upvote_total", retrieveResult.id, (b) =>
+                b.set({ total: retrieveResult.total - 1 }).check(),
+              );
+            } else {
+              uow.create("upvote_total", { reference, total: -1 });
+            }
+
+            uow.create("upvote", {
+              reference,
+              ownerReference: crypto.randomUUID(),
+              rating: -1,
+            });
+
+            return { success: true };
+          })
+          .build();
       },
-    };
-  })
-  .providesBaseService(({ deps }) => ({
-    postUpvote: (reference: string) => {
-      return deps.postUpvote({
-        reference: reference,
-        ownerReference: crypto.randomUUID(),
-        rating: 1,
-      });
-    },
-    postDownvote: (reference: string) => {
-      return deps.postUpvote({
-        reference: reference,
-        ownerReference: crypto.randomUUID(),
-        rating: -1,
-      });
-    },
-    getRating: async (reference: string) => {
-      return (await deps.getUpvoteTotal(reference))?.total ?? 0;
-    },
-  }))
+      postRating(reference: string, rating: number) {
+        return this.serviceTx(upvoteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("upvote_total", (b) =>
+              b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
+            ),
+          )
+          .transformRetrieve(([result]) => result ?? null)
+          .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult) {
+              uow.update("upvote_total", retrieveResult.id, (b) =>
+                b.set({ total: retrieveResult.total + rating }).check(),
+              );
+            } else {
+              uow.create("upvote_total", { reference, total: rating });
+            }
+
+            uow.create("upvote", {
+              reference,
+              ownerReference: crypto.randomUUID(),
+              rating,
+            });
+
+            return { success: true };
+          })
+          .build();
+      },
+      getRating(reference: string) {
+        return this.serviceTx(upvoteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("upvote_total", (b) =>
+              b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
+            ),
+          )
+          .transformRetrieve(([result]) => result?.total ?? 0)
+          .build();
+      },
+    }),
+  )
   .build();
 
 const ratingRoutesFactory = defineRoutes(ratingFragmentDef).create(({ services, defineRoute }) => {
@@ -132,13 +172,12 @@ const ratingRoutesFactory = defineRoutes(ratingFragmentDef).create(({ services, 
       }),
       outputSchema: z.any(),
       errorCodes: ["CREATION_FAILED", "INVALID_INPUT"] as const,
-      handler: async ({ input }, { json }) => {
+      handler: async function ({ input }, { json }) {
         const data = await input.valid();
-        if (data.rating !== undefined && data.rating < 0) {
-          await services.postDownvote(data.reference);
-        } else {
-          await services.postUpvote(data.reference);
-        }
+        const rating = data.rating ?? 1;
+        await this.handlerTx()
+          .withServiceCalls(() => [services.postRating(data.reference, rating)] as const)
+          .execute();
         return json({ ok: true });
       },
     }),

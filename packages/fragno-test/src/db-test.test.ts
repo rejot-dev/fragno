@@ -33,34 +33,46 @@ describe("buildDatabaseFragmentsTest", () => {
     // Define fragments using new API
     const userFragmentDef = defineFragment<{}>("user-fragment")
       .extend(withDatabase(userSchema))
-      .providesBaseService(({ deps }) => ({
-        createUser: async (data: { name: string; email: string }) => {
-          const id = await deps.db.create("users", data);
-          return { ...data, id: id.valueOf() };
-        },
-        getUsers: async () => {
-          const users = await deps.db.find("users", (b) =>
-            b.whereIndex("idx_users_all", (eb) => eb("id", "!=", "")),
-          );
-          return users.map((u) => ({ ...u, id: u.id.valueOf() }));
-        },
-      }))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          createUser: function (data: { name: string; email: string }) {
+            return this.serviceTx(userSchema)
+              .mutate(({ uow }) => uow.create("users", data))
+              .transform(({ mutateResult }) => ({ ...data, id: mutateResult.valueOf() }))
+              .build();
+          },
+          getUsers: function () {
+            return this.serviceTx(userSchema)
+              .retrieve((uow) =>
+                uow.find("users", (b) => b.whereIndex("idx_users_all", (eb) => eb("id", "!=", ""))),
+              )
+              .transformRetrieve(([users]) => users.map((u) => ({ ...u, id: u.id.valueOf() })))
+              .build();
+          },
+        }),
+      )
       .build();
 
     const postFragmentDef = defineFragment<{}>("post-fragment")
       .extend(withDatabase(postSchema))
-      .providesBaseService(({ deps }) => ({
-        createPost: async (data: { title: string; userId: string }) => {
-          const id = await deps.db.create("posts", data);
-          return { ...data, id: id.valueOf() };
-        },
-        getPosts: async () => {
-          const posts = await deps.db.find("posts", (b) =>
-            b.whereIndex("idx_posts_all", (eb) => eb("id", "!=", "")),
-          );
-          return posts.map((p) => ({ ...p, id: p.id.valueOf() }));
-        },
-      }))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          createPost: function (data: { title: string; userId: string }) {
+            return this.serviceTx(postSchema)
+              .mutate(({ uow }) => uow.create("posts", data))
+              .transform(({ mutateResult }) => ({ ...data, id: mutateResult.valueOf() }))
+              .build();
+          },
+          getPosts: function () {
+            return this.serviceTx(postSchema)
+              .retrieve((uow) =>
+                uow.find("posts", (b) => b.whereIndex("idx_posts_all", (eb) => eb("id", "!=", ""))),
+              )
+              .transformRetrieve(([posts]) => posts.map((p) => ({ ...p, id: p.id.valueOf() })))
+              .build();
+          },
+        }),
+      )
       .build();
 
     // Build test setup with new builder API
@@ -71,10 +83,12 @@ describe("buildDatabaseFragmentsTest", () => {
       .build();
 
     // Test user fragment
-    const user = await fragments.user.services.createUser({
-      name: "Test User",
-      email: "test@example.com",
-    });
+    const user = await fragments.user.fragment.callServices(() =>
+      fragments.user.services.createUser({
+        name: "Test User",
+        email: "test@example.com",
+      }),
+    );
 
     expect(user).toMatchObject({
       id: expect.any(String),
@@ -83,10 +97,12 @@ describe("buildDatabaseFragmentsTest", () => {
     });
 
     // Test post fragment
-    const post = await fragments.post.services.createPost({
-      title: "Test Post",
-      userId: user.id,
-    });
+    const post = await fragments.post.fragment.callServices(() =>
+      fragments.post.services.createPost({
+        title: "Test Post",
+        userId: user.id,
+      }),
+    );
 
     expect(post).toMatchObject({
       id: expect.any(String),
@@ -95,10 +111,14 @@ describe("buildDatabaseFragmentsTest", () => {
     });
 
     // Verify data exists
-    const users = await fragments.user.services.getUsers();
+    const users = await fragments.user.fragment.callServices(() =>
+      fragments.user.services.getUsers(),
+    );
     expect(users).toHaveLength(1);
 
-    const posts = await fragments.post.services.getPosts();
+    const posts = await fragments.post.fragment.callServices(() =>
+      fragments.post.services.getPosts(),
+    );
     expect(posts).toHaveLength(1);
     expect(posts[0]!.userId).toBe(user.id);
 
@@ -109,18 +129,24 @@ describe("buildDatabaseFragmentsTest", () => {
   it("should reset database and recreate fragments", async () => {
     const userFragmentDef = defineFragment<{}>("user-fragment")
       .extend(withDatabase(userSchema))
-      .providesBaseService(({ deps }) => ({
-        createUser: async (data: { name: string; email: string }) => {
-          const id = await deps.db.create("users", data);
-          return { ...data, id: id.valueOf() };
-        },
-        getUsers: async () => {
-          const users = await deps.db.find("users", (b) =>
-            b.whereIndex("idx_users_all", (eb) => eb("id", "!=", "")),
-          );
-          return users.map((u) => ({ ...u, id: u.id.valueOf() }));
-        },
-      }))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          createUser: function (data: { name: string; email: string }) {
+            return this.serviceTx(userSchema)
+              .mutate(({ uow }) => uow.create("users", data))
+              .transform(({ mutateResult }) => ({ ...data, id: mutateResult.valueOf() }))
+              .build();
+          },
+          getUsers: function () {
+            return this.serviceTx(userSchema)
+              .retrieve((uow) =>
+                uow.find("users", (b) => b.whereIndex("idx_users_all", (eb) => eb("id", "!=", ""))),
+              )
+              .transformRetrieve(([users]) => users.map((u) => ({ ...u, id: u.id.valueOf() })))
+              .build();
+          },
+        }),
+      )
       .build();
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -129,27 +155,31 @@ describe("buildDatabaseFragmentsTest", () => {
       .build();
 
     // Create a user
-    await fragments.user.services.createUser({
-      name: "User 1",
-      email: "user1@example.com",
-    });
+    await fragments.user.fragment.callServices(() =>
+      fragments.user.services.createUser({
+        name: "User 1",
+        email: "user1@example.com",
+      }),
+    );
 
     // Verify user exists
-    let users = await fragments.user.services.getUsers();
+    let users = await fragments.user.fragment.callServices(() =>
+      fragments.user.services.getUsers(),
+    );
     expect(users).toHaveLength(1);
 
     // Reset database
     await test.resetDatabase();
 
     // Verify database is empty
-    users = await fragments.user.services.getUsers();
+    users = await fragments.user.fragment.callServices(() => fragments.user.services.getUsers());
     expect(users).toHaveLength(0);
 
     // Cleanup
     await test.cleanup();
   });
 
-  it("should expose db for direct queries", async () => {
+  it("should allow handlerTx for direct queries", async () => {
     const userFragmentDef = defineFragment<{}>("user-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
@@ -161,18 +191,32 @@ describe("buildDatabaseFragmentsTest", () => {
       .build();
 
     // Use db directly
-    const userId = await fragments.user.db.create("users", {
-      name: "Direct DB User",
-      email: "direct@example.com",
+    const userId = await fragments.user.fragment.inContext(async function () {
+      return await this.handlerTx()
+        .mutate(({ forSchema }) =>
+          forSchema(userSchema).create("users", {
+            name: "Direct DB User",
+            email: "direct@example.com",
+          }),
+        )
+        .transform(({ mutateResult }) => mutateResult)
+        .execute();
     });
 
     expect(userId).toBeDefined();
     expect(typeof userId.valueOf()).toBe("string");
 
     // Find using db
-    const users = await fragments.user.db.find("users", (b) =>
-      b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
-    );
+    const users = await fragments.user.fragment.inContext(async function () {
+      return await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(userSchema).find("users", (b) =>
+            b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
+          ),
+        )
+        .transformRetrieve(([result]) => result)
+        .execute();
+    });
 
     expect(users).toHaveLength(1);
     expect(users[0]).toMatchObject({
@@ -203,12 +247,12 @@ describe("buildDatabaseFragmentsTest", () => {
     // Test that deps are accessible
     expect(fragments.user.deps).toBeDefined();
     expect(fragments.user.deps.testValue).toBe("test-dependency");
-    expect(fragments.user.deps.db).toBeDefined();
+    expect(fragments.user.deps.databaseAdapter).toBeDefined();
     expect(fragments.user.deps.schema).toBeDefined();
+    expect(fragments.user.deps.createUnitOfWork).toBeDefined();
 
     // Test that adapter is accessible
     expect(test.adapter).toBeDefined();
-    expect(test.adapter.createQueryEngine).toBeDefined();
 
     await test.cleanup();
   });
@@ -280,13 +324,17 @@ describe("buildDatabaseFragmentsTest", () => {
           apiKey: config.apiKey,
         };
       })
-      .providesBaseService(({ deps }) => ({
-        getApiKey: () => deps.apiKey,
-        createUser: async (data: { name: string; email: string }) => {
-          const id = await deps.db.create("users", data);
-          return { ...data, id: id.valueOf() };
-        },
-      }))
+      .providesBaseService(({ deps, defineService }) =>
+        defineService({
+          getApiKey: () => deps.apiKey,
+          createUser: function (data: { name: string; email: string }) {
+            return this.serviceTx(userSchema)
+              .mutate(({ uow }) => uow.create("users", data))
+              .transform(({ mutateResult }) => ({ ...data, id: mutateResult.valueOf() }))
+              .build();
+          },
+        }),
+      )
       .build();
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -310,10 +358,12 @@ describe("buildDatabaseFragmentsTest", () => {
     });
 
     // Verify database operations work
-    const user = await fragments.requiredConfig.services.createUser({
-      name: "Config Test User",
-      email: "config@example.com",
-    });
+    const user = await fragments.requiredConfig.fragment.callServices(() =>
+      fragments.requiredConfig.services.createUser({
+        name: "Config Test User",
+        email: "config@example.com",
+      }),
+    );
 
     expect(user).toMatchObject({
       id: expect.any(String),
@@ -346,7 +396,8 @@ describe("buildDatabaseFragmentsTest", () => {
       .withFragment("bad", instantiate(badFragmentDef).withRoutes([]))
       .build();
 
-    await expect(buildPromise).rejects.toThrow(/Failed to extract schema from fragment/);
-    await expect(buildPromise).rejects.toThrow(/API key is required/);
+    await expect(buildPromise).rejects.toThrow(
+      /Failed to extract schema from fragment.*API key is required/s,
+    );
   });
 });
