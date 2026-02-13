@@ -224,6 +224,10 @@ the base adapter directly for `LofiClient` so outbox sync only touches persisted
 - The adapter stores data in one IndexedDB database (default name: `fragno_lofi_<endpointName>`).
 - If the registered schema changes, Lofi clears local rows for that endpoint and re-syncs.
 - `outboxUrl` can include query parameters; Lofi preserves them when adding cursor/limit params.
+- Shard filtering is **server-side only**. Lofi is shard-agnostic and only receives shard-filtered
+  outbox data from the server.
+- Outbox mutation payloads may include `_shard` (system column). Lofi clients must ignore `_shard`
+  in payloads.
 
 ## CLI
 
