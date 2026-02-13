@@ -76,13 +76,49 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
 async function listOutbox(
   internalFragment: InternalFragmentInstance,
   options?: { afterVersionstamp?: string; limit?: number },
+  shardOptions?: { shard?: string | null; shardScope?: "scoped" | "global" },
 ): Promise<OutboxEntry[]> {
   return internalFragment.inContext(async function () {
+    if (shardOptions?.shardScope) {
+      this.setShardScope(shardOptions.shardScope);
+    }
+    if (shardOptions && "shard" in shardOptions) {
+      this.setShard(shardOptions.shard ?? null);
+    }
     return (await this.handlerTx()
       .withServiceCalls(() => [internalFragment.services.outboxService.list(options)] as const)
       .transform(({ serviceResult: [result] }) => result)
       .execute()) as OutboxEntry[];
   });
+}
+
+async function assignOutboxShards(
+  internalDb: SimpleQueryInterface<typeof internalSchema, InMemoryUowConfig>,
+  shards: Array<string | null>,
+): Promise<void> {
+  const entries = await internalDb.find("fragno_db_outbox", (b) =>
+    b.whereIndex("idx_outbox_versionstamp").orderByIndex("idx_outbox_versionstamp", "asc"),
+  );
+
+  const shardByVersion = new Map<string, string | null>();
+  for (const [index, entry] of entries.entries()) {
+    const shard = shards[index] ?? null;
+    shardByVersion.set(entry.versionstamp, shard);
+    await internalDb.update("fragno_db_outbox", entry.id, (b) =>
+      b.set({ _shard: shard } as Record<string, unknown>),
+    );
+  }
+
+  const mutations = await internalDb.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+
+  for (const mutation of mutations) {
+    const shard = shardByVersion.get(mutation.entryVersionstamp) ?? null;
+    await internalDb.update("fragno_db_outbox_mutations", mutation.id, (b) =>
+      b.set({ _shard: shard } as Record<string, unknown>),
+    );
+  }
 }
 
 async function listOutboxMutations(
@@ -120,7 +156,9 @@ describe("in-memory outbox", () => {
   });
 
   it("stores refMap placeholders and lists entries in order", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxTest({ outboxEnabled: true });
+    const { db, internalFragment, internalDb, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+    });
 
     await db.create("users", { email: "alpha@example.com" });
     const user = await db.findFirst("users", (b) =>
@@ -151,6 +189,22 @@ describe("in-memory outbox", () => {
     expect(entries[1].refMap).toEqual({
       "0.authorId": user!.id.externalId,
     });
+
+    await assignOutboxShards(internalDb, ["shard-a", "shard-b"]);
+
+    const shardAEntries = await listOutbox(internalFragment, undefined, { shard: "shard-a" });
+    expect(shardAEntries).toHaveLength(1);
+    expect(shardAEntries[0].versionstamp).toBe(entries[0].versionstamp);
+
+    const shardBEntries = await listOutbox(internalFragment, undefined, { shard: "shard-b" });
+    expect(shardBEntries).toHaveLength(1);
+    expect(shardBEntries[0].versionstamp).toBe(entries[1].versionstamp);
+
+    const globalEntries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-a",
+      shardScope: "global",
+    });
+    expect(globalEntries).toHaveLength(2);
 
     await cleanup();
   });

@@ -13,12 +13,16 @@ import type { SqlNamingStrategy } from "../naming/sql-naming";
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
 
+export type ShardScope = "scoped" | "global";
+
 /**
  * Storage type for database context - stores the Unit of Work.
  * This is shared across all fragments using the same adapter.
  */
 export type DatabaseContextStorage = {
   uow: IUnitOfWork;
+  shard: string | null;
+  shardScope: ShardScope;
 };
 
 export type SQLiteProfile = "default" | "prisma";
