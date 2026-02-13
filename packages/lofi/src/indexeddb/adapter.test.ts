@@ -16,6 +16,16 @@ import { IndexedDbAdapter } from "../mod";
 
 const createDbName = () => `lofi-test-${Math.random().toString(16).slice(2)}`;
 
+const createShardSchema = () =>
+  schema("app", (s) =>
+    s.addTable("users", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .addColumn("_shard", column("string").hidden()),
+    ),
+  );
+
 type StoredRow = {
   data: Record<string, unknown>;
   _lofi: {
@@ -273,6 +283,40 @@ describe("IndexedDbAdapter", () => {
     expect(user1._lofi.internalId).toBe(1);
     expect(user2._lofi.internalId).toBe(2);
     expect(post._lofi.norm["authorId"]).toBe(2);
+  });
+
+  it("ignores _shard system values in stored rows", async () => {
+    const appSchema = createShardSchema();
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada", _shard: "shard-a" },
+        },
+      ],
+    });
+
+    const db = await openDb(dbName);
+    const row = await getRow(db, ["app", "app", "users", "user-1"]);
+    if (!row) {
+      throw new Error("Expected row to exist");
+    }
+    expect(row.data).not.toHaveProperty("_shard");
+    expect(row._lofi.norm["_shard"]).toBeUndefined();
   });
 
   it("throws on unknown schemas by default", async () => {

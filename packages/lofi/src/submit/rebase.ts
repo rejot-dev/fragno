@@ -1,6 +1,7 @@
 import type { OutboxEntry } from "@fragno-dev/db";
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import type { LofiAdapter, LofiMutation, LofiSubmitCommand } from "../types";
+import { stripShardField } from "../system-columns";
 
 export type RebaseResult = {
   appliedEntries: number;
@@ -17,7 +18,7 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
         schema: mutation.schema,
         table: mutation.table,
         externalId: mutation.externalId,
-        values: mutation.values,
+        values: stripShardField(mutation.values) ?? mutation.values,
         versionstamp: mutation.versionstamp,
       };
     }
@@ -28,7 +29,7 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
         schema: mutation.schema,
         table: mutation.table,
         externalId: mutation.externalId,
-        set: mutation.set,
+        set: stripShardField(mutation.set) ?? mutation.set,
         versionstamp: mutation.versionstamp,
       };
     }
