@@ -55,7 +55,8 @@ describe("generateDrizzleSchema", () => {
           email: text("email").notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           uniqueIndex("idx_email").on(table.email),
           index("idx_name").on(table.name)
@@ -68,7 +69,8 @@ describe("generateDrizzleSchema", () => {
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -126,7 +128,8 @@ describe("generateDrizzleSchema", () => {
           email: text("email").notNull(),
           age: int("age"),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
           index("idx_users_idx_name_test_7f36c497").on(table.name)
@@ -139,7 +142,8 @@ describe("generateDrizzleSchema", () => {
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: int("viewCount").notNull().default(0),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -200,7 +204,8 @@ describe("generateDrizzleSchema", () => {
           email: text("email").notNull(),
           age: integer("age"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
           index("idx_users_idx_name_test_7f36c497").on(table.name),
@@ -214,7 +219,8 @@ describe("generateDrizzleSchema", () => {
           userId: integer("userId").notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -271,7 +277,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer, text } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
@@ -284,7 +290,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const test_schema = {
@@ -310,7 +317,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer, text } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
@@ -323,7 +330,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const test_schema = {
@@ -348,7 +356,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, customType, bigserial, integer, text } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         const customBinary = customType<
           {
@@ -377,7 +385,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const test_schema = {
@@ -434,7 +443,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const posts_test = schema_test.table("posts", {
@@ -442,7 +452,8 @@ describe("generateDrizzleSchema", () => {
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -501,7 +512,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const posts_test = mysqlTable("posts_test", {
@@ -509,7 +521,8 @@ describe("generateDrizzleSchema", () => {
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -568,7 +581,8 @@ describe("generateDrizzleSchema", () => {
           id: text("id").notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           uniqueIndex("uidx_users_idx_users_external_id_test_8eaf053f").on(table.id)
         ])
@@ -578,7 +592,8 @@ describe("generateDrizzleSchema", () => {
           title: text("title").notNull(),
           userId: integer("userId").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -673,7 +688,8 @@ describe("generateDrizzleSchema", () => {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const products_test = schema_test.table("products", {
@@ -681,7 +697,8 @@ describe("generateDrizzleSchema", () => {
           name: text("name").notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         })
 
         export const categories_testRelations = relations(categories_test, ({ many }) => ({
@@ -752,7 +769,8 @@ describe("generateDrizzleSchema", () => {
           name: text("name").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.parentId],
@@ -824,7 +842,8 @@ describe("generateDrizzleSchema", () => {
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.parentId],
@@ -874,7 +893,8 @@ describe("generateDrizzleSchema", () => {
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.parentId],
@@ -924,7 +944,8 @@ describe("generateDrizzleSchema", () => {
           content: text("content").notNull(),
           parentId: integer("parentId"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.parentId],
@@ -1050,7 +1071,8 @@ describe("generateDrizzleSchema", () => {
           email: text("email").notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           uniqueIndex("idx_email").on(table.email),
           index("idx_name").on(table.name)
@@ -1063,7 +1085,8 @@ describe("generateDrizzleSchema", () => {
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard")
         }, (table) => [
           foreignKey({
             columns: [table.userId],
