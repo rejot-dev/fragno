@@ -1,5 +1,13 @@
 # @fragno-dev/unplugin-fragno
 
+## 0.0.9
+
+### Patch Changes
+
+- ae54a60: fix: add browser-safe db entry and rewrite sync command imports for browser builds
+- 9c3c647: fix: keep sync handlers and service bodies in browser builds
+- a75b0c2: fix: preserve db/schema definitions in browser transforms
+
 ## 0.0.8
 
 ### Patch Changes
