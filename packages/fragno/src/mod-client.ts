@@ -87,6 +87,7 @@ export function instantiate(_definition: unknown) {
     },
     withMiddleware: () => fragmentStub,
     inContext: <T>(callback: () => T) => callback(),
+    callServices: async (_serviceCalls: () => unknown) => [],
     handlersFor: () => ({}),
     handler: async () => new Response(),
     callRoute: async () => ({ ok: true, data: undefined, error: undefined }),

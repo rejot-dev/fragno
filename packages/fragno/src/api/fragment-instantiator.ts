@@ -74,6 +74,20 @@ export type RoutesWithInternal<
   TInternalRoutes extends readonly AnyRouteOrFactory[],
 > = readonly [...TRoutes, ...InternalRoutesFromDefinition<TInternalRoutes>];
 
+type ExtractServiceCallResult<T> = T extends undefined
+  ? undefined
+  : T extends { _internal: { finalResult?: infer R } }
+    ? R
+    : Awaited<T>;
+
+type ExtractServiceCallResults<T extends readonly unknown[]> = {
+  [K in keyof T]: ExtractServiceCallResult<T[K]>;
+};
+
+type ExtractServiceCallResultsOrSingle<T> = T extends readonly unknown[]
+  ? ExtractServiceCallResults<T>
+  : ExtractServiceCallResult<T>;
+
 /**
  * Helper type to extract the instantiated fragment type from a fragment definition.
  * This is useful for typing functions that accept instantiated fragments based on their definition.
@@ -396,6 +410,51 @@ export class FragnoInstantiatedFragment<
       return this.#withRequestStorage(boundCallback);
     }
     return this.#withRequestStorage(callback);
+  }
+
+  /**
+   * Execute multiple service calls within a handler context.
+   * If called outside a request context, it will create one automatically.
+   * Pass a factory so service calls are created inside the active context.
+   * Primarily used by database fragments (handlerTx).
+   */
+  async callServices<TServiceCalls>(
+    serviceCalls: () => TServiceCalls,
+  ): Promise<ExtractServiceCallResultsOrSingle<TServiceCalls>> {
+    const handlerContext = this.#handlerThisContext as
+      | {
+          handlerTx?: () => {
+            withServiceCalls: (fn: () => readonly unknown[]) => { execute: () => Promise<unknown> };
+          };
+        }
+      | undefined;
+
+    if (!handlerContext?.handlerTx) {
+      throw new Error(
+        "callServices is only supported for fragments with handlerTx (database fragments).",
+      );
+    }
+
+    let callWasArray = false;
+    const execute = () => {
+      const calls = serviceCalls();
+      callWasArray = Array.isArray(calls);
+      const callArray = (callWasArray ? calls : [calls]) as readonly unknown[];
+      return handlerContext.handlerTx!()
+        .withServiceCalls(() => callArray)
+        .execute();
+    };
+
+    const result = this.#contextStorage.hasStore()
+      ? await execute()
+      : await this.#withRequestStorage(execute);
+
+    if (callWasArray) {
+      return result as ExtractServiceCallResultsOrSingle<TServiceCalls>;
+    }
+
+    const [first] = result as unknown[];
+    return first as ExtractServiceCallResultsOrSingle<TServiceCalls>;
   }
 
   /**
@@ -1210,6 +1269,9 @@ interface IFragnoInstantiatedFragment {
   inContext<T>(callback: any): T;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inContext<T>(callback: any): Promise<T>;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callServices(serviceCalls: () => any): Promise<any>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlersFor(framework: FullstackFrameworks): any;

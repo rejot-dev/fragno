@@ -18,7 +18,10 @@ import {
   createHandlerTxBuilder,
   ServiceTxBuilder,
   HandlerTxBuilder,
+  type AwaitedPromisesInObject,
+  type ExtractServiceFinalResults,
   type ExecuteTxOptions,
+  type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
 import {
   prepareHookMutations,
@@ -44,6 +47,15 @@ type RegistryFragmentMeta = {
   name: string;
   mountRoute: string;
 };
+
+type ExtractServiceFinalResultOrSingle<T> = T extends readonly (
+  | TxResult<unknown, unknown>
+  | undefined
+)[]
+  ? AwaitedPromisesInObject<ExtractServiceFinalResults<T>>
+  : T extends undefined
+    ? undefined
+    : AwaitedPromisesInObject<ExtractServiceFinalResults<readonly [T]>>[0];
 
 type RegistryResolver = {
   getRegistryForAdapterSync: <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) => {
@@ -186,6 +198,21 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
   handlerTx(
     options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
   ): HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, THooks>;
+
+  /**
+   * Execute multiple service calls in a handler context and return their final results.
+   */
+  callServices<
+    TServiceCalls extends
+      | TxResult<unknown, unknown>
+      | undefined
+      | readonly (TxResult<unknown, unknown> | undefined)[],
+  >(
+    /**
+     * Factory to create service calls inside the active context.
+     */
+    serviceCalls: () => TServiceCalls,
+  ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
 };
 
 /**
@@ -939,8 +966,40 @@ export class DatabaseFragmentDefinitionBuilder<
         });
       }
 
+      function callServices<
+        TServiceCalls extends
+          | TxResult<unknown, unknown>
+          | undefined
+          | readonly (TxResult<unknown, unknown> | undefined)[],
+      >(
+        serviceCalls: () => TServiceCalls,
+      ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>> {
+        let callWasArray = false;
+        const resultPromise = handlerTx()
+          .withServiceCalls(() => {
+            const calls = serviceCalls();
+            callWasArray = Array.isArray(calls);
+            return (callWasArray ? calls : [calls]) as readonly (
+              | TxResult<unknown, unknown>
+              | undefined
+            )[];
+          })
+          .execute();
+
+        return resultPromise.then((result) =>
+          callWasArray
+            ? (result as ExtractServiceFinalResultOrSingle<TServiceCalls>)
+            : (
+                result as AwaitedPromisesInObject<
+                  ExtractServiceFinalResults<readonly [TServiceCalls]>
+                >
+              )[0],
+        ) as Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
+      }
+
       const handlerContext: DatabaseHandlerContext<THooks> = {
         handlerTx,
+        callServices,
       };
 
       return { serviceContext, handlerContext };
