@@ -16,7 +16,7 @@ import type {
   UOWDecoder,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { buildCondition } from "../../query/condition-builder";
+import { buildCondition, type Condition } from "../../query/condition-builder";
 import {
   encodeValues,
   encodeValuesWithDbDefaults,
@@ -51,6 +51,7 @@ import { resolveReferenceSubqueries } from "./reference-resolution";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { compareNormalizedValues } from "./value-comparison";
 import type { NamingResolver } from "../../naming/sql-naming";
+import type { ShardScope, ShardingStrategy } from "../../sharding";
 
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
@@ -146,6 +147,84 @@ const selectRow = (
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
+
+const shouldApplyShardFilter = (
+  shardingStrategy: ShardingStrategy | undefined,
+  shardScope: ShardScope,
+  shardFilterExempt?: boolean,
+): boolean =>
+  shardingStrategy?.mode === "row" && shardScope !== "global" && shardFilterExempt !== true;
+
+const isAdapterScopedTable = (table: AnyTable): boolean => table.name === SETTINGS_TABLE_NAME;
+
+const getShardColumn = (table: AnyTable): AnyTable["columns"][string] => {
+  const shardColumn = table.columns["_shard"];
+  if (!shardColumn) {
+    throw new Error(`Missing _shard column on table "${table.name}".`);
+  }
+  return shardColumn;
+};
+
+const buildShardCondition = (
+  table: AnyTable,
+  shard: string | null,
+  shardingStrategy: ShardingStrategy | undefined,
+  shardScope: ShardScope,
+  shardFilterExempt?: boolean,
+): Condition | null => {
+  if (!shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt)) {
+    return null;
+  }
+
+  const shardColumn = getShardColumn(table);
+  if (shard === null) {
+    return { type: "compare", a: shardColumn, operator: "is", b: null };
+  }
+  return { type: "compare", a: shardColumn, operator: "=", b: shard };
+};
+
+const mergeConditions = (
+  base: Condition | boolean | undefined,
+  shardCondition: Condition | null,
+): Condition | boolean | undefined => {
+  if (!shardCondition) {
+    return base;
+  }
+  if (base === undefined) {
+    return shardCondition;
+  }
+  if (base === true) {
+    return shardCondition;
+  }
+  if (base === false) {
+    return false;
+  }
+  return { type: "and", items: [base, shardCondition] };
+};
+
+const matchesShardFilter = (
+  table: AnyTable,
+  row: InMemoryRow,
+  shard: string | null,
+  shardingStrategy: ShardingStrategy | undefined,
+  shardScope: ShardScope,
+  shardFilterExempt: boolean | undefined,
+  resolver?: NamingResolver,
+): boolean => {
+  if (!shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt)) {
+    return true;
+  }
+
+  const shardColumn = getShardColumn(table);
+  const shardColumnName = getPhysicalColumnName(table, shardColumn.name, resolver);
+  const value = row[shardColumnName];
+
+  if (shard === null) {
+    return isNullish(value);
+  }
+
+  return value === shard;
+};
 
 const prefixSelection = (
   row: InMemoryRow,
@@ -244,6 +323,9 @@ const findJoinMatches = (
   parentTable: AnyTable,
   join: CompiledJoin,
   namespaceStore: InMemoryNamespaceStore,
+  shard: string | null,
+  shardingStrategy: ShardingStrategy | undefined,
+  shardScope: ShardScope,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
 ): InMemoryRow[] => {
@@ -259,6 +341,20 @@ const findJoinMatches = (
   assertOrderByIndexOnly(targetTable, options.orderBy, resolver);
 
   for (const row of targetStore.rows.values()) {
+    if (
+      !matchesShardFilter(
+        targetTable,
+        row,
+        shard,
+        shardingStrategy,
+        shardScope,
+        isAdapterScopedTable(targetTable),
+        resolver,
+      )
+    ) {
+      continue;
+    }
+
     let matchesJoin = true;
 
     for (const [left, right] of relation.on) {
@@ -321,6 +417,9 @@ const applyJoins = (
   parentTable: AnyTable,
   joins: CompiledJoin[] | undefined,
   namespaceStore: InMemoryNamespaceStore,
+  shard: string | null,
+  shardingStrategy: ShardingStrategy | undefined,
+  shardScope: ShardScope,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   parentPath = "",
@@ -340,7 +439,17 @@ const applyJoins = (
     const nextOutputs: InMemoryRow[] = [];
 
     for (const currentOutput of outputs) {
-      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore, resolver, now);
+      const matches = findJoinMatches(
+        parentRow,
+        parentTable,
+        join,
+        namespaceStore,
+        shard,
+        shardingStrategy,
+        shardScope,
+        resolver,
+        now,
+      );
 
       if (matches.length === 0) {
         nextOutputs.push(currentOutput);
@@ -365,6 +474,9 @@ const applyJoins = (
               join.relation.table,
               join.options.join,
               namespaceStore,
+              shard,
+              shardingStrategy,
+              shardScope,
               resolver,
               now,
               relationPath,
@@ -699,7 +811,18 @@ const findRows = (
     return [];
   }
 
-  const condition = whereResult === true ? undefined : whereResult;
+  const shardCondition = buildShardCondition(
+    table,
+    op.shard,
+    op.shardingStrategy,
+    op.shardScope,
+    op.shardFilterExempt,
+  );
+  const condition = mergeConditions(whereResult === true ? undefined : whereResult, shardCondition);
+  if (condition === false) {
+    return [];
+  }
+  const normalizedCondition = condition === true ? undefined : condition;
   const results: InMemoryRow[] = [];
 
   for (const entry of entries) {
@@ -707,7 +830,10 @@ const findRows = (
     if (!row) {
       continue;
     }
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
+    if (
+      normalizedCondition &&
+      !evaluateCondition(normalizedCondition, table, row, namespaceStore, resolver, now)
+    ) {
       continue;
     }
 
@@ -725,6 +851,9 @@ const findRows = (
         table,
         op.options.joins,
         namespaceStore,
+        op.shard,
+        op.shardingStrategy,
+        op.shardScope,
         resolver,
         now,
       );
@@ -762,11 +891,25 @@ const countRows = (
     return 0;
   }
 
-  const condition = whereResult === true ? undefined : whereResult;
+  const shardCondition = buildShardCondition(
+    table,
+    op.shard,
+    op.shardingStrategy,
+    op.shardScope,
+    op.shardFilterExempt,
+  );
+  const condition = mergeConditions(whereResult === true ? undefined : whereResult, shardCondition);
+  if (condition === false) {
+    return 0;
+  }
+  const normalizedCondition = condition === true ? undefined : condition;
   let count = 0;
 
   for (const row of tableStore.rows.values()) {
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
+    if (
+      normalizedCondition &&
+      !evaluateCondition(normalizedCondition, table, row, namespaceStore, resolver, now)
+    ) {
       continue;
     }
     count += 1;
@@ -876,6 +1019,22 @@ const updateRow = (
     }
     return null;
   }
+  if (
+    !matchesShardFilter(
+      table,
+      existing.row,
+      op.shard,
+      op.shardingStrategy,
+      op.shardScope,
+      op.shardFilterExempt,
+      resolver,
+    )
+  ) {
+    if (versionToCheck !== undefined) {
+      throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
+    }
+    return null;
+  }
 
   const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
   const currentVersion = Number(existing.row[versionColumnName] ?? 0);
@@ -958,6 +1117,22 @@ const deleteRow = (
     }
     return null;
   }
+  if (
+    !matchesShardFilter(
+      table,
+      existing.row,
+      op.shard,
+      op.shardingStrategy,
+      op.shardScope,
+      op.shardFilterExempt,
+      resolver,
+    )
+  ) {
+    if (versionToCheck !== undefined) {
+      throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
+    }
+    return null;
+  }
 
   const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
   const currentVersion = Number(existing.row[versionColumnName] ?? 0);
@@ -1007,7 +1182,18 @@ const checkRow = (
   resolver?: NamingResolver,
 ): void => {
   const existing = findRowByExternalId(tableStore, table, op.id.externalId, resolver);
-  if (!existing) {
+  if (
+    !existing ||
+    !matchesShardFilter(
+      table,
+      existing.row,
+      op.shard,
+      op.shardingStrategy,
+      op.shardScope,
+      op.shardFilterExempt,
+      resolver,
+    )
+  ) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" not found.`);
   }
 
@@ -1049,6 +1235,7 @@ const reserveOutboxVersion = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
 ): { version: bigint; rollback: () => void } => {
+  // TODO(db-sharding): keep outbox versioning global for now; revisit per-shard versions (specs/spec-db-sharding.md §9.3).
   const resolver = getResolver(internalSchema, null, resolverFactory);
   const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
   const settingsTable = internalSchema.tables[SETTINGS_TABLE_NAME];
@@ -1085,6 +1272,10 @@ const reserveOutboxVersion = (
       id: externalId,
       checkVersion: false,
       set: { value: next.toString() },
+      shard: null,
+      shardScope: "global",
+      shardingStrategy: undefined,
+      shardFilterExempt: true,
     };
     const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
     return { version: next, rollback: rollback ?? (() => {}) };
@@ -1097,6 +1288,10 @@ const reserveOutboxVersion = (
     table: settingsTable.name,
     values: { key: OUTBOX_VERSION_KEY, value: "0" },
     generatedExternalId: options.idGenerator(),
+    shard: null,
+    shardScope: "global",
+    shardingStrategy: undefined,
+    shardFilterExempt: true,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1180,6 +1375,7 @@ const insertOutboxRow = (
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
+    shard: string | null;
   },
 ): (() => void) => {
   const resolver = getResolver(internalSchema, null, resolverFactory);
@@ -1198,9 +1394,14 @@ const insertOutboxRow = (
       versionstamp: payload.versionstamp,
       uowId: payload.uowId,
       payload: payload.payload,
+      _shard: payload.shard,
       ...(payload.refMap ? { refMap: payload.refMap } : {}),
     },
     generatedExternalId: options.idGenerator(),
+    shard: payload.shard ?? null,
+    shardScope: "scoped",
+    shardingStrategy: undefined,
+    shardFilterExempt: false,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1232,6 +1433,7 @@ const insertOutboxMutationRows = (
       externalId: string;
       op: string;
     }[];
+    shard: string | null;
   },
 ): Array<() => void> => {
   if (payload.mutations.length === 0) {
@@ -1262,8 +1464,13 @@ const insertOutboxMutationRows = (
           table: mutation.table,
           externalId: mutation.externalId,
           op: mutation.op,
+          _shard: payload.shard,
         },
         generatedExternalId: options.idGenerator(),
+        shard: payload.shard ?? null,
+        shardScope: "scoped",
+        shardingStrategy: undefined,
+        shardFilterExempt: false,
       };
 
       const previousInternalId = tableStore.nextInternalId;
@@ -1313,6 +1520,7 @@ export const createInMemoryUowExecutor = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
   schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
+  getShard?: () => string | null,
 ): UOWExecutor<InMemoryCompiledQuery, InMemoryRawResult> => ({
   async executeRetrievalPhase(
     retrievalBatch: InMemoryCompiledQuery[],
@@ -1368,6 +1576,7 @@ export const createInMemoryUowExecutor = (
     const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
     let outboxVersion: bigint | null = null;
+    const outboxShard = resolveOutboxShard(getShard);
 
     try {
       if (shouldWriteOutbox) {
@@ -1496,6 +1705,7 @@ export const createInMemoryUowExecutor = (
             entryVersionstamp: versionstamp,
             uowId,
             mutations: payload.mutations,
+            shard: outboxShard,
           }),
         );
         const rollback = insertOutboxRow(store, options, resolverFactory, {
@@ -1503,6 +1713,7 @@ export const createInMemoryUowExecutor = (
           uowId,
           payload: payloadSerialized,
           refMap,
+          shard: outboxShard,
         });
         rollbackActions.push(rollback);
       }
@@ -1519,6 +1730,18 @@ export const createInMemoryUowExecutor = (
     return { success: true, createdInternalIds };
   },
 });
+
+const resolveOutboxShard = (getShard?: () => string | null): string | null => {
+  if (!getShard) {
+    return null;
+  }
+
+  try {
+    return getShard() ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
   readonly #resolverFactory?: ResolverFactory;

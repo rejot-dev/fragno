@@ -37,6 +37,27 @@ sleep. If work is due, they run `processor.process()`.
   Durable hooks are at-least-once. Your hook handlers must be idempotent.
 </Callout>
 
+## Sharding scope
+
+When server-only sharding is enabled, you can run durable hook processing **per shard** or
+**globally** by passing a scope to `createDurableHooksProcessor`:
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+
+const perShard = createDurableHooksProcessor(fragment, {
+  scope: { mode: "shard", shard: "tenant-a" },
+});
+
+const global = createDurableHooksProcessor(fragment, {
+  scope: { mode: "global" },
+});
+```
+
+- `mode: "shard"` sets the shard context and keeps shard filters enabled.
+- `mode: "global"` disables shard filters so one processor can drain hooks across all shards. Use
+  this only for trusted, centralized maintenance or background workers.
+
 ## Node dispatcher (polling)
 
 Use the Node dispatcher for long-lived servers or local development:

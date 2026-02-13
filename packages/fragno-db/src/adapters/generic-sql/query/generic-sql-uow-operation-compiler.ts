@@ -8,15 +8,18 @@ import type {
   MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
-import type { AnyColumn, AnySchema } from "../../../schema/create";
+import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
 import { buildCondition } from "../../../query/condition-builder";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { SQLQueryCompiler } from "./sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
 import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/orm/orm";
+import type { CompiledJoin } from "../../../query/orm/orm";
 import type { AnySelectClause } from "../../../query/simple-query-interface";
 import { createColdKysely } from "../migration/cold-kysely";
+import type { ShardScope, ShardingStrategy } from "../../../sharding";
+import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 
 /**
  * Generic SQL UOW Operation Compiler.
@@ -53,6 +56,53 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       this.sqliteStorageMode,
       resolver,
     );
+  }
+
+  private shouldApplyJoinShardFilter(
+    shardingStrategy: ShardingStrategy | undefined,
+    shardScope: ShardScope,
+  ): boolean {
+    return shardingStrategy?.mode === "row" && shardScope !== "global";
+  }
+
+  private buildShardCondition(table: AnyTable, shard: string | null): Condition {
+    const shardColumn = table.columns["_shard"];
+    if (!shardColumn) {
+      throw new Error(`Missing _shard column on table "${table.name}".`);
+    }
+    if (shard === null) {
+      return { type: "compare", a: shardColumn, operator: "is", b: null };
+    }
+    return { type: "compare", a: shardColumn, operator: "=", b: shard };
+  }
+
+  private applyJoinShardFilters(joins: CompiledJoin[], shard: string | null): CompiledJoin[] {
+    return joins.map((join) => {
+      if (join.options === false) {
+        return join;
+      }
+
+      const targetTable = join.relation.table;
+      let where = join.options.where;
+
+      if (targetTable.name !== SETTINGS_TABLE_NAME) {
+        const shardCondition = this.buildShardCondition(targetTable, shard);
+        where = where ? { type: "and", items: [where, shardCondition] } : shardCondition;
+      }
+
+      const nested = join.options.join
+        ? this.applyJoinShardFilters(join.options.join, shard)
+        : undefined;
+
+      return {
+        ...join,
+        options: {
+          ...join.options,
+          where,
+          join: nested,
+        },
+      };
+    });
   }
 
   override compileCount(
@@ -163,12 +213,18 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     // When we have joins, use the query builder directly
     if (join && join.length > 0) {
+      const joinWithShardFilters = this.shouldApplyJoinShardFilter(
+        op.shardingStrategy,
+        op.shardScope,
+      )
+        ? this.applyJoinShardFilters(join, op.shard)
+        : join;
       return sqlCompiler.compileFindMany(op.table, {
         select: (findManyOptions.select ?? true) as AnySelectClause,
         where: combinedWhere,
         orderBy,
         limit: effectiveLimit,
-        join,
+        join: joinWithShardFilters,
         readTracking: op.readTracking,
       });
     }

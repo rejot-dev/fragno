@@ -29,6 +29,7 @@ export interface ExecutorOptions {
   dialect: Dialect;
   outbox?: OutboxConfig;
   namingStrategy?: SqlNamingStrategy;
+  getShard?: () => string | null;
 }
 
 export async function executeRetrieval(
@@ -82,6 +83,7 @@ export async function executeMutation(
 
   const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
   const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
+  const outboxShard = resolveOutboxShard(options.getShard);
 
   try {
     await adapter.transaction(async (tx) => {
@@ -156,6 +158,7 @@ export async function executeMutation(
           entryVersionstamp: versionstamp,
           uowId,
           mutations: payload.mutations,
+          shard: outboxShard,
         });
         await insertOutboxRow(tx, driverConfig, {
           id: createId(),
@@ -163,6 +166,7 @@ export async function executeMutation(
           uowId,
           payload: payloadSerialized,
           refMap,
+          shard: outboxShard,
         });
       }
     });
@@ -224,6 +228,7 @@ async function reserveOutboxVersion(
   driverConfig: DriverConfig,
   dialect: Dialect,
 ): Promise<bigint> {
+  // TODO(db-sharding): keep outbox versioning global for now; revisit per-shard versions (specs/spec-db-sharding.md §9.3).
   const key = `${SETTINGS_NAMESPACE}.outbox_version`;
   const id = createId();
 
@@ -349,13 +354,14 @@ async function insertOutboxRow(
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
+    shard: string | null;
   },
 ): Promise<void> {
-  const { id, versionstamp, uowId, payload, refMap } = options;
+  const { id, versionstamp, uowId, payload, refMap, shard } = options;
   const refMapValue = refMap ?? null;
   const serializer = createSQLSerializer(driverConfig);
   const outboxTable = internalSchema.tables.fragno_db_outbox;
-  const values = { id, versionstamp, uowId, payload, refMap: refMapValue };
+  const values = { id, versionstamp, uowId, payload, refMap: refMapValue, _shard: shard };
   const serializedValues: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     const col = outboxTable.columns[key];
@@ -385,6 +391,7 @@ async function insertOutboxMutationRows(
       externalId: string;
       op: string;
     }[];
+    shard: string | null;
   },
 ): Promise<void> {
   if (options.mutations.length === 0) {
@@ -405,6 +412,7 @@ async function insertOutboxMutationRows(
       table: mutation.table,
       externalId: mutation.externalId,
       op: mutation.op,
+      _shard: options.shard,
     };
     const serializedValues: Record<string, unknown> = {};
 
@@ -419,5 +427,17 @@ async function insertOutboxMutationRows(
 
     const query = db.insertInto("fragno_db_outbox_mutations").values(serializedValues).compile();
     await tx.executeQuery(query);
+  }
+}
+
+function resolveOutboxShard(getShard?: () => string | null): string | null {
+  if (!getShard) {
+    return null;
+  }
+
+  try {
+    return getShard() ?? null;
+  } catch {
+    return null;
   }
 }
