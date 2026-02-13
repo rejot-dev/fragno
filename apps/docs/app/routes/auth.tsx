@@ -1,4 +1,13 @@
-import { ArrowRight, Database, KeyRound, Shield, Users } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Building2,
+  Database,
+  KeyRound,
+  Shield,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { FragmentSubnav } from "@/components/fragment-subnav";
 import type { ReactNode } from "react";
@@ -278,6 +287,125 @@ export default function AuthPage() {
                 <p className="text-fd-muted-foreground mt-2 text-sm">{useCase.description}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 text-emerald-600 dark:text-emerald-300">
+              <Building2 className="size-5" />
+            </span>
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
+                Organization workflows
+              </h2>
+              <p className="text-fd-muted-foreground text-sm">
+                Everything you need to model teams, workspaces, and access policies in one place.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 via-white to-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Lifecycle at a glance
+              </h3>
+              <p className="text-fd-muted-foreground mt-1 text-sm">
+                Organizations connect users, roles, and invitations with a single session-aware API
+                surface.
+              </p>
+              <div className="mt-5 space-y-3">
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                    <Building2 className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Create the organization
+                    </p>
+                    <p className="text-fd-muted-foreground text-sm">
+                      Create the org, seed the first member, and start assigning roles immediately.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                    <UserPlus className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Invite and onboard
+                    </p>
+                    <p className="text-fd-muted-foreground text-sm">
+                      Send invitations, accept or reject them, and keep membership in sync.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                    <BadgeCheck className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Manage roles and access
+                    </p>
+                    <p className="text-fd-muted-foreground text-sm">
+                      Update member roles, remove members, and enforce permissions consistently.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                    <Shield className="size-4" />
+                  </span>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Active organization
+                  </h3>
+                </div>
+                <p className="text-fd-muted-foreground mt-2 text-sm">
+                  Keep workspace context on the session so clients always know which org is active.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-200">
+                  <span className="rounded-full border border-emerald-200/70 bg-emerald-50 px-2.5 py-1 dark:border-emerald-400/20 dark:bg-emerald-500/10">
+                    /organizations/active
+                  </span>
+                  <span className="rounded-full border border-emerald-200/70 bg-emerald-50 px-2.5 py-1 dark:border-emerald-400/20 dark:bg-emerald-500/10">
+                    session context
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                    <Users className="size-4" />
+                  </span>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Org hooks + insights
+                  </h3>
+                </div>
+                <p className="text-fd-muted-foreground mt-2 text-sm">
+                  Subscribe to organization, member, and invitation hooks to drive onboarding,
+                  billing, and audit trails.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-200">
+                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
+                    org lifecycle
+                  </span>
+                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
+                    member updates
+                  </span>
+                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
+                    invitation flow
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
