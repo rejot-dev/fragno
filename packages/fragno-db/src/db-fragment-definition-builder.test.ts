@@ -18,7 +18,7 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
-import { getRegistryForAdapterSync } from "./internal/adapter-registry";
+import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { defineSyncCommands } from "./sync/commands";
 import * as hooks from "./hooks/hooks";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
@@ -607,6 +607,30 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         deps.db.createUnitOfWork;
       }).toThrowError(/deps\.db access is disabled/i);
+    });
+  });
+
+  describe("sharding strategy registry", () => {
+    it("reuses the adapter sharding strategy for internal fragments", () => {
+      const mockAdapter = createMockAdapter();
+      const registry = getRegistryForAdapterSync(mockAdapter);
+
+      registry.registerShardingStrategy({ mode: "row" });
+
+      const internalFragment = getInternalFragment(mockAdapter);
+      expect(internalFragment.$internal.options.shardingStrategy).toEqual({ mode: "row" });
+      expect(registry.internalFragment.$internal.options.shardingStrategy).toEqual({ mode: "row" });
+    });
+
+    it("throws when registering mismatched sharding strategies for the same adapter", () => {
+      const mockAdapter = createMockAdapter();
+      const registry = getRegistryForAdapterSync(mockAdapter);
+
+      registry.registerShardingStrategy({ mode: "adapter", identifier: "primary" });
+
+      expect(() =>
+        registry.registerShardingStrategy({ mode: "adapter", identifier: "secondary" }),
+      ).toThrowError(/Sharding strategy already registered/i);
     });
   });
 

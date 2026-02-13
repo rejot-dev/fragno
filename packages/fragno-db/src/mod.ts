@@ -18,6 +18,7 @@ export type { DatabaseAdapter, CursorResult };
 export { Cursor };
 export { dbNow };
 export type { DbNow };
+export type { ShardingStrategy } from "./sharding";
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
