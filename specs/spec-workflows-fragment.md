@@ -5,6 +5,10 @@
 1. Should auth hook decisions (allow/deny/response) be recorded as explicit trace events by the
    model checker when the workflows fragment runs under tracing, or should this be generalized as a
    core middleware trace hook?
+2. Should step-scoped mutations run only when a step completes successfully, or also when a step
+   transitions to `waiting` (retry/sleep/event) or `errored`?
+3. Should per-step persistence be always-on, or gated behind a runner/config flag for installations
+   that prefer the current batch-at-task-boundary behavior?
 
 ## 1. Overview
 
@@ -35,6 +39,11 @@ The fragment must:
 - Fragno durable hooks:
   `apps/docs/content/docs/fragno/for-library-authors/database-integration/durable-hooks.mdx`
 - Example Fragment routes/clients patterns: `example-fragments/example-fragment/src/index.ts`
+- Workflow runner: `packages/fragment-workflows/src/runner/process.ts`,
+  `packages/fragment-workflows/src/runner/step.ts`,
+  `packages/fragment-workflows/src/runner/task.ts`,
+  `packages/fragment-workflows/src/runner/state.ts`
+- Fragno DB TxResult execution: `packages/fragno-db/src/query/unit-of-work/execute-unit-of-work.ts`
 
 ## 3. Terminology
 
@@ -64,6 +73,8 @@ The fragment must:
    runner/dispatch mechanism after commits.
 8. **Operational visibility**: expose rich state/history plus durable log lines so operators (and
    agents) can understand what is happening.
+9. **Step-level durability**: persist each step boundary immediately (not only at task completion)
+   and allow step-scoped database mutations to be committed alongside step storage.
 
 ### 4.2 Non-goals (initial)
 
@@ -205,11 +216,23 @@ export type WorkflowLogger = {
   ): Promise<void>;
 };
 
+// TxResult + HandlerTxContext come from @fragno-dev/db.
+export type WorkflowStepTx = {
+  // Register serviceTx calls to be executed with the step commit transaction.
+  serviceCalls: (factory: () => readonly TxResult<unknown, unknown>[]) => void;
+  // Register UOW mutations to run with the step commit transaction.
+  mutate: (fn: (ctx: HandlerTxContext) => void | Promise<void>) => void;
+};
+
 export interface WorkflowStep {
   log: WorkflowLogger;
 
-  do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
-  do<T>(name: string, config: WorkflowStepConfig, callback: () => Promise<T> | T): Promise<T>;
+  do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
+  do<T>(
+    name: string,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+  ): Promise<T>;
 
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
@@ -252,10 +275,41 @@ Log semantics:
   errors, etc.).
 - Ordering: logs should be returned in insertion order (by `createdAt`/id) with cursor pagination.
 
+#### 6.2.2 Step-scoped mutations (NEW; executed with step persistence)
+
+Workflow steps may register **step-scoped database mutations** that run in the _same transaction_
+that persists the step record (see §9.1.4/§9.1.5). This enables efficient use of `serviceTx` without
+opening a separate handler transaction inside the step body.
+
+Example:
+
+```ts
+await step.do("persist-user", async (tx) => {
+  const user = await buildUserProfile();
+
+  tx.serviceCalls(() => [usersService.createUser(user), auditService.logUserCreate(user)]);
+
+  return user;
+});
+```
+
+Rules:
+
+- Step-scoped mutations are **buffered** during the step callback and executed only when the step is
+  persisted.
+- Mutations **do not run** during replay when the step is already completed.
+- Mutations run **after** the step callback returns successfully (they cannot influence the step
+  return value).
+- If a step attempt fails and is scheduled for retry, any buffered mutations for that attempt are
+  discarded.
+- If a step requires reads that affect its output, use an explicit handler transaction in the step
+  body (outside the step-scoped mutation buffer).
+
 Step method semantics:
 
 - `step.do`:
   - Must **cache** its return value (JSON-serializable) per instance + step identity.
+  - The callback receives a `WorkflowStepTx` to register step-scoped mutations (see §6.2.2).
   - If a cached completed result exists during replay, it must be returned without calling the
     callback.
   - If the callback throws:
@@ -695,6 +749,42 @@ Requirement:
   - matching `sendEvent` for an instance currently waiting on that event type (and not paused):
     update task to `runAt=now`, `kind="wake"`
 
+#### 9.1.4 Step persistence per boundary (NEW)
+
+The runner must **persist step state after every step boundary**, not only when the task completes.
+This ensures step history and logs survive runner crashes mid-run.
+
+Definition:
+
+- A **step boundary** is any transition to `completed`, `waiting`, or `errored` for `step.do`, and
+  any transition to `waiting` or `completed` for `sleep/sleepUntil/waitForEvent`.
+
+Requirements:
+
+- After each step boundary, the runner **flushes** the in-memory step/log/event buffers to the DB.
+- If the workflow run is still **running** (i.e., more steps remain in the same tick), the flush
+  **must not** reschedule the task or change instance status (beyond updating `updatedAt`).
+- If the boundary **suspends** or **completes** the run (waiting/paused/complete/errored), the flush
+  may be combined with the existing instance/task transition transaction.
+- Per-step persistence is **always-on** by default; if a config gate is introduced, it must preserve
+  backward compatibility with the existing batch behavior.
+
+#### 9.1.5 Step-scoped mutations execution (NEW)
+
+Step-scoped mutations (§6.2.2) are executed inside the **same handler transaction** that persists
+the step boundary.
+
+Rules:
+
+- Mutations are **buffered per step** and executed only for the attempt that reaches a successful
+  boundary.
+- Runner commits **service calls first**, then applies runner state mutations (`workflow_step`,
+  `workflow_event`, `workflow_log`, `workflow_instance.updatedAt`).
+- If a concurrency conflict occurs while committing a step boundary, the runner must **stop** and
+  let the next tick re-hydrate state from the DB (no in-memory retry loops).
+- If the step commit fails due to a **unique constraint** violation, the step must be treated as a
+  **non-retryable failure** (equivalent to `NonRetryableError` thrown inside the step).
+
 ### 9.2 Step identity & replay
 
 Cloudflare uses step names + engine-managed ordering; we need deterministic identity to safely cache
@@ -711,7 +801,7 @@ Approach (Cloudflare-like):
   - checks DB for an existing `workflow_step` record for
     `(workflowName, instanceId, runNumber, stepKey)`
   - if completed, returns cached result
-  - otherwise executes the behavior for that step type and then persists it
+  - otherwise executes the behavior for that step type and persists it at the step boundary
 
 Rules for authors (Cloudflare-like):
 
@@ -1210,4 +1300,39 @@ No additional workflow feature additions are planned as part of this spec update
 - Logs are returned via the history endpoint when `includeLogs=true` and include `level` and
   `category` (reserved: `system`).
 - Logs follow the same retention policy as instances (infinite by default).
+- Steps are persisted at **every step boundary**, not only at task completion.
+- Step-scoped mutations execute in the **same transaction** as step persistence and do not affect
+  the step return value.
+- Step-scoped mutation commits that fail due to **unique constraint** violations are treated as
+  **non-retryable step failures**.
 - No additional workflow feature additions are planned right now.
+
+## 21. FP Issue Plan
+
+Plan issue: **Workflows: per-step persistence + step-scoped mutations**
+
+Success criteria:
+
+- Step state (steps/logs/events) is persisted after every step boundary.
+- Step-scoped mutations can register `serviceTx` calls and commit in the same transaction as step
+  persistence.
+- Runner behavior remains deterministic and replay-safe; retries and conflicts are handled without
+  duplicate side effects.
+
+Child issues:
+
+1. **Define step mutation API + types** (Spec §6.2.2)
+   - Add `WorkflowStepTx` to the public API and document callback semantics.
+   - Update workflow examples to demonstrate `tx.serviceCalls`.
+2. **Runner state + buffers for step-scoped mutations** (Spec §9.1.5)
+   - Extend runner state to store per-step mutation buffers and clear them on retries.
+3. **Per-step persistence refactor** (Spec §9.1.4)
+   - Introduce a step-boundary flush path that commits step/log/event updates while keeping the
+     instance `running` when more steps remain.
+   - Ensure task/instance transitions are still committed when the run suspends or completes.
+4. **Execute step-scoped mutations in step commits** (Spec §9.1.5)
+   - Merge buffered `serviceTx` calls + mutation callbacks into the step commit transaction.
+   - Define ordering: service calls → runner step mutations → commit.
+5. **Tests + docs updates** (Spec §6.2.2, §9.1.4, §9.1.5)
+   - Add runner tests for step flush frequency, replay safety, and mutation execution ordering.
+   - Update docs/examples to note step-scoped mutation semantics and limitations.
