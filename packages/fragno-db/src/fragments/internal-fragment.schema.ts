@@ -37,6 +37,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
         )
         .addColumn("nonce", column("string"))
         .createIndex("idx_namespace_status_retry", ["namespace", "status", "nextRetryAt"])
+        .createIndex("idx_hooks_shard_status_retry", ["_shard", "status", "nextRetryAt"])
         .createIndex("idx_nonce", ["nonce"]);
     })
     .addTable("fragno_db_outbox", (t) => {
@@ -51,6 +52,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_outbox_versionstamp", ["versionstamp"], { unique: true })
+        .createIndex("idx_outbox_shard_versionstamp", ["_shard", "versionstamp"])
         .createIndex("idx_outbox_uow", ["uowId"]);
     })
     .addTable("fragno_db_outbox_mutations", (t) => {
@@ -68,6 +70,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_outbox_mutations_entry", ["entryVersionstamp"])
+        .createIndex("idx_outbox_mutations_shard_entry", ["_shard", "entryVersionstamp"])
         .createIndex("idx_outbox_mutations_key", [
           "schema",
           "table",
@@ -89,6 +92,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_sync_request_id", ["requestId"], { unique: true });
+        .createIndex("idx_sync_request_id", ["requestId"], { unique: true })
+        .createIndex("idx_sync_requests_shard_request", ["_shard", "requestId"]);
     });
 });
