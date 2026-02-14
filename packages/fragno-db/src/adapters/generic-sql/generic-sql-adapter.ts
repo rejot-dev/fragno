@@ -37,11 +37,15 @@ import {
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+import type { ShardScope, ShardingStrategy } from "../../sharding";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
+  shardingStrategy?: ShardingStrategy;
+  getShard?: () => string | null;
+  getShardScope?: () => ShardScope;
 }
 
 export interface SqlAdapterOptions {
@@ -222,6 +226,8 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         dryRun: false,
         outbox: getOutboxConfigForAdapter(this),
         namingStrategy: this.namingStrategy,
+        getShard: () =>
+          this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
       }),
       decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver),
       uowConfig: this.uowConfig,

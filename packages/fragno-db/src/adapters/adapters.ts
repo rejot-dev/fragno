@@ -9,11 +9,12 @@ import type {
 import type { SQLProvider } from "../shared/providers";
 import type { SQLiteStorageMode } from "./generic-sql/sqlite-storage";
 import type { SqlNamingStrategy } from "../naming/sql-naming";
+import type { ShardScope } from "../sharding";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
 
-export type ShardScope = "scoped" | "global";
+export type { ShardScope };
 
 /**
  * Storage type for database context - stores the Unit of Work.
