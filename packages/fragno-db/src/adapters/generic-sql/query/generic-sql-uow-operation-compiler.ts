@@ -58,6 +58,14 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     );
   }
 
+  private shouldApplyShardFilter(
+    shardingStrategy: ShardingStrategy | undefined,
+    shardScope: ShardScope,
+    shardFilterExempt?: boolean,
+  ): boolean {
+    return shardingStrategy?.mode === "row" && shardScope !== "global" && !shardFilterExempt;
+  }
+
   private shouldApplyJoinShardFilter(
     shardingStrategy: ShardingStrategy | undefined,
     shardScope: ShardScope,
@@ -120,6 +128,13 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     }
     if (conditions === false) {
       return null;
+    }
+
+    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
+      const shardCondition = this.buildShardCondition(op.table, op.shard);
+      conditions = conditions
+        ? { type: "and", items: [conditions, shardCondition] }
+        : shardCondition;
     }
 
     return sqlCompiler.compileCount(op.table, { where: conditions });
@@ -208,6 +223,13 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       }
     }
 
+    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
+      const shardCondition = this.buildShardCondition(op.table, op.shard);
+      combinedWhere = combinedWhere
+        ? { type: "and", items: [combinedWhere, shardCondition] }
+        : shardCondition;
+    }
+
     // For cursor pagination, fetch one extra item to determine if there's a next page
     const effectiveLimit = pageSize && op.withCursor ? pageSize + 1 : pageSize;
 
@@ -285,8 +307,15 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
+    let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
+
+    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
+      const shardCondition = this.buildShardCondition(table, op.shard);
+      conditions = conditions
+        ? { type: "and", items: [conditions, shardCondition] }
+        : shardCondition;
+    }
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -333,8 +362,15 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
+    let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
+
+    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
+      const shardCondition = this.buildShardCondition(table, op.shard);
+      conditions = conditions
+        ? { type: "and", items: [conditions, shardCondition] }
+        : shardCondition;
+    }
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -369,12 +405,17 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const version = op.id.version;
 
     // Build a SELECT 1 query to check if the row exists with the correct version
-    const condition = buildCondition(table.columns, (eb) =>
+    let condition = buildCondition(table.columns, (eb) =>
       eb.and(eb(idColumn.name, "=", externalId), eb(versionColumn.name, "=", version)),
     );
 
     if (typeof condition === "boolean") {
       throw new Error("Condition is a boolean, but should be a condition object.");
+    }
+
+    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
+      const shardCondition = this.buildShardCondition(table, op.shard);
+      condition = { type: "and", items: [condition, shardCondition] };
     }
 
     return {

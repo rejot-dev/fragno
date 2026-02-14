@@ -305,6 +305,137 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.expectedReturnedRows).toBe(1);
   });
 
+  describe("shard filters", () => {
+    const shardRowDefaults = {
+      ...shardDefaults,
+      shard: "tenant-a",
+      shardingStrategy: { mode: "row" } as const,
+    };
+
+    test("compileCount applies shard filter", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileCount({
+        ...shardRowDefaults,
+        type: "count",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select count(*) as "count" from "users" where "users"."_shard" = ?"`,
+      );
+    });
+
+    test("compileFind applies shard filter with null shard", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileFind({
+        ...shardRowDefaults,
+        shard: null,
+        type: "find",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: true,
+          pageSize: 1,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."_shard" is null limit ?"`,
+      );
+    });
+
+    test("compileUpdate applies shard filter", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileUpdate({
+        ...shardRowDefaults,
+        type: "update",
+        schema: testSchema,
+        table: "users",
+        id: "user123",
+        checkVersion: false,
+        set: {
+          name: "Jane",
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"update "users" set "name" = ?, "_version" = coalesce("_version", 0) + 1 where ("users"."id" = ? and "users"."_shard" = ?)"`,
+      );
+    });
+
+    test("compileCheck applies shard filter", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileCheck({
+        ...shardRowDefaults,
+        type: "check",
+        schema: testSchema,
+        table: "users",
+        id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"select 1 as "exists" from "users" where (("users"."id" = ? and "users"."_version" = ?) and "users"."_shard" = ?) limit ?"`,
+      );
+    });
+
+    test("compileFind skips shard filter for global scope", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileFind({
+        ...shardRowDefaults,
+        shardScope: "global",
+        type: "find",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: true,
+          pageSize: 1,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
+      );
+    });
+
+    test("compileCount skips shard filter when shardFilterExempt", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileCount({
+        ...shardRowDefaults,
+        shardFilterExempt: true,
+        type: "count",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(`"select count(*) as "count" from "users""`);
+    });
+  });
+
   describe("compileCreate - dialect differences", () => {
     test("should compile insert query for PostgreSQL", () => {
       const compiler = new GenericSQLUOWOperationCompiler(new NodePostgresDriverConfig());
