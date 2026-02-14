@@ -288,8 +288,10 @@ describe("createMigrator", () => {
       const result = await migrator.prepareMigrationTo(1, { updateSettings: false });
 
       // When updateSettings is false, we shouldn't have the settings update operation
-      // Check that we only have create-table operations
-      const nonTableOps = result.operations.filter((op) => op.type !== "create-table");
+      // Check that we only have create-table and add-index operations
+      const nonTableOps = result.operations.filter(
+        (op) => op.type !== "create-table" && op.type !== "add-index",
+      );
       expect(nonTableOps).toHaveLength(0);
     });
   });

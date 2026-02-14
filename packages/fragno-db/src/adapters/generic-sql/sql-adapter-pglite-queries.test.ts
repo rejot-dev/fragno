@@ -321,7 +321,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "namespace"."emails"."id" as "id", "namespace"."emails"."user_id" as "user_id", "namespace"."emails"."email" as "email", "namespace"."emails"."is_primary" as "is_primary", "namespace"."emails"."_internalId" as "_internalId", "namespace"."emails"."_version" as "_version" from "namespace"."emails" left join "namespace"."users" as "user" on "namespace"."emails"."user_id" = "user"."_internalId""`,
+      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "user"."_shard" as "user:_shard", "namespace"."emails"."id" as "id", "namespace"."emails"."user_id" as "user_id", "namespace"."emails"."email" as "email", "namespace"."emails"."is_primary" as "is_primary", "namespace"."emails"."_internalId" as "_internalId", "namespace"."emails"."_version" as "_version", "namespace"."emails"."_shard" as "_shard" from "namespace"."emails" left join "namespace"."users" as "user" on "namespace"."emails"."user_id" = "user"."_internalId""`,
     );
 
     expect(email).toMatchObject({
@@ -502,7 +502,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "namespace"."comments"."id" as "id", "namespace"."comments"."post_id" as "post_id", "namespace"."comments"."user_id" as "user_id", "namespace"."comments"."text" as "text", "namespace"."comments"."_internalId" as "_internalId", "namespace"."comments"."_version" as "_version" from "namespace"."comments" left join "namespace"."posts" as "post" on "namespace"."comments"."post_id" = "post"."_internalId" left join "namespace"."users" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "namespace"."users" as "commenter" on "namespace"."comments"."user_id" = "commenter"."_internalId""`,
+      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post"."_shard" as "post:_shard", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "post_author"."_shard" as "post:author:_shard", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "commenter"."_shard" as "commenter:_shard", "namespace"."comments"."id" as "id", "namespace"."comments"."post_id" as "post_id", "namespace"."comments"."user_id" as "user_id", "namespace"."comments"."text" as "text", "namespace"."comments"."_internalId" as "_internalId", "namespace"."comments"."_version" as "_version", "namespace"."comments"."_shard" as "_shard" from "namespace"."comments" left join "namespace"."posts" as "post" on "namespace"."comments"."post_id" = "post"."_internalId" left join "namespace"."users" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "namespace"."users" as "commenter" on "namespace"."comments"."user_id" = "commenter"."_internalId""`,
     );
   });
 
@@ -614,11 +614,11 @@ describe("SqlAdapter PGLite", () => {
 
     const [insertUserQuery, insertPostQuery] = queries;
     expect(insertUserQuery.sql).toMatchInlineSnapshot(
-      `"insert into "namespace"."users" ("id", "name", "age") values ($1, $2, $3) returning "namespace"."users"."id" as "id", "namespace"."users"."name" as "name", "namespace"."users"."age" as "age", "namespace"."users"."_internalId" as "_internalId", "namespace"."users"."_version" as "_version""`,
+      `"insert into "namespace"."users" ("id", "name", "age") values ($1, $2, $3) returning "namespace"."users"."id" as "id", "namespace"."users"."name" as "name", "namespace"."users"."age" as "age", "namespace"."users"."_internalId" as "_internalId", "namespace"."users"."_version" as "_version", "namespace"."users"."_shard" as "_shard""`,
     );
     expect(insertUserQuery.parameters).toEqual([userId.externalId, "UOW Test User", 35]);
     expect(insertPostQuery.sql).toMatchInlineSnapshot(
-      `"insert into "namespace"."posts" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "namespace"."users" where "id" = $2 limit $3), $4, $5) returning "namespace"."posts"."id" as "id", "namespace"."posts"."user_id" as "user_id", "namespace"."posts"."title" as "title", "namespace"."posts"."content" as "content", "namespace"."posts"."created_at" as "created_at", "namespace"."posts"."_internalId" as "_internalId", "namespace"."posts"."_version" as "_version""`,
+      `"insert into "namespace"."posts" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "namespace"."users" where "id" = $2 limit $3), $4, $5) returning "namespace"."posts"."id" as "id", "namespace"."posts"."user_id" as "user_id", "namespace"."posts"."title" as "title", "namespace"."posts"."content" as "content", "namespace"."posts"."created_at" as "created_at", "namespace"."posts"."_internalId" as "_internalId", "namespace"."posts"."_version" as "_version", "namespace"."posts"."_shard" as "_shard""`,
     );
     expect(insertPostQuery.parameters).toEqual([
       postId.externalId,

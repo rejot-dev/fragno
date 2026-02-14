@@ -527,6 +527,17 @@ export function versionColumn(): VersionColumn<null, number> {
 }
 
 /**
+ * Create a shard column for row-level sharding.
+ * @internal
+ */
+export function shardColumn(): Column<"string", string | null, string | null> {
+  const col = new Column<"string", string | null, string | null>("string");
+  col.nullable();
+  col.hidden();
+  return col;
+}
+
+/**
  * FragnoId represents a unified ID object that can contain external ID, internal ID, or both.
  * @internal
  *
@@ -727,11 +738,19 @@ export class TableBuilder<
     TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
   > {
     const cols = columns.map((colName) => {
-      const column = this.#columns[colName];
-      if (!column) {
+      let resolvedColumn = this.#columns[colName] as TColumns[string & keyof TColumns] | undefined;
+      if (!resolvedColumn && colName === "_shard") {
+        const shardCol = column("string");
+        shardCol.nullable();
+        shardCol.hidden();
+        shardCol.name = "_shard";
+        (this.#columns as Record<string, AnyColumn>)["_shard"] = shardCol;
+        resolvedColumn = shardCol as TColumns[string & keyof TColumns];
+      }
+      if (!resolvedColumn) {
         throw new Error(`Unknown column name ${colName}`);
       }
-      return column;
+      return resolvedColumn;
     });
 
     const unique = options?.unique ?? false;
@@ -773,6 +792,29 @@ export class TableBuilder<
       col.name = "_version";
       // Safe: we're adding system columns to the internal columns object
       (this.#columns as Record<string, AnyColumn>)["_version"] = col;
+    }
+
+    if (!this.#columns["_shard"]) {
+      const col = shardColumn();
+      col.name = "_shard";
+      // Safe: we're adding system columns to the internal columns object
+      (this.#columns as Record<string, AnyColumn>)["_shard"] = col;
+    }
+
+    const shardIndexName = `idx_${this.#name}_shard`;
+    const indexes = this.#indexes as Record<string, Index>;
+    if (!indexes[shardIndexName]) {
+      const shardColumn = this.#columns["_shard"];
+      if (!shardColumn) {
+        throw new Error(`Shard column missing on table ${this.#name}`);
+      }
+      // Safe: we're adding a system index to the internal indexes object
+      indexes[shardIndexName] = {
+        name: shardIndexName,
+        columns: [shardColumn],
+        columnNames: ["_shard"],
+        unique: false,
+      };
     }
 
     const table = {
@@ -1048,6 +1090,13 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         type: "add-column",
         columnName: "_version",
         column: builtTable.columns["_version"],
+      });
+    }
+    if (builtTable.columns["_shard"]) {
+      subOperations.push({
+        type: "add-column",
+        columnName: "_shard",
+        column: builtTable.columns["_shard"],
       });
     }
 
