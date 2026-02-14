@@ -862,9 +862,7 @@ describe("PreparedMigrations - default system migrations", () => {
       updateVersionInMigration: false,
     });
 
-    expect(sql).toContain(
-      `alter table "${tableName}" add column if not exists "${shardColumnName}" text`,
-    );
+    expect(sql).toContain(`alter table "${tableName}" add column "${shardColumnName}" text`);
     expect(sql).toContain(
       `create index if not exists "${shardIndexName}" on "${tableName}" ("${shardColumnName}")`,
     );

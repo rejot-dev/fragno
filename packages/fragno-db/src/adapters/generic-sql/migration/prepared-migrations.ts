@@ -274,7 +274,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       );
 
       // Execute the migration
-      await executeMigration(driverToUse, migration);
+      await executeMigration(driverToUse, migration, { databaseType: database });
     },
 
     getSQL(fromVersion, toVersion, options) {

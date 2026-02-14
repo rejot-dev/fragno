@@ -22,7 +22,7 @@ const buildShardBackfillStatements = (context: SystemMigrationContext): string[]
     const qualifiedTable = schemaName ? `"${schemaName}"."${tableName}"` : `"${tableName}"`;
 
     statements.push(
-      `alter table ${qualifiedTable} add column if not exists "${columnName}" text`,
+      `alter table ${qualifiedTable} add column "${columnName}" text`,
       `create index if not exists "${indexName}" on ${qualifiedTable} ("${columnName}")`,
     );
   }
