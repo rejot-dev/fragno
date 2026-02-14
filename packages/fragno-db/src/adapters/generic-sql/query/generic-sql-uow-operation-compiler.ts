@@ -69,8 +69,9 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   private shouldApplyJoinShardFilter(
     shardingStrategy: ShardingStrategy | undefined,
     shardScope: ShardScope,
+    shardFilterExempt?: boolean,
   ): boolean {
-    return shardingStrategy?.mode === "row" && shardScope !== "global";
+    return this.shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt);
   }
 
   private buildShardCondition(table: AnyTable, shard: string | null): Condition {
@@ -238,6 +239,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       const joinWithShardFilters = this.shouldApplyJoinShardFilter(
         op.shardingStrategy,
         op.shardScope,
+        op.shardFilterExempt,
       )
         ? this.applyJoinShardFilters(join, op.shard)
         : join;

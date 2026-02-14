@@ -1306,9 +1306,9 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."email" as "author:email", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "users"."_shard" = ?)"`,
+        `"select "author"."name" as "author:name", "author"."email" as "author:email", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "users"."_shard" = ?) where "posts"."_shard" = ?"`,
       );
-      expect(result!.parameters).toEqual(["tenant-a"]);
+      expect(result!.parameters).toEqual(["tenant-a", "tenant-a"]);
     });
 
     test("should compile join with specific column selection", () => {
