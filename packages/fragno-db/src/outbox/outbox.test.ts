@@ -241,6 +241,33 @@ async function createPost(
 const adapterConfigs = [{ type: "kysely-sqlite" as const }, { type: "kysely-pglite" as const }];
 
 describe("Fragno DB Outbox", () => {
+  it.each(adapterConfigs)("persists shard on outbox rows (%s)", async (config) => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      type: config.type,
+      outboxEnabled: true,
+    });
+
+    await fragment.inContext(async function () {
+      this.setShard("shard-alpha");
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(outboxSchema);
+          uow.create("users", { email: "shard-alpha@example.com" });
+        })
+        .execute();
+    });
+
+    const shardEntries = await listOutbox(internalFragment, undefined, { shard: "shard-alpha" });
+    expect(shardEntries).toHaveLength(1);
+
+    const otherShardEntries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-beta",
+    });
+    expect(otherShardEntries).toHaveLength(0);
+
+    await cleanup();
+  });
+
   it("does not write outbox entries when disabled", async () => {
     const { fragment, internalFragment, internalDb, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
@@ -292,15 +319,18 @@ describe("Fragno DB Outbox", () => {
       "0.authorId": userId.externalId,
     });
 
-    await assignOutboxShards(internalDb, ["shard-a", "shard-b"]);
+    await assignOutboxShards(internalDb, ["shard-a", null]);
 
     const shardAEntries = await listOutbox(internalFragment, undefined, { shard: "shard-a" });
     expect(shardAEntries).toHaveLength(1);
     expect(shardAEntries[0].versionstamp).toBe(entries[0].versionstamp);
 
-    const shardBEntries = await listOutbox(internalFragment, undefined, { shard: "shard-b" });
-    expect(shardBEntries).toHaveLength(1);
-    expect(shardBEntries[0].versionstamp).toBe(entries[1].versionstamp);
+    const shardNullEntries = await listOutbox(internalFragment, undefined, {
+      shard: null,
+      shardScope: "scoped",
+    });
+    expect(shardNullEntries).toHaveLength(1);
+    expect(shardNullEntries[0].versionstamp).toBe(entries[1].versionstamp);
 
     const globalEntries = await listOutbox(internalFragment, undefined, {
       shard: "shard-a",
@@ -316,8 +346,11 @@ describe("Fragno DB Outbox", () => {
         .execute();
     });
 
-    const afterInternal = await listOutbox(internalFragment);
-    expect(afterInternal).toHaveLength(2);
+    const afterInternal = await listOutbox(internalFragment, undefined, {
+      shard: "shard-a",
+      shardScope: "global",
+    });
+    expect(afterInternal).toHaveLength(globalEntries.length);
 
     await cleanup();
   });
@@ -368,20 +401,22 @@ describe("Fragno DB Outbox", () => {
       outboxEnabled: true,
     });
 
-    const createUow = fragment.$internal.deps.createUnitOfWork;
-    const uow1 = createUow();
-    const uow2 = createUow();
-    const uow1Id = uow1.idempotencyKey;
-    const uow2Id = uow2.idempotencyKey;
-
-    uow1.forSchema(outboxSchema).create("users", { email: "order-1@example.com" });
-    uow2.forSchema(outboxSchema).create("users", { email: "order-2@example.com" });
-
     const completionOrder: string[] = [];
-    await Promise.all([
-      uow1.executeMutations().then(() => completionOrder.push(uow1Id)),
-      uow2.executeMutations().then(() => completionOrder.push(uow2Id)),
-    ]);
+    await fragment.inContext(async function () {
+      const createUow = fragment.$internal.deps.createUnitOfWork;
+      const uow1 = createUow();
+      const uow2 = createUow();
+      const uow1Id = uow1.idempotencyKey;
+      const uow2Id = uow2.idempotencyKey;
+
+      uow1.forSchema(outboxSchema).create("users", { email: "order-1@example.com" });
+      uow2.forSchema(outboxSchema).create("users", { email: "order-2@example.com" });
+
+      await Promise.all([
+        uow1.executeMutations().then(() => completionOrder.push(uow1Id)),
+        uow2.executeMutations().then(() => completionOrder.push(uow2Id)),
+      ]);
+    });
 
     const entries = await listOutbox(internalFragment);
     expect(entries.map((entry) => entry.uowId)).toEqual(completionOrder);

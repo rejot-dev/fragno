@@ -177,6 +177,32 @@ async function createPost(
 }
 
 describe("in-memory outbox", () => {
+  it("persists shard on outbox rows", async () => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+    });
+
+    await fragment.inContext(async function () {
+      this.setShard("shard-alpha");
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(outboxSchema);
+          uow.create("users", { email: "shard-alpha@example.com" });
+        })
+        .execute();
+    });
+
+    const shardEntries = await listOutbox(internalFragment, undefined, { shard: "shard-alpha" });
+    expect(shardEntries).toHaveLength(1);
+
+    const otherShardEntries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-beta",
+    });
+    expect(otherShardEntries).toHaveLength(0);
+
+    await cleanup();
+  });
+
   it("does not write outbox entries when disabled", async () => {
     const { fragment, internalFragment, internalDb, cleanup } = await buildOutboxTest({
       outboxEnabled: false,

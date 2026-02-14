@@ -12,7 +12,7 @@ import { FragnoId, type AnyColumn } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
 import type { ConditionBuilder } from "../query/condition-builder";
-import type { ShardScope } from "../sharding";
+import type { ShardScope, ShardingStrategy } from "../sharding";
 import {
   internalSchema,
   INTERNAL_MIGRATION_VERSION_KEY,
@@ -35,6 +35,7 @@ type AdapterRegistry = {
     schemaName: string,
     commandName: string,
   ) => { command: unknown; namespace: string | null } | undefined;
+  shardingStrategy?: ShardingStrategy;
 };
 
 export class SchemaRegistryCollisionError extends Error {
@@ -626,6 +627,17 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .providesService("outboxService", ({ defineService }) => {
+    const buildShardCondition = (
+      eb: ConditionBuilder<Record<string, AnyColumn>>,
+      shard: string | null,
+      shardScope: ShardScope,
+    ) => {
+      if (shardScope !== "scoped") {
+        return null;
+      }
+      return shard === null ? eb.isNull("_shard") : eb("_shard", "=", shard);
+    };
+
     return defineService({
       /**
        * List outbox entries ordered by versionstamp (ascending).
@@ -638,16 +650,20 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              const applyShard = shardScope === "scoped" && shard !== null;
               let builder;
+              const indexName =
+                shardScope === "scoped"
+                  ? "idx_outbox_shard_versionstamp"
+                  : "idx_outbox_versionstamp";
 
-              if (afterValue || applyShard) {
-                builder = b.whereIndex("idx_outbox_versionstamp", ((
+              if (afterValue || shardScope === "scoped") {
+                builder = b.whereIndex(indexName, ((
                   eb: ConditionBuilder<Record<string, AnyColumn>>,
                 ) => {
                   const conditions: Array<ReturnType<typeof eb>> = [];
-                  if (applyShard) {
-                    conditions.push(eb("_shard", "=", shard));
+                  const shardCondition = buildShardCondition(eb, shard, shardScope);
+                  if (shardCondition) {
+                    conditions.push(shardCondition);
                   }
                   if (afterValue) {
                     conditions.push(eb("versionstamp", ">", afterValue));
@@ -658,10 +674,10 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   return eb.and(...conditions);
                 }) as never);
               } else {
-                builder = b.whereIndex("idx_outbox_versionstamp");
+                builder = b.whereIndex(indexName);
               }
 
-              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+              builder = builder.orderByIndex(indexName, "asc");
               if (limit !== undefined) {
                 builder = builder.pageSize(limit);
               }
