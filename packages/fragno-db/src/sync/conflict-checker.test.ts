@@ -43,7 +43,8 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       id text,
       name text,
       _internalId integer,
-      _version integer
+      _version integer,
+      _shard text
     );`.compile(dialect),
   );
 
@@ -53,7 +54,8 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       title text,
       userId integer,
       _internalId integer,
-      _version integer
+      _version integer,
+      _shard text
     );`.compile(dialect),
   );
 
@@ -66,7 +68,8 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       schema text,
       "table" text,
       externalId text,
-      op text
+      op text,
+      _shard text
     );`.compile(dialect),
   );
 };
@@ -81,18 +84,20 @@ describe("checkConflicts", () => {
     table,
     externalId,
     entryVersionstamp = nextVersionstamp,
+    shard,
   }: {
     id: string;
     schema: string;
     table: string;
     externalId: string;
     entryVersionstamp?: string;
+    shard?: string | null;
   }) => {
     await driver.executeQuery(
       sql`INSERT INTO fragno_db_outbox_mutations (
-            id, entryVersionstamp, mutationVersionstamp, uowId, schema, "table", externalId, op
+            id, entryVersionstamp, mutationVersionstamp, uowId, schema, "table", externalId, op, _shard
           ) VALUES (
-            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}
+            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}, ${shard ?? null}
           );`.compile(dialect),
     );
   };
@@ -441,6 +446,111 @@ describe("checkConflicts", () => {
         readScopes: [],
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
+    );
+
+    expect(hasConflict).toBe(false);
+  });
+
+  test("scopes key conflicts to the current shard in row mode", async () => {
+    await insertMutation({
+      id: "m12",
+      schema: "",
+      table: "users",
+      externalId: "u1",
+      shard: "alpha",
+    });
+
+    const hasConflict = await checkConflicts(
+      {
+        baseVersionstamp,
+        readKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        writeKeys: [],
+        readScopes: [],
+      },
+      {
+        driver,
+        driverConfig: new BetterSQLite3DriverConfig(),
+        shardingStrategy: { mode: "row" },
+        shard: "beta",
+        shardScope: "scoped",
+      },
+    );
+
+    expect(hasConflict).toBe(false);
+  });
+
+  test("does not filter conflicts when shardScope is global", async () => {
+    await insertMutation({
+      id: "m13",
+      schema: "",
+      table: "users",
+      externalId: "u1",
+      shard: "alpha",
+    });
+
+    const hasConflict = await checkConflicts(
+      {
+        baseVersionstamp,
+        readKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        writeKeys: [],
+        readScopes: [],
+      },
+      {
+        driver,
+        driverConfig: new BetterSQLite3DriverConfig(),
+        shardingStrategy: { mode: "row" },
+        shard: "beta",
+        shardScope: "global",
+      },
+    );
+
+    expect(hasConflict).toBe(true);
+  });
+
+  test("read scopes are filtered by shard in row mode", async () => {
+    await driver.executeQuery(
+      sql`INSERT INTO posts (id, title, userId, _internalId, _version, _shard)
+          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0, ${"alpha"});`.compile(dialect),
+    );
+
+    await insertMutation({
+      id: "m14",
+      schema: "",
+      table: "posts",
+      externalId: "p1",
+      shard: "beta",
+    });
+
+    const options = buildFindOptions(testSchema.tables.posts, {
+      where: (eb) => eb("title", "=", "Hello"),
+    });
+
+    if (!options) {
+      throw new Error("Expected options to compile.");
+    }
+
+    const hasConflict = await checkConflicts(
+      {
+        baseVersionstamp,
+        readKeys: [],
+        writeKeys: [],
+        readScopes: [
+          {
+            schema: "",
+            table: testSchema.tables.posts,
+            indexName: "primary",
+            condition: options.where,
+            joins: options.join,
+          },
+        ],
+      },
+      {
+        driver,
+        driverConfig: new BetterSQLite3DriverConfig(),
+        shardingStrategy: { mode: "row" },
+        shard: "beta",
+        shardScope: "scoped",
+      },
     );
 
     expect(hasConflict).toBe(false);
