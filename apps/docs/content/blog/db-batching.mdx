@@ -1,0 +1,203 @@
+---
+title: "Read, then write: batching DB queries as a practical middle ground"
+description:
+  "Batching (pipelining) is a practical middle ground between interactive transactions and CTEs:
+  fewer round trips without sacrificing procedural logic."
+date: "2026-02-16"
+author: "Wilco Kruijer"
+image: "blog-db-batching.jpg"
+---
+
+# Read, then write: batching DB queries as a practical middle ground
+
+It's 2026. Everyone knows about the N+1 query problem. If we put a db query in a loop, we'll pay the
+database round-trip overhead for each iteration.
+
+So we know round-trips are bad. Yet, many apps still have way too many round-trips to the database
+in the form of interactive transactions.
+
+The alternative is using CTEs to amortize the cost of the round trips, but they come with a
+trade-off in code complexity. In this article, I'll argue for a third option.
+
+First, consider this procedural approach using an interactive transaction:
+
+```ts
+async function assignLoyaltyTier(db, userId) {
+  return db.transaction(async (tx) => {
+    // Round trip 1: check enrollment
+    const [user] = await tx
+      .select({ enrolled: users.loyaltyEnrolled })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user.enrolled) return null; // early return
+
+    // Round trip 2: count orders
+    const [stats] = await tx
+      .select({ orderCount: count() })
+      .from(orders)
+      .where(eq(orders.userId, userId));
+
+    // JS: compute tier
+    const tier = stats.orderCount >= 10 ? "gold" : stats.orderCount >= 5 ? "silver" : "bronze";
+
+    // Round trip 3: insert membership
+    const [result] = await tx.insert(memberships).values({ userId, tier }).returning();
+
+    return result;
+  });
+}
+```
+
+Depending on the ORM/driver, the example above might also have hidden round trips for `BEGIN` and
+`COMMIT` statements. So this is 3-5 round trips. Pretty bad.
+
+Now, most engineers should know about CTEs, and use them to amortize the cost of the round trips.
+[^1]
+
+```ts
+async function assignLoyaltyTier(db, userId) {
+  const eligible = db.$with("eligible").as(
+    db
+      .select({
+        userId: users.id,
+        orderCount: count(orders.id).as("order_count"),
+      })
+      .from(users)
+      .innerJoin(orders, eq(orders.userId, users.id))
+      .where(and(eq(users.id, userId), eq(users.loyaltyEnrolled, true)))
+      .groupBy(users.id),
+  );
+
+  const [result] = await db
+    .with(eligible)
+    .insert(memberships)
+    .select(
+      db
+        .select({
+          userId: eligible.userId,
+          tier: sql<string>`CASE
+            WHEN order_count >= 10 THEN 'gold'
+            WHEN order_count >= 5 THEN 'silver'
+            ELSE 'bronze'
+          END`.as("tier"),
+        })
+        .from(eligible),
+    )
+    .returning();
+
+  return result ?? null;
+}
+```
+
+One round trip, better. But the code is now (arguably) more complex. The early return is "hidden" in
+the CTE, by making the query return zero rows if the user isn't enrolled. This means the
+`INSERT...SELECT` query returns zero rows.
+
+We also had to use a `CASE` expression to compute the tier. In this example, it's fine. But if we
+had some more complex logic, like an algebraic expression to calculate the tier, what would we do?
+
+The code became less procedural and more declarative (you may judge if this is a good or bad thing).
+
+## A third option: batching / pipelining
+
+There's a middle ground I like a lot: batching (in PostgreSQL called "pipelining"). Queries are sent
+sequentially, but the connection does not wait for each query to complete before sending the next.
+
+(This is pseudocode, since JS Postgres drivers do not support pipelining yet.)
+
+```ts
+async function assignLoyaltyTier(db, userId) {
+  // Read phase: both queries go out in a single round trip
+  const [[user], [stats]] = await db.pipeline([
+    db.select({ enrolled: users.loyaltyEnrolled }).from(users).where(eq(users.id, userId)),
+    db.select({ orderCount: count() }).from(orders).where(eq(orders.userId, userId)),
+  ]);
+
+  if (!user.enrolled) return null;
+
+  // JS: compute tier
+  const tier = stats.orderCount >= 10 ? "gold" : stats.orderCount >= 5 ? "silver" : "bronze";
+
+  // Write phase: single insert (1 round trip)
+  const [result] = await db.insert(memberships).values({ userId, tier }).returning();
+
+  return result;
+}
+```
+
+This example is inspired by optimistic concurrency control systems. They typically operate with two
+phases: read and write. Note that the transactional semantics are not exactly the same as the first
+two options. I'll write more about that in the future.
+
+I believe this is a good trade-off between the first two options. The JavaScript code is
+procedural/simple, and the performance is decent.
+
+## Amortizing across business logic
+
+Interactive transactions are notoriously hard to share between parts of the business logic. [^2]
+
+Let's face it. Most applications are request-based CRUD systems. An HTTP request comes in, some
+business logic is executed, and a response is sent out. If a single endpoint calls into multiple
+parts of the business logic, more often than not, the transaction is not shared.
+
+If we accept that every database interaction always has two phases, it becomes easier to share the
+transaction between parts of the business logic.
+
+We can have a "coordinator" in the scope of the incoming request. For example, in Fragno, services
+define two-phase operations and handlers control execution:
+
+```ts
+function assignTier(userId: string) {
+  return this.serviceTx(schema)
+    .retrieve((uow) =>
+      uow
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)))
+        .findFirst("orders", (b) =>
+          b.whereIndex("idx_orders_user_id", (eb) => eb("userId", "=", userId)).selectCount(),
+        ),
+    )
+    .mutate(({ uow, retrieveResult: [user, orderCount] }) => {
+      if (!user || !user.loyaltyEnrolled) return null;
+
+      const tier = orderCount >= 10 ? "gold" : orderCount >= 5 ? "silver" : "bronze";
+      uow.create("memberships", { userId, tier });
+
+      return { userId, tier };
+    })
+    .build();
+}
+```
+
+The service returns a `TxResult`; it doesn't execute anything. The payoff comes when a handler calls
+multiple services:
+
+```ts
+const [tier, bonus] = await this.handlerTx()
+  .withServiceCalls(() => [
+    loyaltyService.assignTier(userId),
+    rewardsService.issueWelcomeBonus(userId),
+  ])
+  .execute();
+```
+
+All reads from both services batch into one round trip. All writes batch into another. Still two
+round trips total regardless of how many services participate.
+
+I haven't covered a few things in this article, like atomicity in the coordinator and conflict
+handling. There's also hidden advantages, like being able to "tack on" additional system queries to
+the transaction. I'll cover these in future articles.
+
+<div className="not-prose my-16 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+
+You can learn more about the Fragno transaction builder pattern in the
+[Transactions](/docs/fragno/for-library-authors/database-integration/transactions) documentation.
+
+[^1]:
+    To be honest, I'm not sure if most engineers know about CTEs. While writing code in the past
+    (and also this article) I've noticed that my LLM struggles to write Drizzle CTEs. This tells me
+    that there aren't enough CTEs in the training data.
+
+[^2]:
+    I believe this is because in typed languages, it's hard to share an object that represents a
+    transaction. However, there are frameworks that nicely solve this (outside of the JS ecosystem).
