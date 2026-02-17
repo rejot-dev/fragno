@@ -10,6 +10,10 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./client": {
+      "types": "./dist/browser/client/clients.d.ts",
+      "default": "./dist/browser/client/clients.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

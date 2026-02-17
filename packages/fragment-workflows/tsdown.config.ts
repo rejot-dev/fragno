@@ -23,6 +23,7 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
+      "./src/client/clients.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",

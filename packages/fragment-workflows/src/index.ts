@@ -28,7 +28,6 @@ export { workflowsRoutesFactory };
 export { workflowsSchema };
 export { createWorkflowsRunner };
 export { attachWorkflowsBindings };
-export { createWorkflowsClients } from "./client/clients";
 export { defineWorkflow } from "./workflow";
 export type { WorkflowContext, WorkflowDefinition } from "./workflow";
 export * from "./workflow";
