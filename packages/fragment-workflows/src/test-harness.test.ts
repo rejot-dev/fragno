@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
 import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 
@@ -27,6 +28,7 @@ describe("createWorkflowsTestHarness", () => {
     const harness = await createWorkflowsTestHarness({
       workflows,
       adapter: { type: "drizzle-pglite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
 
     const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
@@ -86,6 +88,7 @@ describe("createWorkflowsTestHarness", () => {
     const harness = await createWorkflowsTestHarness({
       workflows,
       adapter: { type: "drizzle-pglite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
     testClock = harness.clock;
 

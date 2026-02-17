@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDatabaseFragmentsTest,
   ModelCheckerAdapter,
   runModelCheckerWithActors,
   type ModelCheckerInvariant,
@@ -65,6 +66,7 @@ describe("workflows model checker (runner)", () => {
         const harness = await createWorkflowsTestHarness({
           workflows,
           adapter: { type: "model-checker", options: { idSeed: "workflows-model-checker" } },
+          testBuilder: buildDatabaseFragmentsTest(),
           runtime,
           autoTickHooks: false,
         });

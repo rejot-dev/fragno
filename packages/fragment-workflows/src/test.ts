@@ -3,11 +3,7 @@ import {
   type AnyFragnoInstantiatedFragment,
   type FragnoRuntime,
 } from "@fragno-dev/core";
-import {
-  buildDatabaseFragmentsTest,
-  type SupportedAdapter,
-  type TestContext,
-} from "@fragno-dev/test";
+import type { DatabaseFragmentsTestBuilder, SupportedAdapter, TestContext } from "@fragno-dev/test";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
@@ -92,6 +88,10 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
 export type WorkflowsTestHarnessOptions<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
   workflows: TRegistry;
   adapter: SupportedAdapter;
+  /**
+   * Builder returned by `buildDatabaseFragmentsTest()` from @fragno-dev/test.
+   */
+  testBuilder: DatabaseFragmentsTestBuilder<{}, undefined>;
   clockStartAt?: Date | number;
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
@@ -274,7 +274,7 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     ...options.fragmentConfig,
   };
 
-  const { fragments, test } = await buildDatabaseFragmentsTest()
+  const { fragments, test } = await options.testBuilder
     .withTestAdapter(options.adapter)
     .withFragment(
       "workflows",
