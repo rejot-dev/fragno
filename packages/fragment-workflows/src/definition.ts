@@ -1,6 +1,6 @@
 // Fragment definition and service implementations for workflow instances.
 import { defineFragment } from "@fragno-dev/core";
-import { dbNow, withDatabase } from "@fragno-dev/db";
+import { withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "./schema";
@@ -161,10 +161,8 @@ type ListHistoryParams = {
 
 type InstanceDetails = { id: string; details: InstanceStatus };
 
-function generateInstanceId(nowMs: number, randomFloat: () => number) {
-  const timePart = nowMs.toString(36);
-  const randomPart = randomFloat().toString(36).slice(2, 10);
-  return `inst_${timePart}_${randomPart}`;
+function generateInstanceId(randomUuid: () => string) {
+  return `inst_${randomUuid()}`;
 }
 
 function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceStatus {
@@ -295,10 +293,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     }),
   }))
   .providesBaseService(({ defineService, config }) => {
-    const getNow = () => config.runtime.time.now();
-    const getDbNow = async () => getNow();
-    const getRunAtNow = () => config.dbNow?.() ?? dbNow();
-    const randomFloat = () => config.runtime.random.float();
+    const randomUuid = () => config.runtime.random.uuid();
     const workflowsByName = new Map<string, WorkflowRegistryEntry>();
 
     for (const entry of Object.values(config.workflows ?? {})) {
@@ -330,11 +325,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     };
 
     return defineService({
-      getDbNow,
       validateWorkflowParams,
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
-        const now = getNow();
-        const instanceId = options?.id ?? generateInstanceId(now.getTime(), randomFloat);
+        const instanceId = options?.id ?? generateInstanceId(randomUuid);
         const params = options?.params ?? {};
 
         return this.serviceTx(workflowsSchema)
@@ -371,7 +364,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instanceId,
               runNumber: 0,
               kind: "run",
-              runAt: getRunAtNow(),
+              runAt: uow.now(),
               status: "pending",
               attempts: 0,
               maxAttempts: 1,
@@ -451,7 +444,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 instanceId: instance.id,
                 runNumber: 0,
                 kind: "run",
-                runAt: getRunAtNow(),
+                runAt: uow.now(),
                 status: "pending",
                 attempts: 0,
                 maxAttempts: 1,
@@ -774,7 +767,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .set({
                     status: "waitingForPause",
                     pauseRequested: true,
-                    updatedAt: getNow(),
+                    updatedAt: b.now(),
                   })
                   .check(),
               );
@@ -793,7 +786,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .set({
                     status: "paused",
                     pauseRequested: false,
-                    updatedAt: getNow(),
+                    updatedAt: b.now(),
                   })
                   .check(),
               );
@@ -811,8 +804,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       resumeInstance: function (workflowName: string, instanceId: string) {
-        const now = getNow();
-
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow
@@ -844,7 +835,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 .set({
                   status: "queued",
                   pauseRequested: false,
-                  updatedAt: now,
+                  updatedAt: b.now(),
                 })
                 .check(),
             );
@@ -854,13 +845,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 b
                   .set({
                     kind: "resume",
-                    runAt: getRunAtNow(),
+                    runAt: b.now(),
                     status: "pending",
                     attempts: 0,
                     lastError: null,
                     lockedUntil: null,
                     lockOwner: null,
-                    updatedAt: now,
+                    updatedAt: b.now(),
                   })
                   .check(),
               );
@@ -871,7 +862,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 instanceId,
                 runNumber: instance.runNumber,
                 kind: "resume",
-                runAt: getRunAtNow(),
+                runAt: uow.now(),
                 status: "pending",
                 attempts: 0,
                 maxAttempts: 1,
@@ -897,8 +888,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       terminateInstance: function (workflowName: string, instanceId: string) {
-        const now = getNow();
-
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -921,8 +910,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               b
                 .set({
                   status: "terminated",
-                  completedAt: now,
-                  updatedAt: now,
+                  completedAt: b.now(),
+                  updatedAt: b.now(),
                   pauseRequested: false,
                 })
                 .check(),
@@ -938,8 +927,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       restartInstance: function (workflowName: string, instanceId: string) {
-        const now = getNow();
-
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -966,7 +953,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   output: null,
                   errorName: null,
                   errorMessage: null,
-                  updatedAt: now,
+                  updatedAt: b.now(),
                 })
                 .check(),
             );
@@ -977,7 +964,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instanceId,
               runNumber: nextRun,
               kind: "run",
-              runAt: getRunAtNow(),
+              runAt: uow.now(),
               status: "pending",
               attempts: 0,
               maxAttempts: 1,
@@ -1006,8 +993,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         instanceId: string,
         options: { type: string; payload?: unknown },
       ) {
-        const now = getNow();
-
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow
@@ -1022,7 +1007,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                     eb("workflowName", "=", workflowName),
                     eb("instanceId", "=", instanceId),
                     eb("status", "=", "waiting"),
-                    eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", dbNow())),
+                    eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", eb.now())),
                   ),
                 ),
               )
@@ -1068,13 +1053,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   b
                     .set({
                       kind: "wake",
-                      runAt: getRunAtNow(),
+                      runAt: b.now(),
                       status: "pending",
                       attempts: 0,
                       lastError: null,
                       lockedUntil: null,
                       lockOwner: null,
-                      updatedAt: now,
+                      updatedAt: b.now(),
                     })
                     .check(),
                 );
@@ -1085,7 +1070,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   instanceId,
                   runNumber: instance.runNumber,
                   kind: "wake",
-                  runAt: getRunAtNow(),
+                  runAt: uow.now(),
                   status: "pending",
                   attempts: 0,
                   maxAttempts: 1,

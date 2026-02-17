@@ -1,15 +1,15 @@
 // Task leasing and task/instance transition helpers for the workflow runner.
 
-import { ConcurrencyConflictError, type TxResult } from "@fragno-dev/db";
+import { ConcurrencyConflictError, type DbNow, type TxResult } from "@fragno-dev/db";
 import { FragnoId } from "@fragno-dev/db/schema";
-import type { FragnoRuntime } from "@fragno-dev/core";
 import { workflowsSchema } from "../schema";
 import { NonRetryableError } from "../workflow";
 import type {
   RunHandlerTx,
   WorkflowEventRecord,
   WorkflowInstanceRecord,
-  WorkflowInstanceUpdate,
+  WorkflowInstanceUpdateInput,
+  WorkflowRunAt,
   WorkflowStepRecord,
   WorkflowTaskRecord,
 } from "./types";
@@ -25,17 +25,39 @@ const requireFragnoId = (value: unknown, label: string): FragnoId => {
   throw new Error(`OCC_REQUIRED_${label}`);
 };
 
+type StepDelayFields = {
+  nextRetryDelayMs?: number | null;
+  wakeDelayMs?: number | null;
+};
+
+const delayToNow = (base: DbNow, delayMs?: number | null) => {
+  if (delayMs === undefined) {
+    return undefined;
+  }
+  if (delayMs === null) {
+    return null;
+  }
+  return base.plus({ ms: delayMs });
+};
+
+const applyStepDelays = (base: DbNow, delays: StepDelayFields) => {
+  const nextRetryAt = delayToNow(base, delays.nextRetryDelayMs);
+  const wakeAt = delayToNow(base, delays.wakeDelayMs);
+  return {
+    ...(nextRetryAt === undefined ? {} : { nextRetryAt }),
+    ...(wakeAt === undefined ? {} : { wakeAt }),
+  };
+};
+
 type TaskContext = {
   runHandlerTx: RunHandlerTx;
-  time: FragnoRuntime["time"];
   runnerId: string;
   leaseMs: number;
-  getDbNow: () => Promise<Date>;
 };
 
 export const claimTask = async (
   task: WorkflowTaskRecord,
-  now: Date,
+  source: "pending" | "expired",
   ctx: TaskContext,
 ): Promise<{
   task: WorkflowTaskRecord;
@@ -46,9 +68,6 @@ export const claimTask = async (
   if (!task) {
     return null;
   }
-
-  const claimedAt = now;
-  const lockedUntil = new Date(now.getTime() + ctx.leaseMs);
 
   let outcome;
   try {
@@ -101,12 +120,11 @@ export const claimTask = async (
             return { kind: "noop" as const };
           }
 
-          const hasActiveLease =
-            currentTask.status === "processing" && currentTask.lockedUntil
-              ? currentTask.lockedUntil > now
-              : false;
-          const canStealProcessing = currentTask.status === "processing" && !hasActiveLease;
-          if (currentTask.status !== "pending" && !canStealProcessing) {
+          if (source === "pending") {
+            if (currentTask.status !== "pending") {
+              return { kind: "noop" as const };
+            }
+          } else if (currentTask.status !== "processing") {
             return { kind: "noop" as const };
           }
 
@@ -133,8 +151,8 @@ export const claimTask = async (
               const builder = b.set({
                 status: "processing",
                 lockOwner: ctx.runnerId,
-                lockedUntil,
-                updatedAt: claimedAt,
+                lockedUntil: b.now().plus({ ms: ctx.leaseMs }),
+                updatedAt: b.now(),
               });
               builder.check();
               return builder;
@@ -160,8 +178,6 @@ export const claimTask = async (
       ...outcome.task,
       status: "processing",
       lockOwner: ctx.runnerId,
-      lockedUntil,
-      updatedAt: claimedAt,
     },
     instance: outcome.instance,
     steps: outcome.steps,
@@ -173,7 +189,7 @@ export const flushStepBoundary = async (
   instance: WorkflowInstanceRecord,
   mutations: RunnerMutationBuffer,
   stepMutations: RunnerStepMutationBuffer | null,
-  ctx: Pick<TaskContext, "runHandlerTx" | "getDbNow">,
+  ctx: Pick<TaskContext, "runHandlerTx">,
 ): Promise<boolean> => {
   const hasStepMutations =
     !!stepMutations &&
@@ -187,8 +203,6 @@ export const flushStepBoundary = async (
   ) {
     return true;
   }
-
-  const dbNow = await ctx.getDbNow();
 
   try {
     await ctx.runHandlerTx((handlerTx) => {
@@ -239,24 +253,35 @@ export const flushStepBoundary = async (
           }
 
           const uow = handlerTxContext.forSchema(workflowsSchema);
+          const dbNowValue = uow.now();
           const instanceId = currentInstance.id;
           uow.update("workflow_instance", instanceId, (b) => {
             requireFragnoId(instanceId, "INSTANCE_ID");
             const builder = b.set({
-              updatedAt: dbNow,
+              updatedAt: b.now(),
             });
             builder.check();
             return builder;
           });
 
           for (const [, createData] of mutations.stepCreates) {
-            uow.create("workflow_step", createData);
+            const { nextRetryDelayMs, wakeDelayMs, ...data } = createData;
+            uow.create("workflow_step", {
+              ...data,
+              ...applyStepDelays(dbNowValue, { nextRetryDelayMs, wakeDelayMs }),
+            });
           }
 
           for (const [, updateEntry] of mutations.stepUpdates) {
             uow.update("workflow_step", updateEntry.id, (b) => {
               requireFragnoId(updateEntry.id, "STEP_ID");
-              const builder = b.set(updateEntry.data);
+              const { nextRetryDelayMs, wakeDelayMs, ...data } = updateEntry.data;
+              const now = b.now();
+              const builder = b.set({
+                ...data,
+                ...applyStepDelays(now, { nextRetryDelayMs, wakeDelayMs }),
+                updatedAt: now,
+              });
               builder.check();
               return builder;
             });
@@ -265,7 +290,10 @@ export const flushStepBoundary = async (
           for (const [, eventUpdate] of mutations.eventUpdates) {
             uow.update("workflow_event", eventUpdate.id, (b) => {
               requireFragnoId(eventUpdate.id, "EVENT_ID");
-              const builder = b.set(eventUpdate.data);
+              const builder = b.set({
+                ...eventUpdate.data,
+                deliveredAt: b.now(),
+              });
               builder.check();
               return builder;
             });
@@ -294,9 +322,9 @@ export const flushStepBoundary = async (
     );
     if (refreshed) {
       instance.id = refreshed.id;
-      instance.updatedAt = refreshed.updatedAt ?? dbNow;
+      instance.updatedAt = refreshed.updatedAt ?? instance.updatedAt ?? null;
     } else {
-      instance.updatedAt = dbNow;
+      instance.updatedAt = instance.updatedAt ?? null;
     }
     return true;
   } catch (err) {
@@ -311,15 +339,22 @@ export const commitInstanceAndTask = async (
   task: WorkflowTaskRecord,
   instance: WorkflowInstanceRecord,
   status: string,
-  update: Partial<WorkflowInstanceUpdate>,
+  update: WorkflowInstanceUpdateInput,
   taskAction:
     | { kind: "delete" }
-    | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: Date },
+    | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: WorkflowRunAt },
   mutations: RunnerMutationBuffer,
-  ctx: Pick<TaskContext, "runHandlerTx" | "time" | "getDbNow">,
+  ctx: Pick<TaskContext, "runHandlerTx">,
 ): Promise<boolean> => {
-  const { id: _ignoredInstanceId, ...safeUpdate } = update as WorkflowInstanceRecord;
-  const dbNow = await ctx.getDbNow();
+  const {
+    id: _ignoredInstanceId,
+    setStartedAtNow,
+    setCompletedAtNow,
+    ...safeUpdate
+  } = update as WorkflowInstanceRecord & {
+    setStartedAtNow?: boolean;
+    setCompletedAtNow?: boolean;
+  };
 
   try {
     await ctx.runHandlerTx((handlerTx) =>
@@ -332,7 +367,9 @@ export const commitInstanceAndTask = async (
             const builder = b.set({
               ...safeUpdate,
               status,
-              updatedAt: dbNow,
+              updatedAt: b.now(),
+              ...(setStartedAtNow ? { startedAt: b.now() } : {}),
+              ...(setCompletedAtNow ? { completedAt: b.now() } : {}),
             });
             builder.check();
             return builder;
@@ -341,24 +378,32 @@ export const commitInstanceAndTask = async (
           if (taskAction.kind === "delete") {
             uow.delete("workflow_task", task.id);
           } else {
-            uow.update("workflow_task", task.id, (b) =>
-              b.set({
+            uow.update("workflow_task", task.id, (b) => {
+              const runAt =
+                "delayMs" in taskAction.runAt
+                  ? b.now().plus({ ms: taskAction.runAt.delayMs })
+                  : taskAction.runAt;
+              return b.set({
                 kind: taskAction.taskKind,
-                runAt: taskAction.runAt,
+                runAt,
                 status: "pending",
                 attempts: 0,
                 lastError: null,
                 lockOwner: null,
                 lockedUntil: null,
-                updatedAt: dbNow,
-              }),
-            );
+                updatedAt: b.now(),
+              });
+            });
             const reason =
               taskAction.taskKind === "retry"
                 ? "retry"
                 : taskAction.taskKind === "wake"
                   ? "wake"
                   : "create";
+            const processAt =
+              "delayMs" in taskAction.runAt
+                ? uow.now().plus({ ms: taskAction.runAt.delayMs })
+                : taskAction.runAt;
             uow.triggerHook(
               "onWorkflowEnqueued",
               {
@@ -366,18 +411,28 @@ export const commitInstanceAndTask = async (
                 instanceId: task.instanceId,
                 reason,
               },
-              { processAt: taskAction.runAt },
+              { processAt },
             );
           }
 
           for (const [, createData] of mutations.stepCreates) {
-            uow.create("workflow_step", createData);
+            const { nextRetryDelayMs, wakeDelayMs, ...data } = createData;
+            uow.create("workflow_step", {
+              ...data,
+              ...applyStepDelays(uow.now(), { nextRetryDelayMs, wakeDelayMs }),
+            });
           }
 
           for (const [, updateEntry] of mutations.stepUpdates) {
             uow.update("workflow_step", updateEntry.id, (b) => {
               requireFragnoId(updateEntry.id, "STEP_ID");
-              const builder = b.set(updateEntry.data);
+              const { nextRetryDelayMs, wakeDelayMs, ...data } = updateEntry.data;
+              const now = b.now();
+              const builder = b.set({
+                ...data,
+                ...applyStepDelays(now, { nextRetryDelayMs, wakeDelayMs }),
+                updatedAt: now,
+              });
               builder.check();
               return builder;
             });
@@ -386,7 +441,10 @@ export const commitInstanceAndTask = async (
           for (const [, eventUpdate] of mutations.eventUpdates) {
             uow.update("workflow_event", eventUpdate.id, (b) => {
               requireFragnoId(eventUpdate.id, "EVENT_ID");
-              const builder = b.set(eventUpdate.data);
+              const builder = b.set({
+                ...eventUpdate.data,
+                deliveredAt: b.now(),
+              });
               builder.check();
               return builder;
             });
@@ -454,7 +512,7 @@ export const commitInstanceAndTask = async (
               const builder = b.set({
                 status: "paused",
                 pauseRequested: false,
-                updatedAt: dbNow,
+                updatedAt: b.now(),
               });
               builder.check();
               return builder;
@@ -462,13 +520,23 @@ export const commitInstanceAndTask = async (
 
             uow.delete("workflow_task", task.id);
             for (const [, createData] of mutations.stepCreates) {
-              uow.create("workflow_step", createData);
+              const { nextRetryDelayMs, wakeDelayMs, ...data } = createData;
+              uow.create("workflow_step", {
+                ...data,
+                ...applyStepDelays(uow.now(), { nextRetryDelayMs, wakeDelayMs }),
+              });
             }
 
             for (const [, updateEntry] of mutations.stepUpdates) {
               uow.update("workflow_step", updateEntry.id, (b) => {
                 requireFragnoId(updateEntry.id, "STEP_ID");
-                const builder = b.set(updateEntry.data);
+                const { nextRetryDelayMs, wakeDelayMs, ...data } = updateEntry.data;
+                const now = b.now();
+                const builder = b.set({
+                  ...data,
+                  ...applyStepDelays(now, { nextRetryDelayMs, wakeDelayMs }),
+                  updatedAt: now,
+                });
                 builder.check();
                 return builder;
               });
@@ -477,7 +545,10 @@ export const commitInstanceAndTask = async (
             for (const [, eventUpdate] of mutations.eventUpdates) {
               uow.update("workflow_event", eventUpdate.id, (b) => {
                 requireFragnoId(eventUpdate.id, "EVENT_ID");
-                const builder = b.set(eventUpdate.data);
+                const builder = b.set({
+                  ...eventUpdate.data,
+                  deliveredAt: b.now(),
+                });
                 builder.check();
                 return builder;
               });
@@ -522,8 +593,6 @@ export const renewTaskLease = async (
   taskId: WorkflowTaskRecord["id"],
   ctx: TaskContext,
 ): Promise<{ ok: boolean; instance: WorkflowInstanceRecord | null }> => {
-  const dbNow = await ctx.getDbNow();
-  const lockedUntil = new Date(dbNow.getTime() + ctx.leaseMs);
   try {
     const outcome = await ctx.runHandlerTx((handlerTx) =>
       handlerTx()
@@ -545,8 +614,8 @@ export const renewTaskLease = async (
           }
           forSchema(workflowsSchema).update("workflow_task", taskId, (b) =>
             b.set({
-              lockedUntil,
-              updatedAt: dbNow,
+              lockedUntil: b.now().plus({ ms: ctx.leaseMs }),
+              updatedAt: b.now(),
             }),
           );
         })

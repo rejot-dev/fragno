@@ -1,6 +1,5 @@
 // Workflow step executor with in-memory state, retries, and waiting semantics.
 
-import type { FragnoRuntime } from "@fragno-dev/core";
 import type {
   WorkflowDuration,
   WorkflowLogger,
@@ -11,7 +10,7 @@ import type {
   WorkflowStepTx,
 } from "../workflow";
 import { NonRetryableError } from "../workflow";
-import type { WorkflowLogCreate, WorkflowStepRecord } from "./types";
+import type { WorkflowLogCreate, WorkflowRunAt, WorkflowStepRecord } from "./types";
 import {
   computeRetryDelayMs,
   isUniqueConstraintError,
@@ -20,7 +19,6 @@ import {
 } from "./utils";
 import { parseDurationMs } from "../utils";
 import { isTerminalStatus } from "./status";
-import type { RunnerState } from "./state";
 import {
   clearStepMutationBuffer,
   getStepSnapshot,
@@ -32,11 +30,12 @@ import {
   queueStepUpdate,
   resetMutations,
 } from "./state";
+import type { RunnerState } from "./state";
 
 class WorkflowSuspend extends Error {
   constructor(
     readonly kind: "wake" | "retry",
-    readonly runAt: Date,
+    readonly runAt: WorkflowRunAt,
   ) {
     super("WORKFLOW_SUSPEND");
   }
@@ -84,8 +83,7 @@ export class RunnerStep implements WorkflowStep {
   #inFlightSteps = new Set<string>();
   #maxSteps: number;
   #stepCount = 0;
-  #time: FragnoRuntime["time"];
-  #getDbNow: () => Promise<Date>;
+  #taskRunAt: Date;
   #flushStepBoundary:
     | ((
         mutations: RunnerState["mutations"],
@@ -102,8 +100,7 @@ export class RunnerStep implements WorkflowStep {
     instanceId: string;
     runNumber: number;
     maxSteps: number;
-    time: FragnoRuntime["time"];
-    getDbNow: () => Promise<Date>;
+    taskRunAt: Date;
     flushStepBoundary: (
       mutations: RunnerState["mutations"],
       stepMutations: ReturnType<typeof getStepMutationBufferIfExists>,
@@ -115,8 +112,7 @@ export class RunnerStep implements WorkflowStep {
     this.#instanceId = options.instanceId;
     this.#runNumber = options.runNumber;
     this.#maxSteps = options.maxSteps;
-    this.#time = options.time;
-    this.#getDbNow = options.getDbNow;
+    this.#taskRunAt = options.taskRunAt;
     this.#flushStepBoundary = options.flushStepBoundary;
     this.log = {
       debug: (message, data, opts) => this.#writeLog("debug", message, data, opts),
@@ -141,8 +137,6 @@ export class RunnerStep implements WorkflowStep {
     }
 
     this.#beginStep(name);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
 
     try {
       const existing = getStepSnapshot(this.#state, name);
@@ -157,10 +151,11 @@ export class RunnerStep implements WorkflowStep {
       }
 
       if (existing?.status === "waiting" && existing.nextRetryAt) {
-        if (existing.nextRetryAt > dbNow) {
+        const remainingMs = existing.nextRetryAt.getTime() - this.#taskRunAt.getTime();
+        if (remainingMs > 0) {
           clearStepMutationBuffer(this.#state, name);
           await this.#throwIfPauseRequested();
-          throw new WorkflowSuspend("retry", existing.nextRetryAt);
+          throw new WorkflowSuspend("retry", { delayMs: remainingMs });
         }
       }
 
@@ -180,7 +175,6 @@ export class RunnerStep implements WorkflowStep {
             status: "errored",
             errorName: "StepMaxAttemptsExceeded",
             errorMessage: "STEP_MAX_ATTEMPTS_EXCEEDED",
-            updatedAt: now,
           });
         }
         throw new NonRetryableError("STEP_MAX_ATTEMPTS_EXCEEDED", "StepMaxAttemptsExceeded");
@@ -193,10 +187,9 @@ export class RunnerStep implements WorkflowStep {
         attempts: attempt,
         maxAttempts,
         timeoutMs,
-        nextRetryAt: null,
+        nextRetryDelayMs: null,
         errorName: null,
         errorMessage: null,
-        updatedAt: now,
       };
 
       if (existing?.id) {
@@ -220,8 +213,6 @@ export class RunnerStep implements WorkflowStep {
           result: null,
           errorName: null,
           errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
         });
       }
 
@@ -233,7 +224,6 @@ export class RunnerStep implements WorkflowStep {
         const completionUpdate = {
           status: "completed",
           result,
-          updatedAt: this.#time.now(),
         };
         const snapshot = getStepSnapshot(this.#state, name);
         queueStepUpdate(this.#state, name, snapshot?.id, completionUpdate);
@@ -253,33 +243,23 @@ export class RunnerStep implements WorkflowStep {
         const nonRetryable = error instanceof NonRetryableError;
         const shouldRetry = !nonRetryable && attempt < maxAttempts;
 
-        let nextRetryAt: Date | null = null;
-        if (shouldRetry) {
-          let retryBase: Date;
-          try {
-            retryBase = await this.#getDbNow();
-          } catch {
-            retryBase = this.#time.now();
-          }
-          nextRetryAt = new Date(
-            retryBase.getTime() + computeRetryDelayMs(attempt, delayMs, backoff),
-          );
-        }
+        const nextRetryDelayMs = shouldRetry
+          ? computeRetryDelayMs(attempt, delayMs, backoff)
+          : null;
 
         const failureUpdate = {
           status: shouldRetry ? "waiting" : "errored",
           errorName: error.name,
           errorMessage: error.message,
-          nextRetryAt,
-          updatedAt: this.#time.now(),
+          nextRetryDelayMs,
         };
         const snapshot = getStepSnapshot(this.#state, name);
         queueStepUpdate(this.#state, name, snapshot?.id, failureUpdate);
 
-        if (shouldRetry && nextRetryAt) {
+        if (shouldRetry && nextRetryDelayMs !== null) {
           clearStepMutationBuffer(this.#state, name);
           await this.#throwIfPauseRequested();
-          throw new WorkflowSuspend("retry", nextRetryAt);
+          throw new WorkflowSuspend("retry", { delayMs: nextRetryDelayMs });
         }
 
         clearStepMutationBuffer(this.#state, name);
@@ -310,14 +290,11 @@ export class RunnerStep implements WorkflowStep {
   }
 
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
-    const dbNow = await this.#getDbNow();
-    const wakeAt = new Date(dbNow.getTime() + parseDurationMs(duration));
-    return this.#sleepUntil(name, wakeAt);
+    return this.#sleepUntil(name, { delayMs: parseDurationMs(duration) });
   }
 
   async sleepUntil(name: string, timestamp: Date | number): Promise<void> {
-    const wakeAt = coerceDate(timestamp);
-    return this.#sleepUntil(name, wakeAt);
+    return this.#sleepUntil(name, coerceDate(timestamp));
   }
 
   async waitForEvent<T = unknown>(
@@ -326,8 +303,6 @@ export class RunnerStep implements WorkflowStep {
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     this.#beginStep(name);
     this.#setStepContext(name, null);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
 
     try {
       const existing = getStepSnapshot(this.#state, name);
@@ -350,7 +325,7 @@ export class RunnerStep implements WorkflowStep {
       }
 
       const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = existing?.wakeAt ?? new Date(dbNow.getTime() + timeoutMs);
+      const wakeAt = existing?.wakeAt ?? null;
 
       const event = this.#state.events.find((candidate) => {
         if (candidate.type !== options.type || candidate.deliveredAt !== null) {
@@ -360,7 +335,7 @@ export class RunnerStep implements WorkflowStep {
         if (Number.isNaN(createdAt.getTime())) {
           return false;
         }
-        return createdAt <= wakeAt;
+        return wakeAt ? createdAt <= wakeAt : true;
       });
 
       if (event) {
@@ -372,7 +347,7 @@ export class RunnerStep implements WorkflowStep {
         };
 
         queueEventUpdate(this.#state, event, {
-          deliveredAt: now,
+          deliveredAt: this.#taskRunAt,
           consumedByStepKey: name,
         });
 
@@ -380,7 +355,6 @@ export class RunnerStep implements WorkflowStep {
           queueStepUpdate(this.#state, name, existing.id, {
             status: "completed",
             result,
-            updatedAt: now,
           });
         } else {
           queueStepCreate(this.#state, name, {
@@ -401,8 +375,6 @@ export class RunnerStep implements WorkflowStep {
             result,
             errorName: null,
             errorMessage: null,
-            createdAt: now,
-            updatedAt: now,
           });
         }
 
@@ -411,13 +383,12 @@ export class RunnerStep implements WorkflowStep {
         return { ...result, timestamp: coerceEventTimestamp(result.timestamp) };
       }
 
-      if (wakeAt <= dbNow) {
+      if (wakeAt && this.#taskRunAt >= wakeAt) {
         if (existing?.id) {
           queueStepUpdate(this.#state, name, existing.id, {
             status: "errored",
             errorName: "WaitForEventTimeoutError",
             errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-            updatedAt: now,
           });
         }
         throw new WaitForEventTimeoutError();
@@ -426,10 +397,9 @@ export class RunnerStep implements WorkflowStep {
       if (existing?.id) {
         queueStepUpdate(this.#state, name, existing.id, {
           status: "waiting",
-          wakeAt,
+          ...(wakeAt ? { wakeAt } : { wakeDelayMs: timeoutMs }),
           waitEventType: options.type,
           timeoutMs,
-          updatedAt: now,
         });
       } else {
         queueStepCreate(this.#state, name, {
@@ -445,28 +415,25 @@ export class RunnerStep implements WorkflowStep {
           maxAttempts: 1,
           timeoutMs,
           nextRetryAt: null,
-          wakeAt,
+          wakeAt: wakeAt ?? null,
+          ...(wakeAt ? {} : { wakeDelayMs: timeoutMs }),
           waitEventType: options.type,
           result: null,
           errorName: null,
           errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
         });
       }
 
       await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
+      throw new WorkflowSuspend("wake", wakeAt ?? { delayMs: timeoutMs });
     } finally {
       this.#endStep(name);
     }
   }
 
-  async #sleepUntil(name: string, wakeAt: Date): Promise<void> {
+  async #sleepUntil(name: string, schedule: WorkflowRunAt): Promise<void> {
     this.#beginStep(name);
     this.#setStepContext(name, null);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
 
     try {
       const existing = getStepSnapshot(this.#state, name);
@@ -479,11 +446,10 @@ export class RunnerStep implements WorkflowStep {
         return;
       }
 
-      if (existing?.wakeAt && existing.wakeAt <= dbNow) {
+      if (existing?.wakeAt && existing.wakeAt <= this.#taskRunAt) {
         if (existing.id) {
           queueStepUpdate(this.#state, name, existing.id, {
             status: "completed",
-            updatedAt: now,
           });
         }
         await this.#flushBoundary();
@@ -491,11 +457,14 @@ export class RunnerStep implements WorkflowStep {
         return;
       }
 
+      const wakeAt = existing?.wakeAt ?? (schedule instanceof Date ? schedule : null);
+      const wakeDelayMs =
+        existing?.wakeAt || schedule instanceof Date ? undefined : schedule.delayMs;
+
       if (existing?.id) {
         queueStepUpdate(this.#state, name, existing.id, {
           status: "waiting",
-          wakeAt: existing.wakeAt ?? wakeAt,
-          updatedAt: now,
+          ...(wakeAt ? { wakeAt } : { wakeDelayMs }),
         });
       } else {
         queueStepCreate(this.#state, name, {
@@ -511,18 +480,17 @@ export class RunnerStep implements WorkflowStep {
           maxAttempts: 1,
           timeoutMs: null,
           nextRetryAt: null,
-          wakeAt,
+          wakeAt: wakeAt ?? null,
+          ...(wakeAt ? {} : { wakeDelayMs }),
           waitEventType: null,
           result: null,
           errorName: null,
           errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
         });
       }
 
       await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
+      throw new WorkflowSuspend("wake", wakeAt ?? { delayMs: wakeDelayMs ?? 0 });
     } finally {
       this.#endStep(name);
     }
@@ -615,7 +583,6 @@ export class RunnerStep implements WorkflowStep {
       category: options?.category ?? "workflow",
       message,
       data: data ?? null,
-      createdAt: this.#time.now(),
     };
 
     queueLogCreate(this.#state, log);

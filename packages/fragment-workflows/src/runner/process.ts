@@ -1,6 +1,5 @@
 // Executes a single claimed task by running workflow code and updating persistence.
 
-import type { FragnoRuntime } from "@fragno-dev/core";
 import { isLegacyWorkflowDefinition } from "../workflow";
 import type {
   WorkflowEntrypoint,
@@ -11,8 +10,9 @@ import type {
 } from "../workflow";
 import type {
   WorkflowInstanceRecord,
-  WorkflowInstanceUpdate,
+  WorkflowInstanceUpdateInput,
   WorkflowEventRecord,
+  WorkflowRunAt,
   WorkflowStepRecord,
   WorkflowTaskRecord,
 } from "./types";
@@ -21,8 +21,6 @@ import type { RunnerMutationBuffer, RunnerState, RunnerStepMutationBuffer } from
 import { createRunnerState } from "./state";
 
 export type ProcessTaskContext = {
-  time: FragnoRuntime["time"];
-  getDbNow: () => Promise<Date>;
   workflowsByName: Map<string, WorkflowRegistryEntry>;
   workflowBindings: WorkflowBindings;
   flushStepBoundary: (
@@ -34,10 +32,10 @@ export type ProcessTaskContext = {
     task: WorkflowTaskRecord,
     instance: WorkflowInstanceRecord,
     status: string,
-    update: Partial<WorkflowInstanceUpdate>,
+    update: WorkflowInstanceUpdateInput,
     taskAction:
       | { kind: "delete" }
-      | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: Date },
+      | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: WorkflowRunAt },
     mutations: RunnerMutationBuffer,
   ) => Promise<boolean>;
   deleteTask: (task: WorkflowTaskRecord) => Promise<void>;
@@ -57,7 +55,7 @@ export const processTask = async (
   const { task, instance, steps, events } = claimed;
 
   const state = createRunnerState(instance, steps, events);
-  const startUpdate = instance.startedAt ? {} : { startedAt: ctx.time.now() };
+  const startUpdate = instance.startedAt ? {} : { setStartedAtNow: true };
 
   const workflowEntry = ctx.workflowsByName.get(instance.workflowName);
   if (!workflowEntry) {
@@ -69,7 +67,7 @@ export const processTask = async (
         ...startUpdate,
         errorName: "WorkflowNotFound",
         errorMessage: "WORKFLOW_NOT_FOUND",
-        completedAt: ctx.time.now(),
+        setCompletedAtNow: true,
       },
       { kind: "delete" },
       state.mutations,
@@ -94,8 +92,7 @@ export const processTask = async (
     instanceId: instance.instanceId,
     runNumber: instance.runNumber,
     maxSteps,
-    time: ctx.time,
-    getDbNow: ctx.getDbNow,
+    taskRunAt: task.runAt,
     flushStepBoundary: (mutations, stepMutations) =>
       ctx.flushStepBoundary(instance, mutations, stepMutations),
   });
@@ -126,8 +123,8 @@ export const processTask = async (
         output: output ?? null,
         errorName: null,
         errorMessage: null,
-        completedAt: ctx.time.now(),
         pauseRequested: false,
+        setCompletedAtNow: true,
       },
       { kind: "delete" },
       state.mutations,
@@ -206,8 +203,8 @@ export const processTask = async (
         ...startUpdate,
         errorName: error.name ?? "Error",
         errorMessage: error.message ?? "",
-        completedAt: ctx.time.now(),
         pauseRequested: false,
+        setCompletedAtNow: true,
       },
       { kind: "delete" },
       state.mutations,
