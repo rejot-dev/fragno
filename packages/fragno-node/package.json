@@ -3,7 +3,6 @@
   "version": "0.0.8",
   "exports": {
     ".": {
-      "development": "./fragno-node.ts",
       "types": "./dist/fragno-node.d.ts",
       "default": "./dist/fragno-node.js"
     },

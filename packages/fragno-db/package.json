@@ -4,12 +4,6 @@
   "type": "module",
   "exports": {
     ".": {
-      "development": {
-        "workerd": "./src/mod.ts",
-        "worker": "./src/mod.ts",
-        "browser": "./src/browser/mod.ts",
-        "default": "./src/mod.ts"
-      },
       "workerd": "./dist/mod.js",
       "worker": "./dist/mod.js",
       "browser": "./dist/browser/mod.js",
@@ -17,111 +11,87 @@
       "default": "./dist/mod.js"
     },
     "./id": {
-      "development": "./src/id.ts",
       "types": "./dist/id.d.ts",
       "default": "./dist/id.js"
     },
     "./schema": {
-      "development": "./src/schema/create.ts",
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"
     },
     "./drivers": {
-      "development": "./src/adapters/generic-sql/driver-config.ts",
       "types": "./dist/adapters/generic-sql/driver-config.d.ts",
       "default": "./dist/adapters/generic-sql/driver-config.js"
     },
     "./sql-driver": {
-      "development": "./src/sql-driver/sql-driver.ts",
       "types": "./dist/sql-driver/sql-driver.d.ts",
       "default": "./dist/sql-driver/sql-driver.js"
     },
     "./dialects": {
-      "development": "./src/sql-driver/dialects/dialects.ts",
       "types": "./dist/sql-driver/dialects/dialects.d.ts",
       "default": "./dist/sql-driver/dialects/dialects.js"
     },
     "./dialects/durable-object": {
-      "development": "./src/sql-driver/dialects/durable-object-dialect.ts",
       "types": "./dist/sql-driver/dialects/durable-object-dialect.d.ts",
       "default": "./dist/sql-driver/dialects/durable-object-dialect.js"
     },
     "./query": {
-      "development": "./src/query/simple-query-interface.ts",
       "types": "./dist/query/simple-query-interface.d.ts",
       "default": "./dist/query/simple-query-interface.js"
     },
     "./adapters": {
-      "development": "./src/adapters/adapters.ts",
       "types": "./dist/adapters/adapters.d.ts",
       "default": "./dist/adapters/adapters.js"
     },
     "./adapters/in-memory": {
-      "development": "./src/adapters/in-memory/index.ts",
       "types": "./dist/adapters/in-memory/index.d.ts",
       "default": "./dist/adapters/in-memory/index.js"
     },
     "./adapters/sql": {
-      "development": "./src/adapters/sql/index.ts",
       "types": "./dist/adapters/sql/index.d.ts",
       "default": "./dist/adapters/sql/index.js"
     },
     "./schema-output/drizzle": {
-      "development": "./src/schema-output/drizzle.ts",
       "types": "./dist/schema-output/drizzle.d.ts",
       "default": "./dist/schema-output/drizzle.js"
     },
     "./schema-output/prisma": {
-      "development": "./src/schema-output/prisma.ts",
       "types": "./dist/schema-output/prisma.d.ts",
       "default": "./dist/schema-output/prisma.js"
     },
     "./client": {
-      "development": "./src/client.ts",
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
     },
     "./sync": {
-      "development": {
-        "browser": "./src/browser/mod.ts",
-        "default": "./src/sync/index.ts"
-      },
       "browser": "./dist/browser/mod.js",
       "types": "./dist/sync/index.d.ts",
       "default": "./dist/sync/index.js"
     },
     "./unit-of-work": {
-      "development": "./src/query/unit-of-work/unit-of-work.ts",
       "types": "./dist/query/unit-of-work/unit-of-work.d.ts",
       "default": "./dist/query/unit-of-work/unit-of-work.js"
     },
     "./cursor": {
-      "development": "./src/query/cursor.ts",
       "types": "./dist/query/cursor.d.ts",
       "default": "./dist/query/cursor.js"
     },
     "./fragment": {
-      "development": "./src/fragment.ts",
       "types": "./dist/fragment.d.ts",
       "default": "./dist/fragment.js"
     },
     "./fragment-definition-builder": {
-      "development": "./src/db-fragment-definition-builder.ts",
       "types": "./dist/db-fragment-definition-builder.d.ts",
       "default": "./dist/db-fragment-definition-builder.js"
     },
     "./dispatchers/node": {
-      "development": "./src/dispatchers/node/index.ts",
       "types": "./dist/dispatchers/node/index.d.ts",
       "default": "./dist/dispatchers/node/index.js"
     },
     "./dispatchers/cloudflare-do": {
-      "development": "./src/dispatchers/cloudflare-do/index.ts",
       "types": "./dist/dispatchers/cloudflare-do/index.d.ts",
       "default": "./dist/dispatchers/cloudflare-do/index.js"
     },
     "./generation-engine": {
-      "development": "./src/migration-engine/generation-engine.ts",
       "types": "./dist/migration-engine/generation-engine.d.ts",
       "default": "./dist/migration-engine/generation-engine.js"
     }

@@ -4,7 +4,6 @@
   "private": true,
   "exports": {
     ".": {
-      "development": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.js"
     }

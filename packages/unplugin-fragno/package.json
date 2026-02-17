@@ -9,52 +9,42 @@
   ],
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./macros": {
-      "development": "./src/macros.ts",
       "types": "./dist/macros.d.ts",
       "default": "./dist/macros.js"
     },
     "./astro": {
-      "development": "./src/integrations/astro.ts",
       "types": "./dist/integrations/astro.d.ts",
       "default": "./dist/integrations/astro.js"
     },
     "./esbuild": {
-      "development": "./src/integrations/esbuild.ts",
       "types": "./dist/integrations/esbuild.d.ts",
       "default": "./dist/integrations/esbuild.js"
     },
     "./farm": {
-      "development": "./src/integrations/farm.ts",
       "types": "./dist/integrations/farm.d.ts",
       "default": "./dist/integrations/farm.js"
     },
     "./nuxt": {
-      "development": "./src/integrations/nuxt.ts",
       "types": "./dist/integrations/nuxt.d.ts",
       "default": "./dist/integrations/nuxt.js"
     },
     "./rollup": {
-      "development": "./src/integrations/rollup.ts",
       "types": "./dist/integrations/rollup.d.ts",
       "default": "./dist/integrations/rollup.js"
     },
     "./rspack": {
-      "development": "./src/integrations/rspack.ts",
       "types": "./dist/integrations/rspack.d.ts",
       "default": "./dist/integrations/rspack.js"
     },
     "./vite": {
-      "development": "./src/integrations/vite.ts",
       "types": "./dist/integrations/vite.d.ts",
       "default": "./dist/integrations/vite.js"
     },
     "./webpack": {
-      "development": "./src/integrations/webpack.ts",
       "types": "./dist/integrations/webpack.d.ts",
       "default": "./dist/integrations/webpack.js"
     },

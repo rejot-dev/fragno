@@ -3,25 +3,16 @@
   "private": true,
   "exports": {
     ".": {
-      "development": {
-        "browser": "./dist/browser/mod.js",
-        "default": "./src/mod.ts"
-      },
       "browser": "./dist/browser/mod.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./upvote": {
-      "development": {
-        "browser": "./dist/browser/upvote.js",
-        "default": "./src/upvote.ts"
-      },
       "browser": "./dist/browser/upvote.js",
       "types": "./dist/upvote.d.ts",
       "default": "./dist/upvote.js"
     },
     "./schema": {
-      "development": "./src/schema/mod.ts",
       "types": "./dist/schema/mod.d.ts",
       "default": "./dist/schema/mod.js"
     }

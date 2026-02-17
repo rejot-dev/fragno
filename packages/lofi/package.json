@@ -8,17 +8,14 @@
   "types": "./dist/mod.d.ts",
   "exports": {
     ".": {
-      "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./cli": {
-      "development": "./src/cli/index.ts",
       "types": "./dist/cli/index.d.ts",
       "default": "./dist/cli/index.js"
     },
     "./scenario": {
-      "development": "./src/scenario.ts",
       "types": "./dist/scenario.d.ts",
       "default": "./dist/scenario.js"
     }

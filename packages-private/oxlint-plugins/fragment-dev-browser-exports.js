@@ -10,7 +10,7 @@ const rule = {
   meta: {
     type: "problem",
     docs: {
-      description: "Ensure fragment exports include development.browser when browser exports exist",
+      description: "Ensure fragment browser exports point at dist outputs",
       category: "Build Configuration",
     },
     schema: [],
@@ -73,34 +73,17 @@ const rule = {
             }
 
             const browserPath = exportValue.browser;
+            if (browserPath === undefined) {
+              continue;
+            }
+
             if (typeof browserPath !== "string") {
+              problems.push(`${exportKey} browser export must be a string`);
               continue;
             }
 
-            const development = exportValue.development;
-            if (development === undefined) {
-              problems.push(`${exportKey} missing development.browser`);
-              continue;
-            }
-
-            if (typeof development === "string") {
-              problems.push(`${exportKey} has string development export; use development.browser`);
-              continue;
-            }
-
-            if (!development || typeof development !== "object") {
-              problems.push(`${exportKey} development export must be an object with browser`);
-              continue;
-            }
-
-            const devBrowser = development.browser;
-            if (typeof devBrowser !== "string") {
-              problems.push(`${exportKey} missing development.browser`);
-              continue;
-            }
-
-            if (devBrowser !== browserPath) {
-              problems.push(`${exportKey} development.browser should match browser export`);
+            if (!browserPath.startsWith("./dist/")) {
+              problems.push(`${exportKey} browser export should point to dist output`);
             }
           }
 

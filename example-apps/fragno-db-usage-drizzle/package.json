@@ -3,7 +3,6 @@
   "private": true,
   "exports": {
     ".": {
-      "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     }

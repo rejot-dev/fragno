@@ -4,84 +4,65 @@
   "exports": {
     ".": {
       "workerd": {
-        "development": "./src/mod.ts",
         "default": "./dist/mod.js"
-      },
-      "development": {
-        "browser": "./src/mod-client.ts",
-        "default": "./src/mod.ts"
       },
       "browser": "./dist/mod-client.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./api": {
-      "development": "./src/api/api.ts",
       "types": "./dist/api/api.d.ts",
       "default": "./dist/api/api.js"
     },
     "./test": {
-      "development": "./src/test/test.ts",
       "types": "./dist/test/test.d.ts",
       "default": "./dist/test/test.js"
     },
     "./route": {
-      "development": "./src/api/route.ts",
       "types": "./dist/api/route.d.ts",
       "default": "./dist/api/route.js"
     },
     "./request": {
-      "development": "./src/request/request.ts",
       "types": "./dist/request/request.d.ts",
       "default": "./dist/request/request.js"
     },
     "./internal/request-context-storage": {
-      "development": "./src/api/request-context-storage.ts",
       "types": "./dist/api/request-context-storage.d.ts",
       "default": "./dist/api/request-context-storage.js"
     },
     "./internal/trace-context": {
-      "development": "./src/internal/trace-context.ts",
       "types": "./dist/internal/trace-context.d.ts",
       "default": "./dist/internal/trace-context.js"
     },
     "./internal/symbols": {
-      "development": "./src/internal/symbols.ts",
       "types": "./dist/internal/symbols.d.ts",
       "default": "./dist/internal/symbols.js"
     },
     "./client": {
-      "development": "./src/client/client.ts",
       "types": "./dist/client/client.d.ts",
       "default": "./dist/client/client.js"
     },
     "./react": {
-      "development": "./src/client/react.ts",
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"
     },
     "./vanilla": {
-      "development": "./src/client/vanilla.ts",
       "types": "./dist/client/vanilla.d.ts",
       "default": "./dist/client/vanilla.js"
     },
     "./vue": {
-      "development": "./src/client/vue.ts",
       "types": "./dist/client/vue.d.ts",
       "default": "./dist/client/vue.js"
     },
     "./svelte": {
-      "development": "./src/client/client.svelte.ts",
       "types": "./dist/client/client.svelte.d.ts",
       "default": "./dist/client/client.svelte.js"
     },
     "./solid": {
-      "development": "./src/client/solid.ts",
       "types": "./dist/client/solid.d.ts",
       "default": "./dist/client/solid.js"
     },
     "./react-ssr": {
-      "development": "./src/integrations/react-ssr.ts",
       "types": "./dist/integrations/react-ssr.d.ts",
       "default": "./dist/integrations/react-ssr.js"
     },

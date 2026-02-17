@@ -7,52 +7,30 @@
   ],
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
     "./react": {
-      "development": {
-        "browser": "./dist/browser/client/react.js",
-        "default": "./src/client/react.ts"
-      },
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"
     },
     "./vue": {
-      "development": {
-        "browser": "./dist/browser/client/vue.js",
-        "default": "./src/client/vue.ts"
-      },
       "types": "./dist/browser/client/vue.d.ts",
       "default": "./dist/browser/client/vue.js"
     },
     "./svelte": {
-      "development": {
-        "browser": "./dist/browser/client/svelte.js",
-        "default": "./src/client/svelte.ts"
-      },
       "types": "./dist/browser/client/svelte.d.ts",
       "default": "./dist/browser/client/svelte.js"
     },
     "./solid": {
-      "development": {
-        "browser": "./dist/browser/client/solid.js",
-        "default": "./src/client/solid.ts"
-      },
       "types": "./dist/browser/client/solid.d.ts",
       "default": "./dist/browser/client/solid.js"
     },
     "./vanilla": {
-      "development": {
-        "browser": "./dist/browser/client/vanilla.js",
-        "default": "./src/client/vanilla.ts"
-      },
       "types": "./dist/browser/client/vanilla.d.ts",
       "default": "./dist/browser/client/vanilla.js"
     },
     "./test": {
-      "development": "./src/test.ts",
       "types": "./dist/node/test.d.ts",
       "default": "./dist/node/test.js"
     }

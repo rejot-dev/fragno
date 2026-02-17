@@ -41,40 +41,42 @@ const rule = {
           }
 
           /** @type {Set<string>} */
-          const developmentPaths = new Set();
+          const exportPaths = new Set();
+
+          /**
+           * @param {unknown} value
+           * @param {string | undefined} key
+           */
+          const collectExportPaths = (value, key) => {
+            if (key === "types") {
+              return;
+            }
+
+            if (typeof value === "string") {
+              if (value.startsWith("./dist/")) {
+                exportPaths.add(value);
+              }
+              return;
+            }
+
+            if (!value || typeof value !== "object") {
+              return;
+            }
+
+            for (const [childKey, childValue] of Object.entries(value)) {
+              collectExportPaths(childValue, childKey);
+            }
+          };
 
           for (const [exportKey, exportValue] of Object.entries(packageJson.exports)) {
             if (exportKey === "./package.json") {
               continue;
             }
 
-            if (typeof exportValue === "string") {
-              continue;
-            } else if (typeof exportValue === "object" && exportValue !== null) {
-              if (exportValue.development) {
-                if (typeof exportValue.development === "string") {
-                  developmentPaths.add(exportValue.development);
-                } else if (typeof exportValue.development === "object") {
-                  if (exportValue.development.default) {
-                    developmentPaths.add(exportValue.development.default);
-                  } else {
-                    for (const [key, devPath] of Object.entries(exportValue.development)) {
-                      if (typeof devPath === "string" && key !== "browser") {
-                        developmentPaths.add(devPath);
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
-
-              if (exportValue.workerd?.development) {
-                developmentPaths.add(exportValue.workerd.development);
-              }
-            }
+            collectExportPaths(exportValue, undefined);
           }
 
-          if (developmentPaths.size === 0) {
+          if (exportPaths.size === 0) {
             return;
           }
 
@@ -82,9 +84,8 @@ const rule = {
           /** @type {Set<string>} */
           const tsdownEntries = new Set();
 
-          const entryMatch = sourceCode.match(/entry:\s*(\[[\s\S]*?\]|["'][^"']+["'])/);
-
-          if (entryMatch) {
+          const entryMatches = sourceCode.matchAll(/entry:\s*(\[[\s\S]*?\]|["'][^"']+["'])/g);
+          for (const entryMatch of entryMatches) {
             const entryValue = entryMatch[1];
 
             if (entryValue.startsWith("[")) {
@@ -127,9 +128,54 @@ const rule = {
 
           /** @type {string[]} */
           const missingEntries = [];
-          for (const devPath of developmentPaths) {
-            if (!pathMatchesEntry(devPath)) {
-              missingEntries.push(devPath);
+
+          /** @type {(exportPath: string) => string[]} */
+          const toSourceCandidates = (exportPath) => {
+            if (!exportPath.startsWith("./dist/")) {
+              return [];
+            }
+
+            const normalized = exportPath.replace(/^\.\//, "");
+            if (!normalized.startsWith("dist/")) {
+              return [];
+            }
+
+            const remainder = normalized.slice("dist/".length);
+            const remainderParts = remainder.split("/");
+            const remainders = [remainder];
+            if (remainderParts.length > 1) {
+              remainders.push(remainderParts.slice(1).join("/"));
+            }
+
+            const candidates = new Set();
+            const extensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"];
+            const prefixes = ["./src/", "./"];
+
+            for (const item of remainders) {
+              if (!item) {
+                continue;
+              }
+
+              const base = item.replace(/\.js$/, "");
+              for (const ext of extensions) {
+                for (const prefix of prefixes) {
+                  candidates.add(`${prefix}${base}${ext}`);
+                }
+              }
+            }
+
+            return Array.from(candidates);
+          };
+
+          for (const exportPath of exportPaths) {
+            const candidates = toSourceCandidates(exportPath);
+            if (candidates.length === 0) {
+              continue;
+            }
+
+            const matched = candidates.some((candidate) => pathMatchesEntry(candidate));
+            if (!matched) {
+              missingEntries.push(exportPath);
             }
           }
 
