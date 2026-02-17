@@ -14,6 +14,14 @@ type DatabaseAdapterConfig = {
 
 type BetterSqlite3Constructor = typeof import("better-sqlite3");
 
+const isCloudflareWorkers = (): boolean => {
+  if (typeof globalThis === "undefined") {
+    return false;
+  }
+  const navigatorRef = (globalThis as { navigator?: { userAgent?: string } }).navigator;
+  return navigatorRef?.userAgent === "Cloudflare-Workers";
+};
+
 const createNodeRequire = (): NodeRequire | null => {
   try {
     const metaUrl = typeof import.meta !== "undefined" ? import.meta.url : undefined;
@@ -27,6 +35,9 @@ const createNodeRequire = (): NodeRequire | null => {
 };
 
 const loadBetterSqlite3 = (): BetterSqlite3Constructor | null => {
+  if (isCloudflareWorkers()) {
+    return null;
+  }
   const requireFn = createNodeRequire();
   if (!requireFn) {
     return null;
