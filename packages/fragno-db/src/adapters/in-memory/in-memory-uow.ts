@@ -22,7 +22,7 @@ import {
   encodeValuesWithDbDefaults,
   ReferenceSubquery,
 } from "../../query/value-encoding";
-import { isDbNow } from "../../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import type { CompiledJoin } from "../../query/orm/orm";
 import {
@@ -775,8 +775,14 @@ const countRows = (
   return count;
 };
 
-const resolveDbNowValue = (value: unknown, options: ResolvedInMemoryAdapterOptions): unknown =>
-  isDbNow(value) ? options.clock.now() : value;
+const resolveDbNowValue = (value: unknown, options: ResolvedInMemoryAdapterOptions): unknown => {
+  if (!isDbNow(value)) {
+    return value;
+  }
+  const now = options.clock.now();
+  const offsetMs = getDbNowOffsetMs(value);
+  return offsetMs === 0 ? now : new Date(now.getTime() + offsetMs);
+};
 
 const createRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "create" }>,

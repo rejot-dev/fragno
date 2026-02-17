@@ -1,5 +1,5 @@
 import type { AnyColumn, FragnoId, IdColumn } from "../schema/create";
-import { dbNow, type DbNow } from "./db-now";
+import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "./db-now";
 
 export type ConditionType = "compare" | "and" | "or" | "not";
 
@@ -56,6 +56,7 @@ export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
   isNull: (a: keyof Columns) => Condition;
   isNotNull: (a: keyof Columns) => Condition;
   now: () => DbNow;
+  interval: (input: DbIntervalInput) => DbInterval;
 };
 
 // replacement for `like` (Prisma doesn't support `like`)
@@ -120,6 +121,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
   builder.isNull = (a) => builder(a, "is", null);
   builder.isNotNull = (a) => builder(a, "is not", null);
   builder.now = () => dbNow();
+  builder.interval = (input) => dbInterval(input);
   builder.not = (condition) => {
     if (typeof condition === "boolean") {
       return !condition;
@@ -253,6 +255,7 @@ export function createIndexedBuilder<Columns extends Record<string, AnyColumn>>(
   builder.isNull = (a) => builder(a, "is", null);
   builder.isNotNull = (a) => builder(a, "is not", null);
   builder.now = () => dbNow();
+  builder.interval = (input) => dbInterval(input);
   builder.not = (condition) => {
     if (typeof condition === "boolean") {
       return !condition;

@@ -6,6 +6,8 @@ import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
+import type { DbNow } from "../query/db-now";
+import { isDbNow } from "../query/db-now";
 import type { FragnoId } from "../schema/create";
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 
@@ -56,7 +58,7 @@ export interface TriggerHookOptions {
    * Absolute time for the first attempt. If in the future, the hook is
    * scheduled for that time; if in the past, it runs immediately.
    */
-  processAt?: Date;
+  processAt?: Date | DbNow;
 }
 
 /**
@@ -177,7 +179,9 @@ export function prepareHookMutations<THooks extends HooksMap>(
   for (const hook of triggeredHooks) {
     const hookRetryPolicy = hook.options?.retryPolicy ?? retryPolicy;
     const maxAttempts = hookRetryPolicy.shouldRetry(4) ? 5 : 1;
-    const processAt = hook.options?.processAt ? new Date(hook.options.processAt) : null;
+    const rawProcessAt = hook.options?.processAt ?? null;
+    const processAt: Date | DbNow | null =
+      rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
     const nextRetryAt = processAt ?? null;
     internalUow.create("fragno_hooks", {
       namespace,

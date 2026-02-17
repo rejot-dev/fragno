@@ -9,7 +9,7 @@ import type {
 import { FragnoId } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
 import type { Condition, ConditionBuilder } from "../condition-builder";
-import { dbNow, type DbNow } from "../db-now";
+import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
 import type {
   SelectClause,
   TableToInsertValues,
@@ -35,6 +35,7 @@ export interface UpdateManyBuilder<TTable extends AnyTable> {
   ): this;
   set(values: TableToUpdateValues<TTable>): this;
   now(): DbNow;
+  interval(input: DbIntervalInput): DbInterval;
 }
 
 /**
@@ -583,6 +584,10 @@ export class UpdateBuilder<TTable extends AnyTable> {
    */
   now(): DbNow {
     return dbNow();
+  }
+
+  interval(input: DbIntervalInput): DbInterval {
+    return dbInterval(input);
   }
 
   /**
@@ -1950,6 +1955,20 @@ export class TypedUnitOfWork<
     hooks?: TOtherHooks,
   ): TypedUnitOfWork<TOtherSchema, [], TRawInput, TOtherHooks> {
     return this.#uow.forSchema<TOtherSchema, TOtherHooks>(schema, hooks);
+  }
+
+  /**
+   * Database timestamp helper for inserts.
+   */
+  now(): DbNow {
+    return dbNow();
+  }
+
+  /**
+   * Build a database interval for use with now().plus(...).
+   */
+  interval(input: DbIntervalInput): DbInterval {
+    return dbInterval(input);
   }
 
   registerSchema(schema: AnySchema, namespace: string | null): void {

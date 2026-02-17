@@ -7,9 +7,10 @@ import {
 import { encodeValues } from "../../query/value-encoding";
 import { processReferenceSubqueries } from "./query/where-builder";
 import type { NamingResolver } from "../../naming/sql-naming";
-import { sql, type Kysely } from "kysely";
-import { isDbNow } from "../../query/db-now";
-import { sqliteStorageDefault, type SQLiteStorageMode } from "./sqlite-storage";
+import type { Kysely } from "kysely";
+import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
+import type { SQLiteStorageMode } from "./sqlite-storage";
+import { buildDbNowSql } from "./query/db-now-sql";
 
 /**
  * Encoder class for Unit of Work mutation operations.
@@ -121,18 +122,12 @@ export class UnitOfWorkEncoder {
       }
 
       if (isDbNow(value)) {
-        if (this.#driverConfig.databaseType === "sqlite") {
-          const storageMode = this.#sqliteStorageMode ?? sqliteStorageDefault;
-          const storage =
-            col.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
-          if ((col.type === "timestamp" || col.type === "date") && storage === "epoch-ms") {
-            result[dbColumnName] = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-          } else {
-            result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
-          }
-        } else {
-          result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
-        }
+        result[dbColumnName] = buildDbNowSql({
+          driverConfig: this.#driverConfig,
+          columnType: col.type,
+          offsetMs: getDbNowOffsetMs(value),
+          sqliteStorageMode: this.#sqliteStorageMode,
+        });
         continue;
       }
 
