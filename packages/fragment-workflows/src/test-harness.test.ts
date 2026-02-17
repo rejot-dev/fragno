@@ -27,7 +27,7 @@ describe("createWorkflowsTestHarness", () => {
 
     const harness = await createWorkflowsTestHarness({
       workflows,
-      adapter: { type: "drizzle-pglite" },
+      adapter: { type: "in-memory" },
       testBuilder: buildDatabaseFragmentsTest(),
     });
 
@@ -87,7 +87,7 @@ describe("createWorkflowsTestHarness", () => {
 
     const harness = await createWorkflowsTestHarness({
       workflows,
-      adapter: { type: "drizzle-pglite" },
+      adapter: { type: "in-memory" },
       testBuilder: buildDatabaseFragmentsTest(),
     });
     testClock = harness.clock;

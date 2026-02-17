@@ -1,6 +1,6 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
-import type { DbNow, HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
+import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -345,7 +345,6 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
   runtime: FragnoRuntime;
-  dbNow?: () => Date | DbNow;
   enableRunnerTick?: boolean;
   authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
   authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;

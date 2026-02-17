@@ -14,7 +14,12 @@ export type WorkflowInstanceRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_instance"]
 >;
 
-export type WorkflowInstanceUpdate = Omit<WorkflowInstanceRecord, "id">;
+export type WorkflowInstanceUpdate = Partial<Omit<WorkflowInstanceRecord, "id">>;
+
+export type WorkflowInstanceUpdateInput = WorkflowInstanceUpdate & {
+  setStartedAtNow?: boolean;
+  setCompletedAtNow?: boolean;
+};
 
 export type WorkflowStepRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_step"]
@@ -28,13 +33,28 @@ export type WorkflowLogRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_log"]
 >;
 
-export type WorkflowStepCreate = Omit<WorkflowStepRecord, "id">;
+export type WorkflowStepCreate = Omit<WorkflowStepRecord, "id" | "createdAt" | "updatedAt">;
 
-export type WorkflowLogCreate = Omit<WorkflowLogRecord, "id">;
+export type WorkflowLogCreate = Omit<WorkflowLogRecord, "id" | "createdAt">;
 
-export type WorkflowStepUpdate = Partial<Omit<WorkflowStepRecord, "id">>;
+export type WorkflowStepUpdate = Omit<
+  Partial<Omit<WorkflowStepRecord, "id">>,
+  "createdAt" | "updatedAt"
+>;
 
 export type WorkflowEventUpdate = Partial<Omit<WorkflowEventRecord, "id">>;
+
+export type WorkflowRunAt = Date | { delayMs: number };
+
+export type WorkflowStepCreateDraft = WorkflowStepCreate & {
+  nextRetryDelayMs?: number | null;
+  wakeDelayMs?: number | null;
+};
+
+export type WorkflowStepUpdateDraft = WorkflowStepUpdate & {
+  nextRetryDelayMs?: number | null;
+  wakeDelayMs?: number | null;
+};
 
 export type WorkflowsRunnerFragment = {
   inContext: <T>(
@@ -49,7 +69,6 @@ export type WorkflowsRunnerOptions = {
   runtime: FragnoRuntime;
   runnerId?: string;
   leaseMs?: number;
-  getDbNow?: () => Promise<Date>;
 };
 
 export type RunHandlerTx = <T>(

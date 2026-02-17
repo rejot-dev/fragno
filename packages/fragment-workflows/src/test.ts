@@ -267,15 +267,24 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     createWorkflowsTestRuntime({ startAt: options.clockStartAt, seed: options.randomSeed });
   const clock = runtime.time;
   const workflows = options.workflows;
+  let adapterConfig: SupportedAdapter = options.adapter;
+  if (adapterConfig.type === "in-memory" || adapterConfig.type === "model-checker") {
+    adapterConfig = {
+      ...adapterConfig,
+      options: {
+        ...adapterConfig.options,
+        clock: adapterConfig.options?.clock ?? runtime.time,
+      },
+    };
+  }
   const config: WorkflowsFragmentConfig<TRegistry> = {
     workflows,
     runtime,
-    dbNow: () => runtime.time.now(),
     ...options.fragmentConfig,
   };
 
   const { fragments, test } = await options.testBuilder
-    .withTestAdapter(options.adapter)
+    .withTestAdapter(adapterConfig)
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
@@ -291,7 +300,6 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     runtime,
     runnerId: options.runnerOptions?.runnerId,
     leaseMs: options.runnerOptions?.leaseMs,
-    getDbNow: async () => runtime.time.now(),
   });
   if (options.autoTickHooks !== false) {
     config.runner = runner;

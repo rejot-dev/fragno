@@ -32,18 +32,8 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   }
 
   const runtime = runnerOptions.runtime;
-  const time = runtime.time;
   const runnerId = runnerOptions.runnerId ?? runtime.random.uuid();
   const leaseMs = runnerOptions.leaseMs ?? DEFAULT_LEASE_MS;
-  const getDbNow =
-    runnerOptions.getDbNow ??
-    (async () => {
-      const services = runnerOptions.fragment.services as { getDbNow?: () => Promise<Date> };
-      if (services.getDbNow) {
-        return services.getDbNow();
-      }
-      return time.now();
-    });
 
   const runHandlerTxForRunner: RunHandlerTx = (callback) =>
     runHandlerTx(runnerOptions.fragment, callback);
@@ -53,13 +43,11 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     fragment: runnerOptions.fragment,
   });
 
-  const claimTaskForRunner = (task: WorkflowTaskRecord, now: Date) =>
-    claimTask(task, now, {
+  const claimTaskForRunner = (task: WorkflowTaskRecord, source: "pending" | "expired") =>
+    claimTask(task, source, {
       runHandlerTx: runHandlerTxForRunner,
-      time,
       runnerId,
       leaseMs,
-      getDbNow,
     });
 
   const commitInstanceAndTaskForRunner = (
@@ -72,8 +60,6 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   ) =>
     commitInstanceAndTask(task, instance, status, update, taskAction, mutations, {
       runHandlerTx: runHandlerTxForRunner,
-      time,
-      getDbNow,
     });
 
   const flushStepBoundaryForRunner = (
@@ -83,7 +69,6 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   ) =>
     flushStepBoundary(instance, mutations, stepMutations, {
       runHandlerTx: runHandlerTxForRunner,
-      getDbNow,
     });
 
   const deleteTaskForRunner = (task: WorkflowTaskRecord) =>
@@ -95,15 +80,12 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   ) =>
     startTaskLeaseHeartbeat(task, state, {
       runHandlerTx: runHandlerTxForRunner,
-      time,
       runnerId,
       leaseMs,
-      getDbNow,
     });
 
   return {
     async tick(tickOptions: RunnerTickOptions = {}) {
-      const now = await getDbNow();
       const maxInstances = tickOptions.maxInstances ?? DEFAULT_MAX_INSTANCES;
       const maxSteps = tickOptions.maxSteps ?? DEFAULT_MAX_STEPS;
 
@@ -114,7 +96,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
               .find("workflow_task", (b) =>
                 b
                   .whereIndex("idx_workflow_task_status_runAt", (eb) =>
-                    eb.and(eb("status", "=", "pending"), eb("runAt", "<=", now)),
+                    eb.and(eb("status", "=", "pending"), eb("runAt", "<=", eb.now())),
                   )
                   .orderByIndex("idx_workflow_task_status_runAt", "asc")
                   .pageSize(maxInstances * 3),
@@ -122,7 +104,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
               .find("workflow_task", (b) =>
                 b
                   .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
-                    eb.and(eb("status", "=", "processing"), eb("lockedUntil", "<=", now)),
+                    eb.and(eb("status", "=", "processing"), eb("lockedUntil", "<=", eb.now())),
                   )
                   .orderByIndex("idx_workflow_task_status_lockedUntil", "asc")
                   .pageSize(maxInstances * 3),
@@ -132,36 +114,40 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
           .execute(),
       );
 
-      const tasksById = new Map<string, WorkflowTaskRecord>();
+      const tasksById = new Map<
+        string,
+        { task: WorkflowTaskRecord; source: "pending" | "expired" }
+      >();
       for (const task of pendingTasks) {
-        tasksById.set(String(task.id), task);
+        tasksById.set(String(task.id), { task, source: "pending" });
       }
       for (const task of expiredProcessingTasks) {
-        tasksById.set(String(task.id), task);
+        const key = String(task.id);
+        if (!tasksById.has(key)) {
+          tasksById.set(key, { task, source: "expired" });
+        }
       }
       const tasks = Array.from(tasksById.values());
 
       tasks.sort((a, b) => {
-        const priorityA = PRIORITY_BY_KIND[a.kind] ?? 9;
-        const priorityB = PRIORITY_BY_KIND[b.kind] ?? 9;
+        const priorityA = PRIORITY_BY_KIND[a.task.kind] ?? 9;
+        const priorityB = PRIORITY_BY_KIND[b.task.kind] ?? 9;
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
-        return a.runAt.getTime() - b.runAt.getTime();
+        return a.task.runAt.getTime() - b.task.runAt.getTime();
       });
 
       let processed = 0;
-      for (const task of tasks) {
+      for (const entry of tasks) {
         if (processed >= maxInstances) {
           break;
         }
-        const claimed = await claimTaskForRunner(task, now);
+        const claimed = await claimTaskForRunner(entry.task, entry.source);
         if (!claimed) {
           continue;
         }
         processed += await processTask(claimed, maxSteps, {
-          time,
-          getDbNow,
           workflowsByName,
           workflowBindings,
           flushStepBoundary: flushStepBoundaryForRunner,
