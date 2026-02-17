@@ -7,7 +7,7 @@ import {
 } from "../adapters";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
-import { dbNow } from "../../query/db-now";
+import { dbInterval, dbNow, type DbIntervalInput, type DbInterval } from "../../query/db-now";
 import {
   resolveInMemoryAdapterOptions,
   type InMemoryAdapterOptions,
@@ -46,6 +46,10 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
 
   now() {
     return dbNow();
+  }
+
+  interval(input: DbIntervalInput): DbInterval {
+    return dbInterval(input);
   }
 
   getConfig() {

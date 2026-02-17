@@ -1,5 +1,5 @@
 import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
-import { dbNow } from "../../query/db-now";
+import { dbInterval, dbNow, type DbInterval, type DbIntervalInput } from "../../query/db-now";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -96,6 +96,10 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
 
   now() {
     return dbNow();
+  }
+
+  interval(input: DbIntervalInput): DbInterval {
+    return dbInterval(input);
   }
 
   getConfig() {

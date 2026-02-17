@@ -12,7 +12,7 @@ import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig } from "../driver-config";
 import { sqliteStorageDefault, type SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
-import { isDbNow } from "../../../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
@@ -61,17 +61,34 @@ export function buildWhere(
 
     if (!(val instanceof Column)) {
       if (isDbNow(val)) {
+        const offsetMs = getDbNowOffsetMs(val);
         if (driverConfig.databaseType === "sqlite") {
           const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
           const storage =
             left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
           if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
-            val = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-          } else {
+            const base = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+            val = offsetMs === 0 ? base : sql`${base} + ${offsetMs}`;
+          } else if (offsetMs === 0) {
             val = sql`CURRENT_TIMESTAMP`;
+          } else {
+            const seconds = offsetMs / 1000;
+            const modifier = `${seconds >= 0 ? "+" : ""}${seconds} seconds`;
+            val = sql`datetime('now', ${modifier})`;
+          }
+        } else if (driverConfig.databaseType === "mysql") {
+          if (offsetMs === 0) {
+            val = sql`CURRENT_TIMESTAMP`;
+          } else {
+            const micros = Math.trunc(offsetMs * 1000);
+            val = sql`TIMESTAMPADD(MICROSECOND, ${micros}, CURRENT_TIMESTAMP)`;
           }
         } else {
-          val = sql`CURRENT_TIMESTAMP`;
+          if (offsetMs === 0) {
+            val = sql`CURRENT_TIMESTAMP`;
+          } else {
+            val = sql`(CURRENT_TIMESTAMP + (${offsetMs} * interval '1 millisecond'))`;
+          }
         }
       } else if (left.role === "reference" && table) {
         // Handle reference columns specially

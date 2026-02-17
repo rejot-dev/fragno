@@ -8,7 +8,7 @@ import { encodeValues } from "../../query/value-encoding";
 import { processReferenceSubqueries } from "./query/where-builder";
 import type { NamingResolver } from "../../naming/sql-naming";
 import { sql, type Kysely } from "kysely";
-import { isDbNow } from "../../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import { sqliteStorageDefault, type SQLiteStorageMode } from "./sqlite-storage";
 
 /**
@@ -121,17 +121,35 @@ export class UnitOfWorkEncoder {
       }
 
       if (isDbNow(value)) {
+        const offsetMs = getDbNowOffsetMs(value);
         if (this.#driverConfig.databaseType === "sqlite") {
           const storageMode = this.#sqliteStorageMode ?? sqliteStorageDefault;
           const storage =
             col.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
           if ((col.type === "timestamp" || col.type === "date") && storage === "epoch-ms") {
-            result[dbColumnName] = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-          } else {
+            const base = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+            result[dbColumnName] = offsetMs === 0 ? base : sql`${base} + ${offsetMs}`;
+          } else if (offsetMs === 0) {
             result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+          } else {
+            const seconds = offsetMs / 1000;
+            const modifier = `${seconds >= 0 ? "+" : ""}${seconds} seconds`;
+            result[dbColumnName] = sql`datetime('now', ${modifier})`;
+          }
+        } else if (this.#driverConfig.databaseType === "mysql") {
+          if (offsetMs === 0) {
+            result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+          } else {
+            const micros = Math.trunc(offsetMs * 1000);
+            result[dbColumnName] = sql`TIMESTAMPADD(MICROSECOND, ${micros}, CURRENT_TIMESTAMP)`;
           }
         } else {
-          result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+          if (offsetMs === 0) {
+            result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+          } else {
+            result[dbColumnName] =
+              sql`(CURRENT_TIMESTAMP + (${offsetMs} * interval '1 millisecond'))`;
+          }
         }
         continue;
       }
