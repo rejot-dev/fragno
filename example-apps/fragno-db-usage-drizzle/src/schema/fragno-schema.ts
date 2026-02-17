@@ -178,7 +178,8 @@ export const user_auth = schema_auth.table("user", {
   role: text("role").notNull().default("user"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  bannedAt: timestamp("bannedAt")
 }, (table) => [
   index("idx_user_email").on(table.email),
   uniqueIndex("idx_user_id").on(table.id),
@@ -191,19 +192,128 @@ export const session_auth = schema_auth.table("session", {
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  activeOrganizationId: bigint("activeOrganizationId", { mode: "number" })
 }, (table) => [
   foreignKey({
     columns: [table.userId],
     foreignColumns: [user_auth._internalId],
     name: "fk_session_user_sessionOwner"
   }),
+  foreignKey({
+    columns: [table.activeOrganizationId],
+    foreignColumns: [organization_auth._internalId],
+    name: "fk_session_organization_sessionActiveOrganization"
+  }),
   index("idx_session_user").on(table.userId)
+])
+
+export const organization_auth = schema_auth.table("organization", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  logoUrl: text("logoUrl"),
+  metadata: json("metadata"),
+  createdBy: bigint("createdBy", { mode: "number" }).notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  deletedAt: timestamp("deletedAt"),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.createdBy],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_organization_user_organizationCreator"
+  }),
+  uniqueIndex("idx_organization_slug").on(table.slug),
+  index("idx_organization_createdBy").on(table.createdBy)
+])
+
+export const organizationMember_auth = schema_auth.table("organizationMember", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  organizationId: bigint("organizationId", { mode: "number" }).notNull(),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.organizationId],
+    foreignColumns: [organization_auth._internalId],
+    name: "fk_organizationMember_organization_organizationMemberOrb0ebc659"
+  }),
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_organizationMember_user_organizationMemberUser"
+  }),
+  uniqueIndex("idx_org_member_org_user").on(table.organizationId, table.userId),
+  index("idx_org_member_user").on(table.userId),
+  index("idx_org_member_org").on(table.organizationId)
+])
+
+export const organizationMemberRole_auth = schema_auth.table("organizationMemberRole", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  memberId: bigint("memberId", { mode: "number" }).notNull(),
+  role: text("role").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.memberId],
+    foreignColumns: [organizationMember_auth._internalId],
+    name: "fk_organizationMemberRole_organizationMember_organizati1834c67a"
+  }),
+  uniqueIndex("idx_org_member_role_member_role").on(table.memberId, table.role),
+  index("idx_org_member_role_member").on(table.memberId),
+  index("idx_org_member_role_role").on(table.role)
+])
+
+export const organizationInvitation_auth = schema_auth.table("organizationInvitation", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  organizationId: bigint("organizationId", { mode: "number" }).notNull(),
+  email: text("email").notNull(),
+  roles: json("roles").notNull(),
+  status: text("status").notNull(),
+  token: text("token").notNull(),
+  inviterId: bigint("inviterId", { mode: "number" }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  respondedAt: timestamp("respondedAt"),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.organizationId],
+    foreignColumns: [organization_auth._internalId],
+    name: "fk_organizationInvitation_organization_organizationInvi7f8b4d7d"
+  }),
+  foreignKey({
+    columns: [table.inviterId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_organizationInvitation_user_organizationInvitationInviter"
+  }),
+  uniqueIndex("idx_org_invitation_token").on(table.token),
+  index("idx_org_invitation_org_status").on(table.organizationId, table.status),
+  index("idx_org_invitation_email").on(table.email),
+  index("idx_org_invitation_email_status").on(table.email, table.status)
 ])
 
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
     relationName: "session_user"
+  }),
+  organizationList: many(organization_auth, {
+    relationName: "organization_user"
+  }),
+  organizationMemberList: many(organizationMember_auth, {
+    relationName: "organizationMember_user"
+  }),
+  organizationInvitationList: many(organizationInvitation_auth, {
+    relationName: "organizationInvitation_user"
   })
 }));
 
@@ -211,6 +321,65 @@ export const session_authRelations = relations(session_auth, ({ one }) => ({
   sessionOwner: one(user_auth, {
     relationName: "session_user",
     fields: [session_auth.userId],
+    references: [user_auth._internalId]
+  }),
+  sessionActiveOrganization: one(organization_auth, {
+    relationName: "session_organization",
+    fields: [session_auth.activeOrganizationId],
+    references: [organization_auth._internalId]
+  })
+}));
+
+export const organization_authRelations = relations(organization_auth, ({ one, many }) => ({
+  organizationCreator: one(user_auth, {
+    relationName: "organization_user",
+    fields: [organization_auth.createdBy],
+    references: [user_auth._internalId]
+  }),
+  sessionList: many(session_auth, {
+    relationName: "session_organization"
+  }),
+  organizationMemberList: many(organizationMember_auth, {
+    relationName: "organizationMember_organization"
+  }),
+  organizationInvitationList: many(organizationInvitation_auth, {
+    relationName: "organizationInvitation_organization"
+  })
+}));
+
+export const organizationMember_authRelations = relations(organizationMember_auth, ({ one, many }) => ({
+  organizationMemberOrganization: one(organization_auth, {
+    relationName: "organizationMember_organization",
+    fields: [organizationMember_auth.organizationId],
+    references: [organization_auth._internalId]
+  }),
+  organizationMemberUser: one(user_auth, {
+    relationName: "organizationMember_user",
+    fields: [organizationMember_auth.userId],
+    references: [user_auth._internalId]
+  }),
+  organizationMemberRoleList: many(organizationMemberRole_auth, {
+    relationName: "organizationMemberRole_organizationMember"
+  })
+}));
+
+export const organizationMemberRole_authRelations = relations(organizationMemberRole_auth, ({ one }) => ({
+  organizationMemberRoleMember: one(organizationMember_auth, {
+    relationName: "organizationMemberRole_organizationMember",
+    fields: [organizationMemberRole_auth.memberId],
+    references: [organizationMember_auth._internalId]
+  })
+}));
+
+export const organizationInvitation_authRelations = relations(organizationInvitation_auth, ({ one }) => ({
+  organizationInvitationOrganization: one(organization_auth, {
+    relationName: "organizationInvitation_organization",
+    fields: [organizationInvitation_auth.organizationId],
+    references: [organization_auth._internalId]
+  }),
+  organizationInvitationInviter: one(user_auth, {
+    relationName: "organizationInvitation_user",
+    fields: [organizationInvitation_auth.inviterId],
     references: [user_auth._internalId]
   })
 }));
@@ -224,7 +393,23 @@ export const auth_schema = {
   session_authRelations: session_authRelations,
   session: session_auth,
   sessionRelations: session_authRelations,
-  schemaVersion: 4
+  organization_auth: organization_auth,
+  organization_authRelations: organization_authRelations,
+  organization: organization_auth,
+  organizationRelations: organization_authRelations,
+  organizationMember_auth: organizationMember_auth,
+  organizationMember_authRelations: organizationMember_authRelations,
+  organizationMember: organizationMember_auth,
+  organizationMemberRelations: organizationMember_authRelations,
+  organizationMemberRole_auth: organizationMemberRole_auth,
+  organizationMemberRole_authRelations: organizationMemberRole_authRelations,
+  organizationMemberRole: organizationMemberRole_auth,
+  organizationMemberRoleRelations: organizationMemberRole_authRelations,
+  organizationInvitation_auth: organizationInvitation_auth,
+  organizationInvitation_authRelations: organizationInvitation_authRelations,
+  organizationInvitation: organizationInvitation_auth,
+  organizationInvitationRelations: organizationInvitation_authRelations,
+  schemaVersion: 16
 }
 
 // ============================================================================
