@@ -1,6 +1,6 @@
 import type { Condition } from "../../query/condition-builder";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
-import { isDbNow } from "../../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
 import type { InMemoryNamespaceStore, InMemoryRow } from "./store";
@@ -74,7 +74,12 @@ const resolveComparisonValue = (
   }
 
   if (isDbNow(value)) {
-    return { value: now(), column };
+    const base = now();
+    const offsetMs = getDbNowOffsetMs(value);
+    return {
+      value: offsetMs === 0 ? base : new Date(base.getTime() + offsetMs),
+      column,
+    };
   }
 
   if (column.role === "reference") {

@@ -104,7 +104,15 @@ describe("ConditionBuilder", () => {
     it("should expose db now helper", () => {
       const builder = createBuilder(usersTable.columns);
 
-      expect(builder.now()).toEqual({ tag: "db-now" });
+      const now = builder.now();
+      expect(now).toMatchObject({ tag: "db-now" });
+      expect(typeof now.plus).toBe("function");
+      expect(now.plus({ seconds: 1 })).toMatchObject({ tag: "db-now", offsetMs: 1000 });
+      expect(now.plus({ seconds: 1 }).plus({ minutes: 1 })).toMatchObject({
+        tag: "db-now",
+        offsetMs: 61_000,
+      });
+      expect(builder.interval({ minutes: 1 })).toEqual({ tag: "db-interval", ms: 60_000 });
     });
 
     it("should support boolean columns", () => {

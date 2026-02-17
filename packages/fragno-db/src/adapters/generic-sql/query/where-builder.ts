@@ -10,10 +10,11 @@ import type { Condition } from "../../../query/condition-builder";
 import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig } from "../driver-config";
-import { sqliteStorageDefault, type SQLiteStorageMode } from "../sqlite-storage";
+import type { SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
-import { isDbNow } from "../../../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
+import { buildDbNowSql } from "./db-now-sql";
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).
@@ -61,18 +62,12 @@ export function buildWhere(
 
     if (!(val instanceof Column)) {
       if (isDbNow(val)) {
-        if (driverConfig.databaseType === "sqlite") {
-          const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
-          const storage =
-            left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
-          if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
-            val = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-          } else {
-            val = sql`CURRENT_TIMESTAMP`;
-          }
-        } else {
-          val = sql`CURRENT_TIMESTAMP`;
-        }
+        val = buildDbNowSql({
+          driverConfig,
+          columnType: left.type,
+          offsetMs: getDbNowOffsetMs(val),
+          sqliteStorageMode,
+        });
       } else if (left.role === "reference" && table) {
         // Handle reference columns specially
         if (typeof val === "string") {

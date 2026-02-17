@@ -2,7 +2,13 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
-import { dbNow, type DbNow } from "./query/db-now";
+import {
+  dbInterval,
+  dbNow,
+  type DbInterval,
+  type DbIntervalInput,
+  type DbNow,
+} from "./query/db-now";
 import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
 import type {
   FragnoPublicConfigWithDatabase,
@@ -13,8 +19,8 @@ import { getInternalFragment } from "./internal/adapter-registry";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
-export { dbNow };
-export type { DbNow };
+export { dbNow, dbInterval };
+export type { DbNow, DbInterval, DbIntervalInput };
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
