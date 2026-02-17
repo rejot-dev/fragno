@@ -5,9 +5,9 @@ import type {
   WorkflowEventUpdate,
   WorkflowInstanceRecord,
   WorkflowLogCreate,
-  WorkflowStepCreate,
+  WorkflowStepCreateDraft,
   WorkflowStepRecord,
-  WorkflowStepUpdate,
+  WorkflowStepUpdateDraft,
 } from "./types";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
@@ -16,12 +16,12 @@ export type WorkflowStepSnapshot = Partial<Omit<WorkflowStepRecord, "id">> & {
 };
 
 export type RunnerMutationBuffer = {
-  stepCreates: Map<string, WorkflowStepCreate>;
+  stepCreates: Map<string, WorkflowStepCreateDraft>;
   stepUpdates: Map<
     string,
     {
       id: WorkflowStepRecord["id"];
-      data: WorkflowStepUpdate;
+      data: WorkflowStepUpdateDraft;
     }
   >;
   eventUpdates: Map<
@@ -161,7 +161,7 @@ export const clearStepMutationBuffer = (state: RunnerState, stepKey: string): vo
 export const queueStepCreate = (
   state: RunnerState,
   stepKey: string,
-  data: WorkflowStepCreate,
+  data: WorkflowStepCreateDraft,
 ): void => {
   state.mutations.stepCreates.set(stepKey, data);
   state.mutations.stepUpdates.delete(stepKey);
@@ -172,7 +172,7 @@ export const queueStepUpdate = (
   state: RunnerState,
   stepKey: string,
   id: WorkflowStepRecord["id"] | undefined,
-  data: WorkflowStepUpdate,
+  data: WorkflowStepUpdateDraft,
 ): void => {
   const existingCreate = state.mutations.stepCreates.get(stepKey);
   if (existingCreate) {
