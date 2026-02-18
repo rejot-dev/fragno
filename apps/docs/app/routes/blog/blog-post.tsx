@@ -27,10 +27,10 @@ export async function loader({ params }: Route.LoaderArgs) {
   const publishDateDisplay = publishDateFormatter.format(publishDate);
 
   const enableLevels = "_exports" in page.data && page.data._exports?.enableLevels === true;
-  const heroImage = "image" in page.data ? page.data.image : undefined;
   const author = "author" in page.data ? page.data.author : undefined;
 
   return {
+    slug: params.slug,
     path: page.path,
     url: page.url,
     title: page.data.title,
@@ -38,17 +38,22 @@ export async function loader({ params }: Route.LoaderArgs) {
     publishDateIso,
     publishDateDisplay,
     enableLevels,
-    heroImage,
     author,
   };
 }
+
+const BASE_URL =
+  typeof import.meta.env !== "undefined" && import.meta.env.MODE === "development"
+    ? "http://localhost:3000"
+    : "https://fragno.dev";
 
 export function meta({ data }: Route.MetaArgs) {
   if (!data) {
     return [{ title: "Not Found" }];
   }
 
-  const imageUrl = data.heroImage ? `/${data.heroImage}` : "/social.webp";
+  const ogImage = `${BASE_URL}/og/${data.slug}-og.webp`;
+  const twitterImage = `${BASE_URL}/og/${data.slug}-twitter.webp`;
 
   return [
     { title: `${data.title} | Fragno Blog` },
@@ -58,11 +63,13 @@ export function meta({ data }: Route.MetaArgs) {
     { property: "og:type", content: "article" },
     { property: "og:published_time", content: data.publishDateIso },
     { property: "og:authors", content: data.author ? [data.author] : undefined },
-    { property: "og:image", content: imageUrl },
+    { property: "og:image", content: ogImage },
+    { property: "og:image:width", content: "1200" },
+    { property: "og:image:height", content: "630" },
     { name: "twitter:card", content: "summary_large_image" },
     { name: "twitter:title", content: data.title },
     { name: "twitter:description", content: data.description },
-    { name: "twitter:image", content: imageUrl },
+    { name: "twitter:image", content: twitterImage },
   ];
 }
 
@@ -226,7 +233,6 @@ const clientLoader = browserCollections.blog.createClientLoader({
     const publishDateDisplay = publishDateFormatter.format(publishDate);
 
     const enableLevels = false;
-    const heroImage = frontmatter.image;
 
     const [postUrl, setPostUrl] = useState("");
     useEffect(() => {
@@ -238,85 +244,44 @@ const clientLoader = browserCollections.blog.createClientLoader({
         <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-stone-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950">
           {/* Hero Section */}
           <div className="relative mb-4 overflow-hidden">
-            {/* Hero Image Background (if provided) */}
-            {heroImage ? (
-              <>
-                <img
-                  src={`/${heroImage}`}
-                  alt={frontmatter.title}
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-                {/* Dark overlay for text readability */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70 dark:from-black/70 dark:via-black/60 dark:to-black/80" />
-              </>
-            ) : (
-              <>
-                {/* Decorative background (fallback when no image) */}
-                <div className="absolute inset-0 bg-gradient-to-r from-zinc-500/10 via-neutral-500/10 to-stone-500/10 dark:from-zinc-400/5 dark:via-neutral-400/5 dark:to-stone-400/5" />
-                <div
-                  className="absolute inset-0 opacity-30"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                  }}
-                />
-                {/* Subtle diagonal stripes */}
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-20 mix-blend-multiply dark:opacity-10"
-                  style={{
-                    backgroundImage:
-                      "linear-gradient(120deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.05) 75%, transparent 75%, transparent)",
-                    backgroundSize: "24px 24px",
-                  }}
-                />
-                {/* Geometric accents */}
-                <div className="pointer-events-none absolute -right-8 top-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/60 dark:border-white/10" />
-              </>
-            )}
+            <div className="absolute inset-0 bg-gradient-to-r from-zinc-500/10 via-neutral-500/10 to-stone-500/10 dark:from-zinc-400/5 dark:via-neutral-400/5 dark:to-stone-400/5" />
+            <div
+              className="absolute inset-0 opacity-30"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+              }}
+            />
+            <div
+              className="pointer-events-none absolute inset-0 opacity-20 mix-blend-multiply dark:opacity-10"
+              style={{
+                backgroundImage:
+                  "linear-gradient(120deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.05) 75%, transparent 75%, transparent)",
+                backgroundSize: "24px 24px",
+              }}
+            />
+            <div className="pointer-events-none absolute -right-8 top-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/60 dark:border-white/10" />
 
             <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-              {/* Back Button */}
               <Link
                 to="/blog"
-                className={cn(
-                  "group mb-8 inline-flex items-center gap-2 text-sm font-medium transition-colors",
-                  heroImage
-                    ? "text-white/90 hover:text-white"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100",
-                )}
+                className="group mb-8 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
               >
                 <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                 Back to blog
               </Link>
 
-              {/* Article Header */}
               <header className="mb-10">
-                <h1
-                  className={cn(
-                    "mb-5 max-w-prose text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl",
-                    heroImage ? "text-white" : "text-gray-900 dark:text-white",
-                  )}
-                >
+                <h1 className="mb-5 max-w-prose text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl dark:text-white">
                   {frontmatter.title}
                 </h1>
 
                 {frontmatter.description && (
-                  <p
-                    className={cn(
-                      "mb-6 max-w-prose text-xl leading-relaxed",
-                      heroImage ? "text-white/95" : "text-gray-600 dark:text-gray-300",
-                    )}
-                  >
+                  <p className="mb-6 max-w-prose text-xl leading-relaxed text-gray-600 dark:text-gray-300">
                     {frontmatter.description}
                   </p>
                 )}
 
-                {/* Article Meta */}
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center gap-5 text-sm",
-                    heroImage ? "text-white/80" : "text-gray-500 dark:text-gray-400",
-                  )}
-                >
+                <div className="flex flex-wrap items-center gap-5 text-sm text-gray-500 dark:text-gray-400">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <time dateTime={publishDateIso}>{publishDateDisplay}</time>

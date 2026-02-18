@@ -16,6 +16,9 @@ pre-commit:
     - name: "changeset status: validate frontmatter"
       run: pnpm exec changeset status
       glob: ".changeset/**"
+    - name: "og images: check blog posts have images"
+      run: pnpm exec tsx apps/docs/scripts/generate-og-images.tsx --check
+      glob: "apps/docs/content/blog/**"
     - name: "turbo: build + test + type-check"
       run:
         pnpm exec turbo run --output-logs new-only --no-daemon --filter='!./example-apps/**'
