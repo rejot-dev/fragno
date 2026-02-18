@@ -12,7 +12,10 @@ import type {
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
+import {
+  INTERNAL_MIGRATION_VERSION_KEY,
+  SETTINGS_TABLE_NAME,
+} from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
@@ -73,16 +76,13 @@ export abstract class SQLGenerator {
   abstract getDefaultValue(column: ColumnInfo): RawBuilder<unknown> | undefined;
 
   /**
-   * Generate SQL for updating the schema version in the settings table.
-   * This is the same across all databases.
+   * Generate SQL for updating a version key in the settings table.
    */
-  generateVersionUpdateSQL(
-    namespace: string,
+  protected generateSettingsUpdateSQL(
+    key: string,
     fromVersion: number,
     toVersion: number,
   ): CompiledQuery {
-    const key = `${namespace}.schema_version`;
-
     if (fromVersion === 0) {
       // Insert new version record
       const id = createHash("md5").update(key).digest("base64url").replace(/=/g, "");
@@ -94,16 +94,41 @@ export abstract class SQLGenerator {
           value: sql.lit(toVersion.toString()),
         })
         .compile();
-    } else {
-      // Update existing version record
-      return this.db
-        .updateTable(SETTINGS_TABLE_NAME)
-        .set({
-          value: sql.lit(toVersion.toString()),
-        })
-        .where("key", "=", sql.lit(key))
-        .compile();
     }
+
+    // Update existing version record
+    return this.db
+      .updateTable(SETTINGS_TABLE_NAME)
+      .set({
+        value: sql.lit(toVersion.toString()),
+      })
+      .where("key", "=", sql.lit(key))
+      .compile();
+  }
+
+  /**
+   * Generate SQL for updating the schema version in the settings table.
+   * This is the same across all databases.
+   */
+  generateVersionUpdateSQL(
+    namespace: string,
+    fromVersion: number,
+    toVersion: number,
+  ): CompiledQuery {
+    const key = `${namespace}.schema_version`;
+    return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
+  }
+
+  /**
+   * Generate SQL for updating the internal migration version in the settings table.
+   */
+  generateInternalMigrationUpdateSQL(
+    namespace: string,
+    fromVersion: number,
+    toVersion: number,
+  ): CompiledQuery {
+    const key = `${namespace}.${INTERNAL_MIGRATION_VERSION_KEY}`;
+    return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
   }
 
   /**
