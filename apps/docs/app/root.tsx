@@ -24,6 +24,12 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap",
   },
+  {
+    rel: "alternate",
+    type: "application/rss+xml",
+    title: "Fragno Blog",
+    href: "/blog/feed.xml",
+  },
 ];
 
 /**

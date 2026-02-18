@@ -11,6 +11,7 @@ export default [
     route("fragments/auth", "routes/auth.tsx"),
 
     route("blog", "routes/blog/blog-index.tsx"),
+    route("blog/feed.xml", "routes/blog/feed.ts"),
     route("blog/:slug", "routes/blog/blog-post.tsx"),
 
     route("docs", "routes/docs/docs-index.tsx"),
