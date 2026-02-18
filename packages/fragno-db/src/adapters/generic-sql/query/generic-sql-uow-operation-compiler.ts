@@ -17,6 +17,7 @@ import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/orm/orm";
 import type { AnySelectClause } from "../../../query/simple-query-interface";
 import { createColdKysely } from "../migration/cold-kysely";
+import { getDbNowStrategy, type DbNowStrategy } from "../db-now-strategy";
 
 /**
  * Generic SQL UOW Operation Compiler.
@@ -26,6 +27,7 @@ import { createColdKysely } from "../migration/cold-kysely";
  */
 export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<CompiledQuery> {
   private readonly sqliteStorageMode?: SQLiteStorageMode;
+  private readonly dbNowStrategy: DbNowStrategy;
 
   constructor(
     driverConfig: DriverConfig,
@@ -34,6 +36,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   ) {
     super(driverConfig, resolverFactory);
     this.sqliteStorageMode = sqliteStorageMode;
+    this.dbNowStrategy = getDbNowStrategy(driverConfig);
   }
 
   /**
@@ -52,6 +55,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       this.driverConfig,
       this.sqliteStorageMode,
       resolver,
+      this.dbNowStrategy,
     );
   }
 

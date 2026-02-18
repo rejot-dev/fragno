@@ -11,6 +11,7 @@ import {
   NodePostgresDriverConfig,
   MySQL2DriverConfig,
 } from "../driver-config";
+import { dbNow } from "../../../query/db-now";
 
 // Test schema
 const testSchema = schema("test", (s) => {
@@ -257,6 +258,31 @@ describe("SQLQueryCompiler", () => {
       } finally {
         await db.destroy();
       }
+    });
+
+    test("compileUpdate uses temp-table DbNow for SQLite mutations", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new SQLiteQueryCompiler(db, new BetterSQLite3DriverConfig());
+
+      const mutationSchema = schema("test", (s) =>
+        s.addTable("events", (t) =>
+          t.addColumn("id", idColumn()).addColumn("createdAt", column("timestamp")),
+        ),
+      );
+
+      const query = compiler.compileUpdate(mutationSchema.tables.events, {
+        set: { createdAt: dbNow() },
+        where: {
+          type: "compare",
+          a: mutationSchema.tables.events.columns.id,
+          operator: "=",
+          b: "event1",
+        },
+      });
+
+      expect(query.sql).toContain("__fragno_now");
     });
   });
 });

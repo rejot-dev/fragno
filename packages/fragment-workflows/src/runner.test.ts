@@ -1833,6 +1833,10 @@ describe("Workflows Runner", () => {
     });
 
     assert(scheduledHook?.nextRetryAt);
-    expect(scheduledHook.nextRetryAt.getTime()).toBe(task?.runAt.getTime());
+    assert(task?.runAt);
+    // runAt (workflow_task update) and nextRetryAt (fragno_hooks insert) are separate SQL
+    // statements. PGlite can surface a 1ms skew, so allow a tiny buffer.
+    const hookDeltaMs = Math.abs(scheduledHook.nextRetryAt.getTime() - task.runAt.getTime());
+    expect(hookDeltaMs).toBeLessThanOrEqual(2);
   });
 });

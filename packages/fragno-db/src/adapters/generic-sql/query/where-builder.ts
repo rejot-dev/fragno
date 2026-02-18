@@ -10,10 +10,16 @@ import type { Condition } from "../../../query/condition-builder";
 import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig } from "../driver-config";
-import { sqliteStorageDefault, type SQLiteStorageMode } from "../sqlite-storage";
+import { type SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
+import { getDbNowStrategy, type DbNowContext, type DbNowStrategy } from "../db-now-strategy";
+
+type DbNowOptions = {
+  dbNowStrategy?: DbNowStrategy;
+  dbNowContext?: DbNowContext;
+};
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).
@@ -51,6 +57,7 @@ export function buildWhere(
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
   table?: AnyTable,
+  dbNowOptions?: DbNowOptions,
 ): AnyExpressionWrapper {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
 
@@ -62,34 +69,14 @@ export function buildWhere(
     if (!(val instanceof Column)) {
       if (isDbNow(val)) {
         const offsetMs = getDbNowOffsetMs(val);
-        if (driverConfig.databaseType === "sqlite") {
-          const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
-          const storage =
-            left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
-          if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
-            const base = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
-            val = offsetMs === 0 ? base : sql`${base} + ${offsetMs}`;
-          } else if (offsetMs === 0) {
-            val = sql`CURRENT_TIMESTAMP`;
-          } else {
-            const seconds = offsetMs / 1000;
-            const modifier = `${seconds >= 0 ? "+" : ""}${seconds} seconds`;
-            val = sql`datetime('now', ${modifier})`;
-          }
-        } else if (driverConfig.databaseType === "mysql") {
-          if (offsetMs === 0) {
-            val = sql`CURRENT_TIMESTAMP`;
-          } else {
-            const micros = Math.trunc(offsetMs * 1000);
-            val = sql`TIMESTAMPADD(MICROSECOND, ${micros}, CURRENT_TIMESTAMP)`;
-          }
-        } else {
-          if (offsetMs === 0) {
-            val = sql`CURRENT_TIMESTAMP`;
-          } else {
-            val = sql`(CURRENT_TIMESTAMP + (${offsetMs} * interval '1 millisecond'))`;
-          }
-        }
+        const dbNowStrategy = dbNowOptions?.dbNowStrategy ?? getDbNowStrategy(driverConfig);
+        const dbNowContext = dbNowOptions?.dbNowContext ?? "query";
+        val = dbNowStrategy.expression({
+          offsetMs,
+          context: dbNowContext,
+          columnType: left.type,
+          sqliteStorageMode,
+        });
       } else if (left.role === "reference" && table) {
         // Handle reference columns specially
         if (typeof val === "string") {
@@ -222,17 +209,29 @@ export function buildWhere(
   if (condition.type === "and") {
     return eb.and(
       condition.items.map((v) =>
-        buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table),
+        buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table, dbNowOptions),
       ),
     );
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, resolver, table));
+    return eb.not(
+      buildWhere(
+        condition.item,
+        eb,
+        driverConfig,
+        sqliteStorageMode,
+        resolver,
+        table,
+        dbNowOptions,
+      ),
+    );
   }
 
   return eb.or(
-    condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table)),
+    condition.items.map((v) =>
+      buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table, dbNowOptions),
+    ),
   );
 }
 

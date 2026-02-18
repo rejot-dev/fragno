@@ -17,6 +17,7 @@ import { buildWhere, fullSQLName } from "./where-builder";
 import { mapSelect, extendSelect } from "./select-builder";
 import type { CompiledJoin } from "../../../query/orm/orm";
 import { UnitOfWorkEncoder } from "../uow-encoder";
+import { getDbNowStrategy, type DbNowContext, type DbNowStrategy } from "../db-now-strategy";
 
 /**
  * Type helpers for Kysely query builders.
@@ -107,19 +108,28 @@ export abstract class SQLQueryCompiler {
   protected readonly resolver?: NamingResolver;
   protected readonly encoder: UnitOfWorkEncoder;
   protected readonly sqliteStorageMode?: SQLiteStorageMode;
+  protected readonly dbNowStrategy: DbNowStrategy;
 
   constructor(
     db: AnyKysely,
     driverConfig: DriverConfig,
     sqliteStorageMode?: SQLiteStorageMode,
     resolver?: NamingResolver,
+    dbNowStrategy?: DbNowStrategy,
   ) {
     this.db = db;
     this.driverConfig = driverConfig;
     this.database = driverConfig.databaseType;
     this.resolver = resolver;
     this.sqliteStorageMode = sqliteStorageMode;
-    this.encoder = new UnitOfWorkEncoder(driverConfig, db, sqliteStorageMode, resolver);
+    this.dbNowStrategy = dbNowStrategy ?? getDbNowStrategy(driverConfig);
+    this.encoder = new UnitOfWorkEncoder(
+      driverConfig,
+      db,
+      sqliteStorageMode,
+      resolver,
+      this.dbNowStrategy,
+    );
   }
 
   /**
@@ -153,7 +163,12 @@ export abstract class SQLQueryCompiler {
   /**
    * Build WHERE clause from a condition tree.
    */
-  protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
+  protected buildWhereClause(
+    condition: Condition,
+    eb: AnyExpressionBuilder,
+    table: AnyTable,
+    context: DbNowContext = "query",
+  ) {
     return buildWhere(
       condition,
       eb,
@@ -161,6 +176,7 @@ export abstract class SQLQueryCompiler {
       this.sqliteStorageMode,
       this.resolver,
       table,
+      { dbNowStrategy: this.dbNowStrategy, dbNowContext: context },
     );
   }
 
@@ -280,7 +296,7 @@ export abstract class SQLQueryCompiler {
     const aliases: JoinAliasInfo[] = [{ table, alias: tableName }];
 
     if (options.where) {
-      query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
+      query = query.where((eb) => this.buildWhereClause(options.where!, eb, table, "mutation"));
     }
 
     if (options.join && options.join.length > 0) {
@@ -412,7 +428,7 @@ export abstract class SQLQueryCompiler {
     let query = this.db.updateTable(this.getTableName(table)).set(encoded);
 
     if (options.where) {
-      query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
+      query = query.where((eb) => this.buildWhereClause(options.where!, eb, table, "mutation"));
     }
 
     // Apply RETURNING if requested and supported
@@ -450,7 +466,7 @@ export abstract class SQLQueryCompiler {
     const query = this.db
       .selectFrom(this.getTableName(table))
       .select(sql<number>`1`.as("exists"))
-      .where((eb) => this.buildWhereClause(where, eb, table))
+      .where((eb) => this.buildWhereClause(where, eb, table, "mutation"))
       .limit(1);
 
     return query.compile();

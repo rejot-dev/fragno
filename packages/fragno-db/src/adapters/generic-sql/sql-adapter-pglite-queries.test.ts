@@ -4,6 +4,7 @@ import { SqlAdapter } from "./generic-sql-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
+import { dbNow } from "../../query/db-now";
 import { PGLiteDriverConfig } from "./driver-config";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -560,6 +561,47 @@ describe("SqlAdapter PGLite", () => {
     const isoString = post.created_at.toISOString();
     expect(typeof isoString).toBe("string");
     expect(new Date(isoString).getTime()).toBe(post.created_at.getTime());
+  });
+
+  it("should keep dbNow stable across multiple pglite mutations in a single UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const uow = queryEngine.createUnitOfWork("create-user-posts-dbnow");
+    const userId = uow.create("users", { name: "DbNow User", age: 32 });
+    uow.create("posts", {
+      user_id: userId,
+      title: "DbNow Post A",
+      content: "alpha",
+      created_at: dbNow(),
+    });
+    uow.create("posts", {
+      user_id: userId,
+      title: "DbNow Post B",
+      content: "beta",
+      created_at: dbNow(),
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(true);
+
+    const [posts] = await queryEngine
+      .createUnitOfWork("get-posts-dbnow")
+      .find("posts", (b) =>
+        b
+          .whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId))
+          .select(["title", "created_at"]),
+      )
+      .executeRetrieve();
+
+    expect(posts).toHaveLength(2);
+
+    const sorted = [...posts].sort((a, b) => a.title.localeCompare(b.title));
+    const firstCreatedAt = sorted[0]?.created_at as Date;
+    const secondCreatedAt = sorted[1]?.created_at as Date;
+
+    expect(firstCreatedAt).toBeInstanceOf(Date);
+    expect(secondCreatedAt).toBeInstanceOf(Date);
+    expect(firstCreatedAt.getTime()).toBe(secondCreatedAt.getTime());
   });
 
   it("should create user and post in same transaction using returned ID", async () => {

@@ -5,6 +5,7 @@ import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
 import { PostgreSQLQueryCompiler } from "./dialect/postgres";
 import { MySQLQueryCompiler } from "./dialect/mysql";
 import { SQLiteQueryCompiler } from "./dialect/sqlite";
+import type { DbNowStrategy } from "../db-now-strategy";
 
 /**
  * Factory function to create a dialect-specific SQL query compiler.
@@ -23,14 +24,21 @@ export function createSQLQueryCompiler(
   driverConfig: DriverConfig,
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
+  dbNowStrategy?: DbNowStrategy,
 ): SQLQueryCompiler {
   switch (driverConfig.databaseType) {
     case "postgresql":
-      return new PostgreSQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
+      return new PostgreSQLQueryCompiler(
+        db,
+        driverConfig,
+        sqliteStorageMode,
+        resolver,
+        dbNowStrategy,
+      );
     case "mysql":
-      return new MySQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
+      return new MySQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver, dbNowStrategy);
     case "sqlite":
-      return new SQLiteQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
+      return new SQLiteQueryCompiler(db, driverConfig, sqliteStorageMode, resolver, dbNowStrategy);
     default: {
       const exhaustiveCheck: never = driverConfig.databaseType;
       throw new Error(`Unsupported database type: ${exhaustiveCheck}`);

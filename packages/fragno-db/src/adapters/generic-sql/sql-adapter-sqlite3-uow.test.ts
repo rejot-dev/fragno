@@ -3,6 +3,7 @@ import { SqliteDialect } from "kysely";
 import { SqlAdapter } from "./generic-sql-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
+import { dbNow } from "../../query/db-now";
 import { Cursor } from "../../query/cursor";
 import {
   createServiceTxBuilder,
@@ -47,6 +48,13 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("text", column("string"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
+      })
+      .addTable("events", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("createdAt", column("timestamp"))
+          .createIndex("events_name_idx", ["name"]);
       })
       .addReference("user", {
         type: "one",
@@ -149,7 +157,7 @@ describe("SqlAdapter SQLite", () => {
       Parameters<typeof createUow.find>[0]
     >();
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
-      "users" | "emails" | "posts" | "comments"
+      "users" | "emails" | "posts" | "comments" | "events"
     >();
 
     const { success: createSuccess } = await createUow.executeMutations();
@@ -656,6 +664,32 @@ describe("SqlAdapter SQLite", () => {
     const localDate = new Date("2024-06-15T14:30:00");
     expect(localDate).toBeInstanceOf(Date);
     expect(typeof localDate.getTimezoneOffset()).toBe("number");
+  });
+
+  it("should keep dbNow stable across multiple SQLite mutations in a single UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const uow = queryEngine.createUnitOfWork("create-events-with-dbnow");
+    uow.create("events", { name: "Event A", createdAt: dbNow() });
+    uow.create("events", { name: "Event B", createdAt: dbNow() });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(true);
+
+    const [events] = await queryEngine
+      .createUnitOfWork("get-events-for-dbnow")
+      .find("events", (b) => b.whereIndex("events_name_idx").select(["name", "createdAt"]))
+      .executeRetrieve();
+
+    expect(events).toHaveLength(2);
+
+    const sorted = [...events].sort((a, b) => a.name.localeCompare(b.name));
+    const firstCreatedAt = sorted[0]?.createdAt as Date;
+    const secondCreatedAt = sorted[1]?.createdAt as Date;
+
+    expect(firstCreatedAt).toBeInstanceOf(Date);
+    expect(secondCreatedAt).toBeInstanceOf(Date);
+    expect(firstCreatedAt.getTime()).toBe(secondCreatedAt.getTime());
   });
 
   it("should support forSchema for multi-schema queries", async () => {

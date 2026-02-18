@@ -6,6 +6,7 @@ import { ReferenceSubquery } from "../../../query/value-encoding";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { dbNow } from "../../../query/db-now";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
+import { getDbNowStrategy } from "../db-now-strategy";
 
 describe("where-builder", () => {
   const testSchema = schema("test", (s) => {
@@ -168,6 +169,34 @@ describe("where-builder", () => {
         const sqlText = query.compile().sql;
         expect(sqlText).toContain("CURRENT_TIMESTAMP");
         expect(sqlText).not.toContain("julianday");
+      });
+
+      it("should use sqlite temp table for dbNow in mutation context", () => {
+        const condition = {
+          type: "compare" as const,
+          a: usersTable.columns.createdAt,
+          operator: "<=" as const,
+          b: dbNow(),
+        };
+
+        type TestDB = { users: { id: string } };
+        const db = new Kysely<TestDB>({
+          dialect: new PostgresDialect({ pool: {} as any }), // eslint-disable-line @typescript-eslint/no-explicit-any
+        });
+        const driverConfig = new BetterSQLite3DriverConfig();
+
+        const query = db
+          .selectFrom("users")
+          .select("id")
+          .where((eb) =>
+            buildWhere(condition, eb, driverConfig, undefined, undefined, undefined, {
+              dbNowStrategy: getDbNowStrategy(driverConfig),
+              dbNowContext: "mutation",
+            }),
+          );
+
+        const sqlText = query.compile().sql;
+        expect(sqlText).toContain("__fragno_now");
       });
 
       it("should build simple equality comparison", () => {

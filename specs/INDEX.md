@@ -43,6 +43,9 @@ Format:
 - [Workflows Reliability Fixes — Spec](./spec-workflows-smoke-fixes.md) — Reliability fixes for the
   workflows fragment and durable hooks: batch create, task leasing, retries, timeouts, pagination,
   dispatcher clock skew, retention/GC, and Postgres resilience.
+- [SQLite Stable DB Now for SQL Adapter — Spec](./spec-sqlite-stable-db-now.md) — Make SQLite dbNow
+  stable across mutation statements by seeding a temp table and compiling SQLite mutations against
+  it.
 
 ## Implementation Plans
 

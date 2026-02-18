@@ -23,6 +23,7 @@ import {
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
+import { getDbNowStrategy } from "./db-now-strategy";
 
 export interface ExecutorOptions {
   dryRun?: boolean;
@@ -66,6 +67,7 @@ export async function executeMutation(
   const outboxEnabled = options.outbox?.enabled ?? false;
   const shouldInclude = options.outbox?.shouldInclude;
   const namingStrategy = options.namingStrategy ?? driverConfig.defaultNamingStrategy;
+  const dbNowStrategy = getDbNowStrategy(driverConfig);
 
   const outboxOperations = outboxEnabled
     ? mutationBatch.flatMap((mutation) => {
@@ -86,6 +88,13 @@ export async function executeMutation(
   try {
     await adapter.transaction(async (tx) => {
       let outboxVersion: bigint | null = null;
+
+      const preludeStatements = dbNowStrategy.preludeStatements?.();
+      if (preludeStatements && preludeStatements.length > 0) {
+        for (const statement of preludeStatements) {
+          await tx.executeQuery(statement.compile(options.dialect));
+        }
+      }
 
       if (shouldWriteOutbox) {
         outboxVersion = await reserveOutboxVersion(tx, driverConfig, options.dialect);

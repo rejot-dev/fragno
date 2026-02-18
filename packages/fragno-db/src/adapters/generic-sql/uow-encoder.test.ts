@@ -139,8 +139,37 @@ describe("UnitOfWorkEncoder", () => {
         .where("id", "=", "test");
 
       const sqlText = query.compile().sql;
-      expect(sqlText).toContain("CURRENT_TIMESTAMP");
+      expect(sqlText).toContain("__fragno_now");
       expect(sqlText).not.toContain("julianday");
+    });
+
+    it("should use sqlite temp table for dbNow epoch-ms values with offsets", () => {
+      type TestDB = { users: { id: string; createdAt: unknown } };
+      const dialectConfig = {} as unknown as ConstructorParameters<typeof PostgresDialect>[0];
+      const sqliteDb = new Kysely<TestDB>({
+        dialect: new PostgresDialect(dialectConfig),
+      });
+      const encoderWithStorage = new UnitOfWorkEncoder(sqliteConfig, sqliteDb, {
+        timestampStorage: "epoch-ms",
+        dateStorage: "epoch-ms",
+        bigintStorage: "blob",
+      });
+
+      const result = encoderWithStorage.encodeForDatabase({
+        values: { createdAt: dbNow().plus({ seconds: 5 }) },
+        table: usersTable,
+        generateDefaults: false,
+      });
+
+      const query = sqliteDb
+        .updateTable("users")
+        .set({ createdAt: result["createdAt"] as unknown })
+        .where("id", "=", "test");
+
+      const compiled = query.compile();
+      expect(compiled.sql).toContain("__fragno_now");
+      expect(compiled.sql).toContain("+");
+      expect(compiled.parameters).toContain(5000);
     });
   });
 
