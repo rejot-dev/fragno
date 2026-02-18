@@ -1,5 +1,6 @@
 <p align="center">
   <img src="./assets/stripe-integration.png" alt="Stripe integration example" width="600" />
+  <p align="center" style="color: #888; font-size: 0.96em;"><em>These lines also set up webhook integration and make data available to the frontend</em></p>
 </p>
 
 <br/>
@@ -15,23 +16,42 @@
 
 ### What's Fragno?
 
-Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and a
-database schema into a single package. This allows library authors to ship complete features across
-the full stack.
+Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and database
+operations into a single package. This allows library authors to ship complete features across the
+full stack.
 
 **Fragno supports all major frameworks: Next.js, Nuxt, SvelteKit, SolidStart, and more.** Wherever
 your users are, Fragno will work. This is also true for the **data layer**: Fragno integrates with
-**Kysely** and **Drizzle**, and is database-system agnostic.
+**Kysely**, **Drizzle**, **Prisma** and is database-system agnostic.
 
-Fragno has all features you'd expect from a **modern framework**: type-safe routes, streaming
-support, and middleware support. Frontend hooks follow "Stale-While-Revalidate" semantics and allow
-arbitrary logic.
+Fragno has all features you'd expect from a **modern framework**: type-safe routes, streaming data,
+and middleware support. Frontend hooks follow "Stale-While-Revalidate" semantics and allow arbitrary
+logic.
 
-When using the **optional** data layer, all database features are fully supported like schema
-generation and querying. We also focus on performance and correctness with **indexes and
-transactions**.
+When using the **optional** data layer, all expected features are supported like schema generation
+and querying. We also focus on performance and correctness with **indexes and transactions**.
 
-#### When to use Fragno?
+#### First-party full-stack libraries
+
+Fragno has a number of first-party Fragments that help builders get started quick in various ways:
+
+- [Stripe](https://github.com/fragno-dev/stripe) - Stripe integration with subscriptions and
+  webhooks.
+- [Forms](https://github.com/fragno-dev/forms) - Forms with validation and submission.
+- [Workflows](https://github.com/fragno-dev/workflows) - [ALPHA] Workflows with steps, timers,
+  events, and retries.
+- [Upload](https://github.com/fragno-dev/upload) - File upload handling with storage adapters for
+  S3, R2, and filesystem.
+
+To get started with any of these, install the Agent Skill:
+
+```bash
+npx skills add https://github.com/rejot-dev/fragno --skill fragno
+```
+
+Then ask: "Use fragno to integrate the Stripe fragment into my application."
+
+#### When to build with Fragno?
 
 - You are a **Client SDK author** and want to do more than simply wrapping API calls. You can use
   Fragno so your users no longer have to be concerned with webhook handlers and your data model. You
@@ -109,9 +129,10 @@ const { response } = await mutate({
 - **Full-stack components** – opinionated packages that own backend, frontend, and a data layer.
   E.g.:
   - Feature flags
-  - Form builder
+  - Form submission / builder
   - Authentication (Better Auth–style)
-  - ...
+  - File uploads
+  - etc
 
 - **Client SDKs** – packages to facilitate interaction with a SaaS application, such as payments.
   Flows with a lot of webhooks can benefit greatly.
@@ -135,6 +156,14 @@ Basic template to get you started building a full-stack Fragno library:
 # Create a new Fragno library from a template
 pnpm create fragno@latest
 ```
+
+Also make sure to install the Agent Skill:
+
+```bash
+npx skills add https://github.com/rejot-dev/fragno --skill fragno-author
+```
+
+Then ask: "Use fragno-author to scaffold a fragment for feature flags."
 
 ### Features
 
@@ -203,8 +232,8 @@ adapters for many environments.
 See the [Framework Support](https://fragno.dev/docs/fragno/reference/frameworks) page for the full
 and up-to-date list, including database adapter support.
 
-Supported ORMs are Kysely and Drizzle, with Postgres and SQLite. This includes PGLite and Cloudflare
-Durable Objects.
+Supported ORMs are Kysely, Drizzle, and Prisma, with Postgres and SQLite. This includes PGLite and
+Cloudflare Durable Objects.
 
 ### Example Code
 
