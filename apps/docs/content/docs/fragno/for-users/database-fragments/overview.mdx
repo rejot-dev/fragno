@@ -240,9 +240,9 @@ shard-filtered data from `/_internal/outbox` and `/_internal/sync`.
 Outbox mutation payloads may include `_shard` (a system column). Clients must ignore `_shard` in
 payloads and never attempt to read or write it.
 
-<Callout title="Direct deps.db Access" type="warning">
-  When `shardingStrategy` is enabled, direct `deps.db` access is disabled. Use `handlerTx` or
-  `serviceTx` so shard filtering is enforced.
+<Callout title="Direct Query Engine Access" type="warning">
+  Database fragments do not expose a direct query engine. Use `handlerTx` or `serviceTx` so shard
+  filtering and UOW semantics are always enforced.
 </Callout>
 
 ### Join Limitations

@@ -98,18 +98,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   >("$fragno-internal-fragment"),
   internalSchema,
 )
-  .providesBaseService(({ deps }) => ({
-    getDbNow: async () => {
-      try {
-        if (deps.db.now) {
-          return deps.db.now();
-        }
-      } catch {
-        // deps.db is disabled when shardingStrategy is set.
-      }
-      return new Date();
-    },
-  }))
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
       /**

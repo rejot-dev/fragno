@@ -226,11 +226,10 @@ export type ImplicitDatabaseDependencies<TSchema> = {
 `DatabaseFragmentDefinitionBuilder` when implicit deps are assembled, so it shares the exact request
 context that handlers/services use.
 
-### 6.5 Direct `deps.db` Access
+### 6.5 Direct Query Engine Access
 
-When `shardingStrategy` is set (either mode), the implicit `deps.db` query engine is **disabled**
-and must throw if accessed. Sharded deployments must use `handlerTx/serviceTx` so shard context is
-always enforced.
+Database fragments do **not** expose a direct query engine on `deps`. All database access must use
+`handlerTx/serviceTx` so shard context and UOW semantics are always enforced.
 
 ### 6.3 Middleware Example (Required)
 
@@ -417,7 +416,7 @@ No migration is required while outbox versioning remains global.
 - Sync + conflict checker tests for shard‑scoped scans.
 - Hooks tests for shard scoping and global processor mode.
 - Join tests: ensure shard filtering across joins or throw on unsupported joins.
-- `deps.db` usage throws when shardingStrategy is set.
+- No direct query engine is exposed; `handlerTx/serviceTx` are required.
 - Lofi tests updated for new hidden `_shard` column and shard‑filtered outbox responses.
 
 ## 14. Decisions (Locked)
@@ -432,7 +431,7 @@ No migration is required while outbox versioning remains global.
 - Internal tables use the implicit `_shard` system column.
 - `fragno_db_settings` is **adapter‑scoped** (no shard filtering).
 - Cross‑shard joins are **disallowed**.
-- `deps.db` is **disabled** when shardingStrategy is set.
+- Direct query engine access is **not** exposed; UOW access is required.
 - Outbox payloads may include `_shard` (system column) and clients must ignore it.
 - System migrations are used for implicit shard columns (and run before internal index migrations).
 

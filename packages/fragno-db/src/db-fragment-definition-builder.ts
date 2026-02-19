@@ -126,11 +126,6 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    */
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   /**
-   * Query interface for this fragment's schema.
-   * When shardingStrategy is set, this is a proxy that throws on access.
-   */
-  db: SimpleQueryInterface<TSchema, unknown>;
-  /**
    * The schema definition for this fragment.
    */
   schema: TSchema;
@@ -242,14 +237,15 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
 /**
  * Database fragment context provided to user callbacks.
  */
-export type DatabaseFragmentContext<TSchema extends AnySchema = AnySchema> = {
+export type DatabaseFragmentContext = {
   /**
    * Database adapter instance.
    */
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  /**
-   * ORM query engine for the fragment's schema.
-   */
+};
+
+type DatabaseContextInternal<TSchema extends AnySchema> = {
+  databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   db: SimpleQueryInterface<TSchema, unknown>;
 };
 
@@ -260,7 +256,7 @@ export type DatabaseFragmentContext<TSchema extends AnySchema = AnySchema> = {
 function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
-): DatabaseFragmentContext<TSchema> {
+): DatabaseContextInternal<TSchema> {
   const databaseAdapter = resolveDatabaseAdapter(options, schema);
 
   const namespace = resolveDatabaseNamespace(options, schema);
@@ -364,21 +360,6 @@ function createShardContextHelpers<TStorage extends ShardContextStorage>(
         fn,
       ),
   };
-}
-
-const SHARDING_DB_DISABLED_ERROR =
-  "Direct deps.db access is disabled when shardingStrategy is set. " +
-  "Use handlerTx/serviceTx so shard context is enforced.";
-
-function createShardingDisabledDbProxy<TSchema extends AnySchema>(): SimpleQueryInterface<
-  TSchema,
-  unknown
-> {
-  return new Proxy({} as SimpleQueryInterface<TSchema, unknown>, {
-    get() {
-      throw new Error(SHARDING_DB_DISABLED_ERROR);
-    },
-  });
 }
 
 function resolveDatabaseNamespace<TSchema extends AnySchema>(
@@ -487,7 +468,6 @@ export class DatabaseFragmentDefinitionBuilder<
     fn: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
-      db: SimpleQueryInterface<TSchema, unknown>;
       databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     }) => TNewDeps,
   ): DatabaseFragmentDefinitionBuilder<
@@ -512,14 +492,10 @@ export class DatabaseFragmentDefinitionBuilder<
         this.#registryResolver,
       );
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
-      const db =
-        shardingStrategy === undefined ? dbContext.db : createShardingDisabledDbProxy<TSchema>();
-
       // Call user function with enriched context
       const userDeps = fn({
         config: context.config,
         options: context.options,
-        db,
         databaseAdapter: dbContext.databaseAdapter,
       });
 
@@ -533,7 +509,6 @@ export class DatabaseFragmentDefinitionBuilder<
         });
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
-        db,
         schema: this.#schema,
         namespace,
         shardContext,
@@ -905,8 +880,6 @@ export class DatabaseFragmentDefinitionBuilder<
         dbContext.databaseAdapter,
         this.#registryResolver,
       );
-      const db =
-        shardingStrategy === undefined ? dbContext.db : createShardingDisabledDbProxy<TSchema>();
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
       const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
@@ -943,7 +916,6 @@ export class DatabaseFragmentDefinitionBuilder<
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
-        db,
         schema: this.#schema,
         namespace,
         shardContext,

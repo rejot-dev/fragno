@@ -592,26 +592,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps.schema).toBeDefined();
       expect(typeof deps.createUnitOfWork).toBe("function");
     });
-
-    it("should throw on deps.db access when shardingStrategy is set", () => {
-      const mockAdapter = createMockAdapter();
-
-      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
-
-      const deps = definition.dependencies!({
-        config: {},
-        options: {
-          databaseAdapter: mockAdapter,
-          shardingStrategy: { mode: "row" },
-        },
-      });
-
-      expect(() => {
-        // Accessing any db property should throw.
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        deps.db.createUnitOfWork;
-      }).toThrowError(/deps\.db access is disabled/i);
-    });
   });
 
   describe("sharding strategy registry", () => {
@@ -663,15 +643,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const call = mockDb.createUnitOfWork.mock.calls[callCount];
 
       expect(call?.[1]?.shardingStrategy).toEqual(strategy);
-      let thrown: unknown;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        deps.db.createUnitOfWork;
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown).toBeInstanceOf(Error);
-      expect((thrown as Error).message).toContain("deps.db access is disabled");
     });
   });
 
