@@ -11,7 +11,12 @@ import {
 import { resolveInMemoryAdapterOptions, type InMemoryAdapterOptions } from "./options";
 
 const testSchema = schema("test", (s) =>
-  s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+  s.addTable("users", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("name", column("string"))
+      .createIndex("unique_name", ["name"], { unique: true }),
+  ),
 );
 
 const fkSchema = schema("fk", (s) =>
@@ -105,6 +110,37 @@ describe("in-memory uow mutations", () => {
 
     expect(staleUser?.name).toBe("June");
     expect(staleUser?.id.version).toBe(1);
+  });
+
+  it("upserts rows using a unique index", async () => {
+    const createUow = createTestUowFactory();
+
+    const createMutation = createUow();
+    createMutation.upsert("users", {
+      values: { id: "user-1", name: "Ada" },
+      conflictIndex: "unique_name",
+    });
+    const createResult = await createMutation.executeMutations();
+    expect(createResult.success).toBe(true);
+
+    const upsertMutation = createUow();
+    upsertMutation.upsert("users", {
+      values: { id: "user-2", name: "Ada" },
+      conflictIndex: "unique_name",
+    });
+    const upsertResult = await upsertMutation.executeMutations();
+    expect(upsertResult.success).toBe(true);
+
+    const findAfterUpsert = createUow();
+    findAfterUpsert.find("users", (b) =>
+      b.whereIndex("unique_name", (eb) => eb("name", "=", "Ada")),
+    );
+    const rows = (await findAfterUpsert.executeRetrieve()) as unknown[];
+    const upsertedUser = (rows[0] as { id: FragnoId; name: string }[])[0];
+
+    expect(upsertedUser?.name).toBe("Ada");
+    expect(upsertedUser?.id.externalId).toBe("user-1");
+    expect(upsertedUser?.id.version).toBe(1);
   });
 
   it("checks and deletes rows with version enforcement", async () => {

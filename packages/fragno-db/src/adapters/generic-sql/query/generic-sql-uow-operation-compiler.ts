@@ -206,6 +206,36 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     };
   }
 
+  override compileUpsert(
+    op: MutationOperation<AnySchema> & { type: "upsert" },
+  ): CompiledMutation<CompiledQuery> | null {
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
+    const table = this.getTable(op.schema, op.table);
+    const conflictColumns =
+      op.conflictIndex === "primary"
+        ? [table.getIdColumn()]
+        : (() => {
+            const index = table.indexes[op.conflictIndex];
+            if (!index) {
+              throw new Error(
+                `Index "${op.conflictIndex}" not found on table "${op.table}" for upsert.`,
+              );
+            }
+            return index.columns;
+          })();
+
+    return {
+      query: sqlCompiler.compileUpsert(table, {
+        values: op.values,
+        conflictColumns,
+      }),
+      operation: op,
+      op: "upsert",
+      expectedAffectedRows: null,
+      expectedReturnedRows: null,
+    };
+  }
+
   override compileUpdate(
     op: MutationOperation<AnySchema> & { type: "update" },
   ): CompiledMutation<CompiledQuery> | null {

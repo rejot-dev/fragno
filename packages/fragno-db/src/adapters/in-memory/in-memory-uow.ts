@@ -579,6 +579,61 @@ const findRowByExternalId = (
   return undefined;
 };
 
+const findRowByIndex = (
+  tableStore: InMemoryTableStore,
+  table: AnyTable,
+  indexName: string,
+  values: Record<string, unknown>,
+  options: ResolvedInMemoryAdapterOptions,
+  resolver?: NamingResolver,
+): { internalId: bigint; row: InMemoryRow } | undefined => {
+  const indexStore = tableStore.indexes.get(indexName === "primary" ? "_primary" : indexName);
+  if (!indexStore) {
+    throw new Error(`Missing in-memory index "${indexName}" on table "${table.name}".`);
+  }
+
+  const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
+  const key = indexStore.definition.columnNames.map((columnName) => {
+    const logicalName = columnMap?.[columnName] ?? columnName;
+    const column = table.columns[logicalName];
+    if (!column) {
+      throw new Error(
+        `Column "${logicalName}" not found on table "${table.name}" for index "${indexName}".`,
+      );
+    }
+
+    let value = values[columnName];
+    if (value === undefined && column.isNullable) {
+      value = null;
+    }
+    if (value === undefined && !column.isNullable) {
+      throw new Error(`Missing required value for column "${column.name}".`);
+    }
+
+    const resolvedValue = resolveDbNowValue(value, options);
+    return normalizeIndexValue(resolvedValue, column);
+  });
+
+  const [entry] = indexStore.index.scan({
+    start: key,
+    end: key,
+    startInclusive: true,
+    endInclusive: true,
+    limit: 1,
+  });
+
+  if (!entry) {
+    return undefined;
+  }
+
+  const row = tableStore.rows.get(entry.value);
+  if (!row) {
+    return undefined;
+  }
+
+  return { internalId: entry.value, row };
+};
+
 const resolveCursorValue = (value: unknown, column: AnyTable["columns"][string]): unknown => {
   if (value && typeof value === "object") {
     const maybeExternalId = (value as { externalId?: unknown }).externalId;
@@ -1401,6 +1456,92 @@ export const createInMemoryUowExecutor = (
           const previousInternalId = tableStore.nextInternalId;
           const internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
           createdInternalIds.push(internalId);
+          rollbackActions.push(() => {
+            const row = tableStore.rows.get(internalId);
+            if (row) {
+              for (const indexStore of tableStore.indexes.values()) {
+                const key = buildIndexKey(table, indexStore.definition, row, resolver);
+                indexStore.index.remove(key, internalId);
+              }
+              tableStore.rows.delete(internalId);
+            }
+            tableStore.nextInternalId = previousInternalId;
+          });
+          continue;
+        }
+
+        if (operation.type === "upsert") {
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
+          const table = operation.schema.tables[operation.table];
+          if (!table) {
+            throw new Error(`Invalid table name ${operation.table}.`);
+          }
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+
+          const encoded = encodeValuesWithDbDefaults(
+            operation.values,
+            table,
+            {
+              now: options.clock.now,
+              createId: options.idGenerator,
+            },
+            resolver,
+          );
+          const resolvedValues = options.enforceConstraints
+            ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
+            : resolveReferenceSubqueries(namespaceStore, encoded, resolver);
+
+          const existing = findRowByIndex(
+            tableStore,
+            table,
+            operation.conflictIndex,
+            resolvedValues,
+            options,
+            resolver,
+          );
+
+          if (existing) {
+            const idColumn = table.getIdColumn();
+            const idColumnName = getPhysicalColumnName(table, idColumn.name, resolver);
+            const existingExternalId = existing.row[idColumnName];
+            if (typeof existingExternalId !== "string") {
+              throw new Error(`Invalid external id for table "${table.name}".`);
+            }
+
+            const updateValues = { ...(operation.values as Record<string, unknown>) };
+            delete updateValues[idColumn.name];
+            const updateOp: Extract<MutationOperation<AnySchema>, { type: "update" }> = {
+              type: "update",
+              schema: operation.schema,
+              namespace: operation.namespace,
+              table: operation.table,
+              id: existingExternalId,
+              checkVersion: false,
+              set: updateValues as Record<string, unknown>,
+            };
+            const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
+            if (rollback) {
+              rollbackActions.push(rollback);
+            }
+            continue;
+          }
+
+          const previousInternalId = tableStore.nextInternalId;
+          const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
+            type: "create",
+            schema: operation.schema,
+            namespace: operation.namespace,
+            table: operation.table,
+            values: operation.values,
+            generatedExternalId: operation.generatedExternalId,
+          };
+          const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
           rollbackActions.push(() => {
             const row = tableStore.rows.get(internalId);
             if (row) {

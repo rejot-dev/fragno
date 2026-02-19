@@ -75,6 +75,14 @@ export interface UpdateCompilerOptions {
 }
 
 /**
+ * Options for compiling an upsert operation.
+ */
+export interface UpsertCompilerOptions {
+  values: Record<string, unknown>;
+  conflictColumns: AnyColumn[];
+}
+
+/**
  * Options for compiling a delete operation
  */
 export interface DeleteCompilerOptions {
@@ -388,6 +396,49 @@ export abstract class SQLQueryCompiler {
       });
       insert = this.applyReturning(insert, columns);
     }
+
+    return insert.compile();
+  }
+
+  /**
+   * Compile an UPSERT (INSERT ... ON CONFLICT / ON DUPLICATE KEY UPDATE) query.
+   */
+  compileUpsert(table: AnyTable, options: UpsertCompilerOptions): CompiledQuery {
+    const encodedValues = this.encoder.encodeForDatabase({
+      values: options.values,
+      table,
+      generateDefaults: true,
+    });
+
+    let insert: AnyInsertQueryBuilder = this.db
+      .insertInto(this.getTableName(table))
+      .values(encodedValues);
+
+    const updateValues = this.encoder.encodeForDatabase({
+      values: options.values,
+      table,
+      generateDefaults: false,
+    });
+
+    const idColumn = table.getIdColumn();
+    const idColumnName = this.resolver
+      ? this.resolver.getColumnName(table.name, idColumn.name)
+      : idColumn.name;
+    if (idColumnName in updateValues) {
+      delete updateValues[idColumnName];
+    }
+
+    const versionCol = table.getVersionColumn();
+    const versionColumnName = this.resolver
+      ? this.resolver.getColumnName(table.name, versionCol.name)
+      : versionCol.name;
+    updateValues[versionColumnName] = sql`coalesce(${sql.ref(versionColumnName)}, 0) + 1`;
+
+    const conflictColumns = options.conflictColumns.map((column) =>
+      this.resolver ? this.resolver.getColumnName(table.name, column.name) : column.name,
+    );
+
+    insert = insert.onConflict((oc) => oc.columns(conflictColumns).doUpdateSet(updateValues));
 
     return insert.compile();
   }

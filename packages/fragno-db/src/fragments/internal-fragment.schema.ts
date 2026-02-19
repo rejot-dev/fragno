@@ -85,5 +85,12 @@ export const internalSchema = schema("fragno_internal", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_sync_request_id", ["requestId"], { unique: true });
+    })
+    .alterTable("fragno_hooks", (t) => {
+      return t
+        .addColumn("dedupeKey", column("string").nullable())
+        .createIndex("idx_hook_dedupe", ["namespace", "hookName", "dedupeKey", "status"], {
+          unique: true,
+        });
     });
 });

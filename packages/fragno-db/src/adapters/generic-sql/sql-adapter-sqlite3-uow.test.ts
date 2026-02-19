@@ -20,7 +20,8 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
           .addColumn("age", column("integer").nullable())
-          .createIndex("name_idx", ["name"]);
+          .createIndex("name_idx", ["name"])
+          .createIndex("unique_name", ["name"], { unique: true });
       })
       .addTable("emails", (t) => {
         return t
@@ -247,6 +248,119 @@ describe("SqlAdapter SQLite", () => {
       }),
       age: 26, // Still 26, not 27
     });
+  });
+
+  it("should throw on duplicate create within a UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const duplicateId = "duplicate-user-id";
+
+    const createUow = queryEngine.createUnitOfWork("create-duplicate-user");
+    createUow.create("users", { id: duplicateId, name: "First", age: 21 });
+    createUow.create("users", { id: duplicateId, name: "Second", age: 22 });
+
+    await expect(createUow.executeMutations()).rejects.toThrow();
+
+    const [users] = await queryEngine
+      .createUnitOfWork("verify-duplicate-user-rollback")
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", duplicateId)))
+      .executeRetrieve();
+
+    expect(users).toHaveLength(0);
+  });
+
+  it("should throw on unique email constraint violation within a UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-unique-email");
+    createUserUow.create("users", { name: "Unique Email User", age: 29 });
+    const { success } = await createUserUow.executeMutations();
+    expect(success).toBe(true);
+    const userId = createUserUow.getCreatedIds()[0];
+    expect(userId).toBeDefined();
+
+    const email = "duplicate@example.com";
+    const createEmailUow = queryEngine.createUnitOfWork("create-duplicate-email");
+    createEmailUow.create("emails", {
+      user_id: userId,
+      email,
+      is_primary: true,
+    });
+    createEmailUow.create("emails", {
+      user_id: userId,
+      email,
+      is_primary: false,
+    });
+
+    await expect(createEmailUow.executeMutations()).rejects.toThrow();
+
+    const [emails] = await queryEngine
+      .createUnitOfWork("verify-duplicate-email-rollback")
+      .find("emails", (b) => b.whereIndex("unique_email", (eb) => eb("email", "=", email)))
+      .executeRetrieve();
+
+    expect(emails).toHaveLength(0);
+  });
+
+  it("should upsert using a unique index", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("upsert-user-insert");
+    createUow.upsert("users", {
+      values: { id: "user-1", name: "Zzz Dedupe", age: 20 },
+      conflictIndex: "unique_name",
+    });
+    const { success: createSuccess } = await createUow.executeMutations();
+    expect(createSuccess).toBe(true);
+
+    const upsertUow = queryEngine.createUnitOfWork("upsert-user-update");
+    upsertUow.upsert("users", {
+      values: { id: "user-2", name: "Zzz Dedupe", age: 30 },
+      conflictIndex: "unique_name",
+    });
+    const { success: upsertSuccess } = await upsertUow.executeMutations();
+    expect(upsertSuccess).toBe(true);
+
+    const [users] = await queryEngine
+      .createUnitOfWork("verify-upsert")
+      .find("users", (b) => b.whereIndex("unique_name", (eb) => eb("name", "=", "Zzz Dedupe")))
+      .executeRetrieve();
+
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({
+      id: expect.objectContaining({ externalId: "user-1" }),
+      name: "Zzz Dedupe",
+      age: 30,
+    });
+  });
+
+  it("should respect check() operations before upsert", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const name = "Zzz Check Upsert";
+
+    const createUow = queryEngine.createUnitOfWork("check-upsert-create");
+    createUow.create("users", { name, age: 20 });
+    await createUow.executeMutations();
+    const createdId = createUow.getCreatedIds()[0]!;
+
+    const bumpUow = queryEngine.createUnitOfWork("check-upsert-bump");
+    bumpUow.update("users", createdId, (b) => b.set({ age: 21 }).check());
+    await bumpUow.executeMutations();
+
+    const staleCheckUow = queryEngine.createUnitOfWork("check-upsert-stale");
+    staleCheckUow.check("users", createdId);
+    staleCheckUow.upsert("users", {
+      values: { id: createdId.externalId, name, age: 22 },
+      conflictIndex: "primary",
+    });
+    const { success } = await staleCheckUow.executeMutations();
+    expect(success).toBe(false);
+
+    const [users] = await queryEngine
+      .createUnitOfWork("check-upsert-verify")
+      .find("users", (b) => b.whereIndex("unique_name", (eb) => eb("name", "=", name)))
+      .executeRetrieve();
+
+    expect(users[0]).toMatchObject({ name, age: 21 });
   });
 
   it("should support count operations", async () => {

@@ -327,6 +327,64 @@ const buildNormalizedValues = (options: {
   return norm;
 };
 
+const buildIndexKeyFromValues = (options: {
+  schema: AnySchema;
+  table: AnyTable;
+  values: Record<string, unknown>;
+  rowId: string;
+  store: InMemoryLofiStore;
+  referenceTargets: Map<string, ReferenceTarget>;
+  index: InMemoryIndexDefinition;
+}): IndexKey => {
+  const { schema, table, values, rowId, store, referenceTargets, index } = options;
+  const norm = buildNormalizedValues({
+    schema,
+    table,
+    data: values,
+    rowId,
+    internalId: 0,
+    version: 0,
+    store,
+    referenceTargets,
+  });
+
+  return index.columnNames.map((columnName) => {
+    const value = norm[columnName];
+    if (value === undefined) {
+      throw new Error(
+        `Missing required value for index "${index.name}" on ${schema.name}.${table.name}: ${columnName}`,
+      );
+    }
+    return value;
+  });
+};
+
+const findRowByIndex = (
+  tableStore: InMemoryTableStore,
+  indexName: string,
+  key: IndexKey,
+): InMemoryLofiRow | undefined => {
+  const lookupName = indexName === "primary" ? "_primary" : indexName;
+  const indexStore = tableStore.indexes.get(lookupName);
+  if (!indexStore) {
+    throw new Error(`Missing in-memory index "${indexName}".`);
+  }
+
+  const [entry] = indexStore.index.scan({
+    start: key,
+    end: key,
+    startInclusive: true,
+    endInclusive: true,
+    limit: 1,
+  });
+
+  if (!entry) {
+    return undefined;
+  }
+
+  return tableStore.rowsByInternalId.get(entry.value);
+};
+
 export class InMemoryLofiStore {
   readonly endpointName: string;
   readonly schemas: AnySchema[];
@@ -420,7 +478,66 @@ export class InMemoryLofiStore {
       return;
     }
 
-    const values = mutation.op === "create" ? mutation.values : mutation.set;
+    if (mutation.op === "upsert") {
+      const indexName = mutation.conflictIndex === "primary" ? "_primary" : mutation.conflictIndex;
+      const indexStore = tableStore.indexes.get(indexName);
+      if (!indexStore) {
+        throw new Error(`Missing in-memory index "${mutation.conflictIndex}".`);
+      }
+
+      const conflictKey = buildIndexKeyFromValues({
+        schema,
+        table,
+        values: mutation.values,
+        rowId: mutation.externalId,
+        store: this,
+        referenceTargets: this.referenceTargets,
+        index: indexStore.definition,
+      });
+      const conflictRow = findRowByIndex(tableStore, mutation.conflictIndex, conflictKey);
+
+      if (conflictRow) {
+        tableStore.tombstones.delete(conflictRow.id);
+        const idColumnName = table.getIdColumn().name;
+        const { [idColumnName]: _ignoredId, ...valuesWithoutId } = mutation.values;
+        const data = { ...conflictRow.data, ...valuesWithoutId };
+        const internalId = conflictRow._lofi.internalId;
+        const version = conflictRow._lofi.version + 1;
+        const norm = buildNormalizedValues({
+          schema,
+          table,
+          data,
+          rowId: conflictRow.id,
+          internalId,
+          version,
+          store: this,
+          referenceTargets: this.referenceTargets,
+        });
+
+        const row: InMemoryLofiRow = {
+          key: conflictRow.key,
+          endpoint: this.endpointName,
+          schema: schema.name,
+          table: table.name,
+          id: conflictRow.id,
+          data,
+          _lofi: {
+            versionstamp: mutation.versionstamp,
+            norm,
+            internalId,
+            version,
+          },
+        };
+
+        updateRowIndexes(tableStore, conflictRow, row);
+        tableStore.rowsByExternalId.set(row.id, row);
+        tableStore.rowsByInternalId.set(row._lofi.internalId, row);
+        return;
+      }
+    }
+
+    const values =
+      mutation.op === "create" || mutation.op === "upsert" ? mutation.values : mutation.set;
     if (!existing && mutation.op === "update") {
       return;
     }

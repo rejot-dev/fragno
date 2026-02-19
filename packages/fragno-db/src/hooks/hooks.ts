@@ -59,6 +59,11 @@ export interface TriggerHookOptions {
    * scheduled for that time; if in the past, it runs immediately.
    */
   processAt?: Date | DbNow;
+  /**
+   * Optional deduplication key for scheduling hooks with upsert semantics.
+   * When provided, new triggers with the same key will upsert the pending hook.
+   */
+  dedupeKey?: string;
 }
 
 /**
@@ -183,10 +188,12 @@ export function prepareHookMutations<THooks extends HooksMap>(
     const processAt: Date | DbNow | null =
       rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
     const nextRetryAt = processAt ?? null;
-    internalUow.create("fragno_hooks", {
+    const dedupeKey = hook.options?.dedupeKey ?? null;
+    const hookValues = {
       namespace,
       hookName: hook.hookName,
       payload: hook.payload,
+      dedupeKey,
       status: "pending",
       attempts: 0,
       maxAttempts,
@@ -194,7 +201,17 @@ export function prepareHookMutations<THooks extends HooksMap>(
       nextRetryAt,
       error: null,
       nonce: uow.idempotencyKey,
-    });
+    };
+
+    if (dedupeKey !== null && dedupeKey !== undefined) {
+      internalUow.upsert("fragno_hooks", {
+        values: hookValues,
+        conflictIndex: "idx_hook_dedupe",
+      });
+      continue;
+    }
+
+    internalUow.create("fragno_hooks", hookValues);
   }
 }
 

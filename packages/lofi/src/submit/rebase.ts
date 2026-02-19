@@ -33,6 +33,18 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
       };
     }
 
+    if (mutation.op === "upsert") {
+      return {
+        op: "upsert",
+        schema: mutation.schema,
+        table: mutation.table,
+        externalId: mutation.externalId,
+        conflictIndex: mutation.conflictIndex,
+        values: mutation.values,
+        versionstamp: mutation.versionstamp,
+      };
+    }
+
     return {
       op: "delete",
       schema: mutation.schema,

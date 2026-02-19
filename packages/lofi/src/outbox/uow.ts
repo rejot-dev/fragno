@@ -33,6 +33,17 @@ export function outboxMutationsToUowOperations(
       };
     }
 
+    if (mutation.op === "upsert") {
+      return {
+        type: "upsert",
+        schema,
+        table: mutation.table,
+        values: mutation.values,
+        generatedExternalId: mutation.externalId,
+        conflictIndex: mutation.conflictIndex,
+      };
+    }
+
     return {
       type: "delete",
       schema,

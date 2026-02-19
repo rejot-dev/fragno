@@ -199,6 +199,58 @@ describe("Hook System", () => {
       expect(events[0]?.maxAttempts).toBe(1);
     });
 
+    it("should upsert hook records when dedupeKey is provided", async () => {
+      const namespace = "test-dedupe";
+      const hooks: HooksMap = {
+        onDedupe: vi.fn(),
+      };
+
+      const firstTime = new Date("2024-01-01T00:00:00.000Z");
+      const laterTime = new Date("2024-01-01T01:00:00.000Z");
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+
+            uow.triggerHook(
+              "onDedupe",
+              { data: "first" },
+              { dedupeKey: "workflow-1", processAt: firstTime },
+            );
+            uow.triggerHook(
+              "onDedupe",
+              { data: "second" },
+              { dedupeKey: "workflow-1", processAt: laterTime },
+            );
+
+            prepareHookMutations(uow, {
+              hooks,
+              namespace,
+              internalFragment,
+              handlerTx,
+            });
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        hookName: "onDedupe",
+        payload: { data: "second" },
+        nextRetryAt: laterTime,
+      });
+    });
+
     it("should set nextRetryAt when processAt is in the future", async () => {
       const namespace = "test-process-at-future";
       const hooks: HooksMap = {

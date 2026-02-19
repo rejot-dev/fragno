@@ -38,6 +38,11 @@ export interface UpdateManyBuilder<TTable extends AnyTable> {
   interval(input: DbIntervalInput): DbInterval;
 }
 
+export type UpsertOptions<TTable extends AnyTable> = {
+  values: TableToInsertValues<TTable>;
+  conflictIndex: ValidIndexName<TTable>;
+};
+
 /**
  * Extract column names from a single index
  */
@@ -206,6 +211,15 @@ export type MutationOperation<
       generatedExternalId: string;
     }
   | {
+      type: "upsert";
+      schema: TSchema;
+      namespace?: string | null;
+      table: TTable["name"];
+      values: TableToInsertValues<TTable>;
+      generatedExternalId: string;
+      conflictIndex: string;
+    }
+  | {
       type: "delete";
       schema: TSchema;
       namespace?: string | null;
@@ -235,9 +249,9 @@ export interface CompiledMutation<TOutput> {
    */
   uowId?: string;
   /**
-   * The type of mutation operation (create, update, delete, or check).
+   * The type of mutation operation (create, upsert, update, delete, or check).
    */
-  op: "create" | "update" | "delete" | "check";
+  op: "create" | "update" | "delete" | "check" | "upsert";
   /**
    * Number of rows this operation must affect for the transaction to succeed.
    * If actual affected rows doesn't match, it indicates a version conflict.
@@ -2257,6 +2271,57 @@ export class TypedUnitOfWork<
     });
 
     return FragnoId.fromExternal(externalId, 0);
+  }
+
+  upsert<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    options: UpsertOptions<TSchema["tables"][TableName]>,
+  ): void {
+    const tableSchema = this.#schema.tables[tableName];
+    if (!tableSchema) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const idColumn = tableSchema.getIdColumn();
+    let externalId: string;
+    let updatedValues = options.values;
+
+    // Check if ID value is provided in values
+    const providedIdValue = (options.values as Record<string, unknown>)[idColumn.name];
+
+    if (providedIdValue !== undefined) {
+      if (
+        typeof providedIdValue === "object" &&
+        providedIdValue !== null &&
+        "externalId" in providedIdValue
+      ) {
+        externalId = (providedIdValue as FragnoId).externalId;
+      } else {
+        externalId = providedIdValue as string;
+      }
+    } else {
+      const generated = idColumn.generateDefaultValue();
+      if (generated === undefined) {
+        throw new Error(
+          `No ID value provided and ID column ${idColumn.name} has no default generator`,
+        );
+      }
+      externalId = generated as string;
+      updatedValues = {
+        ...options.values,
+        [idColumn.name]: externalId,
+      } as TableToInsertValues<TSchema["tables"][TableName]>;
+    }
+
+    this.#uow.addMutationOperation({
+      type: "upsert",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      values: updatedValues,
+      generatedExternalId: externalId,
+      conflictIndex: options.conflictIndex,
+    });
   }
 
   update<TableName extends keyof TSchema["tables"] & string>(

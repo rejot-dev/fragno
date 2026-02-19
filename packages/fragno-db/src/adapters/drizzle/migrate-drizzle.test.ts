@@ -174,6 +174,7 @@ describe("generateSchema and migrate", () => {
       	"nonce" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"dedupeKey" text,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
       );
 
@@ -298,6 +299,7 @@ describe("generateSchema and migrate", () => {
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
+      CREATE UNIQUE INDEX "idx_hook_dedupe" ON "fragno_hooks" USING btree ("namespace","hookName","dedupeKey","status");
       CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
       CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
       CREATE INDEX "idx_outbox_mutations_entry" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp");

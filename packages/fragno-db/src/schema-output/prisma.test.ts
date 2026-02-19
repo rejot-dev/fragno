@@ -256,6 +256,8 @@ describe("generatePrismaSchema", () => {
         nonce String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        dedupeKey String?
+        @@unique([namespace, hookName, dedupeKey, status], map: "uidx_fragno_hooks_idx_hook_dedupe_6a3c98e5")
         @@index([namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
         @@index([nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
         @@map("fragno_hooks")
@@ -383,6 +385,8 @@ describe("generatePrismaSchema", () => {
         nonce String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        dedupeKey String?
+        @@unique([namespace, hookName, dedupeKey, status], map: "uidx_fragno_hooks_idx_hook_dedupe_6a3c98e5")
         @@index([namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
         @@index([nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
         @@map("fragno_hooks")
@@ -509,6 +513,8 @@ describe("generatePrismaSchema", () => {
         nonce String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
+        dedupeKey String?
+        @@unique([namespace, hookName, dedupeKey, status], map: "idx_hook_dedupe")
         @@index([namespace, status, nextRetryAt], map: "idx_namespace_status_retry")
         @@index([nonce], map: "idx_nonce")
         @@map("fragno_hooks")
