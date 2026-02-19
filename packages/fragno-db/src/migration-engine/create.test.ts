@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createMigrator, type MigrationEngineOptions } from "./create";
 import { schema, idColumn, column, referenceColumn } from "../schema/create";
 import type { MigrationOperation } from "./shared";
+import type { SystemMigration } from "./system-migrations";
 
 describe("createMigrator", () => {
   const testSchema = schema("test", (s) => {
@@ -293,6 +294,183 @@ describe("createMigrator", () => {
         (op) => op.type !== "create-table" && op.type !== "add-index",
       );
       expect(nonTableOps).toHaveLength(0);
+    });
+  });
+
+  describe("system migrations", () => {
+    it("skips system migrations on fresh databases but updates system version", async () => {
+      const systemMigrations: SystemMigration[] = [() => "SELECT 1"];
+      let schemaVersion = 0;
+      let systemVersion = 0;
+
+      const options: MigrationEngineOptions = {
+        schema: testSchema,
+        executor: async () => {},
+        settings: {
+          getVersion: async () => schemaVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            schemaVersion = toVersion;
+            return [];
+          },
+        },
+        system: {
+          migrations: systemMigrations,
+          getVersion: async () => systemVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            systemVersion = toVersion;
+            return [
+              {
+                type: "custom",
+                sql: `SYSTEM_VERSION=${toVersion}`,
+              },
+            ];
+          },
+        },
+      };
+
+      const migrator = createMigrator(options);
+      const result = await migrator.prepareMigrationTo(testSchema.version, {
+        systemFromVersion: 0,
+      });
+
+      const customSql = result.operations
+        .filter((op) => op.type === "custom")
+        .map((op) => (op as { sql?: string }).sql)
+        .filter(Boolean);
+
+      expect(customSql).not.toContain("SELECT 1");
+      expect(customSql).toContain("SYSTEM_VERSION=1");
+    });
+
+    it("includes system migrations on existing databases", async () => {
+      const systemMigrations: SystemMigration[] = [() => "SELECT 1"];
+      let schemaVersion = 1;
+      let systemVersion = 0;
+
+      const options: MigrationEngineOptions = {
+        schema: testSchema,
+        executor: async () => {},
+        settings: {
+          getVersion: async () => schemaVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            schemaVersion = toVersion;
+            return [];
+          },
+        },
+        system: {
+          migrations: systemMigrations,
+          getVersion: async () => systemVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            systemVersion = toVersion;
+            return [];
+          },
+        },
+      };
+
+      const migrator = createMigrator(options);
+      const result = await migrator.prepareMigrationTo(testSchema.version, {
+        fromVersion: 1,
+        systemFromVersion: 0,
+      });
+
+      const customSql = result.operations
+        .filter((op) => op.type === "custom")
+        .map((op) => (op as { sql?: string }).sql)
+        .filter(Boolean);
+
+      expect(customSql).toContain("SELECT 1");
+    });
+
+    it("respects systemToVersion override", async () => {
+      const systemMigrations: SystemMigration[] = [() => "SELECT A", () => "SELECT B"];
+      let schemaVersion = 1;
+      let systemVersion = 0;
+
+      const options: MigrationEngineOptions = {
+        schema: testSchema,
+        executor: async () => {},
+        settings: {
+          getVersion: async () => schemaVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            schemaVersion = toVersion;
+            return [];
+          },
+        },
+        system: {
+          migrations: systemMigrations,
+          getVersion: async () => systemVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            systemVersion = toVersion;
+            return [
+              {
+                type: "custom",
+                sql: `SYSTEM_VERSION=${toVersion}`,
+              },
+            ];
+          },
+        },
+      };
+
+      const migrator = createMigrator(options);
+      const result = await migrator.prepareMigrationTo(testSchema.version, {
+        fromVersion: 1,
+        systemFromVersion: 0,
+        systemToVersion: 1,
+      });
+
+      const customSql = result.operations
+        .filter((op) => op.type === "custom")
+        .map((op) => (op as { sql?: string }).sql)
+        .filter(Boolean);
+
+      expect(customSql).toContain("SELECT A");
+      expect(customSql).not.toContain("SELECT B");
+      expect(customSql).toContain("SYSTEM_VERSION=1");
+    });
+
+    it("runs system migrations when schema already at target version", async () => {
+      const systemMigrations: SystemMigration[] = [() => "SELECT 1"];
+      let schemaVersion = testSchema.version;
+      let systemVersion = 0;
+
+      const options: MigrationEngineOptions = {
+        schema: testSchema,
+        executor: async () => {},
+        settings: {
+          getVersion: async () => schemaVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            schemaVersion = toVersion;
+            return [];
+          },
+        },
+        system: {
+          migrations: systemMigrations,
+          getVersion: async () => systemVersion,
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            systemVersion = toVersion;
+            return [
+              {
+                type: "custom",
+                sql: `SYSTEM_VERSION=${toVersion}`,
+              },
+            ];
+          },
+        },
+      };
+
+      const migrator = createMigrator(options);
+      const result = await migrator.prepareMigrationTo(testSchema.version, {
+        fromVersion: testSchema.version,
+        systemFromVersion: 0,
+      });
+
+      const customSql = result.operations
+        .filter((op) => op.type === "custom")
+        .map((op) => (op as { sql?: string }).sql)
+        .filter(Boolean);
+
+      expect(customSql).toContain("SELECT 1");
+      expect(customSql).toContain("SYSTEM_VERSION=1");
     });
   });
 

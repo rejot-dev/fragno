@@ -25,20 +25,14 @@ export interface MigrateOptions {
   /**
    * System migration version currently stored in the database.
    * If omitted, system migrations are skipped unless a system getVersion is provided.
+   * System migrations are also skipped on fresh databases (fromVersion = 0) while still
+   * updating the system version.
    */
   systemFromVersion?: number;
   /**
    * Override the target system migration version.
    */
   systemToVersion?: number;
-  /**
-   * @deprecated Use systemFromVersion.
-   */
-  internalFromVersion?: number;
-  /**
-   * @deprecated Use systemToVersion.
-   */
-  internalToVersion?: number;
 }
 
 export interface PreparedMigration {
@@ -92,10 +86,6 @@ export interface MigrationEngineOptions {
   };
 
   system?: SystemMigrationConfig;
-  /**
-   * @deprecated Use system.
-   */
-  internal?: SystemMigrationConfig;
 
   sql?: {
     toSql: (operations: MigrationOperation[]) => string;
@@ -165,9 +155,8 @@ export function createMigrator({
   sql: sqlConfig,
   transformers = [],
   system,
-  internal: legacyInternal,
 }: MigrationEngineOptions): Migrator {
-  const systemConfig = system ?? legacyInternal;
+  const systemConfig = system;
 
   const instance: Migrator = {
     getVersion() {
@@ -182,12 +171,7 @@ export function createMigrator({
         fromVersion: providedFromVersion,
         systemFromVersion,
         systemToVersion,
-        internalFromVersion,
-        internalToVersion,
       } = options;
-
-      const providedSystemFromVersion = systemFromVersion ?? internalFromVersion;
-      const providedSystemToVersion = systemToVersion ?? internalToVersion;
 
       // Use provided fromVersion if available, otherwise query the database
       const fromVersion = providedFromVersion ?? (await settings.getVersion());
@@ -227,12 +211,11 @@ export function createMigrator({
         | undefined;
 
       if (systemConfig) {
-        const resolvedSystemFromVersion =
-          providedSystemFromVersion ?? (await systemConfig.getVersion());
+        const resolvedSystemFromVersion = systemFromVersion ?? (await systemConfig.getVersion());
         const resolvedRange = resolveSystemMigrationRange(
           systemConfig.migrations,
           resolvedSystemFromVersion,
-          providedSystemToVersion,
+          systemToVersion,
         );
 
         if (resolvedRange) {
@@ -279,8 +262,9 @@ export function createMigrator({
         },
       };
 
+      const isFreshDatabase = fromVersion === 0;
       const systemOperations =
-        systemConfig && systemRange
+        systemConfig && systemRange && !isFreshDatabase
           ? buildSystemMigrationOperations(
               systemConfig.migrations,
               systemRange.context,

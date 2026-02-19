@@ -56,10 +56,6 @@ export interface SqlAdapterOptions {
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
   systemMigrations?: SystemMigration[];
-  /**
-   * @deprecated Use systemMigrations.
-   */
-  internalMigrations?: SystemMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -76,10 +72,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
   readonly systemMigrations?: SystemMigration[];
-  /**
-   * @deprecated Use systemMigrations.
-   */
-  readonly internalMigrations?: SystemMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -94,7 +86,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteStorageMode,
     namingStrategy,
     systemMigrations,
-    internalMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
@@ -123,9 +114,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
-    const resolvedSystemMigrations = systemMigrations ?? internalMigrations;
-    this.systemMigrations = resolvedSystemMigrations;
-    this.internalMigrations = resolvedSystemMigrations;
+    this.systemMigrations = systemMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -168,11 +157,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
-      systemMigrations:
-        options?.systemMigrations ??
-        options?.internalMigrations ??
-        this.systemMigrations ??
-        this.internalMigrations,
+      systemMigrations: options?.systemMigrations ?? this.systemMigrations,
     });
   }
 

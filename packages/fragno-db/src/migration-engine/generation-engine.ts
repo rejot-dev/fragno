@@ -241,9 +241,10 @@ export async function generateSchemaArtifacts<
  * @param databases - Array of FragnoDatabase instances to migrate
  * @returns Array of execution results for each migration
  */
-export async function executeMigrations<const TDatabases extends FragnoDatabase<AnySchema>[]>(
-  databases: TDatabases,
-): Promise<ExecuteMigrationResult[]> {
+export async function executeMigrations<
+  // oxlint-disable-next-line no-explicit-any
+  const TDatabases extends FragnoDatabase<AnySchema, any>[],
+>(databases: TDatabases): Promise<ExecuteMigrationResult[]> {
   if (databases.length === 0) {
     throw new Error("No databases provided for migration");
   }
@@ -331,7 +332,8 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   }
 
   // 2. Prepare fragment migrations (sorted alphabetically)
-  const getNamespaceKey = (db: FragnoDatabase<AnySchema>) => db.namespace ?? db.schema.name;
+  // oxlint-disable-next-line no-explicit-any
+  const getNamespaceKey = (db: FragnoDatabase<AnySchema, any>) => db.namespace ?? db.schema.name;
   const sortedDatabases = [...databases].sort((a, b) =>
     getNamespaceKey(a).localeCompare(getNamespaceKey(b)),
   );

@@ -15,7 +15,7 @@ import type { ConditionBuilder } from "../query/condition-builder";
 import type { ShardScope, ShardingStrategy } from "../sharding";
 import {
   internalSchema,
-  INTERNAL_MIGRATION_VERSION_KEY,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
   SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
@@ -69,7 +69,7 @@ export type InternalFragmentConfig = {
 
 export {
   internalSchema,
-  INTERNAL_MIGRATION_VERSION_KEY,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
   SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
@@ -763,12 +763,7 @@ export async function getSystemMigrationVersionFromDatabase(
 ): Promise<number> {
   try {
     const primary = await readNumericSetting(fragment, namespace, SYSTEM_MIGRATION_VERSION_KEY);
-    if (primary !== undefined) {
-      return primary;
-    }
-
-    const legacy = await readNumericSetting(fragment, namespace, INTERNAL_MIGRATION_VERSION_KEY);
-    return legacy ?? 0;
+    return primary ?? 0;
   } catch {
     return 0;
   }

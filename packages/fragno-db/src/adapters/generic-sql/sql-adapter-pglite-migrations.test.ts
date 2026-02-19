@@ -12,6 +12,162 @@ import {
 import { Cursor } from "../../query/cursor";
 import { PGLiteDriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
+import { SYSTEM_MIGRATION_VERSION_KEY } from "../../fragments/internal-fragment.schema";
+import { executeMigrations } from "../../migration-engine/generation-engine";
+import { sql } from "../../sql-driver/sql";
+import { createNamingResolver } from "../../naming/sql-naming";
+import { postgresSystemMigrations } from "./migration/dialect/postgres.system-migrations";
+import { FragnoDatabase } from "../../mod";
+import { createId } from "../../id";
+
+const simpleSchema = schema("simple", (s) => {
+  return s.addTable("widgets", (t) => {
+    return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+  });
+});
+
+describe("SqlAdapter PGLite - system migrations integration", () => {
+  const expectedSystemVersion = String(postgresSystemMigrations.length);
+
+  it("applies system migrations when upgrading a legacy schema", async () => {
+    const { dialect } = await KyselyPGlite.create();
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
+    });
+
+    try {
+      const namespace = "legacy_system";
+      const resolver = createNamingResolver(simpleSchema, namespace, adapter.namingStrategy);
+      const schemaName = resolver.getSchemaName() ?? "public";
+      const tableName = resolver.getTableName("widgets");
+
+      // Create internal settings table
+      const internalMigrations = adapter.prepareMigrations(internalSchema, "");
+      await internalMigrations.executeWithDriver(adapter.driver, 0, internalSchema.version, {
+        systemFromVersion: 0,
+      });
+
+      // Simulate legacy schema: current schema_version but no _shard column/index
+      await executeRaw(adapter, `create schema if not exists "${schemaName}"`);
+      await executeRaw(
+        adapter,
+        `create table "${schemaName}"."${tableName}" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)`,
+      );
+
+      const schemaVersionKey = `${namespace}.schema_version`;
+      await adapter.driver.executeQuery(
+        sql`insert into fragno_db_settings ("id", "key", "value") values (${createId()}, ${schemaVersionKey}, ${simpleSchema.version.toString()})`.compile(
+          adapter.dialect,
+        ),
+      );
+
+      const fragnoDb = new FragnoDatabase({
+        namespace,
+        schema: simpleSchema,
+        adapter,
+      });
+
+      await executeMigrations([fragnoDb]);
+
+      const shardColumnResult = await adapter.driver.executeQuery(
+        sql`select column_name from information_schema.columns where table_schema = ${schemaName} and table_name = ${tableName} and column_name = '_shard'`.compile(
+          adapter.dialect,
+        ),
+      );
+      expect(shardColumnResult.rows).toHaveLength(1);
+
+      const shardIndexName = resolver.getIndexName("idx_widgets_shard", "widgets");
+      const shardIndexResult = await adapter.driver.executeQuery(
+        sql`select indexname from pg_indexes where schemaname = ${schemaName} and tablename = ${tableName} and indexname = ${shardIndexName}`.compile(
+          adapter.dialect,
+        ),
+      );
+      expect(shardIndexResult.rows).toHaveLength(1);
+
+      const systemVersionKey = `${namespace}.${SYSTEM_MIGRATION_VERSION_KEY}`;
+      const systemVersionValue = await getSettingValue(adapter, systemVersionKey);
+      expect(systemVersionValue).toBe(expectedSystemVersion);
+
+      const schemaVersionValue = await getSettingValue(adapter, schemaVersionKey);
+      expect(schemaVersionValue).toBe(String(simpleSchema.version));
+
+      const settingsSchemaVersionValue = await getSettingValue(adapter, ".schema_version");
+      expect(settingsSchemaVersionValue).toBe(String(internalSchema.version));
+
+      const settingsSystemVersionValue = await getSettingValue(
+        adapter,
+        `.${SYSTEM_MIGRATION_VERSION_KEY}`,
+      );
+      expect(settingsSystemVersionValue).toBe(expectedSystemVersion);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it("records system migration version on fresh databases", async () => {
+    const { dialect } = await KyselyPGlite.create();
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
+    });
+
+    try {
+      const namespace = "fresh_system";
+      const resolver = createNamingResolver(simpleSchema, namespace, adapter.namingStrategy);
+      const schemaName = resolver.getSchemaName() ?? "public";
+      const tableName = resolver.getTableName("widgets");
+
+      const fragnoDb = new FragnoDatabase({
+        namespace,
+        schema: simpleSchema,
+        adapter,
+      });
+
+      await executeMigrations([fragnoDb]);
+
+      const shardColumnResult = await adapter.driver.executeQuery(
+        sql`select column_name from information_schema.columns where table_schema = ${schemaName} and table_name = ${tableName} and column_name = '_shard'`.compile(
+          adapter.dialect,
+        ),
+      );
+      expect(shardColumnResult.rows).toHaveLength(1);
+
+      const systemVersionKey = `${namespace}.${SYSTEM_MIGRATION_VERSION_KEY}`;
+      const systemVersionValue = await getSettingValue(adapter, systemVersionKey);
+      expect(systemVersionValue).toBe(expectedSystemVersion);
+
+      const schemaVersionKey = `${namespace}.schema_version`;
+      const schemaVersionValue = await getSettingValue(adapter, schemaVersionKey);
+      expect(schemaVersionValue).toBe(String(simpleSchema.version));
+
+      const settingsSchemaVersionValue = await getSettingValue(adapter, ".schema_version");
+      expect(settingsSchemaVersionValue).toBe(String(internalSchema.version));
+
+      const settingsSystemVersionValue = await getSettingValue(
+        adapter,
+        `.${SYSTEM_MIGRATION_VERSION_KEY}`,
+      );
+      expect(settingsSystemVersionValue).toBe(expectedSystemVersion);
+    } finally {
+      await adapter.close();
+    }
+  });
+});
+
+const executeRaw = (adapter: SqlAdapter, statement: string) =>
+  adapter.driver.executeQuery({ sql: statement, parameters: [] });
+
+const getSettingValue = async (adapter: SqlAdapter, key: string): Promise<string | undefined> => {
+  const result = await adapter.driver.executeQuery(
+    sql`select value from fragno_db_settings where key = ${key}`.compile(adapter.dialect),
+  );
+  const value = result.rows[0]?.["value"];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return typeof value === "string" ? value : String(value);
+};
 
 describe("SqlAdapter PGLite", () => {
   const testSchema = schema("test", (s) => {

@@ -14,17 +14,21 @@ describe("executeMigration", () => {
     sqliteDatabase.close();
   });
 
-  it("skips sqlite shard backfill when _shard already exists", async () => {
-    await adapter.executeQuery(CompiledQuery.raw('create table "sharded_table" ("_shard" text)'));
-
+  it("executes all migration statements", async () => {
     const migration: CompiledMigration = {
       fromVersion: 0,
       toVersion: 1,
-      statements: [CompiledQuery.raw('alter table "sharded_table" add column "_shard" text')],
+      statements: [
+        CompiledQuery.raw('create table "migrations_test" ("id" integer, "name" text)'),
+        CompiledQuery.raw('insert into "migrations_test" ("id", "name") values (1, \'alpha\')'),
+      ],
     };
 
-    await expect(executeMigration(adapter, migration, { databaseType: "sqlite" })).resolves.toBe(
-      undefined,
+    await expect(executeMigration(adapter, migration)).resolves.toBe(undefined);
+
+    const result = await adapter.executeQuery(
+      CompiledQuery.raw('select "name" from "migrations_test" where "id" = 1'),
     );
+    expect(result.rows[0]?.["name"]).toBe("alpha");
   });
 });

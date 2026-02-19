@@ -9,6 +9,11 @@ import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { column, idColumn, schema, type AnySchema } from "../schema/create";
 import { FragnoDatabase } from "../mod";
 import {
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+} from "../fragments/internal-fragment.schema";
+import { version as FRAGNO_DB_PACKAGE_VERSION } from "../../package.json";
+import {
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
   SQLocalDriverConfig,
@@ -255,6 +260,8 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[0].schema).toContain("fragno_db_settings");
     expect(results[0].schema).toContain("key");
     expect(results[0].schema).toContain("value");
+    expect(results[0].schema).toContain(`${SETTINGS_NAMESPACE}.${FRAGNO_DB_PACKAGE_VERSION_KEY}`);
+    expect(results[0].schema).toContain(`'${FRAGNO_DB_PACKAGE_VERSION}'`);
 
     // Check fragment migration includes version tracking
     expect(results[1].schema).toContain("test-db.schema_version");
@@ -296,10 +303,6 @@ describe("generateSchemaArtifacts - sql", () => {
       create table "test-db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" text);
 
       create index "idx_users_shard" on "test-db"."users" ("_shard");
-
-      alter table "test-db"."users" add column if not exists "_shard" text;
-
-      create index if not exists "idx_users_shard" on "test-db"."users" ("_shard");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');
 

@@ -804,7 +804,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       systemMigrations,
     });
 
-    const sql = prepared.getSQL(0, testSchema.version, { systemFromVersion: 0 });
+    const sql = prepared.getSQL(1, testSchema.version, { systemFromVersion: 0 });
 
     expect(sql).toContain(
       `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
@@ -820,6 +820,83 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(alterIndex).toBeGreaterThan(-1);
     expect(schemaVersionIndex).toBeGreaterThan(alterIndex);
     expect(systemVersionIndex).toBeGreaterThan(schemaVersionIndex);
+  });
+
+  test("skips system migrations on fresh databases but updates system version", () => {
+    const systemMigrations: SystemMigration[] = [() => "select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(0, testSchema.version, { systemFromVersion: 0 });
+
+    expect(sql).not.toContain("select 1");
+    expect(sql).toContain("test.system_migration_version");
+  });
+
+  test("respects systemToVersion override", () => {
+    const systemMigrations: SystemMigration[] = [
+      () => "/* system-migration-1 */ select 1",
+      () => "/* system-migration-2 */ select 2",
+    ];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(1, testSchema.version, {
+      systemFromVersion: 0,
+      systemToVersion: 1,
+    });
+
+    expect(sql).toContain("system-migration-1");
+    expect(sql).not.toContain("system-migration-2");
+    expect(sql).toContain("test.system_migration_version");
+  });
+
+  test("skips system migrations when systemFromVersion is undefined", () => {
+    const systemMigrations: SystemMigration[] = [() => "/* system-migration-1 */ select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(1, testSchema.version);
+
+    expect(sql).not.toContain("system-migration-1");
+    expect(sql).not.toContain("test.system_migration_version");
+  });
+
+  test("runs system migrations when schema already at target version", () => {
+    const systemMigrations: SystemMigration[] = [() => "/* system-migration-1 */ select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+    });
+
+    expect(sql).toContain("system-migration-1");
+    expect(sql).toContain("test.system_migration_version");
   });
 });
 

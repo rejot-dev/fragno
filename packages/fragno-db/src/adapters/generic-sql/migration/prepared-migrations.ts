@@ -20,6 +20,7 @@ import { executeMigration, type CompiledMigration } from "./executor";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { Kysely } from "kysely";
 import type { SQLiteStorageMode } from "../sqlite-storage";
+import { version as FRAGNO_DB_PACKAGE_VERSION } from "../../../../package.json";
 /**
  * Options for executing a migration.
  */
@@ -32,7 +33,8 @@ export interface ExecuteOptions {
 
   /**
    * System migration version currently stored in the database.
-   * If omitted, system migrations are skipped.
+   * If omitted, system migrations are skipped. System migrations are also skipped
+   * on fresh databases (fromVersion = 0) while still updating the system version.
    */
   systemFromVersion?: number;
 
@@ -41,14 +43,6 @@ export interface ExecuteOptions {
    * Defaults to the number of configured system migrations.
    */
   systemToVersion?: number;
-  /**
-   * @deprecated Use systemFromVersion.
-   */
-  internalFromVersion?: number;
-  /**
-   * @deprecated Use systemToVersion.
-   */
-  internalToVersion?: number;
 }
 
 export interface PrepareMigrationsOptions {
@@ -56,10 +50,6 @@ export interface PrepareMigrationsOptions {
    * Override system migrations (useful for testing).
    */
   systemMigrations?: SystemMigration[];
-  /**
-   * @deprecated Use systemMigrations.
-   */
-  internalMigrations?: SystemMigration[];
 }
 
 /**
@@ -135,10 +125,6 @@ export interface PreparedMigrationsConfig {
    */
   systemMigrations?: SystemMigration[];
   /**
-   * @deprecated Use systemMigrations.
-   */
-  internalMigrations?: SystemMigration[];
-  /**
    * Whether to automatically update the schema version in the database after migration.
    * Defaults to true. Can be overridden per execution via ExecuteOptions.
    */
@@ -157,7 +143,6 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     sqliteStorageMode,
     driver,
     systemMigrations: systemMigrationsOverride,
-    internalMigrations: legacyMigrationsOverride,
     updateVersionInMigration: defaultUpdateVersion = true,
   } = config;
 
@@ -167,8 +152,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
   // Create the appropriate SQL generator for the database
   const generator = createSQLGenerator(database, coldKysely, driverConfig, sqliteStorageMode);
 
-  const systemMigrations =
-    systemMigrationsOverride ?? legacyMigrationsOverride ?? getDefaultSystemMigrations(database);
+  const systemMigrations = systemMigrationsOverride ?? getDefaultSystemMigrations(database);
   const systemContext: SystemMigrationContext = {
     schema,
     namespace,
@@ -201,6 +185,8 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       throw new Error(`toVersion (${toVersion}) exceeds schema version (${schema.version})`);
     }
 
+    const isFreshDatabase = fromVersion === 0;
+
     // Phase 1: Generate migration operations from schema
     const operations = generateMigrationFromSchema(schema, fromVersion, toVersion);
 
@@ -210,14 +196,15 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       systemFromVersion,
       systemToVersion,
     );
-    const systemOperations = systemRange
-      ? buildSystemMigrationOperations(
-          systemMigrations,
-          systemContext,
-          systemRange.fromVersion,
-          systemRange.toVersion,
-        )
-      : [];
+    const systemOperations =
+      systemRange && !isFreshDatabase
+        ? buildSystemMigrationOperations(
+            systemMigrations,
+            systemContext,
+            systemRange.fromVersion,
+            systemRange.toVersion,
+          )
+        : [];
 
     // Phase 2: Compile operations to SQL
     const statements = generator.compile([...operations, ...systemOperations], config.resolver);
@@ -239,6 +226,12 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
         systemRange.toVersion,
       );
       statements.push(systemVersionUpdate);
+    }
+
+    if (updateVersionInMigration && namespace === "") {
+      const packageVersionUpdate =
+        generator.generatePackageVersionUpdateSQL(FRAGNO_DB_PACKAGE_VERSION);
+      statements.push(packageVersionUpdate);
     }
 
     return {
@@ -269,12 +262,12 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
         fromVersion,
         targetVersion,
         updateVersionInMigration,
-        options?.systemFromVersion ?? options?.internalFromVersion,
-        options?.systemToVersion ?? options?.internalToVersion,
+        options?.systemFromVersion,
+        options?.systemToVersion,
       );
 
       // Execute the migration
-      await executeMigration(driverToUse, migration, { databaseType: database });
+      await executeMigration(driverToUse, migration);
     },
 
     getSQL(fromVersion, toVersion, options) {
@@ -285,8 +278,8 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
         fromVersion,
         targetVersion,
         updateVersionInMigration,
-        options?.systemFromVersion ?? options?.internalFromVersion,
-        options?.systemToVersion ?? options?.internalToVersion,
+        options?.systemFromVersion,
+        options?.systemToVersion,
       );
       return migration.statements.map((stmt) => stmt.sql + ";").join("\n\n");
     },
@@ -299,8 +292,8 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
         fromVersion,
         targetVersion,
         updateVersionInMigration,
-        options?.systemFromVersion ?? options?.internalFromVersion,
-        options?.systemToVersion ?? options?.internalToVersion,
+        options?.systemFromVersion,
+        options?.systemToVersion,
       );
     },
   };

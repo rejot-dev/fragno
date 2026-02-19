@@ -59,4 +59,34 @@ describe("resolveSystemMigrationRange", () => {
 
     expect(result).toEqual({ fromVersion: 0, toVersion: 1 });
   });
+
+  it("throws when systemFromVersion is negative", () => {
+    expect(() => resolveSystemMigrationRange([() => "select 1"], -1)).toThrow(
+      "systemFromVersion cannot be negative: -1",
+    );
+  });
+
+  it("throws when systemToVersion is negative", () => {
+    expect(() => resolveSystemMigrationRange([() => "select 1"], 0, -1)).toThrow(
+      "systemToVersion cannot be negative: -1",
+    );
+  });
+
+  it("throws when systemToVersion is less than systemFromVersion", () => {
+    expect(() => resolveSystemMigrationRange([() => "select 1"], 2, 1)).toThrow(
+      "Cannot migrate system versions backwards: from 2 to 1",
+    );
+  });
+
+  it("throws when systemFromVersion exceeds migrations length", () => {
+    expect(() => resolveSystemMigrationRange([() => "select 1"], 2, 2)).toThrow(
+      "systemFromVersion (2) exceeds system migrations length (1)",
+    );
+  });
+
+  it("throws when systemToVersion exceeds migrations length", () => {
+    expect(() => resolveSystemMigrationRange([() => "select 1"], 0, 2)).toThrow(
+      "systemToVersion (2) exceeds system migrations length (1)",
+    );
+  });
 });

@@ -1,5 +1,5 @@
 ---
-@fragno-dev/db: patch
+"@fragno-dev/db": patch
 ---
 
 feat: export ShardingStrategy type for database config

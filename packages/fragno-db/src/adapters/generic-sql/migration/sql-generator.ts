@@ -13,6 +13,8 @@ import type {
   MigrationOperation,
 } from "../../../migration-engine/shared";
 import {
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SETTINGS_NAMESPACE,
   SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_TABLE_NAME,
 } from "../../../fragments/internal-fragment.schema";
@@ -107,6 +109,33 @@ export abstract class SQLGenerator {
   }
 
   /**
+   * Generate SQL for upserting a settings key/value pair.
+   */
+  protected generateSettingsUpsertSQL(key: string, value: string): CompiledQuery {
+    const id = createHash("md5").update(key).digest("base64url").replace(/=/g, "");
+    const idLiteral = sql.lit(id);
+    const keyLiteral = sql.lit(key);
+    const valueLiteral = sql.lit(value);
+
+    switch (this.database) {
+      case "postgresql":
+      case "sqlite":
+        return sql`
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral})
+          on conflict (${sql.id("key")}) do update
+            set ${sql.id("value")} = ${valueLiteral}
+        `.compile(this.db);
+      case "mysql":
+        return sql`
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral})
+          on duplicate key update ${sql.id("value")} = ${valueLiteral}
+        `.compile(this.db);
+    }
+  }
+
+  /**
    * Generate SQL for updating the schema version in the settings table.
    * This is the same across all databases.
    */
@@ -129,6 +158,14 @@ export abstract class SQLGenerator {
   ): CompiledQuery {
     const key = `${namespace}.${SYSTEM_MIGRATION_VERSION_KEY}`;
     return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
+  }
+
+  /**
+   * Generate SQL for updating the fragno-db package version in the settings table.
+   */
+  generatePackageVersionUpdateSQL(packageVersion: string): CompiledQuery {
+    const key = `${SETTINGS_NAMESPACE}.${FRAGNO_DB_PACKAGE_VERSION_KEY}`;
+    return this.generateSettingsUpsertSQL(key, packageVersion);
   }
 
   /**
