@@ -614,11 +614,16 @@ describe("SqlAdapter PGLite", () => {
 
     const [insertUserQuery, insertPostQuery] = queries;
     expect(insertUserQuery.sql).toMatchInlineSnapshot(
-      `"insert into "namespace"."users" ("id", "name", "age") values ($1, $2, $3) returning "namespace"."users"."id" as "id", "namespace"."users"."name" as "name", "namespace"."users"."age" as "age", "namespace"."users"."_internalId" as "_internalId", "namespace"."users"."_version" as "_version", "namespace"."users"."_shard" as "_shard""`,
+      `"insert into "namespace"."users" ("id", "name", "age", "_shard") values ($1, $2, $3, $4) returning "namespace"."users"."id" as "id", "namespace"."users"."name" as "name", "namespace"."users"."age" as "age", "namespace"."users"."_internalId" as "_internalId", "namespace"."users"."_version" as "_version", "namespace"."users"."_shard" as "_shard""`,
     );
-    expect(insertUserQuery.parameters).toEqual([userId.externalId, "UOW Test User", 35]);
+    expect(insertUserQuery.parameters).toEqual([
+      userId.externalId,
+      "UOW Test User",
+      35,
+      "__fragno_global__",
+    ]);
     expect(insertPostQuery.sql).toMatchInlineSnapshot(
-      `"insert into "namespace"."posts" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "namespace"."users" where "id" = $2 limit $3), $4, $5) returning "namespace"."posts"."id" as "id", "namespace"."posts"."user_id" as "user_id", "namespace"."posts"."title" as "title", "namespace"."posts"."content" as "content", "namespace"."posts"."created_at" as "created_at", "namespace"."posts"."_internalId" as "_internalId", "namespace"."posts"."_version" as "_version", "namespace"."posts"."_shard" as "_shard""`,
+      `"insert into "namespace"."posts" ("id", "user_id", "title", "content", "_shard") values ($1, (select "_internalId" from "namespace"."users" where "id" = $2 limit $3), $4, $5, $6) returning "namespace"."posts"."id" as "id", "namespace"."posts"."user_id" as "user_id", "namespace"."posts"."title" as "title", "namespace"."posts"."content" as "content", "namespace"."posts"."created_at" as "created_at", "namespace"."posts"."_internalId" as "_internalId", "namespace"."posts"."_version" as "_version", "namespace"."posts"."_shard" as "_shard""`,
     );
     expect(insertPostQuery.parameters).toEqual([
       postId.externalId,
@@ -626,6 +631,7 @@ describe("SqlAdapter PGLite", () => {
       1,
       "UOW Test Post",
       "This post was created in the same transaction as the user",
+      "__fragno_global__",
     ]);
   });
 

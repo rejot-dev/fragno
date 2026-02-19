@@ -63,7 +63,7 @@ describe("create", () => {
     expect(userTable.columns["_internalId"].isHidden).toBe(true);
     expect(userTable.columns["_version"].isHidden).toBe(true);
     expect(userTable.columns["_shard"].isHidden).toBe(true);
-    expect(userTable.columns["_shard"].isNullable).toBe(true);
+    expect(userTable.columns["_shard"].isNullable).toBe(false);
 
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     const addColumnOps = addTableOps[0].operations.filter((op) => op.type === "add-column");

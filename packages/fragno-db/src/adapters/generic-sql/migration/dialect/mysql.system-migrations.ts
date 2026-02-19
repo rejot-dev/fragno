@@ -2,6 +2,7 @@ import type {
   SystemMigration,
   SystemMigrationContext,
 } from "../../../../migration-engine/system-migrations";
+import { GLOBAL_SHARD_SENTINEL } from "../../../../sharding";
 
 const SHARD_COLUMN_NAME = "_shard";
 
@@ -69,4 +70,37 @@ const buildShardBackfillStatements = (context: SystemMigrationContext): string[]
   return statements;
 };
 
-export const mysqlSystemMigrations: SystemMigration[] = [buildShardBackfillStatements];
+const buildShardNotNullStatements = (context: SystemMigrationContext): string[] => {
+  const { schema, resolver } = context;
+  const schemaName = resolver?.getSchemaName();
+  const statements: string[] = [];
+
+  for (const table of Object.values(schema.tables)) {
+    const tableName = resolver ? resolver.getTableName(table.name) : table.name;
+    const columnName = resolver
+      ? resolver.getColumnName(table.name, SHARD_COLUMN_NAME)
+      : SHARD_COLUMN_NAME;
+
+    const escapedTable = escapeMySqlIdentifier(tableName);
+    const escapedColumn = escapeMySqlIdentifier(columnName);
+    const qualifiedTable = schemaName
+      ? `\`${escapeMySqlIdentifier(schemaName)}\`.\`${escapedTable}\``
+      : `\`${escapedTable}\``;
+
+    statements.push(
+      `update ${qualifiedTable} set \`${escapedColumn}\` = '${escapeMySqlString(
+        GLOBAL_SHARD_SENTINEL,
+      )}' where \`${escapedColumn}\` is null`,
+      `alter table ${qualifiedTable} modify column \`${escapedColumn}\` text not null`,
+    );
+  }
+
+  return statements;
+};
+
+const buildShardMigration = (context: SystemMigrationContext): string[] => [
+  ...buildShardBackfillStatements(context),
+  ...buildShardNotNullStatements(context),
+];
+
+export const mysqlSystemMigrations: SystemMigration[] = [buildShardMigration];

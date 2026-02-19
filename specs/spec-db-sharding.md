@@ -12,7 +12,8 @@ clients remain **schema‑only** and receive shard‑scoped outbox data from the
 
 Core changes:
 
-- Add a **hidden `_shard` column** (nullable) to every table alongside `_internalId` and `_version`.
+- Add a **hidden `_shard` column** (non‑nullable; global rows use a sentinel value) to every table
+  alongside `_internalId` and `_version`.
 - Add a **sharding strategy** in `FragnoPublicConfigWithDatabase` (integrator‑controlled only).
 - Inject shard filtering into **Unit of Work** reads/writes when row‑sharding is enabled.
 - Ensure **internal tables** use `_shard` (implicit system column) and are filtered by shard on
@@ -60,7 +61,7 @@ Core changes:
 ### 4.1 Goals
 
 1. Enable **server‑only sharding** without exposing shard or namespace concepts to clients.
-2. Ensure every table stores a **nullable `_shard` column**.
+2. Ensure every table stores a **non‑nullable `_shard` column**.
 3. Provide a **pluggable sharding strategy** in `FragnoPublicConfigWithDatabase` (integrator‑only).
 4. Inject **row‑level shard filters** in UOW operations when enabled.
 5. Filter **outbox + sync + hooks** by shard on the server.
@@ -163,7 +164,7 @@ withShardScope<T>(scope: "scoped" | "global", fn: () => T | Promise<T>): T | Pro
 
 Constraints:
 
-- `shard === null` means “no shard.”
+- `shard === null` means “no shard” (stored as a global sentinel in the database).
 - `shard` must be **non‑empty** and **<= 64 chars** when set (throw otherwise).
 - `shardScope` defaults to `"scoped"`. `"global"` disables row‑level shard filters and is reserved
   for internal maintenance (e.g. global hook processors).
@@ -272,7 +273,8 @@ await this.withShard("tenant_42", async () => {
 
 ### 7.1 System Column `_shard`
 
-- Add `_shard` as a **hidden**, **nullable** string column to every table.
+- Add `_shard` as a **hidden**, **non‑nullable** string column to every table (global rows use a
+  sentinel value).
 - This is a **system column** added implicitly alongside `_internalId` and `_version`.
 - The column is associated with `idColumn()` (system columns only exist on tables with an id).
 
@@ -297,7 +299,7 @@ column declarations are required. Add indexes to support shard‑filtered scans,
 
 `fragno_db_settings` is **adapter‑scoped**, not shard‑scoped:
 
-- Rows are written with `_shard = null`.
+- Rows are written with `_shard = __fragno_global__` when `shard === null`.
 - UOW shard filtering is **disabled** for this table even in `mode: "row"`.
 
 ## 8. UOW Shard Injection
@@ -313,7 +315,7 @@ column declarations are required. Add indexes to support shard‑filtered scans,
 ### 8.2 Update/Delete/Check Operations
 
 - When `shardingStrategy.mode === "row"`, add `_shard = :shard` to update/delete/check queries.
-- If shard is `null`, the filter becomes `_shard IS NULL`.
+- If shard is `null`, the filter becomes `_shard = __fragno_global__`.
 - If `shardScope === "global"`, **do not** inject shard filters (internal maintenance only).
 - Adapter‑scoped tables (e.g. `fragno_db_settings`) are exempt from shard filters.
 
@@ -395,7 +397,7 @@ Because `_shard` is implicit (not declared in schema code), existing tables **wi
 by the built‑in migration engine. We need a **system migration** that:
 
 - Scans all tables that contain an `idColumn()`.
-- Adds `_shard` (nullable) and its index if missing.
+- Adds `_shard` and its index if missing, then backfills the global sentinel and enforces NOT NULL.
 
 ### 12.2 Internal Schema Migration
 
@@ -422,7 +424,7 @@ No migration is required while outbox versioning remains global.
 
 - Namespace is **not** shard.
 - Clients remain **schema‑only** and shard‑agnostic.
-- `_shard` is a **hidden**, **nullable** system column on every table.
+- `_shard` is a **hidden**, **non‑nullable** system column on every table.
 - Sharding is **disabled** if `shardingStrategy` is omitted.
 - Sharding strategy is **integrator‑only**; fragment authors do not control it.
 - Sharding strategy is **adapter‑scoped**; mismatches throw.

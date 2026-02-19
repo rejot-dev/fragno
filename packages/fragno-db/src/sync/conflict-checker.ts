@@ -9,7 +9,7 @@ import type { AnyExpressionBuilder } from "../adapters/generic-sql/query/sql-que
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
-import type { ShardScope, ShardingStrategy } from "../sharding";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../sharding";
 
 export type ConflictKey = {
   schema: string;
@@ -56,13 +56,14 @@ const OUTBOX_MUTATIONS_TABLE = "fragno_db_outbox_mutations" as const;
 const shouldApplyShardFilter = (runtime: ConflictCheckRuntime): boolean =>
   runtime.shardingStrategy?.mode === "row" && (runtime.shardScope ?? "scoped") === "scoped";
 
-const resolveShard = (runtime: ConflictCheckRuntime): string | null => runtime.shard ?? null;
+const resolveShard = (runtime: ConflictCheckRuntime): string =>
+  resolveShardValue(runtime.shard ?? null);
 
 const resolveShardColumn = (runtime: ConflictCheckRuntime, tableName: string): string =>
   runtime.resolver ? runtime.resolver.getColumnName(tableName, "_shard") : "_shard";
 
-const buildShardPredicate = (eb: AnyExpressionBuilder, columnRef: string, shard: string | null) =>
-  shard === null ? eb(columnRef, "is", null) : eb(columnRef, "=", shard);
+const buildShardPredicate = (eb: AnyExpressionBuilder, columnRef: string, shard: string) =>
+  eb(columnRef, "=", shard);
 
 const normalizeKeys = (keys: ConflictKey[]): ConflictKey[] =>
   keys.filter((key) => key.externalId.trim().length > 0);

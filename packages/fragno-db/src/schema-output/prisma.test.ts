@@ -191,7 +191,7 @@ describe("generatePrismaSchema", () => {
         payload Json
         refMap Json?
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_idx_fragno_db_outbox_shard_34a60945")
@@ -211,7 +211,7 @@ describe("generatePrismaSchema", () => {
         externalId String
         op String
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_mutations_idx_fragno_db_outbox_mut00539742")
@@ -228,7 +228,7 @@ describe("generatePrismaSchema", () => {
         value String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         @@index([_shard], map: "idx_fragno_db_settings_idx_fragno_db_settings_shard_371d1d84")
         @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
         @@map("fragno_db_settings")
@@ -243,7 +243,7 @@ describe("generatePrismaSchema", () => {
         baseVersionstamp String?
         lastVersionstamp String?
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_sync_requests_idx_fragno_db_sync_requests0a0340ad")
@@ -265,7 +265,7 @@ describe("generatePrismaSchema", () => {
         error String?
         createdAt DateTime @default(now())
         nonce String
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_hooks_idx_fragno_hooks_shard_bbecb878")
@@ -283,7 +283,7 @@ describe("generatePrismaSchema", () => {
         publishedAt DateTime?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author_blog_d01fe02e")
         editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor_blog_d7abc235")
         @@index([_shard], map: "idx_posts_idx_posts_shard_blog_36ae8935")
@@ -302,7 +302,7 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter_blog_631afc1c")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
@@ -336,7 +336,7 @@ describe("generatePrismaSchema", () => {
         payload Json
         refMap Json?
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_idx_fragno_db_outbox_shard_34a60945")
@@ -356,7 +356,7 @@ describe("generatePrismaSchema", () => {
         externalId String
         op String
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_mutations_idx_fragno_db_outbox_mut00539742")
@@ -373,7 +373,7 @@ describe("generatePrismaSchema", () => {
         value String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         @@index([_shard], map: "idx_fragno_db_settings_idx_fragno_db_settings_shard_371d1d84")
         @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
         @@map("fragno_db_settings")
@@ -388,7 +388,7 @@ describe("generatePrismaSchema", () => {
         baseVersionstamp String?
         lastVersionstamp String?
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_sync_requests_idx_fragno_db_sync_requests0a0340ad")
@@ -410,7 +410,7 @@ describe("generatePrismaSchema", () => {
         error String?
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         nonce String
-        _shard String?
+        _shard String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_hooks_idx_fragno_hooks_shard_bbecb878")
@@ -428,7 +428,7 @@ describe("generatePrismaSchema", () => {
         publishedAt Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author_blog_d01fe02e")
         editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor_blog_d7abc235")
         @@index([_shard], map: "idx_posts_idx_posts_shard_blog_36ae8935")
@@ -447,7 +447,7 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter_blog_631afc1c")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
@@ -480,7 +480,7 @@ describe("generatePrismaSchema", () => {
         payload Json @db.Json
         refMap Json? @db.Json
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_shard")
@@ -500,7 +500,7 @@ describe("generatePrismaSchema", () => {
         externalId String
         op String
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_outbox_mutations_shard")
@@ -517,7 +517,7 @@ describe("generatePrismaSchema", () => {
         value String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         @@index([_shard], map: "idx_fragno_db_settings_shard")
         @@unique([key], map: "unique_key")
         @@map("fragno_db_settings")
@@ -532,7 +532,7 @@ describe("generatePrismaSchema", () => {
         baseVersionstamp String?
         lastVersionstamp String?
         createdAt DateTime @default(now())
-        _shard String?
+        _shard String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_db_sync_requests_shard")
@@ -554,7 +554,7 @@ describe("generatePrismaSchema", () => {
         error String?
         createdAt DateTime @default(now())
         nonce String
-        _shard String?
+        _shard String
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([_shard], map: "idx_fragno_hooks_shard")
@@ -572,7 +572,7 @@ describe("generatePrismaSchema", () => {
         publishedAt DateTime?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author")
         editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor")
         @@index([_shard], map: "idx_posts_shard")
@@ -591,7 +591,7 @@ describe("generatePrismaSchema", () => {
         invitedBy BigInt?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
@@ -621,7 +621,7 @@ describe("generatePrismaSchema", () => {
         display_name String? @map("display name")
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         @@index([_shard], map: "idx_user-profiles_idx_user-profiles_shard_my-app_74e2548d")
         @@index([user_id], map: "idx_user-profiles_user-id-index_my-app_c295d8f4")
         @@map("user-profiles_my-app")
@@ -646,7 +646,7 @@ describe("generatePrismaSchema", () => {
         display_name String? @map("display name")
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        _shard String?
+        _shard String
         @@index([_shard], map: "idx_user-profiles_shard")
         @@index([user_id], map: "user-id-index")
         @@map("user-profiles")

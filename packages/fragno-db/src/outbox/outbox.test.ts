@@ -15,6 +15,7 @@ import type { AnySchema } from "../schema/create";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
 import { getInternalFragment } from "../internal/adapter-registry";
 import type { OutboxEntry, OutboxPayload } from "./outbox";
+import { resolveShardValue } from "../sharding";
 
 const outboxSchema = schema("outbox", (s) => {
   return s
@@ -165,7 +166,7 @@ async function assignOutboxShards(
     const shard = shards[index] ?? null;
     shardByVersion.set(entry.versionstamp, shard);
     await internalDb.update("fragno_db_outbox", entry.id, (b) =>
-      b.set({ _shard: shard } as Record<string, unknown>),
+      b.set({ _shard: resolveShardValue(shard) } as Record<string, unknown>),
     );
   }
 
@@ -176,7 +177,7 @@ async function assignOutboxShards(
   for (const mutation of mutations) {
     const shard = shardByVersion.get(mutation.entryVersionstamp) ?? null;
     await internalDb.update("fragno_db_outbox_mutations", mutation.id, (b) =>
-      b.set({ _shard: shard } as Record<string, unknown>),
+      b.set({ _shard: resolveShardValue(shard) } as Record<string, unknown>),
     );
   }
 }

@@ -11,6 +11,7 @@ import {
 import { createIndexedBuilder } from "../condition-builder";
 import type { SimpleQueryInterface } from "../simple-query-interface";
 import { internalSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
+import { GLOBAL_SHARD_SENTINEL } from "../../sharding";
 
 // Mock compiler and executor for testing
 function createMockCompiler(): UOWCompiler<unknown> {
@@ -930,9 +931,22 @@ describe("Shard metadata", () => {
     expect(ops).toHaveLength(1);
     const op = ops[0];
     assert(op.type === "create");
-    expect(op.values).toMatchObject({ _shard: null });
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
     expect(op.shard).toBeNull();
     expect(op.shardScope).toBe("global");
+  });
+
+  it("injects global shard sentinel when no shardingStrategy is set", () => {
+    const uow = new UnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
+    expect(op.shard).toBeNull();
   });
 
   it("requires shard in adapter mode for retrieval operations", () => {

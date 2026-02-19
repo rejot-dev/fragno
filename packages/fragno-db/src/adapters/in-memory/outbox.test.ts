@@ -10,6 +10,7 @@ import type { InternalFragmentInstance } from "../../fragments/internal-fragment
 import { internalSchema } from "../../fragments/internal-fragment";
 import { getInternalFragment } from "../../internal/adapter-registry";
 import { InMemoryAdapter, type InMemoryUowConfig } from "./in-memory-adapter";
+import { resolveShardValue } from "../../sharding";
 
 const buildOutboxSchema = () =>
   schema("outbox", (s) => {
@@ -103,7 +104,7 @@ async function assignOutboxShards(
     const shard = shards[index] ?? null;
     shardByVersion.set(entry.versionstamp, shard);
     await internalDb.update("fragno_db_outbox", entry.id, (b) =>
-      b.set({ _shard: shard } as Record<string, unknown>),
+      b.set({ _shard: resolveShardValue(shard) } as Record<string, unknown>),
     );
   }
 
@@ -114,7 +115,7 @@ async function assignOutboxShards(
   for (const mutation of mutations) {
     const shard = shardByVersion.get(mutation.entryVersionstamp) ?? null;
     await internalDb.update("fragno_db_outbox_mutations", mutation.id, (b) =>
-      b.set({ _shard: shard } as Record<string, unknown>),
+      b.set({ _shard: resolveShardValue(shard) } as Record<string, unknown>),
     );
   }
 }

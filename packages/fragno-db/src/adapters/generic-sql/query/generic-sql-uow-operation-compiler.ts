@@ -18,7 +18,7 @@ import { buildFindOptions } from "../../../query/orm/orm";
 import type { CompiledJoin } from "../../../query/orm/orm";
 import type { AnySelectClause } from "../../../query/simple-query-interface";
 import { createColdKysely } from "../migration/cold-kysely";
-import type { ShardScope, ShardingStrategy } from "../../../sharding";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../../sharding";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 
 /**
@@ -79,10 +79,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     if (!shardColumn) {
       throw new Error(`Missing _shard column on table "${table.name}".`);
     }
-    if (shard === null) {
-      return { type: "compare", a: shardColumn, operator: "is", b: null };
-    }
-    return { type: "compare", a: shardColumn, operator: "=", b: shard };
+    return { type: "compare", a: shardColumn, operator: "=", b: resolveShardValue(shard) };
   }
 
   private applyJoinShardFilters(joins: CompiledJoin[], shard: string | null): CompiledJoin[] {

@@ -23,6 +23,7 @@ import {
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
+import { resolveShardValue } from "../../sharding";
 
 export interface ExecutorOptions {
   dryRun?: boolean;
@@ -231,21 +232,22 @@ async function reserveOutboxVersion(
   // TODO(db-sharding): keep outbox versioning global for now; revisit per-shard versions (specs/spec-db-sharding.md §9.3).
   const key = `${SETTINGS_NAMESPACE}.outbox_version`;
   const id = createId();
+  const shardValue = resolveShardValue(null);
 
   switch (driverConfig.outboxVersionstampStrategy) {
     case "insert-on-conflict-returning": {
       const query =
         driverConfig.databaseType === "postgresql"
           ? sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
+              insert into fragno_db_settings (id, key, value, _shard)
+              values (${id}, ${key}, '0', ${shardValue})
               on conflict (key) do update
                 set value = (fragno_db_settings.value::bigint + 1)::text
               returning value;
             `
           : sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
+              insert into fragno_db_settings (id, key, value, _shard)
+              values (${id}, ${key}, '0', ${shardValue})
               on conflict (key) do update
                 set value = cast(fragno_db_settings.value as integer) + 1
               returning value;
@@ -280,8 +282,8 @@ async function reserveOutboxVersion(
     }
     case "insert-on-duplicate-last-insert-id": {
       const insertQuery = sql`
-        insert into fragno_db_settings (id, key, value)
-        values (${id}, ${key}, LAST_INSERT_ID(0))
+        insert into fragno_db_settings (id, key, value, _shard)
+        values (${id}, ${key}, LAST_INSERT_ID(0), ${shardValue})
         on duplicate key update value = LAST_INSERT_ID(cast(value as unsigned) + 1);
       `;
 
@@ -361,7 +363,14 @@ async function insertOutboxRow(
   const refMapValue = refMap ?? null;
   const serializer = createSQLSerializer(driverConfig);
   const outboxTable = internalSchema.tables.fragno_db_outbox;
-  const values = { id, versionstamp, uowId, payload, refMap: refMapValue, _shard: shard };
+  const values = {
+    id,
+    versionstamp,
+    uowId,
+    payload,
+    refMap: refMapValue,
+    _shard: resolveShardValue(shard),
+  };
   const serializedValues: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     const col = outboxTable.columns[key];
@@ -412,7 +421,7 @@ async function insertOutboxMutationRows(
       table: mutation.table,
       externalId: mutation.externalId,
       op: mutation.op,
-      _shard: options.shard,
+      _shard: resolveShardValue(options.shard),
     };
     const serializedValues: Record<string, unknown> = {};
 
@@ -430,14 +439,14 @@ async function insertOutboxMutationRows(
   }
 }
 
-function resolveOutboxShard(getShard?: () => string | null): string | null {
+function resolveOutboxShard(getShard?: () => string | null): string {
   if (!getShard) {
-    return null;
+    return resolveShardValue(null);
   }
 
   try {
-    return getShard() ?? null;
+    return resolveShardValue(getShard() ?? null);
   } catch {
-    return null;
+    return resolveShardValue(null);
   }
 }

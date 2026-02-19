@@ -12,7 +12,7 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
   value: text("value").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("unique_key").on(table.key),
   index("idx_fragno_db_settings_shard").on(table._shard)
@@ -31,7 +31,7 @@ export const fragno_hooks = pgTable("fragno_hooks", {
   error: text("error"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   nonce: text("nonce").notNull(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -48,7 +48,7 @@ export const fragno_db_outbox = pgTable("fragno_db_outbox", {
   payload: json("payload").notNull(),
   refMap: json("refMap"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -68,7 +68,7 @@ export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", 
   externalId: text("externalId").notNull(),
   op: text("op").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -88,7 +88,7 @@ export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
   baseVersionstamp: text("baseVersionstamp"),
   lastVersionstamp: text("lastVersionstamp"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -96,94 +96,6 @@ export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
   index("idx_sync_requests_shard_request").on(table._shard, table.requestId),
   index("idx_fragno_db_sync_requests_shard").on(table._shard)
 ])
-
-// ============================================================================
-// Fragment: comment
-// ============================================================================
-
-const schema_comment = pgSchema("comment");
-
-export const comment_comment = schema_comment.table("comment", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  postReference: text("postReference").notNull(),
-  userReference: text("userReference").notNull(),
-  parentId: bigint("parentId", { mode: "number" }),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
-  rating: integer("rating").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.parentId],
-    foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent"
-  }),
-  index("idx_comment_post").on(table.postReference),
-  index("idx_comment_shard").on(table._shard)
-])
-
-export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
-  parent: one(comment_comment, {
-    relationName: "comment_comment",
-    fields: [comment_comment.parentId],
-    references: [comment_comment._internalId]
-  }),
-  commentList: many(comment_comment, {
-    relationName: "comment_comment"
-  })
-}));
-
-export const comment_schema = {
-  comment_comment: comment_comment,
-  comment_commentRelations: comment_commentRelations,
-  comment: comment_comment,
-  commentRelations: comment_commentRelations,
-  schemaVersion: 3
-}
-
-// ============================================================================
-// Fragment: upvote
-// ============================================================================
-
-const schema_upvote = pgSchema("upvote");
-
-export const upvote_upvote = schema_upvote.table("upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
-  ownerReference: text("ownerReference"),
-  rating: integer("rating").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  note: text("note"),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
-}, (table) => [
-  index("idx_upvote_reference").on(table.reference, table.ownerReference),
-  index("idx_upvote_shard").on(table._shard)
-])
-
-export const upvote_total_upvote = schema_upvote.table("upvote_total", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
-  total: integer("total").notNull().default(0),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
-}, (table) => [
-  uniqueIndex("idx_upvote_total_reference").on(table.reference),
-  index("idx_upvote_total_shard").on(table._shard)
-])
-
-export const upvote_schema = {
-  upvote_upvote: upvote_upvote,
-  upvote: upvote_upvote,
-  upvote_total_upvote: upvote_total_upvote,
-  upvote_total: upvote_total_upvote,
-  schemaVersion: 2
-}
 
 // ============================================================================
 // Fragment: auth
@@ -199,7 +111,7 @@ export const user_auth = schema_auth.table("user", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   bannedAt: timestamp("bannedAt")
 }, (table) => [
   index("idx_user_email").on(table.email),
@@ -215,7 +127,7 @@ export const session_auth = schema_auth.table("session", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   activeOrganizationId: bigint("activeOrganizationId", { mode: "number" })
 }, (table) => [
   foreignKey({
@@ -244,7 +156,7 @@ export const organization_auth = schema_auth.table("organization", {
   deletedAt: timestamp("deletedAt"),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.createdBy],
@@ -264,7 +176,7 @@ export const organizationMember_auth = schema_auth.table("organizationMember", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -289,7 +201,7 @@ export const organizationMemberRole_auth = schema_auth.table("organizationMember
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.memberId],
@@ -315,7 +227,7 @@ export const organizationInvitation_auth = schema_auth.table("organizationInvita
   respondedAt: timestamp("respondedAt"),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -445,6 +357,94 @@ export const auth_schema = {
 }
 
 // ============================================================================
+// Fragment: comment
+// ============================================================================
+
+const schema_comment = pgSchema("comment");
+
+export const comment_comment = schema_comment.table("comment", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  postReference: text("postReference").notNull(),
+  userReference: text("userReference").notNull(),
+  parentId: bigint("parentId", { mode: "number" }),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0),
+  _shard: text("_shard").notNull(),
+  rating: integer("rating").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.parentId],
+    foreignColumns: [table._internalId],
+    name: "fk_comment_comment_parent"
+  }),
+  index("idx_comment_post").on(table.postReference),
+  index("idx_comment_shard").on(table._shard)
+])
+
+export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
+  parent: one(comment_comment, {
+    relationName: "comment_comment",
+    fields: [comment_comment.parentId],
+    references: [comment_comment._internalId]
+  }),
+  commentList: many(comment_comment, {
+    relationName: "comment_comment"
+  })
+}));
+
+export const comment_schema = {
+  comment_comment: comment_comment,
+  comment_commentRelations: comment_commentRelations,
+  comment: comment_comment,
+  commentRelations: comment_commentRelations,
+  schemaVersion: 3
+}
+
+// ============================================================================
+// Fragment: upvote
+// ============================================================================
+
+const schema_upvote = pgSchema("upvote");
+
+export const upvote_upvote = schema_upvote.table("upvote", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  reference: text("reference").notNull(),
+  ownerReference: text("ownerReference"),
+  rating: integer("rating").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  note: text("note"),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0),
+  _shard: text("_shard").notNull()
+}, (table) => [
+  index("idx_upvote_reference").on(table.reference, table.ownerReference),
+  index("idx_upvote_shard").on(table._shard)
+])
+
+export const upvote_total_upvote = schema_upvote.table("upvote_total", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  reference: text("reference").notNull(),
+  total: integer("total").notNull().default(0),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0),
+  _shard: text("_shard").notNull()
+}, (table) => [
+  uniqueIndex("idx_upvote_total_reference").on(table.reference),
+  index("idx_upvote_total_shard").on(table._shard)
+])
+
+export const upvote_schema = {
+  upvote_upvote: upvote_upvote,
+  upvote: upvote_upvote,
+  upvote_total_upvote: upvote_total_upvote,
+  upvote_total: upvote_total_upvote,
+  schemaVersion: 2
+}
+
+// ============================================================================
 // Fragment: workflows
 // ============================================================================
 
@@ -468,7 +468,7 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   runNumber: integer("runNumber").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("idx_workflow_instance_workflowName_instanceId").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_status_updatedAt").on(table.workflowName, table.status, table.updatedAt),
@@ -498,7 +498,7 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -527,7 +527,7 @@ export const workflow_event_workflows = schema_workflows.table("workflow_event",
   consumedByStepKey: text("consumedByStepKey"),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -558,7 +558,7 @@ export const workflow_task_workflows = schema_workflows.table("workflow_task", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -586,7 +586,7 @@ export const workflow_log_workflows = schema_workflows.table("workflow_log", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],

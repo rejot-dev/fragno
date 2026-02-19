@@ -22,6 +22,7 @@ import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
+import { GLOBAL_SHARD_SENTINEL } from "../../../sharding";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -94,6 +95,7 @@ export abstract class SQLGenerator {
           id: sql.lit(id),
           key: sql.lit(key),
           value: sql.lit(toVersion.toString()),
+          _shard: sql.lit(GLOBAL_SHARD_SENTINEL),
         })
         .compile();
     }
@@ -116,20 +118,21 @@ export abstract class SQLGenerator {
     const idLiteral = sql.lit(id);
     const keyLiteral = sql.lit(key);
     const valueLiteral = sql.lit(value);
+    const shardLiteral = sql.lit(GLOBAL_SHARD_SENTINEL);
 
     switch (this.database) {
       case "postgresql":
       case "sqlite":
         return sql`
-          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")})
-          values (${idLiteral}, ${keyLiteral}, ${valueLiteral})
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")}, ${sql.id("_shard")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral}, ${shardLiteral})
           on conflict (${sql.id("key")}) do update
             set ${sql.id("value")} = ${valueLiteral}
         `.compile(this.db);
       case "mysql":
         return sql`
-          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")})
-          values (${idLiteral}, ${keyLiteral}, ${valueLiteral})
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")}, ${sql.id("_shard")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral}, ${shardLiteral})
           on duplicate key update ${sql.id("value")} = ${valueLiteral}
         `.compile(this.db);
     }

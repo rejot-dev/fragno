@@ -22,6 +22,7 @@ import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapt
 import { defineSyncCommands } from "./sync/commands";
 import * as hooks from "./hooks/hooks";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
+import { GLOBAL_SHARD_SENTINEL } from "./sharding";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -966,6 +967,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       mockAdapter.contextStorage.run(storage, () => {
         expect(() => deps.shardContext.set("")).toThrowError(/non-empty/i);
+        expect(() => deps.shardContext.set(GLOBAL_SHARD_SENTINEL)).toThrowError(/reserved/i);
         const tooLongShard = "a".repeat(65);
         expect(() => deps.shardContext.set(tooLongShard)).toThrowError(/at most 64/i);
       });

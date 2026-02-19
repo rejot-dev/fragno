@@ -3,6 +3,7 @@ import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-comp
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
 import { Cursor } from "../../../query/cursor";
+import { GLOBAL_SHARD_SENTINEL } from "../../../sharding";
 
 // Test schema with indexes
 const testSchema = schema("test", (s) => {
@@ -351,8 +352,9 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."_shard" is null limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."_shard" = ? limit ?"`,
       );
+      expect(result!.parameters[0]).toBe(GLOBAL_SHARD_SENTINEL);
     });
 
     test("compileUpdate applies shard filter", () => {

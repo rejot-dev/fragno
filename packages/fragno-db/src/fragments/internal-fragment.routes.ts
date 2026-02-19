@@ -12,6 +12,7 @@ import type { DatabaseHandlerContext } from "../db-fragment-definition-builder";
 import type { OutboxEntry } from "../outbox/outbox";
 import type { ConditionBuilder } from "../query/condition-builder";
 import type { AnyColumn } from "../schema/create";
+import { resolveShardValue } from "../sharding";
 
 type InternalDescribeResponse = {
   adapterIdentity: string;
@@ -265,7 +266,7 @@ export const createInternalFragmentSyncRoutes = () =>
                           eb: ConditionBuilder<Record<string, AnyColumn>>,
                         ) =>
                           eb.and(
-                            shard === null ? eb.isNull("_shard") : eb("_shard", "=", shard),
+                            eb("_shard", "=", resolveShardValue(shard)),
                             eb("entryVersionstamp", ">", afterVersionstamp),
                           )) as never)
                         .selectCount();
@@ -274,8 +275,7 @@ export const createInternalFragmentSyncRoutes = () =>
                     return b
                       .whereIndex("idx_outbox_mutations_shard_entry", ((
                         eb: ConditionBuilder<Record<string, AnyColumn>>,
-                      ) =>
-                        shard === null ? eb.isNull("_shard") : eb("_shard", "=", shard)) as never)
+                      ) => eb("_shard", "=", resolveShardValue(shard))) as never)
                       .selectCount();
                   });
                 }

@@ -19,6 +19,7 @@ import { createNamingResolver } from "../../naming/sql-naming";
 import { postgresSystemMigrations } from "./migration/dialect/postgres.system-migrations";
 import { FragnoDatabase } from "../../mod";
 import { createId } from "../../id";
+import { GLOBAL_SHARD_SENTINEL } from "../../sharding";
 
 const simpleSchema = schema("simple", (s) => {
   return s.addTable("widgets", (t) => {
@@ -57,7 +58,7 @@ describe("SqlAdapter PGLite - system migrations integration", () => {
 
       const schemaVersionKey = `${namespace}.schema_version`;
       await adapter.driver.executeQuery(
-        sql`insert into fragno_db_settings ("id", "key", "value") values (${createId()}, ${schemaVersionKey}, ${simpleSchema.version.toString()})`.compile(
+        sql`insert into fragno_db_settings ("id", "key", "value", "_shard") values (${createId()}, ${schemaVersionKey}, ${simpleSchema.version.toString()}, ${GLOBAL_SHARD_SENTINEL})`.compile(
           adapter.dialect,
         ),
       );

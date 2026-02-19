@@ -51,7 +51,7 @@ import { resolveReferenceSubqueries } from "./reference-resolution";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { compareNormalizedValues } from "./value-comparison";
 import type { NamingResolver } from "../../naming/sql-naming";
-import type { ShardScope, ShardingStrategy } from "../../sharding";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../sharding";
 
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
@@ -177,10 +177,7 @@ const buildShardCondition = (
   }
 
   const shardColumn = getShardColumn(table);
-  if (shard === null) {
-    return { type: "compare", a: shardColumn, operator: "is", b: null };
-  }
-  return { type: "compare", a: shardColumn, operator: "=", b: shard };
+  return { type: "compare", a: shardColumn, operator: "=", b: resolveShardValue(shard) };
 };
 
 const mergeConditions = (
@@ -219,11 +216,7 @@ const matchesShardFilter = (
   const shardColumnName = getPhysicalColumnName(table, shardColumn.name, resolver);
   const value = row[shardColumnName];
 
-  if (shard === null) {
-    return isNullish(value);
-  }
-
-  return value === shard;
+  return value === resolveShardValue(shard);
 };
 
 const prefixSelection = (
@@ -1286,7 +1279,7 @@ const reserveOutboxVersion = (
     schema: internalSchema,
     namespace: null,
     table: settingsTable.name,
-    values: { key: OUTBOX_VERSION_KEY, value: "0" },
+    values: { key: OUTBOX_VERSION_KEY, value: "0", _shard: resolveShardValue(null) },
     generatedExternalId: options.idGenerator(),
     shard: null,
     shardScope: "global",
@@ -1394,7 +1387,7 @@ const insertOutboxRow = (
       versionstamp: payload.versionstamp,
       uowId: payload.uowId,
       payload: payload.payload,
-      _shard: payload.shard,
+      _shard: resolveShardValue(payload.shard),
       ...(payload.refMap ? { refMap: payload.refMap } : {}),
     },
     generatedExternalId: options.idGenerator(),
@@ -1464,7 +1457,7 @@ const insertOutboxMutationRows = (
           table: mutation.table,
           externalId: mutation.externalId,
           op: mutation.op,
-          _shard: payload.shard,
+          _shard: resolveShardValue(payload.shard),
         },
         generatedExternalId: options.idGenerator(),
         shard: payload.shard ?? null,
@@ -1731,15 +1724,15 @@ export const createInMemoryUowExecutor = (
   },
 });
 
-const resolveOutboxShard = (getShard?: () => string | null): string | null => {
+const resolveOutboxShard = (getShard?: () => string | null): string => {
   if (!getShard) {
-    return null;
+    return resolveShardValue(null);
   }
 
   try {
-    return getShard() ?? null;
+    return resolveShardValue(getShard() ?? null);
   } catch {
-    return null;
+    return resolveShardValue(null);
   }
 };
 

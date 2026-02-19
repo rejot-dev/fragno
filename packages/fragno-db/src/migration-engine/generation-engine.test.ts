@@ -300,13 +300,13 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test-db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" text);
+      create table "test-db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" text not null);
 
       create index "idx_users_shard" on "test-db"."users" ("_shard");
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1', '__fragno_global__');
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1', '__fragno_global__');"
     `);
 
     // Second migration: 1 -> 2 (should use UPDATE)
@@ -331,9 +331,13 @@ describe("generateSchemaArtifacts - sql", () => {
 
       create index if not exists "idx_users_shard" on "test-db"."users" ("_shard");
 
+      update "test-db"."users" set "_shard" = '__fragno_global__' where "_shard" is null;
+
+      alter table "test-db"."users" alter column "_shard" set not null;
+
       update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1', '__fragno_global__');"
     `);
   });
 

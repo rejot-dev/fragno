@@ -7,6 +7,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { schema, column, idColumn, referenceColumn } from "../schema/create";
 import { buildFindOptions } from "../query/orm/orm";
 import { checkConflicts } from "./conflict-checker";
+import { GLOBAL_SHARD_SENTINEL, resolveShardValue } from "../sharding";
 
 const testSchema = schema("test", (s) => {
   return s
@@ -44,7 +45,7 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       name text,
       _internalId integer,
       _version integer,
-      _shard text
+      _shard text not null
     );`.compile(dialect),
   );
 
@@ -55,7 +56,7 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       userId integer,
       _internalId integer,
       _version integer,
-      _shard text
+      _shard text not null
     );`.compile(dialect),
   );
 
@@ -69,7 +70,7 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       "table" text,
       externalId text,
       op text,
-      _shard text
+      _shard text not null
     );`.compile(dialect),
   );
 };
@@ -97,7 +98,7 @@ describe("checkConflicts", () => {
       sql`INSERT INTO fragno_db_outbox_mutations (
             id, entryVersionstamp, mutationVersionstamp, uowId, schema, "table", externalId, op, _shard
           ) VALUES (
-            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}, ${shard ?? null}
+            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}, ${resolveShardValue(shard ?? null)}
           );`.compile(dialect),
     );
   };
@@ -117,8 +118,8 @@ describe("checkConflicts", () => {
 
   test("detects conflicts from read keys", async () => {
     await driver.executeQuery(
-      sql`INSERT INTO users (id, name, _internalId, _version)
-          VALUES (${"u1"}, ${"Ava"}, 1, 0);`.compile(dialect),
+      sql`INSERT INTO users (id, name, _internalId, _version, _shard)
+          VALUES (${"u1"}, ${"Ava"}, 1, 0, ${GLOBAL_SHARD_SENTINEL});`.compile(dialect),
     );
 
     await insertMutation({
@@ -143,13 +144,13 @@ describe("checkConflicts", () => {
 
   test("detects conflicts from read scopes with joins", async () => {
     await driver.executeQuery(
-      sql`INSERT INTO users (id, name, _internalId, _version)
-          VALUES (${"u1"}, ${"Ava"}, 1, 0);`.compile(dialect),
+      sql`INSERT INTO users (id, name, _internalId, _version, _shard)
+          VALUES (${"u1"}, ${"Ava"}, 1, 0, ${GLOBAL_SHARD_SENTINEL});`.compile(dialect),
     );
 
     await driver.executeQuery(
-      sql`INSERT INTO posts (id, title, userId, _internalId, _version)
-          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0);`.compile(dialect),
+      sql`INSERT INTO posts (id, title, userId, _internalId, _version, _shard)
+          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0, ${GLOBAL_SHARD_SENTINEL});`.compile(dialect),
     );
 
     await insertMutation({
@@ -338,8 +339,8 @@ describe("checkConflicts", () => {
 
   test("read scopes without matching rows do not conflict", async () => {
     await driver.executeQuery(
-      sql`INSERT INTO posts (id, title, userId, _internalId, _version)
-          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0);`.compile(dialect),
+      sql`INSERT INTO posts (id, title, userId, _internalId, _version, _shard)
+          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0, ${GLOBAL_SHARD_SENTINEL});`.compile(dialect),
     );
 
     await insertMutation({
@@ -380,8 +381,8 @@ describe("checkConflicts", () => {
 
   test("returns conflict when any read scope matches", async () => {
     await driver.executeQuery(
-      sql`INSERT INTO posts (id, title, userId, _internalId, _version)
-          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0);`.compile(dialect),
+      sql`INSERT INTO posts (id, title, userId, _internalId, _version, _shard)
+          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0, ${GLOBAL_SHARD_SENTINEL});`.compile(dialect),
     );
 
     await insertMutation({

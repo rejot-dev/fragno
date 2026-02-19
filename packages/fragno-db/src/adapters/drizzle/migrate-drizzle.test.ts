@@ -156,7 +156,7 @@ describe("generateSchema and migrate", () => {
       	"value" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "fragno_db_settings_id_unique" UNIQUE("id")
       );
 
@@ -173,7 +173,7 @@ describe("generateSchema and migrate", () => {
       	"error" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"nonce" text NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
@@ -186,7 +186,7 @@ describe("generateSchema and migrate", () => {
       	"payload" json NOT NULL,
       	"refMap" json,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_outbox_id_unique" UNIQUE("id")
@@ -202,7 +202,7 @@ describe("generateSchema and migrate", () => {
       	"externalId" text NOT NULL,
       	"op" text NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_outbox_mutations_id_unique" UNIQUE("id")
@@ -217,7 +217,7 @@ describe("generateSchema and migrate", () => {
       	"baseVersionstamp" text,
       	"lastVersionstamp" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_sync_requests_id_unique" UNIQUE("id")
@@ -234,7 +234,7 @@ describe("generateSchema and migrate", () => {
       	"updatedAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "users_id_unique" UNIQUE("id")
       );
 
@@ -255,7 +255,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "posts_id_unique" UNIQUE("id")
       );
 
@@ -270,7 +270,7 @@ describe("generateSchema and migrate", () => {
       	"isDeleted" boolean DEFAULT false NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "comments_id_unique" UNIQUE("id")
       );
 
@@ -283,7 +283,7 @@ describe("generateSchema and migrate", () => {
       	"usageCount" bigint DEFAULT 0 NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "tags_id_unique" UNIQUE("id")
       );
 
@@ -295,7 +295,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      	"_shard" text,
+      	"_shard" text NOT NULL,
       	CONSTRAINT "postTags_id_unique" UNIQUE("id")
       );
 

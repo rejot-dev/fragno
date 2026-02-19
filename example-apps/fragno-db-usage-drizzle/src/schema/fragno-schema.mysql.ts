@@ -12,7 +12,7 @@ export const fragno_db_settings = mysqlTable("fragno_db_settings", {
   value: text("value").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_fragno_db_settings_unique_key_09269db3").on(table.key),
   index("idx_fragno_db_settings_idx_fragno_db_settings_shard_371d1d84").on(table._shard)
@@ -31,7 +31,7 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
   error: text("error"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   nonce: text("nonce").notNull(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
@@ -48,7 +48,7 @@ export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
   payload: json("payload").notNull(),
   refMap: json("refMap"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
@@ -68,7 +68,7 @@ export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations
   externalId: text("externalId").notNull(),
   op: text("op").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
@@ -88,7 +88,7 @@ export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
   baseVersionstamp: text("baseVersionstamp"),
   lastVersionstamp: text("lastVersionstamp"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
@@ -109,7 +109,7 @@ export const user_auth = mysqlTable("user_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   bannedAt: datetime("bannedAt")
 }, (table) => [
   index("idx_user_idx_user_email_auth_47062eb8").on(table.email),
@@ -125,7 +125,7 @@ export const session_auth = mysqlTable("session_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   activeOrganizationId: bigint("activeOrganizationId", { mode: "number" })
 }, (table) => [
   foreignKey({
@@ -154,7 +154,7 @@ export const organization_auth = mysqlTable("organization_auth", {
   deletedAt: datetime("deletedAt"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.createdBy],
@@ -174,7 +174,7 @@ export const organizationMember_auth = mysqlTable("organizationMember_auth", {
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -199,7 +199,7 @@ export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_au
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.memberId],
@@ -225,7 +225,7 @@ export const organizationInvitation_auth = mysqlTable("organizationInvitation_au
   respondedAt: datetime("respondedAt"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -368,7 +368,7 @@ export const comment_comment = mysqlTable("comment_comment", {
   parentId: bigint("parentId", { mode: "number" }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   rating: int("rating").notNull().default(0)
 }, (table) => [
   foreignKey({
@@ -412,7 +412,7 @@ export const upvote_upvote = mysqlTable("upvote_upvote", {
   note: text("note"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   index("idx_upvote_idx_upvote_reference_upvote_94fd688f").on(table.reference, table.ownerReference),
   index("idx_upvote_idx_upvote_shard_upvote_1a79a11f").on(table._shard)
@@ -424,7 +424,7 @@ export const upvote_total_upvote = mysqlTable("upvote_total_upvote", {
   total: int("total").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_upvote_total_idx_upvote_total_reference_upvote_b702eb9a").on(table.reference),
   index("idx_upvote_total_idx_upvote_total_shard_upvote_2933f337").on(table._shard)
@@ -460,7 +460,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   runNumber: int("runNumber").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_idx_workflow_instance_status_upda83267b95").on(table.workflowName, table.status, table.updatedAt),
@@ -490,7 +490,7 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -519,7 +519,7 @@ export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
   consumedByStepKey: text("consumedByStepKey"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -550,7 +550,7 @@ export const workflow_task_workflows = mysqlTable("workflow_task_workflows", {
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -578,7 +578,7 @@ export const workflow_log_workflows = mysqlTable("workflow_log_workflows", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],

@@ -80,6 +80,8 @@ const adapters: AdapterHarness[] = [
 
 let emailCounter = 0;
 const uniqueEmail = (label: string) => `shard-unique-${label}-${emailCounter++}@example.com`;
+let idCounter = 0;
+const uniqueId = () => `user-${idCounter++}`;
 
 adapters.forEach(({ name, createAdapter }) => {
   describe(`SqlAdapter ${name} - sharded unique constraints`, () => {
@@ -103,11 +105,24 @@ adapters.forEach(({ name, createAdapter }) => {
 
     async function createUser(
       queryEngine: typeof globalQuery,
-      options: { shard: string | null; email: string; name: string; scope?: ShardScope },
+      options: {
+        shard: string | null;
+        email: string;
+        name: string;
+        id?: string;
+        scope?: ShardScope;
+      },
     ) {
       setShardContext(options.shard, options.scope ?? "scoped");
       const uow = queryEngine.createUnitOfWork(`create-${options.name}`);
-      uow.create("users", { email: options.email, name: options.name });
+      const values: { email: string; name: string; id?: string } = {
+        email: options.email,
+        name: options.name,
+      };
+      if (options.id !== undefined) {
+        values.id = options.id;
+      }
+      uow.create("users", values);
       const { success } = await uow.executeMutations();
       expect(success).toBe(true);
       const createdIds = uow.getCreatedIds();
@@ -187,6 +202,25 @@ adapters.forEach(({ name, createAdapter }) => {
       await expect(uow.executeMutations()).rejects.toThrow(/unique|duplicate/i);
     });
 
+    it("enforces global uniqueness on id column across shards", async () => {
+      const id = uniqueId();
+      await createUser(globalQuery, {
+        shard: "alpha",
+        id,
+        email: uniqueEmail("global-id-alpha"),
+        name: "alpha",
+      });
+
+      await expect(
+        createUser(globalQuery, {
+          shard: "beta",
+          id,
+          email: uniqueEmail("global-id-beta"),
+          name: "beta",
+        }),
+      ).rejects.toThrow(/unique|duplicate/i);
+    });
+
     it("allows duplicates across shards when unique index includes _shard", async () => {
       const email = uniqueEmail("shard-cross-shard");
       await createUser(shardQuery, { shard: "alpha", email, name: "alpha" });
@@ -202,7 +236,26 @@ adapters.forEach(({ name, createAdapter }) => {
       ).rejects.toThrow(/unique|duplicate/i);
     });
 
-    it.skip("rejects duplicates when shard is null in global scope with unique _shard index (skipped: NULLs are distinct in SQL unique indexes)", async () => {
+    it("enforces global uniqueness on id column even when unique index includes _shard", async () => {
+      const id = uniqueId();
+      await createUser(shardQuery, {
+        shard: "alpha",
+        id,
+        email: uniqueEmail("shard-id-alpha"),
+        name: "alpha",
+      });
+
+      await expect(
+        createUser(shardQuery, {
+          shard: "beta",
+          id,
+          email: uniqueEmail("shard-id-beta"),
+          name: "beta",
+        }),
+      ).rejects.toThrow(/unique|duplicate/i);
+    });
+
+    it("rejects duplicates when shard is null in global scope with unique _shard index", async () => {
       const email = uniqueEmail("shard-null-shard");
       await createUser(shardQuery, { shard: null, scope: "global", email, name: "global" });
 

@@ -24,7 +24,7 @@ import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import type { Prettify } from "../../util/types";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
-import type { ShardScope, ShardingStrategy } from "../../sharding";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../sharding";
 import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
 
 /**
@@ -1835,18 +1835,21 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#assertShardRequired(shardContext);
     let updatedOp = op;
 
-    if (shardContext.shardingStrategy && op.type === "create") {
+    if (op.type === "create") {
       const values = op.values as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(values, "_shard")) {
+      const hasShard = Object.prototype.hasOwnProperty.call(values, "_shard");
+      if (shardContext.shardingStrategy && hasShard) {
         throw new Error("Cannot set _shard explicitly. It is managed by the shard context.");
       }
-      updatedOp = {
-        ...op,
-        values: {
-          ...(op.values as Record<string, unknown>),
-          _shard: shardContext.shard,
-        },
-      } as MutationOperationInput<AnySchema>;
+      if (!hasShard) {
+        updatedOp = {
+          ...op,
+          values: {
+            ...(op.values as Record<string, unknown>),
+            _shard: resolveShardValue(shardContext.shard),
+          },
+        } as MutationOperationInput<AnySchema>;
+      }
     }
 
     this.#mutationOps.push({

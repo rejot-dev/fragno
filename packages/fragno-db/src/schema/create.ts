@@ -530,9 +530,8 @@ export function versionColumn(): VersionColumn<null, number> {
  * Create a shard column for row-level sharding.
  * @internal
  */
-export function shardColumn(): Column<"string", string | null, string | null> {
-  const col = new Column<"string", string | null, string | null>("string");
-  col.nullable();
+export function shardColumn(): Column<"string", string, string> {
+  const col = new Column<"string", string, string>("string");
   col.hidden();
   return col;
 }
@@ -740,9 +739,7 @@ export class TableBuilder<
     const cols = columns.map((colName) => {
       let resolvedColumn = this.#columns[colName] as TColumns[string & keyof TColumns] | undefined;
       if (!resolvedColumn && colName === "_shard") {
-        const shardCol = column("string");
-        shardCol.nullable();
-        shardCol.hidden();
+        const shardCol = shardColumn();
         shardCol.name = "_shard";
         (this.#columns as Record<string, AnyColumn>)["_shard"] = shardCol;
         resolvedColumn = shardCol as TColumns[string & keyof TColumns];

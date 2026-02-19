@@ -1,7 +1,7 @@
 import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { ShardScope, ShardingStrategy } from "./sharding";
+import { GLOBAL_SHARD_SENTINEL, type ShardScope, type ShardingStrategy } from "./sharding";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
@@ -293,6 +293,9 @@ const SHARD_MAX_LENGTH = 64;
 function validateShard(shard: string | null): void {
   if (shard === null) {
     return;
+  }
+  if (shard === GLOBAL_SHARD_SENTINEL) {
+    throw new Error("Shard value is reserved for global scope.");
   }
   if (shard.length === 0) {
     throw new Error("Shard must be a non-empty string.");

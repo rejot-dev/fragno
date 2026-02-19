@@ -12,7 +12,7 @@ export const fragno_db_settings = sqliteTable("fragno_db_settings", {
   value: text("value").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_fragno_db_settings_unique_key_09269db3").on(table.key),
   index("idx_fragno_db_settings_idx_fragno_db_settings_shard_371d1d84").on(table._shard),
@@ -32,7 +32,7 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
   error: text("error"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   nonce: text("nonce").notNull(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -50,7 +50,7 @@ export const fragno_db_outbox = sqliteTable("fragno_db_outbox", {
   payload: text("payload", { mode: "json" }).notNull(),
   refMap: text("refMap", { mode: "json" }),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -71,7 +71,7 @@ export const fragno_db_outbox_mutations = sqliteTable("fragno_db_outbox_mutation
   externalId: text("externalId").notNull(),
   op: text("op").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -92,7 +92,7 @@ export const fragno_db_sync_requests = sqliteTable("fragno_db_sync_requests", {
   baseVersionstamp: text("baseVersionstamp"),
   lastVersionstamp: text("lastVersionstamp"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -114,7 +114,7 @@ export const user_auth = sqliteTable("user_auth", {
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   bannedAt: integer("bannedAt", { mode: "timestamp" })
 }, (table) => [
   index("idx_user_idx_user_email_auth_47062eb8").on(table.email),
@@ -131,7 +131,7 @@ export const session_auth = sqliteTable("session_auth", {
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   activeOrganizationId: integer("activeOrganizationId")
 }, (table) => [
   foreignKey({
@@ -161,7 +161,7 @@ export const organization_auth = sqliteTable("organization_auth", {
   deletedAt: integer("deletedAt", { mode: "timestamp" }),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.createdBy],
@@ -182,7 +182,7 @@ export const organizationMember_auth = sqliteTable("organizationMember_auth", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -208,7 +208,7 @@ export const organizationMemberRole_auth = sqliteTable("organizationMemberRole_a
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.memberId],
@@ -235,7 +235,7 @@ export const organizationInvitation_auth = sqliteTable("organizationInvitation_a
   respondedAt: integer("respondedAt", { mode: "timestamp" }),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -379,7 +379,7 @@ export const comment_comment = sqliteTable("comment_comment", {
   parentId: integer("parentId"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard"),
+  _shard: text("_shard").notNull(),
   rating: integer("rating").notNull().default(0)
 }, (table) => [
   foreignKey({
@@ -424,7 +424,7 @@ export const upvote_upvote = sqliteTable("upvote_upvote", {
   note: text("note"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   index("idx_upvote_idx_upvote_reference_upvote_94fd688f").on(table.reference, table.ownerReference),
   index("idx_upvote_idx_upvote_shard_upvote_1a79a11f").on(table._shard),
@@ -437,7 +437,7 @@ export const upvote_total_upvote = sqliteTable("upvote_total_upvote", {
   total: integer("total").notNull().default(0),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_upvote_total_idx_upvote_total_reference_upvote_b702eb9a").on(table.reference),
   index("idx_upvote_total_idx_upvote_total_shard_upvote_2933f337").on(table._shard),
@@ -474,7 +474,7 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   runNumber: integer("runNumber").notNull().default(0),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
   index("idx_workflow_instance_idx_workflow_instance_status_upda83267b95").on(table.workflowName, table.status, table.updatedAt),
@@ -505,7 +505,7 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -535,7 +535,7 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
   consumedByStepKey: text("consumedByStepKey"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -567,7 +567,7 @@ export const workflow_task_workflows = sqliteTable("workflow_task_workflows", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -596,7 +596,7 @@ export const workflow_log_workflows = sqliteTable("workflow_log_workflows", {
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
-  _shard: text("_shard")
+  _shard: text("_shard").notNull()
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],

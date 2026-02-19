@@ -12,7 +12,7 @@ import { FragnoId, type AnyColumn } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
 import type { ConditionBuilder } from "../query/condition-builder";
-import type { ShardScope, ShardingStrategy } from "../sharding";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../sharding";
 import {
   internalSchema,
   FRAGNO_DB_PACKAGE_VERSION_KEY,
@@ -198,7 +198,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       if (shardScope !== "scoped") {
         return null;
       }
-      return shard === null ? eb.isNull("_shard") : eb("_shard", "=", shard);
+      return eb("_shard", "=", resolveShardValue(shard));
     };
 
     return defineService({
@@ -635,7 +635,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       if (shardScope !== "scoped") {
         return null;
       }
-      return shard === null ? eb.isNull("_shard") : eb("_shard", "=", shard);
+      return eb("_shard", "=", resolveShardValue(shard));
     };
 
     return defineService({
