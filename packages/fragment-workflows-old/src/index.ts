@@ -4,7 +4,7 @@ import { attachWorkflowsBindings } from "./bindings";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
-import { createWorkflowsRunner } from "./new-runner";
+import { createWorkflowsRunner } from "./runner";
 import type { WorkflowsFragmentConfig, WorkflowsRegistry } from "./workflow";
 
 const routes = [workflowsRoutesFactory] as const;
