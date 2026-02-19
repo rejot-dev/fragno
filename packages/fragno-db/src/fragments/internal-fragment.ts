@@ -8,11 +8,15 @@ import {
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
-import { FragnoId } from "../schema/create";
+import { FragnoId, type AnyColumn } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
+import type { ConditionBuilder } from "../query/condition-builder";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../sharding";
 import {
   internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
@@ -31,6 +35,7 @@ type AdapterRegistry = {
     schemaName: string,
     commandName: string,
   ) => { command: unknown; namespace: string | null } | undefined;
+  shardingStrategy?: ShardingStrategy;
 };
 
 export class SchemaRegistryCollisionError extends Error {
@@ -62,7 +67,13 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export {
+  internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+};
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
@@ -167,6 +178,17 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .providesService("hookService", ({ defineService }) => {
+    const buildShardCondition = (
+      eb: ConditionBuilder<Record<string, AnyColumn>>,
+      shard: string | null,
+      shardScope: ShardScope,
+    ) => {
+      if (shardScope !== "scoped") {
+        return null;
+      }
+      return eb("_shard", "=", resolveShardValue(shard));
+    };
+
     return defineService({
       /**
        * Get pending hook events for processing.
@@ -174,16 +196,27 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       getPendingHookEvents(namespace: string) {
         const now = dbNow();
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(
+              b.whereIndex("idx_namespace_status_retry", (eb) => {
+                const conditions = [
                   eb("namespace", "=", namespace),
                   eb("status", "=", "pending"),
                   eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
-                ),
-              ),
+                ];
+                const shardCondition = buildShardCondition(
+                  eb as ConditionBuilder<Record<string, AnyColumn>>,
+                  shard,
+                  shardScope,
+                );
+                if (shardCondition) {
+                  conditions.push(shardCondition);
+                }
+                return eb.and(...conditions);
+              }),
             ),
           )
           .transformRetrieve(([events]) => {
@@ -205,16 +238,27 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       claimPendingHookEvents(namespace: string) {
         const now = dbNow();
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(
+              b.whereIndex("idx_namespace_status_retry", (eb) => {
+                const conditions = [
                   eb("namespace", "=", namespace),
                   eb("status", "=", "pending"),
                   eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
-                ),
-              ),
+                ];
+                const shardCondition = buildShardCondition(
+                  eb as ConditionBuilder<Record<string, AnyColumn>>,
+                  shard,
+                  shardScope,
+                );
+                if (shardCondition) {
+                  conditions.push(shardCondition);
+                }
+                return eb.and(...conditions);
+              }),
             ),
           )
           .transformRetrieve(([events]) => {
@@ -254,12 +298,26 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Re-queue hook events that have been stuck in processing for too long.
        */
       requeueStuckProcessingHooks(namespace: string, staleBefore: Date) {
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
-              ),
+              b.whereIndex("idx_namespace_status_retry", (eb) => {
+                const conditions = [
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "processing"),
+                ];
+                const shardCondition = buildShardCondition(
+                  eb as ConditionBuilder<Record<string, AnyColumn>>,
+                  shard,
+                  shardScope,
+                );
+                if (shardCondition) {
+                  conditions.push(shardCondition);
+                }
+                return eb.and(...conditions);
+              }),
             ),
           )
           .transformRetrieve(([events]) => {
@@ -294,12 +352,26 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get the next time a processing hook becomes stale.
        */
       getNextProcessingStaleAt(namespace: string, timeoutMinutes: number, now?: Date) {
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
-              ),
+              b.whereIndex("idx_namespace_status_retry", (eb) => {
+                const conditions = [
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "processing"),
+                ];
+                const shardCondition = buildShardCondition(
+                  eb as ConditionBuilder<Record<string, AnyColumn>>,
+                  shard,
+                  shardScope,
+                );
+                if (shardCondition) {
+                  conditions.push(shardCondition);
+                }
+                return eb.and(...conditions);
+              }),
             ),
           )
           .transformRetrieve(([events]) => {
@@ -341,19 +413,37 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         const baseNow = now ?? new Date();
         const includeProcessing = typeof timeoutMinutes === "number" && timeoutMinutes > 0;
         const timeoutMs = includeProcessing ? timeoutMinutes * 60_000 : 0;
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b
                 .whereIndex("idx_namespace_status_retry", (eb) => {
+                  const shardCondition = buildShardCondition(
+                    eb as ConditionBuilder<Record<string, AnyColumn>>,
+                    shard,
+                    shardScope,
+                  );
                   if (includeProcessing) {
-                    return eb.and(
+                    const conditions = [
                       eb("namespace", "=", namespace),
                       eb.or(eb("status", "=", "pending"), eb("status", "=", "processing")),
-                    );
+                    ];
+                    if (shardCondition) {
+                      conditions.push(shardCondition);
+                    }
+                    return eb.and(...conditions);
                   }
-                  return eb.and(eb("namespace", "=", namespace), eb("status", "=", "pending"));
+                  const conditions = [
+                    eb("namespace", "=", namespace),
+                    eb("status", "=", "pending"),
+                  ];
+                  if (shardCondition) {
+                    conditions.push(shardCondition);
+                  }
+                  return eb.and(...conditions);
                 })
                 .select(["status", "nextRetryAt", "lastAttemptAt"]),
             ),
@@ -500,10 +590,23 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get all hook events for a namespace (for testing/verification purposes).
        */
       getHooksByNamespace(namespace: string) {
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) => eb("namespace", "=", namespace)),
+              b.whereIndex("idx_namespace_status_retry", (eb) => {
+                const conditions = [eb("namespace", "=", namespace)];
+                const shardCondition = buildShardCondition(
+                  eb as ConditionBuilder<Record<string, AnyColumn>>,
+                  shard,
+                  shardScope,
+                );
+                if (shardCondition) {
+                  conditions.push(shardCondition);
+                }
+                return eb.and(...conditions);
+              }),
             ),
           )
           .transformRetrieve(([events]) => events)
@@ -512,23 +615,57 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .providesService("outboxService", ({ defineService }) => {
+    const buildShardCondition = (
+      eb: ConditionBuilder<Record<string, AnyColumn>>,
+      shard: string | null,
+      shardScope: ShardScope,
+    ) => {
+      if (shardScope !== "scoped") {
+        return null;
+      }
+      return eb("_shard", "=", resolveShardValue(shard));
+    };
+
     return defineService({
       /**
        * List outbox entries ordered by versionstamp (ascending).
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              let builder = afterValue
-                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterValue),
-                  )
-                : b.whereIndex("idx_outbox_versionstamp");
+              let builder;
+              const indexName =
+                shardScope === "scoped"
+                  ? "idx_outbox_shard_versionstamp"
+                  : "idx_outbox_versionstamp";
 
-              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+              if (afterValue || shardScope === "scoped") {
+                builder = b.whereIndex(indexName, ((
+                  eb: ConditionBuilder<Record<string, AnyColumn>>,
+                ) => {
+                  const conditions: Array<ReturnType<typeof eb>> = [];
+                  const shardCondition = buildShardCondition(eb, shard, shardScope);
+                  if (shardCondition) {
+                    conditions.push(shardCondition);
+                  }
+                  if (afterValue) {
+                    conditions.push(eb("versionstamp", ">", afterValue));
+                  }
+                  if (conditions.length === 1) {
+                    return conditions[0];
+                  }
+                  return eb.and(...conditions);
+                }) as never);
+              } else {
+                builder = b.whereIndex(indexName);
+              }
+
+              builder = builder.orderByIndex(indexName, "asc");
               if (limit !== undefined) {
                 builder = builder.pageSize(limit);
               }
@@ -559,29 +696,34 @@ export type InternalFragmentInstance = InstantiatedFragmentFromDefinition<
   typeof internalFragmentDef
 >;
 
+const SCHEMA_VERSION_KEY = "schema_version";
+
+async function readNumericSetting(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+  key: string,
+): Promise<number | undefined> {
+  const setting = await fragment.inContext(async function () {
+    return await this.handlerTx()
+      .withServiceCalls(() => [fragment.services.settingsService.get(namespace, key)] as const)
+      .transform(({ serviceResult: [result] }) => result)
+      .execute();
+  });
+
+  if (!setting) {
+    return undefined;
+  }
+
+  const parsed = parseInt(setting.value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 export async function getSchemaVersionFromDatabase(
   fragment: InternalFragmentInstance,
   namespace: string,
 ): Promise<number> {
   try {
-    const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
-      const setting = await fragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () =>
-              [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-      if (!setting) {
-        return undefined;
-      }
-      const parsed = parseInt(setting.value, 10);
-      return Number.isNaN(parsed) ? undefined : parsed;
-    };
-
-    const primary = await readSchemaVersion(namespace);
+    const primary = await readNumericSetting(fragment, namespace, SCHEMA_VERSION_KEY);
     if (primary !== undefined) {
       return primary;
     }
@@ -591,13 +733,25 @@ export async function getSchemaVersionFromDatabase(
     const legacyNamespace =
       namespace === "" ? internalSchema.name : namespace === internalSchema.name ? "" : null;
     if (legacyNamespace !== null) {
-      const legacy = await readSchemaVersion(legacyNamespace);
+      const legacy = await readNumericSetting(fragment, legacyNamespace, SCHEMA_VERSION_KEY);
       if (legacy !== undefined) {
         return legacy;
       }
     }
 
     return 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function getSystemMigrationVersionFromDatabase(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+): Promise<number> {
+  try {
+    const primary = await readNumericSetting(fragment, namespace, SYSTEM_MIGRATION_VERSION_KEY);
+    return primary ?? 0;
   } catch {
     return 0;
   }

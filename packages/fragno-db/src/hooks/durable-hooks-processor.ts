@@ -1,12 +1,20 @@
 import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { createHookScheduler, type HookProcessorConfig } from "./hooks";
+import {
+  createHookScheduler,
+  type DurableHooksProcessorScope,
+  type HookProcessorConfig,
+} from "./hooks";
 
 export type DurableHooksProcessor = {
   process: () => Promise<number>;
   getNextWakeAt: () => Promise<Date | null>;
   drain: () => Promise<void>;
   namespace: string;
+};
+
+export type DurableHooksProcessorOptions = {
+  scope?: DurableHooksProcessorScope;
 };
 
 type DurableHooksInternal = {
@@ -27,6 +35,7 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
 
 export function createDurableHooksProcessor<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
+  options: DurableHooksProcessorOptions = {},
 ): DurableHooksProcessor | null {
   const durableHooks = (fragment.$internal as DurableHooksInternal).durableHooks;
   if (!durableHooks) {
@@ -34,11 +43,29 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
   }
 
   const { namespace, internalFragment } = durableHooks;
+  const processorScope = options.scope;
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     durableHooks.stuckProcessingTimeoutMinutes,
   );
-  const scheduler =
-    durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks));
+  const scheduler = processorScope
+    ? createHookScheduler(durableHooks, { processorScope })
+    : (durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks)));
+
+  const applyProcessorScope = (context: {
+    setShard: (shard: string | null) => void;
+    setShardScope: (scope: "scoped" | "global") => void;
+  }) => {
+    if (!processorScope) {
+      return;
+    }
+    if (processorScope.mode === "global") {
+      context.setShardScope("global");
+      context.setShard(null);
+      return;
+    }
+    context.setShardScope("scoped");
+    context.setShard(processorScope.shard);
+  };
 
   return {
     namespace,
@@ -47,6 +74,7 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
     getNextWakeAt: async () => {
       const now = new Date();
       return await internalFragment.inContext(async function () {
+        applyProcessorScope(this);
         return await this.handlerTx()
           .withServiceCalls(
             () =>

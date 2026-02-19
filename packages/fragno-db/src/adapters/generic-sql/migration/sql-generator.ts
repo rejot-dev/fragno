@@ -12,11 +12,17 @@ import type {
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
+import {
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  SYSTEM_MIGRATION_VERSION_KEY,
+  SETTINGS_TABLE_NAME,
+} from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
+import { GLOBAL_SHARD_SENTINEL } from "../../../sharding";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -73,16 +79,13 @@ export abstract class SQLGenerator {
   abstract getDefaultValue(column: ColumnInfo): RawBuilder<unknown> | undefined;
 
   /**
-   * Generate SQL for updating the schema version in the settings table.
-   * This is the same across all databases.
+   * Generate SQL for updating a version key in the settings table.
    */
-  generateVersionUpdateSQL(
-    namespace: string,
+  protected generateSettingsUpdateSQL(
+    key: string,
     fromVersion: number,
     toVersion: number,
   ): CompiledQuery {
-    const key = `${namespace}.schema_version`;
-
     if (fromVersion === 0) {
       // Insert new version record
       const id = createHash("md5").update(key).digest("base64url").replace(/=/g, "");
@@ -92,18 +95,80 @@ export abstract class SQLGenerator {
           id: sql.lit(id),
           key: sql.lit(key),
           value: sql.lit(toVersion.toString()),
+          _shard: sql.lit(GLOBAL_SHARD_SENTINEL),
         })
-        .compile();
-    } else {
-      // Update existing version record
-      return this.db
-        .updateTable(SETTINGS_TABLE_NAME)
-        .set({
-          value: sql.lit(toVersion.toString()),
-        })
-        .where("key", "=", sql.lit(key))
         .compile();
     }
+
+    // Update existing version record
+    return this.db
+      .updateTable(SETTINGS_TABLE_NAME)
+      .set({
+        value: sql.lit(toVersion.toString()),
+      })
+      .where("key", "=", sql.lit(key))
+      .compile();
+  }
+
+  /**
+   * Generate SQL for upserting a settings key/value pair.
+   */
+  protected generateSettingsUpsertSQL(key: string, value: string): CompiledQuery {
+    const id = createHash("md5").update(key).digest("base64url").replace(/=/g, "");
+    const idLiteral = sql.lit(id);
+    const keyLiteral = sql.lit(key);
+    const valueLiteral = sql.lit(value);
+    const shardLiteral = sql.lit(GLOBAL_SHARD_SENTINEL);
+
+    switch (this.database) {
+      case "postgresql":
+      case "sqlite":
+        return sql`
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")}, ${sql.id("_shard")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral}, ${shardLiteral})
+          on conflict (${sql.id("key")}) do update
+            set ${sql.id("value")} = ${valueLiteral}
+        `.compile(this.db);
+      case "mysql":
+        return sql`
+          insert into ${sql.id(SETTINGS_TABLE_NAME)} (${sql.id("id")}, ${sql.id("key")}, ${sql.id("value")}, ${sql.id("_shard")})
+          values (${idLiteral}, ${keyLiteral}, ${valueLiteral}, ${shardLiteral})
+          on duplicate key update ${sql.id("value")} = ${valueLiteral}
+        `.compile(this.db);
+    }
+  }
+
+  /**
+   * Generate SQL for updating the schema version in the settings table.
+   * This is the same across all databases.
+   */
+  generateVersionUpdateSQL(
+    namespace: string,
+    fromVersion: number,
+    toVersion: number,
+  ): CompiledQuery {
+    const key = `${namespace}.schema_version`;
+    return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
+  }
+
+  /**
+   * Generate SQL for updating the system migration version in the settings table.
+   */
+  generateSystemMigrationUpdateSQL(
+    namespace: string,
+    fromVersion: number,
+    toVersion: number,
+  ): CompiledQuery {
+    const key = `${namespace}.${SYSTEM_MIGRATION_VERSION_KEY}`;
+    return this.generateSettingsUpdateSQL(key, fromVersion, toVersion);
+  }
+
+  /**
+   * Generate SQL for updating the fragno-db package version in the settings table.
+   */
+  generatePackageVersionUpdateSQL(packageVersion: string): CompiledQuery {
+    const key = `${SETTINGS_NAMESPACE}.${FRAGNO_DB_PACKAGE_VERSION_KEY}`;
+    return this.generateSettingsUpsertSQL(key, packageVersion);
   }
 
   /**

@@ -126,7 +126,7 @@ All dispatcher and processor database interactions **must** be atomic and go thr
 transaction boundary:
 
 - Use `fragment.inContext(...)` and `this.handlerTx()` for reads/writes.
-- **Do not** use `deps.db` or raw adapter access for hook processing or scheduling.
+- **Do not** use any direct query engine or raw adapter access for hook processing or scheduling.
 
 This follows the transaction rules in
 `apps/docs/content/docs/fragno/for-library-authors/database-integration/transactions.mdx`.

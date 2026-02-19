@@ -42,6 +42,7 @@ describe("select-builder", () => {
         "users.email as email",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -56,6 +57,7 @@ describe("select-builder", () => {
         "users.createdAt as createdAt",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -68,6 +70,7 @@ describe("select-builder", () => {
         "users.name as author:name",
         "users._internalId as author:_internalId",
         "users._version as author:_version",
+        "users._shard as author:_shard",
       ]);
     });
 
@@ -80,6 +83,7 @@ describe("select-builder", () => {
         "p.title as title",
         "p._internalId as _internalId",
         "p._version as _version",
+        "p._shard as _shard",
       ]);
     });
 
@@ -93,6 +97,7 @@ describe("select-builder", () => {
         "p.title as posts:title",
         "p._internalId as posts:_internalId",
         "p._version as posts:_version",
+        "p._shard as posts:_shard",
       ]);
     });
 
@@ -102,6 +107,7 @@ describe("select-builder", () => {
         "users.name as name",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -115,6 +121,7 @@ describe("select-builder", () => {
         "users.email as email",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -123,12 +130,17 @@ describe("select-builder", () => {
       const result = mapSelect(["name"], usersTable, undefined);
       expect(result.some((col) => col.includes("_internalId"))).toBe(true);
       expect(result.some((col) => col.includes("_version"))).toBe(true);
+      expect(result.some((col) => col.includes("_shard"))).toBe(true);
     });
 
     it("should handle empty select array", () => {
       const result = mapSelect([], usersTable, undefined);
       // Should still include hidden columns
-      expect(result).toEqual(["users._internalId as _internalId", "users._version as _version"]);
+      expect(result).toEqual([
+        "users._internalId as _internalId",
+        "users._version as _version",
+        "users._shard as _shard",
+      ]);
     });
 
     it("should work with different table schemas", () => {
@@ -139,6 +151,7 @@ describe("select-builder", () => {
         "posts.content as content",
         "posts._internalId as _internalId",
         "posts._version as _version",
+        "posts._shard as _shard",
       ]);
     });
   });

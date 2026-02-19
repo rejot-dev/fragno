@@ -14,7 +14,12 @@ import type { AnyColumn, AnySchema } from "../../schema/create";
 import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
 import { UnitOfWorkDecoder } from "./uow-decoder";
-import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
+import {
+  createPreparedMigrations,
+  type PrepareMigrationsOptions,
+  type PreparedMigrations,
+} from "./migration/prepared-migrations";
+import type { SystemMigration } from "../../migration-engine/system-migrations";
 import type { DriverConfig } from "./driver-config";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
@@ -32,11 +37,15 @@ import {
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+import type { ShardScope, ShardingStrategy } from "../../sharding";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
+  shardingStrategy?: ShardingStrategy;
+  getShard?: () => string | null;
+  getShardScope?: () => ShardScope;
 }
 
 export interface SqlAdapterOptions {
@@ -46,6 +55,7 @@ export interface SqlAdapterOptions {
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
+  systemMigrations?: SystemMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -61,6 +71,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
+  readonly systemMigrations?: SystemMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -74,6 +85,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
+    systemMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
@@ -102,6 +114,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
+    this.systemMigrations = systemMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -130,7 +143,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+  prepareMigrations<T extends AnySchema>(
+    schema: T,
+    namespace: string | null,
+    options?: PrepareMigrationsOptions,
+  ): PreparedMigrations {
     const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
@@ -140,6 +157,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
+      systemMigrations: options?.systemMigrations ?? this.systemMigrations,
     });
   }
 
@@ -193,6 +211,8 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         dryRun: false,
         outbox: getOutboxConfigForAdapter(this),
         namingStrategy: this.namingStrategy,
+        getShard: () =>
+          this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
       }),
       decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver),
       uowConfig: this.uowConfig,

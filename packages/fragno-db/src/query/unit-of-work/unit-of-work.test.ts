@@ -10,6 +10,8 @@ import {
 } from "./unit-of-work";
 import { createIndexedBuilder } from "../condition-builder";
 import type { SimpleQueryInterface } from "../simple-query-interface";
+import { internalSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
+import { GLOBAL_SHARD_SENTINEL } from "../../sharding";
 
 // Mock compiler and executor for testing
 function createMockCompiler(): UOWCompiler<unknown> {
@@ -836,6 +838,182 @@ describe("DeleteBuilder with string ID", () => {
     }).toThrow(
       'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
     );
+  });
+});
+
+describe("Shard metadata", () => {
+  const shardSchema = schema("shard", (s) =>
+    s.addTable("users", (t) =>
+      t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
+    ),
+  );
+
+  it("injects _shard on create when shardingStrategy is set", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "row" },
+        getShard: () => "tenant-a",
+        getShardScope: () => "scoped",
+      },
+    );
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: "tenant-a" });
+    expect(op.shard).toBe("tenant-a");
+    expect(op.shardScope).toBe("scoped");
+  });
+
+  it("rejects explicit _shard writes when shardingStrategy is set", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "row" },
+        getShard: () => "tenant-a",
+        getShardScope: () => "scoped",
+      },
+    );
+
+    expect(() => {
+      uow.forSchema(shardSchema).create("users", {
+        email: "user@example.com",
+        name: "User",
+        _shard: "override",
+      } as unknown as Parameters<SimpleQueryInterface<typeof shardSchema>["create"]>[1]);
+    }).toThrow(/_shard/i);
+  });
+
+  it("requires shard in adapter mode unless shardScope is global", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+        getShard: () => null,
+        getShardScope: () => "scoped",
+      },
+    );
+
+    expect(() => {
+      uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+    }).toThrow(/shard must be set/i);
+  });
+
+  it("allows null shard in adapter mode when shardScope is global", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+        getShard: () => null,
+        getShardScope: () => "global",
+      },
+    );
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
+    expect(op.shard).toBeNull();
+    expect(op.shardScope).toBe("global");
+  });
+
+  it("injects global shard sentinel when no shardingStrategy is set", () => {
+    const uow = new UnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
+    expect(op.shard).toBeNull();
+  });
+
+  it("requires shard in adapter mode for retrieval operations", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+        getShard: () => null,
+        getShardScope: () => "scoped",
+      },
+    );
+
+    expect(() => {
+      uow.forSchema(shardSchema).find("users", (b) => b.whereIndex("primary"));
+    }).toThrow(/shard must be set/i);
+  });
+
+  it("requires shard in adapter mode for update/delete/check operations", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+        getShard: () => null,
+        getShardScope: () => "scoped",
+      },
+    );
+
+    const typedUow = uow.forSchema(shardSchema);
+    const id = FragnoId.fromExternal("user-1", 0);
+
+    expect(() => {
+      typedUow.update("users", id, (b) => b.set({ name: "User" }));
+    }).toThrow(/shard must be set/i);
+
+    expect(() => {
+      typedUow.delete("users", id);
+    }).toThrow(/shard must be set/i);
+
+    expect(() => {
+      typedUow.check("users", id);
+    }).toThrow(/shard must be set/i);
+  });
+
+  it("marks adapter-scoped tables as shardFilterExempt", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        shardingStrategy: { mode: "row" },
+        getShard: () => "tenant-a",
+        getShardScope: () => "scoped",
+      },
+    );
+
+    uow.forSchema(internalSchema).find(SETTINGS_TABLE_NAME, (b) => b.whereIndex("primary"));
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops[0]?.shardFilterExempt).toBe(true);
   });
 });
 
