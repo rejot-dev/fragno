@@ -8,7 +8,7 @@ import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
-import { createWorkflowsRunner } from "./runner";
+import { createWorkflowsRunner } from "./new-runner";
 import type {
   InstanceStatus,
   InstanceStatusWithOutput,
