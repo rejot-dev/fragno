@@ -128,7 +128,7 @@ const relationNamingSchema = schema("relationnaming", (s) => {
 });
 
 describe("generatePrismaSchema", () => {
-  it("should generate stable ordering for internal models and namespaces", () => {
+  it("should generate stable ordering for internal models and schemas", () => {
     const alphaSchema = schema("alpha", (s) => {
       return s
         .addTable("zeta", (t) => t.addColumn("id", idColumn()))
@@ -141,9 +141,9 @@ describe("generatePrismaSchema", () => {
 
     const generated = generatePrismaSchema(
       [
-        { namespace: "bravo", schema: bravoSchema },
+        { namespace: "alpha", schema: bravoSchema },
         { namespace: null, schema: internalSchema },
-        { namespace: "alpha", schema: alphaSchema },
+        { namespace: "zulu", schema: alphaSchema },
       ],
       "sqlite",
       { sqliteStorageMode: sqliteStoragePrisma },
@@ -152,9 +152,9 @@ describe("generatePrismaSchema", () => {
     const settingsIndex = generated.indexOf("model FragnoDbSettings");
     const hooksIndex = generated.indexOf("model FragnoHooks");
     const outboxIndex = generated.indexOf("model FragnoDbOutbox");
-    const alphaIndex = generated.indexOf("model Alpha_alpha");
-    const zetaIndex = generated.indexOf("model Zeta_alpha");
-    const bravoIndex = generated.indexOf("model Bravo_bravo");
+    const alphaIndex = generated.indexOf("model Alpha_zulu");
+    const zetaIndex = generated.indexOf("model Zeta_zulu");
+    const bravoIndex = generated.indexOf("model Bravo_alpha");
 
     expect(settingsIndex).toBeGreaterThanOrEqual(0);
     expect(hooksIndex).toBeGreaterThanOrEqual(0);

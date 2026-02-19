@@ -102,7 +102,22 @@ export async function generateSchemaArtifacts<
       }
     }
 
-    const allFragments = Array.from(fragmentsMap.values());
+    const allFragments = Array.from(fragmentsMap.entries())
+      .map(([namespaceKey, fragment]) => ({
+        ...fragment,
+        namespaceKey,
+        isInternal: fragment.schema === internalSchema,
+      }))
+      .sort((a, b) => {
+        if (a.isInternal) {
+          return -1;
+        }
+        if (b.isInternal) {
+          return 1;
+        }
+        return a.schema.name.localeCompare(b.schema.name);
+      })
+      .map(({ schema, namespace }) => ({ schema, namespace }));
     const defaultPath = format === "drizzle" ? DEFAULT_DRIZZLE_PATH : DEFAULT_PRISMA_PATH;
     const schema =
       format === "drizzle"
