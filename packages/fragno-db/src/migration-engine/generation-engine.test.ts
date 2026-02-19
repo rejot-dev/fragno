@@ -444,6 +444,61 @@ describe("generateSchemaArtifacts - schema outputs", () => {
     expect(healthSpy).not.toHaveBeenCalled();
   });
 
+  it("should order drizzle schema fragments deterministically by schema name", async () => {
+    const adapter = new SqlAdapter({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new NodePostgresDriverConfig(),
+    });
+
+    const schemaAlpha: AnySchema = schema("alpha", (s) => {
+      return s.addTable("alpha_table", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schemaBeta: AnySchema = schema("beta", (s) => {
+      return s.addTable("beta_table", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    const fragnoDbBeta = new FragnoDatabase({
+      namespace: "alpha",
+      schema: schemaBeta,
+      adapter,
+    });
+
+    const fragnoDbAlpha = new FragnoDatabase({
+      namespace: "zulu",
+      schema: schemaAlpha,
+      adapter,
+    });
+
+    const [result] = await generateSchemaArtifacts([fragnoDbBeta, fragnoDbAlpha], {
+      format: "drizzle",
+    });
+
+    const schemaOutput = result.schema;
+    const internalIndex = schemaOutput.indexOf("Fragment: (none)");
+    const alphaIndex = schemaOutput.indexOf("Fragment: zulu");
+    const betaIndex = schemaOutput.indexOf("Fragment: alpha");
+
+    expect(internalIndex).toBeGreaterThanOrEqual(0);
+    expect(alphaIndex).toBeGreaterThanOrEqual(0);
+    expect(betaIndex).toBeGreaterThanOrEqual(0);
+    expect(internalIndex).toBeLessThan(alphaIndex);
+    expect(alphaIndex).toBeLessThan(betaIndex);
+  });
+
   it("should reject from/to versions for prisma output", async () => {
     const adapter = new SqlAdapter({
       dialect: {
