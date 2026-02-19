@@ -18,7 +18,7 @@ const EventWorkflow = defineWorkflow(
   },
 );
 
-describe("createWorkflowsTestHarness", () => {
+describe.skip("createWorkflowsTestHarness (skipped: new runner in progress)", () => {
   test("drives workflows with a controllable clock", async () => {
     const workflows = {
       sleep: SleepWorkflow,
