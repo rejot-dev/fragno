@@ -84,88 +84,6 @@ export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
 ])
 
 // ============================================================================
-// Fragment: comment
-// ============================================================================
-
-const schema_comment = pgSchema("comment");
-
-export const comment_comment = schema_comment.table("comment", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  postReference: text("postReference").notNull(),
-  userReference: text("userReference").notNull(),
-  parentId: bigint("parentId", { mode: "number" }),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0),
-  rating: integer("rating").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.parentId],
-    foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent"
-  }),
-  index("idx_comment_post").on(table.postReference)
-])
-
-export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
-  parent: one(comment_comment, {
-    relationName: "comment_comment",
-    fields: [comment_comment.parentId],
-    references: [comment_comment._internalId]
-  }),
-  commentList: many(comment_comment, {
-    relationName: "comment_comment"
-  })
-}));
-
-export const comment_schema = {
-  comment_comment: comment_comment,
-  comment_commentRelations: comment_commentRelations,
-  comment: comment_comment,
-  commentRelations: comment_commentRelations,
-  schemaVersion: 3
-}
-
-// ============================================================================
-// Fragment: upvote
-// ============================================================================
-
-const schema_upvote = pgSchema("upvote");
-
-export const upvote_upvote = schema_upvote.table("upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
-  ownerReference: text("ownerReference"),
-  rating: integer("rating").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  note: text("note"),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  index("idx_upvote_reference").on(table.reference, table.ownerReference)
-])
-
-export const upvote_total_upvote = schema_upvote.table("upvote_total", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
-  total: integer("total").notNull().default(0),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  uniqueIndex("idx_upvote_total_reference").on(table.reference)
-])
-
-export const upvote_schema = {
-  upvote_upvote: upvote_upvote,
-  upvote: upvote_upvote,
-  upvote_total_upvote: upvote_total_upvote,
-  upvote_total: upvote_total_upvote,
-  schemaVersion: 2
-}
-
-// ============================================================================
 // Fragment: auth
 // ============================================================================
 
@@ -410,6 +328,88 @@ export const auth_schema = {
   organizationInvitation: organizationInvitation_auth,
   organizationInvitationRelations: organizationInvitation_authRelations,
   schemaVersion: 16
+}
+
+// ============================================================================
+// Fragment: comment
+// ============================================================================
+
+const schema_comment = pgSchema("comment");
+
+export const comment_comment = schema_comment.table("comment", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  postReference: text("postReference").notNull(),
+  userReference: text("userReference").notNull(),
+  parentId: bigint("parentId", { mode: "number" }),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0),
+  rating: integer("rating").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.parentId],
+    foreignColumns: [table._internalId],
+    name: "fk_comment_comment_parent"
+  }),
+  index("idx_comment_post").on(table.postReference)
+])
+
+export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
+  parent: one(comment_comment, {
+    relationName: "comment_comment",
+    fields: [comment_comment.parentId],
+    references: [comment_comment._internalId]
+  }),
+  commentList: many(comment_comment, {
+    relationName: "comment_comment"
+  })
+}));
+
+export const comment_schema = {
+  comment_comment: comment_comment,
+  comment_commentRelations: comment_commentRelations,
+  comment: comment_comment,
+  commentRelations: comment_commentRelations,
+  schemaVersion: 3
+}
+
+// ============================================================================
+// Fragment: upvote
+// ============================================================================
+
+const schema_upvote = pgSchema("upvote");
+
+export const upvote_upvote = schema_upvote.table("upvote", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  reference: text("reference").notNull(),
+  ownerReference: text("ownerReference"),
+  rating: integer("rating").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  note: text("note"),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  index("idx_upvote_reference").on(table.reference, table.ownerReference)
+])
+
+export const upvote_total_upvote = schema_upvote.table("upvote_total", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  reference: text("reference").notNull(),
+  total: integer("total").notNull().default(0),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  uniqueIndex("idx_upvote_total_reference").on(table.reference)
+])
+
+export const upvote_schema = {
+  upvote_upvote: upvote_upvote,
+  upvote: upvote_upvote,
+  upvote_total_upvote: upvote_total_upvote,
+  upvote_total: upvote_total_upvote,
+  schemaVersion: 2
 }
 
 // ============================================================================
