@@ -45,7 +45,6 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
     process: async () => scheduler.schedule(),
     drain: async () => scheduler.drain(),
     getNextWakeAt: async () => {
-      const now = new Date();
       return await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
@@ -54,7 +53,6 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
                 internalFragment.services.hookService.getNextHookWakeAt(
                   namespace,
                   stuckProcessingTimeoutMinutes,
-                  now,
                 ),
               ] as const,
           )

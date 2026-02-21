@@ -5,10 +5,8 @@ import type {
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
-import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
-import type { DbNow } from "../query/db-now";
-import { isDbNow } from "../query/db-now";
-import type { FragnoId } from "../schema/create";
+import { dbNow, isDbNow, type DbNow } from "../query/db-now";
+import { FragnoId } from "../schema/create";
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 
 /**
@@ -210,55 +208,62 @@ export async function processHooks<THooks extends HooksMap>(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,
   );
-  const dbNow = new Date();
+  const internalSchema = internalFragment.$internal.deps.schema;
+  const includeStuckProcessing = stuckProcessingTimeoutMinutes !== false;
+  const staleBefore = includeStuckProcessing
+    ? dbNow().plus({ minutes: -stuckProcessingTimeoutMinutes })
+    : null;
+  let claimedEvents: Array<{
+    id: FragnoId;
+    hookName: string;
+    payload: unknown;
+    attempts: number;
+    maxAttempts: number;
+    idempotencyKey: string;
+  }> = [];
+  let stuckEvents: StuckHookProcessingEvent[] = [];
 
-  if (stuckProcessingTimeoutMinutes !== false) {
-    const staleBefore = new Date(dbNow.getTime() - stuckProcessingTimeoutMinutes * 60_000);
-    const stuckEvents = await internalFragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              internalFragment.services.hookService.requeueStuckProcessingHooks(
-                namespace,
-                staleBefore,
-              ),
-            ] as const,
-        )
-        .transform(({ serviceResult: [events] }) => events)
-        .execute();
-    });
-
-    if (stuckEvents.length > 0) {
-      try {
-        config.onStuckProcessingHooks?.({
-          namespace,
-          timeoutMinutes: stuckProcessingTimeoutMinutes,
-          events: stuckEvents,
-        });
-      } catch (error) {
-        console.error("Error calling onStuckProcessingHooks", error);
-      }
-    }
-  }
-
-  // Claim pending events in the same transaction to avoid double-processing.
-  const pendingEvents = await internalFragment.inContext(async function () {
+  const result = await internalFragment.inContext(async function () {
     return await this.handlerTx()
-      .withServiceCalls(
-        () => [internalFragment.services.hookService.claimPendingHookEvents(namespace)] as const,
-      )
-      .transform(({ serviceResult: [events] }) => events)
+      .withServiceCalls(() => {
+        const pending = internalFragment.services.hookService.claimPendingHookEvents(namespace);
+        const stuck = includeStuckProcessing
+          ? internalFragment.services.hookService.claimStuckProcessingHookEvents(
+              namespace,
+              staleBefore!,
+            )
+          : undefined;
+        return [pending, stuck] as const;
+      })
+      .transform(({ serviceResult: [pendingEvents, stuckResult] }) => ({
+        pendingEvents,
+        stuckResult,
+      }))
       .execute();
   });
 
-  if (pendingEvents.length === 0) {
+  claimedEvents = [...result.pendingEvents, ...(result.stuckResult?.events ?? [])];
+  stuckEvents = result.stuckResult?.stuckEvents ?? [];
+
+  if (includeStuckProcessing && stuckEvents.length > 0) {
+    try {
+      config.onStuckProcessingHooks?.({
+        namespace,
+        timeoutMinutes: stuckProcessingTimeoutMinutes,
+        events: stuckEvents,
+      });
+    } catch (error) {
+      console.error("Error calling onStuckProcessingHooks", error);
+    }
+  }
+
+  if (claimedEvents.length === 0) {
     return 0;
   }
 
   // Process events (async work outside transaction)
   const processedEvents = await Promise.allSettled(
-    pendingEvents.map(async (event) => {
+    claimedEvents.map(async (event) => {
       const hookFn = hooks[event.hookName];
       if (!hookFn) {
         return {
@@ -296,31 +301,59 @@ export async function processHooks<THooks extends HooksMap>(
   // Mark events as completed/failed
   await internalFragment.inContext(async function () {
     await this.handlerTx()
-      .withServiceCalls(() => {
-        const txResults: TxResult<void>[] = [];
+      .mutate(({ forSchema }) => {
+        const uow = forSchema(internalSchema);
+        const now = dbNow();
+
         for (const processedEvent of processedEvents) {
           if (processedEvent.status === "rejected") {
+            console.error("Hook processing promise rejected", {
+              namespace,
+              error: processedEvent.reason,
+            });
             continue;
           }
 
           const { eventId, status } = processedEvent.value;
 
           if (status === "completed") {
-            txResults.push(internalFragment.services.hookService.markHookCompleted(eventId));
-          } else if (status === "failed") {
-            const { error, attempts } = processedEvent.value;
-            txResults.push(
-              internalFragment.services.hookService.markHookFailed(
-                eventId,
-                error,
-                attempts,
-                retryPolicy,
-                dbNow,
-              ),
+            uow.update("fragno_hooks", eventId, (b) =>
+              b.set({ status: "completed", lastAttemptAt: now }).check(),
+            );
+            continue;
+          }
+
+          const { error, attempts } = processedEvent.value;
+          const newAttempts = attempts + 1;
+          const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
+
+          if (shouldRetry) {
+            const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
+            const nextRetryAt = now.plus({ ms: delayMs });
+            uow.update("fragno_hooks", eventId, (b) =>
+              b
+                .set({
+                  status: "pending",
+                  attempts: newAttempts,
+                  lastAttemptAt: now,
+                  nextRetryAt,
+                  error,
+                })
+                .check(),
+            );
+          } else {
+            uow.update("fragno_hooks", eventId, (b) =>
+              b
+                .set({
+                  status: "failed",
+                  attempts: newAttempts,
+                  lastAttemptAt: now,
+                  error,
+                })
+                .check(),
             );
           }
         }
-        return txResults;
       })
       .execute();
   });

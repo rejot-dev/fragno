@@ -10,7 +10,7 @@ import {
 } from "../db-fragment-definition-builder";
 import { FragnoId } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
-import { dbNow } from "../query/db-now";
+import { dbNow, type DbNow } from "../query/db-now";
 import {
   internalSchema,
   SETTINGS_NAMESPACE,
@@ -169,37 +169,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   .providesService("hookService", ({ defineService }) => {
     return defineService({
       /**
-       * Get pending hook events for processing.
-       * Returns all pending events for the given namespace that are ready to be processed.
-       */
-      getPendingHookEvents(namespace: string) {
-        const now = dbNow();
-        return this.serviceTx(internalSchema)
-          .retrieve((uow) =>
-            uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(
-                  eb("namespace", "=", namespace),
-                  eb("status", "=", "pending"),
-                  eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
-                ),
-              ),
-            ),
-          )
-          .transformRetrieve(([events]) => {
-            return events.map((event) => ({
-              id: event.id,
-              hookName: event.hookName,
-              payload: event.payload as unknown,
-              attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
-              idempotencyKey: event.nonce,
-            }));
-          })
-          .build();
-      },
-
-      /**
        * Claim pending hook events for processing.
        * Returns ready events and marks them as processing in the same transaction.
        */
@@ -251,84 +220,66 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       },
 
       /**
-       * Re-queue hook events that have been stuck in processing for too long.
+       * Claim stale processing hook events for processing.
+       * Returns ready events and marks them as processing in the same transaction.
        */
-      requeueStuckProcessingHooks(namespace: string, staleBefore: Date) {
+      claimStuckProcessingHookEvents(namespace: string, staleBefore: DbNow) {
+        const now = dbNow();
+
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
+              b.whereIndex("idx_namespace_status_last_attempt", (eb) =>
+                eb.and(
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "processing"),
+                  eb.or(eb.isNull("lastAttemptAt"), eb("lastAttemptAt", "<=", staleBefore)),
+                ),
               ),
             ),
           )
           .transformRetrieve(([events]) => {
-            const stuck = events.filter((event) => {
-              if (!event.lastAttemptAt) {
-                return true;
-              }
-              return event.lastAttemptAt <= staleBefore;
-            });
-
-            return stuck.map((event) => ({
+            return events.map((event) => ({
               id: event.id,
               hookName: event.hookName,
+              payload: event.payload,
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
+              idempotencyKey: event.nonce,
               lastAttemptAt: event.lastAttemptAt,
               nextRetryAt: event.nextRetryAt,
             }));
           })
           .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult.length === 0) {
+              return;
+            }
+
             for (const event of retrieveResult) {
               uow.update("fragno_hooks", event.id, (b) =>
-                b.set({ status: "pending", nextRetryAt: null }).check(),
+                b.set({ status: "processing", lastAttemptAt: now, nextRetryAt: null }).check(),
               );
             }
           })
-          .transform(({ retrieveResult }) => retrieveResult)
-          .build();
-      },
-
-      /**
-       * Get the next time a processing hook becomes stale.
-       */
-      getNextProcessingStaleAt(namespace: string, timeoutMinutes: number, now?: Date) {
-        return this.serviceTx(internalSchema)
-          .retrieve((uow) =>
-            uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
-              ),
-            ),
-          )
-          .transformRetrieve(([events]) => {
-            if (events.length === 0) {
-              return null;
-            }
-
-            const baseNow = now ?? new Date();
-            const nowMs = baseNow.getTime();
-            const timeoutMs = timeoutMinutes * 60_000;
-            let earliestStaleAt: Date | null = null;
-
-            for (const event of events) {
-              if (!event.lastAttemptAt) {
-                return baseNow;
-              }
-
-              const staleAtMs = event.lastAttemptAt.getTime() + timeoutMs;
-              if (staleAtMs <= nowMs) {
-                return baseNow;
-              }
-
-              const staleAt = new Date(staleAtMs);
-              if (!earliestStaleAt || staleAt < earliestStaleAt) {
-                earliestStaleAt = staleAt;
-              }
-            }
-
-            return earliestStaleAt;
+          .transform(({ retrieveResult }) => {
+            return {
+              events: retrieveResult.map((event) => ({
+                ...event,
+                id: new FragnoId({
+                  externalId: event.id.externalId,
+                  internalId: event.id.internalId,
+                  version: event.id.version + 1,
+                }),
+              })),
+              stuckEvents: retrieveResult.map((event) => ({
+                id: event.id,
+                hookName: event.hookName,
+                attempts: event.attempts,
+                maxAttempts: event.maxAttempts,
+                lastAttemptAt: event.lastAttemptAt,
+                nextRetryAt: event.nextRetryAt,
+              })),
+            };
           })
           .build();
       },
@@ -337,88 +288,97 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get the earliest pending hook wake time for a namespace.
        * Optionally considers processing hooks becoming stale when timeoutMinutes is provided.
        */
-      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false, now?: Date) {
-        const baseNow = now ?? new Date();
-        const includeProcessing = typeof timeoutMinutes === "number" && timeoutMinutes > 0;
-        const timeoutMs = includeProcessing ? timeoutMinutes * 60_000 : 0;
+      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false) {
+        const timeoutMinutesValue =
+          typeof timeoutMinutes === "number" && timeoutMinutes > 0 ? timeoutMinutes : 0;
+        const includeProcessing = timeoutMinutesValue > 0;
+        const now = dbNow();
+        const timeoutMs = timeoutMinutesValue * 60_000;
+        // Sentinel to keep query shape stable when processing checks are disabled.
+        const processingStatus = includeProcessing ? "processing" : "__disabled__";
+        const staleBefore = now.plus({ minutes: -timeoutMinutesValue });
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
-            uow.find("fragno_hooks", (b) =>
-              b
-                .whereIndex("idx_namespace_status_retry", (eb) => {
-                  if (includeProcessing) {
-                    return eb.and(
+            uow
+              .forSchema(internalSchema)
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_retry", (eb) =>
+                    eb.and(
                       eb("namespace", "=", namespace),
-                      eb.or(eb("status", "=", "pending"), eb("status", "=", "processing")),
-                    );
-                  }
-                  return eb.and(eb("namespace", "=", namespace), eb("status", "=", "pending"));
-                })
-                .select(["status", "nextRetryAt", "lastAttemptAt"]),
-            ),
+                      eb("status", "=", "pending"),
+                      eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
+                    ),
+                  )
+                  .pageSize(1),
+              )
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_retry", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", "pending"),
+                      eb.isNotNull("nextRetryAt"),
+                      eb("nextRetryAt", ">", now),
+                    ),
+                  )
+                  .orderByIndex("idx_namespace_status_retry", "asc")
+                  .pageSize(1)
+                  .select(["nextRetryAt"]),
+              )
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_last_attempt", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", processingStatus),
+                      eb.or(eb.isNull("lastAttemptAt"), eb("lastAttemptAt", "<=", staleBefore)),
+                    ),
+                  )
+                  .pageSize(1),
+              )
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_last_attempt", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", processingStatus),
+                      eb.isNotNull("lastAttemptAt"),
+                      eb("lastAttemptAt", ">", staleBefore),
+                    ),
+                  )
+                  .orderByIndex("idx_namespace_status_last_attempt", "asc")
+                  .pageSize(1)
+                  .select(["lastAttemptAt"]),
+              ),
           )
-          .transformRetrieve(([events]) => {
-            if (events.length === 0) {
-              return null;
-            }
+          .transformRetrieve(
+            ([pendingImmediate, pendingNext, processingImmediate, processingNext]) => {
+              const hasProcessingImmediate = includeProcessing && processingImmediate.length > 0;
 
-            const nowMs = baseNow.getTime();
-            let earliestPendingAt: Date | null = null;
-            let earliestStaleAt: Date | null = null;
+              if (pendingImmediate.length > 0 || hasProcessingImmediate) {
+                return new Date();
+              }
 
-            for (const event of events) {
-              if (event.status === "pending") {
-                const nextRetryAt = event.nextRetryAt;
-                if (!nextRetryAt || nextRetryAt.getTime() <= nowMs) {
-                  return baseNow;
+              const pendingNextAt = pendingNext[0]?.nextRetryAt ?? null;
+              let processingNextAt: Date | null = null;
+
+              if (includeProcessing) {
+                const lastAttemptAt = processingNext[0]?.lastAttemptAt;
+                if (lastAttemptAt) {
+                  processingNextAt = new Date(lastAttemptAt.getTime() + timeoutMs);
                 }
-                if (!earliestPendingAt || nextRetryAt < earliestPendingAt) {
-                  earliestPendingAt = nextRetryAt;
-                }
-                continue;
               }
 
-              if (!includeProcessing || event.status !== "processing") {
-                continue;
+              if (!pendingNextAt) {
+                return processingNextAt ?? null;
               }
-
-              const lastAttemptAt = event.lastAttemptAt;
-              if (!lastAttemptAt) {
-                return baseNow;
+              if (!processingNextAt) {
+                return pendingNextAt;
               }
-
-              const staleAtMs = lastAttemptAt.getTime() + timeoutMs;
-              if (staleAtMs <= nowMs) {
-                return baseNow;
-              }
-
-              const staleAt = new Date(staleAtMs);
-              if (!earliestStaleAt || staleAt < earliestStaleAt) {
-                earliestStaleAt = staleAt;
-              }
-            }
-
-            if (!earliestPendingAt) {
-              return earliestStaleAt ?? null;
-            }
-            if (!earliestStaleAt) {
-              return earliestPendingAt;
-            }
-            return earliestPendingAt <= earliestStaleAt ? earliestPendingAt : earliestStaleAt;
-          })
-          .build();
-      },
-
-      /**
-       * Mark a hook event as completed.
-       */
-      markHookCompleted(eventId: FragnoId) {
-        return this.serviceTx(internalSchema)
-          .mutate(({ uow }) =>
-            uow.update("fragno_hooks", eventId, (b) =>
-              b.set({ status: "completed", lastAttemptAt: dbNow() }).check(),
-            ),
+              return pendingNextAt <= processingNextAt ? pendingNextAt : processingNextAt;
+            },
           )
           .build();
       },
@@ -426,28 +386,22 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       /**
        * Mark a hook event as failed and schedule next retry.
        */
-      markHookFailed(
-        eventId: FragnoId,
-        error: string,
-        attempts: number,
-        retryPolicy: RetryPolicy,
-        now?: Date,
-      ) {
+      markHookFailed(eventId: FragnoId, error: string, attempts: number, retryPolicy: RetryPolicy) {
         const newAttempts = attempts + 1;
         const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
+        const now = dbNow();
 
         return this.serviceTx(internalSchema)
           .mutate(({ uow }) => {
             if (shouldRetry) {
               const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
-              const baseNow = now ?? new Date();
-              const nextRetryAt = new Date(baseNow.getTime() + delayMs);
+              const nextRetryAt = now.plus({ ms: delayMs });
               uow.update("fragno_hooks", eventId, (b) =>
                 b
                   .set({
                     status: "pending",
                     attempts: newAttempts,
-                    lastAttemptAt: dbNow(),
+                    lastAttemptAt: now,
                     nextRetryAt,
                     error,
                   })
@@ -459,7 +413,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   .set({
                     status: "failed",
                     attempts: newAttempts,
-                    lastAttemptAt: dbNow(),
+                    lastAttemptAt: now,
                     error,
                   })
                   .check(),

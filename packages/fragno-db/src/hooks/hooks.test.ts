@@ -15,7 +15,8 @@ import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-b
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
-import type { FragnoId } from "../schema/create";
+import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
+import { FragnoId } from "../schema/create";
 
 type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
   databaseAdapter: SqlAdapter;
@@ -105,7 +106,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -147,7 +148,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -190,7 +191,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -339,6 +340,79 @@ describe("Hook System", () => {
 
       expect(result?.status).toBe("completed");
       expect(result?.lastAttemptAt).toBeInstanceOf(Date);
+    });
+
+    it("should surface conflicts when a hook mutates its own record", async () => {
+      const namespace = "test-claim-conflict";
+      let eventId!: FragnoId;
+
+      const hookFn = vi.fn(async (payload: { externalId: string; version: number }) => {
+        const conflictId = new FragnoId({
+          externalId: payload.externalId,
+          version: payload.version,
+        });
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema);
+              uow.update("fragno_hooks", conflictId, (b) => b.set({ status: "processing" }));
+            })
+            .execute();
+        });
+      });
+
+      const hooks: HooksMap = {
+        onConflict: hookFn,
+      };
+
+      await internalFragment.inContext(async function () {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema);
+            return uow.create("fragno_hooks", {
+              id: "hook-conflict-id",
+              namespace,
+              hookName: "onConflict",
+              payload: { externalId: "hook-conflict-id", version: 0 },
+              status: "pending",
+              attempts: 0,
+              maxAttempts: 5,
+              lastAttemptAt: null,
+              nextRetryAt: null,
+              error: null,
+              nonce: "test-nonce-conflict",
+            });
+          })
+          .execute();
+        eventId = createdId;
+      });
+
+      await expect(
+        processHooks({
+          hooks,
+          namespace,
+          internalFragment,
+          handlerTx,
+          defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
+        }),
+      ).rejects.toThrow(ConcurrencyConflictError);
+
+      expect(hookFn).toHaveBeenCalledOnce();
+      expect(hookFn).toHaveBeenCalledWith({
+        externalId: eventId.externalId,
+        version: eventId.version,
+      });
+
+      const event = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(event?.status).toBe("processing");
     });
 
     it("should mark failed hooks for retry", async () => {
