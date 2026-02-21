@@ -150,6 +150,65 @@ async function buildTickPlan(
 }
 
 /**
+ * Best-effort recovery: mark the instance errored after a failed mutation phase.
+ * Bigger picture: prevents durable hook retries from looping on non-retryable mutation failures.
+ */
+async function markInstanceErrored(
+  fragment: WorkflowsRunnerOptions["fragment"],
+  payload: WorkflowEnqueuedHookPayload,
+  error: Error,
+): Promise<boolean> {
+  let updated = false;
+
+  try {
+    await fragment.inContext(function () {
+      return this.handlerTx({
+        onAfterRetrieve: (uow, results) => {
+          const [instances] = results as [WorkflowInstanceRecord[]];
+          const instance = instances[0];
+          if (!instance) {
+            return;
+          }
+          if (instance.runNumber !== payload.runNumber) {
+            return;
+          }
+          if (isTerminalStatus(instance.status)) {
+            return;
+          }
+
+          const schemaUow = uow.forSchema(workflowsSchema);
+          schemaUow.update("workflow_instance", instance.id, (b) => {
+            const now = b.now();
+            return b
+              .set({
+                status: "errored",
+                output: null,
+                errorName: error.name,
+                errorMessage: error.message,
+                updatedAt: now,
+                completedAt: now,
+                ...(instance.startedAt ? {} : { startedAt: now }),
+              })
+              .check();
+          });
+          updated = true;
+        },
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema).find("workflow_instance", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceRef)),
+          ),
+        )
+        .execute();
+    });
+  } catch {
+    return updated;
+  }
+
+  return updated;
+}
+
+/**
  * Create a single-transaction workflow runner that relies on OCC for coordination.
  * Bigger picture: enforces the one-retrieve/one-mutate tick contract across the runner.
  */
@@ -170,6 +229,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       // Instance-scoped tick: we only fetch data for the payload's instance/run.
 
       let processed = 0;
+      let mutatePhase = false;
 
       try {
         await runnerOptions.fragment.inContext(function () {
@@ -200,6 +260,9 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
               for (const operation of plan.operations) {
                 operation(uow);
               }
+            },
+            onBeforeMutate: () => {
+              mutatePhase = true;
             },
           })
             .retrieve(({ forSchema }) =>
@@ -232,6 +295,11 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
         });
       } catch (err) {
         if (err instanceof ConcurrencyConflictError) {
+          return 0;
+        }
+        if (mutatePhase) {
+          const error = toError(err);
+          await markInstanceErrored(runnerOptions.fragment, payload, error);
           return 0;
         }
         throw err;

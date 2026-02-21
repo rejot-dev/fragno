@@ -87,8 +87,6 @@
 - Retry/sleep/waitForEvent replays do not respect persisted `nextRetryAt`/`wakeAt`, which can extend
   waits or execute early.
 - Step keys now use `type:name` with no migration; existing `name`-keyed steps will re-run.
-- NonRetryable/unique-constraint handling from the old runner is missing, so retries can loop on
-  unique conflicts.
 
 ## Current Status
 
@@ -107,12 +105,12 @@
 - Add runner-focused tests for retry/sleep/waitForEvent/timeouts/error cases.
 - Remove `step.do` timeout support (timeouts now only apply to `waitForEvent`).
 - Enforce `waitForEvent` timeout deadlines when consuming events.
+- Define `NonRetryableError` semantics (no retries) and add coverage.
+- Treat mutation-phase errors as non-retryable and mark instances errored via a follow-up tick.
 
 ## Up Next
 
-1. Define/implement semantics for `NonRetryableError`.
-2. Decide whether to add an explicit “running” transition and/or pauseRequested handling during
+1. Decide whether to add an explicit “running” transition and/or pauseRequested handling during
    execution.
-3. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
-4. Make `waitForEvent` enforce timeout deadlines before consuming late events.
-5. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.
+2. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
+3. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.

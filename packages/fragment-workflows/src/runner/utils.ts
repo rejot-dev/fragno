@@ -1,6 +1,7 @@
 // Shared utilities for runner helpers.
 
 import type { AnyTxResult } from "../workflow";
+import { NonRetryableError } from "../workflow";
 
 /**
  * Normalize thrown values into a real Error instance.
@@ -10,6 +11,20 @@ export function toError(error: unknown): Error {
   return error instanceof Error
     ? error
     : new Error(typeof error === "string" ? error : "UNKNOWN_ERROR");
+}
+
+/**
+ * Detect errors that should bypass step retries.
+ * Bigger picture: NonRetryableError stops step retry loops for explicit user intent.
+ */
+export function isNonRetryableError(error: unknown): boolean {
+  if (error instanceof NonRetryableError) {
+    return true;
+  }
+  if (error && typeof error === "object" && "name" in error) {
+    return (error as { name?: unknown }).name === "NonRetryableError";
+  }
+  return false;
 }
 
 /**
