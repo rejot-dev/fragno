@@ -1160,6 +1160,98 @@ describe("Workflows Runner", () => {
     });
   });
 
+  test("pauses a tick when pauseRequested is set before execution", async () => {
+    let runs = 0;
+    const PauseRequestedWorkflow = defineWorkflow(
+      { name: "pause-requested-workflow" },
+      async (_event, step) => {
+        runs += 1;
+        await step.do("count", () => runs);
+        return { runs };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PAUSE_REQUESTED: PauseRequestedWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("PAUSE_REQUESTED");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.db.update("workflow_instance", instance!.id, (b) =>
+      b.set({ pauseRequested: true }),
+    );
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("PAUSE_REQUESTED", instanceId);
+    expect(status.status).toBe("paused");
+    expect(runs).toBe(0);
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(0);
+
+    const [updatedInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(updatedInstance).toMatchObject({
+      status: "paused",
+      pauseRequested: true,
+    });
+  });
+
+  test("converts waitingForPause to paused without running", async () => {
+    let runs = 0;
+    const WaitingForPauseWorkflow = defineWorkflow(
+      { name: "waiting-for-pause-workflow" },
+      async (_event, step) => {
+        runs += 1;
+        await step.do("count", () => runs);
+        return { runs };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WAITING_FOR_PAUSE: WaitingForPauseWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("WAITING_FOR_PAUSE");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.db.update("workflow_instance", instance!.id, (b) =>
+      b.set({ status: "waitingForPause" }),
+    );
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("WAITING_FOR_PAUSE", instanceId);
+    expect(status.status).toBe("paused");
+    expect(runs).toBe(0);
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(0);
+  });
+
   test("terminates a queued instance and ignores pending ticks", async () => {
     let runs = 0;
     const TerminateWorkflow = defineWorkflow(

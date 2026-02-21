@@ -82,8 +82,6 @@
 
 ## Review gaps to address (new runner vs old runner):
 
-- `pauseRequested` is not checked/cleared during execution, so a pause can be overwritten by
-  completion.
 - Retry/sleep/waitForEvent replays do not respect persisted `nextRetryAt`/`wakeAt`, which can extend
   waits or execute early.
 - Step keys now use `type:name` with no migration; existing `name`-keyed steps will re-run.
@@ -107,10 +105,11 @@
 - Enforce `waitForEvent` timeout deadlines when consuming events.
 - Define `NonRetryableError` semantics (no retries) and add coverage.
 - Treat mutation-phase errors as non-retryable and mark instances errored via a follow-up tick.
+- Honor `pauseRequested`/`waitingForPause` during ticks by short-circuiting to `paused`, and skip
+  scheduling wake/retry hooks when a suspended outcome is paused (pauseRequested remains sticky).
 
 ## Up Next
 
-1. Decide whether to add an explicit “running” transition and/or pauseRequested handling during
-   execution.
+1. Decide whether to add an explicit “running” transition (status is currently unused).
 2. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
 3. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.
