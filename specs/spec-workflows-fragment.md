@@ -533,7 +533,6 @@ export interface WorkflowsFragmentConfig {
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
   runtime: FragnoRuntime;
-  enableRunnerTick?: boolean;
 
   authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
   authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;

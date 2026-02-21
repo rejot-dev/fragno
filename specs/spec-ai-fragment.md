@@ -163,8 +163,7 @@ Client disconnect handling:
 v0.1 does **not** integrate with the Workflows fragment, but it should follow the same _runner/tick_
 design:
 
-- If `enableRunnerTick === true`, a `POST /ai/_runner/tick` endpoint processes bounded batches of
-  work.
+- A `POST /ai/_runner/tick` endpoint processes bounded batches of work.
 - Durable hooks can “wake” the runner after commits, but correctness does not depend on hooks.
 - Tick must be safe under concurrent invocation and process work at-least-once with idempotency.
 - Concurrency control is **optimistic** (OCC via Fragno DB `_version` checks); no locks/leases.
@@ -204,8 +203,7 @@ Durable hook handlers should call `config.dispatcher?.wake(...)` to nudge the ru
 deployments (Node/Cloudflare dispatchers).
 
 Hooks + dispatchers are the primary correctness path; periodic `POST /ai/_runner/tick` is a fallback
-for recovery or when dispatchers are unavailable (only when `enableRunnerTick` is enabled; default
-is false).
+for recovery or when dispatchers are unavailable.
 
 ## 6. Public Configuration
 
@@ -290,11 +288,6 @@ export interface AiFragmentConfig {
    * OpenAI webhook secret (v0.1).
    */
   webhookSecret?: string;
-
-  /**
-   * Enable `POST /ai/_runner/tick` (default: false; enable explicitly for manual/cron recovery).
-   */
-  enableRunnerTick?: boolean;
 
   /**
    * Dispatcher integration (wake-up strategy). Optional but recommended.
@@ -791,8 +784,7 @@ Two complementary patterns:
 
 ### 11.7 Runner
 
-- `POST /ai/_runner/tick` — process queued runs + webhook events (mounted when
-  `enableRunnerTick === true`; host-protect it)
+- `POST /ai/_runner/tick` — process queued runs + webhook events (host-protect it)
   - Modeled after the Workflows fragment `POST /_runner/tick` semantics.
 
 ### 11.8 Route contracts (detailed)
@@ -1056,7 +1048,7 @@ export interface AiArtifact {
 
 #### 11.8.7 Runner tick
 
-- `POST /ai/_runner/tick` (mounted when `enableRunnerTick === true`)
+- `POST /ai/_runner/tick`
   - Body: `{ maxRuns?: number; maxWebhookEvents?: number }`
   - Returns: `{ processedRuns: number; processedWebhookEvents: number }`
   - Errors: `VALIDATION_ERROR`
@@ -1241,8 +1233,7 @@ calls.
 
 - v0.1 has **no built-in access control**. Host apps can add auth at the edge/reverse-proxy or by
   wrapping fragment routes.
-- If `enableRunnerTick` is enabled, host apps should protect `POST /ai/_runner/tick` from public
-  access.
+- Host apps should protect `POST /ai/_runner/tick` from public access.
 - All routes enforce thread scoping (`threadId`) for correctness (not as a security boundary in
   v0.1).
 - Webhook route must:
@@ -1330,7 +1321,6 @@ Recommended command surface (draft):
 ## 18. Decisions
 
 - `apiKey` is optional if `getApiKey` is provided; at least one must be set.
-- `enableRunnerTick` defaults to `false`; hosts must opt in to mount the tick route.
 - Default tool config: **no tools enabled** unless `ai_thread.openaiToolConfig` is set.
 - Deep research artifact payload: `rawResponse` is persisted only when
   `config.storage.persistOpenAIRawResponses === true` (default: `false`).

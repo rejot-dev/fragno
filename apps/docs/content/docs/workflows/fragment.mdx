@@ -112,7 +112,7 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
   let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
 
-  const config = { workflows, runtime, enableRunnerTick: true };
+  const config = { workflows, runtime };
   const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
@@ -174,8 +174,8 @@ const status = await harness.getStatus("approval", instanceId);
 
 ## HTTP Tick Integration
 
-If you want an external scheduler to drive execution, keep `enableRunnerTick: true` and send
-`POST /_runner/tick` to your fragment. A durable hook handler or cron can trigger it:
+If you want an external scheduler to drive execution, send `POST /_runner/tick` to your fragment. A
+durable hook handler or cron can trigger it:
 
 ```ts
 await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
