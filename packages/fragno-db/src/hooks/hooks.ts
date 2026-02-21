@@ -20,10 +20,53 @@ export interface HookContext {
    */
   idempotencyKey: string;
   /**
+   * Hook event identifier (versioned FragnoId).
+   */
+  hookId: FragnoId;
+  /**
+   * Hook name for this event.
+   */
+  hookName: string;
+  /**
+   * Current status of the hook event.
+   */
+  status: HookStatus;
+  /**
+   * Attempt count for this hook event.
+   */
+  attempts: number;
+  /**
+   * Maximum attempts configured for this hook event.
+   */
+  maxAttempts: number;
+  /**
+   * Timestamp of the last attempt (if any).
+   */
+  lastAttemptAt: Date | null;
+  /**
+   * Next scheduled retry timestamp (if any).
+   */
+  nextRetryAt: Date | null;
+  /**
+   * When the hook event was created.
+   */
+  createdAt: Date;
+  /**
    * Create a handler transaction builder to run atomic operations.
    */
   handlerTx: HookHandlerTx;
 }
+
+export type HookStatus = "pending" | "processing" | "completed" | "failed";
+
+const hookStatusValues = ["pending", "processing", "completed", "failed"] as const;
+
+const assertHookStatus = (value: unknown): HookStatus => {
+  if (typeof value === "string" && hookStatusValues.includes(value as HookStatus)) {
+    return value as HookStatus;
+  }
+  throw new Error(`Invalid hook status: ${String(value)}`);
+};
 
 /**
  * A hook function signature.
@@ -217,9 +260,13 @@ export async function processHooks<THooks extends HooksMap>(
     id: FragnoId;
     hookName: string;
     payload: unknown;
+    status: HookStatus;
     attempts: number;
     maxAttempts: number;
     idempotencyKey: string;
+    lastAttemptAt: Date | null;
+    nextRetryAt: Date | null;
+    createdAt: Date;
   }> = [];
   let stuckEvents: StuckHookProcessingEvent[] = [];
 
@@ -242,7 +289,10 @@ export async function processHooks<THooks extends HooksMap>(
       .execute();
   });
 
-  claimedEvents = [...result.pendingEvents, ...(result.stuckResult?.events ?? [])];
+  claimedEvents = [...result.pendingEvents, ...(result.stuckResult?.events ?? [])].map((event) => ({
+    ...event,
+    status: assertHookStatus(event.status),
+  }));
   stuckEvents = result.stuckResult?.stuckEvents ?? [];
 
   if (includeStuckProcessing && stuckEvents.length > 0) {
@@ -278,6 +328,14 @@ export async function processHooks<THooks extends HooksMap>(
       try {
         const hookContext: HookContext = {
           idempotencyKey: event.idempotencyKey,
+          hookId: event.id,
+          hookName: event.hookName,
+          status: event.status,
+          attempts: event.attempts,
+          maxAttempts: event.maxAttempts,
+          lastAttemptAt: event.lastAttemptAt,
+          nextRetryAt: event.nextRetryAt,
+          createdAt: event.createdAt,
           handlerTx: config.handlerTx,
         };
         await hookFn.call(hookContext, event.payload);
