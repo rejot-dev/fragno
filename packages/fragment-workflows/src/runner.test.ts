@@ -369,6 +369,48 @@ describe("Workflows Runner", () => {
     });
   });
 
+  test("waitForEvent should reject events created after wakeAt", async () => {
+    const TimeoutWorkflow = defineWorkflow(
+      { name: "event-timeout-late-event-workflow" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready", timeout: "5 minutes" });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { TIMEOUT: TimeoutWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("TIMEOUT");
+    await drainDurableHooks(harness.fragment);
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord?.wakeAt).toBeInstanceOf(Date);
+
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    const wakeAt = stepRecord!.wakeAt!;
+    harness.clock.set(new Date(wakeAt.getTime() + 1));
+
+    await harness.sendEvent("TIMEOUT", instanceId, { type: "ready", payload: { ok: true } });
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "wake",
+    });
+
+    const finalStatus = await harness.getStatus("TIMEOUT", instanceId);
+    expect(finalStatus.status).toBe("errored");
+    expect(finalStatus.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+  });
+
   test("getHistory returns ordered step and event data", async () => {
     const HistoryWorkflow = defineWorkflow({ name: "history-workflow" }, async (_event, step) => {
       const seed = await step.do("seed", () => 3);
