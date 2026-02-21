@@ -1,14 +1,16 @@
 // Shared types for runner helpers and transactions.
 
 import type { FragnoRuntime } from "@fragno-dev/core";
-import type { TableToColumnValues } from "@fragno-dev/db/query";
+import type {
+  TableToColumnValues,
+  TableToInsertValues,
+  TableToUpdateValues,
+} from "@fragno-dev/db/query";
 import type { workflowsSchema } from "../schema";
 import type { WorkflowsHooks, WorkflowsRegistry, WorkflowsRunner } from "../workflow";
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 
-export type WorkflowTaskRecord = TableToColumnValues<
-  (typeof workflowsSchema)["tables"]["workflow_task"]
->;
+export type RunnerTaskKind = "run" | "wake" | "retry";
 
 export type WorkflowInstanceRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_instance"]
@@ -29,20 +31,19 @@ export type WorkflowEventRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_event"]
 >;
 
-export type WorkflowLogRecord = TableToColumnValues<
-  (typeof workflowsSchema)["tables"]["workflow_log"]
+export type WorkflowStepCreate = Omit<
+  TableToInsertValues<(typeof workflowsSchema)["tables"]["workflow_step"]>,
+  "id" | "createdAt" | "updatedAt"
 >;
 
-export type WorkflowStepCreate = Omit<WorkflowStepRecord, "id" | "createdAt" | "updatedAt">;
-
-export type WorkflowLogCreate = Omit<WorkflowLogRecord, "id" | "createdAt">;
-
 export type WorkflowStepUpdate = Omit<
-  Partial<Omit<WorkflowStepRecord, "id">>,
+  TableToUpdateValues<(typeof workflowsSchema)["tables"]["workflow_step"]>,
   "createdAt" | "updatedAt"
 >;
 
-export type WorkflowEventUpdate = Partial<Omit<WorkflowEventRecord, "id">>;
+export type WorkflowEventUpdate = TableToUpdateValues<
+  (typeof workflowsSchema)["tables"]["workflow_event"]
+>;
 
 export type WorkflowRunAt = Date | { delayMs: number };
 
@@ -68,7 +69,6 @@ export type WorkflowsRunnerOptions = {
   workflows: WorkflowsRegistry;
   runtime: FragnoRuntime;
   runnerId?: string;
-  leaseMs?: number;
 };
 
 export type RunHandlerTx = <T>(

@@ -58,8 +58,7 @@ export class WorkflowsDispatcher {
 
 ## HTTP tick integration
 
-If you want an external scheduler or queue to drive execution, keep `enableRunnerTick: true` and
-POST to the tick route:
+If you want an external scheduler or queue to drive execution, POST to the tick route:
 
 ```ts
 await fetch("https://your-app.example.com/api/workflows/_runner/tick", {

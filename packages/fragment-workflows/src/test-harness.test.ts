@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
+import {
+  defineWorkflow,
+  type WorkflowEnqueuedHookPayload,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "./workflow";
 import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 
 const SleepWorkflow = defineWorkflow(
@@ -19,6 +24,27 @@ const EventWorkflow = defineWorkflow(
 );
 
 describe.skip("createWorkflowsTestHarness (skipped: new runner in progress)", () => {
+  const buildPayload = (
+    instance: {
+      id: { internalId?: bigint };
+      instanceId: string;
+      workflowName: string;
+      runNumber: number;
+    },
+    reason: WorkflowEnqueuedHookPayload["reason"],
+  ): WorkflowEnqueuedHookPayload => {
+    if (!instance.id.internalId) {
+      throw new Error("Missing instance ref");
+    }
+    return {
+      workflowName: instance.workflowName,
+      instanceId: instance.instanceId,
+      instanceRef: instance.id.internalId.toString(),
+      runNumber: instance.runNumber,
+      reason,
+    };
+  };
+
   test("drives workflows with a controllable clock", async () => {
     const workflows = {
       sleep: SleepWorkflow,
@@ -32,25 +58,41 @@ describe.skip("createWorkflowsTestHarness (skipped: new runner in progress)", ()
     });
 
     const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
-    await harness.runUntilIdle();
+    const [sleepInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "sleep-workflow"), eb("instanceId", "=", sleepId)),
+      ),
+    );
+    if (!sleepInstance) {
+      throw new Error("Missing sleep instance");
+    }
+    await harness.runUntilIdle(buildPayload(sleepInstance, "create"));
 
     let sleepStatus = await harness.getStatus("sleep", sleepId);
     expect(sleepStatus.status).toBe("waiting");
 
     harness.clock.advanceBy("1 hour");
-    await harness.runUntilIdle();
+    await harness.runUntilIdle(buildPayload(sleepInstance, "wake"));
 
     sleepStatus = await harness.getStatus("sleep", sleepId);
     expect(sleepStatus.status).toBe("complete");
 
     const eventId = await harness.createInstance("events");
-    await harness.runUntilIdle();
+    const [eventInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "event-workflow"), eb("instanceId", "=", eventId)),
+      ),
+    );
+    if (!eventInstance) {
+      throw new Error("Missing event instance");
+    }
+    await harness.runUntilIdle(buildPayload(eventInstance, "create"));
 
     let eventStatus = await harness.getStatus("events", eventId);
     expect(eventStatus.status).toBe("waiting");
 
     await harness.sendEvent("events", eventId, { type: "ready", payload: { ok: true } });
-    await harness.runUntilIdle();
+    await harness.runUntilIdle(buildPayload(eventInstance, "event"));
 
     eventStatus = await harness.getStatus("events", eventId);
     expect(eventStatus.status).toBe("complete");
@@ -93,8 +135,16 @@ describe.skip("createWorkflowsTestHarness (skipped: new runner in progress)", ()
     testClock = harness.clock;
 
     const startMs = testClock.now().getTime();
-    await harness.createInstance("retryDelay");
-    await harness.runUntilIdle();
+    const retryId = await harness.createInstance("retryDelay");
+    const [retryInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("instanceId", "=", retryId)),
+      ),
+    );
+    if (!retryInstance) {
+      throw new Error("Missing retry instance");
+    }
+    await harness.runUntilIdle(buildPayload(retryInstance, "create"));
 
     const nowMs = testClock.now().getTime();
     expect(nowMs - startMs).toBe(5 * 60_000);

@@ -62,7 +62,6 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
 
   const config: WorkflowsFragmentConfig = {
     workflows,
-    enableRunnerTick: true,
     runtime,
   };
   const fragment = instantiate(workflowsFragmentDefinition)
