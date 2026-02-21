@@ -4,6 +4,7 @@ import type {
   FragnoPublicConfig,
   FragmentInstantiationBuilder,
   FragnoInstantiatedFragment,
+  AnyFragnoInstantiatedFragment,
   FragmentDefinition,
 } from "@fragno-dev/core";
 import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/route";
@@ -27,6 +28,109 @@ type BoundServices<T> = {
       ? BoundServices<T[K]>
       : T[K];
 };
+
+type FragmentFactoryContext = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: DatabaseAdapter<any>;
+  test: BaseTestContext & AdapterContext<SupportedAdapter>;
+};
+
+type FragmentFactoryResult =
+  | FragmentInstantiationBuilder<
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any // eslint-disable-line @typescript-eslint/no-explicit-any
+    >
+  | FragnoInstantiatedFragment<
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any // eslint-disable-line @typescript-eslint/no-explicit-any
+    >;
+
+type HandlerThisContextFromFactoryResult<T> =
+  T extends FragmentInstantiationBuilder<
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    infer THandlerThisContext,
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+    ? THandlerThisContext
+    : T extends FragnoInstantiatedFragment<
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          infer THandlerThisContext,
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          any // eslint-disable-line @typescript-eslint/no-explicit-any
+        >
+      ? THandlerThisContext
+      : RequestThisContext;
+
+type FragmentResultFromFactoryResult<T> =
+  T extends FragmentInstantiationBuilder<
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    infer TDeps,
+    infer TBaseServices,
+    infer TServices,
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    infer TServiceThisContext,
+    infer THandlerThisContext,
+    infer TRequestStorage,
+    infer TRoutesOrFactories,
+    any // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+    ? FragmentResult<
+        TDeps,
+        BoundServices<TBaseServices & TServices>,
+        TServiceThisContext,
+        THandlerThisContext,
+        TRequestStorage,
+        FlattenRouteFactories<TRoutesOrFactories>,
+        ExtractSchemaFromDeps<TDeps>
+      >
+    : T extends FragnoInstantiatedFragment<
+          infer TRoutes,
+          infer TDeps,
+          infer TServices,
+          infer TServiceThisContext,
+          infer THandlerThisContext,
+          infer TRequestStorage,
+          any // eslint-disable-line @typescript-eslint/no-explicit-any
+        >
+      ? FragmentResult<
+          TDeps,
+          BoundServices<TServices>,
+          TServiceThisContext,
+          THandlerThisContext,
+          TRequestStorage,
+          TRoutes,
+          ExtractSchemaFromDeps<TDeps>
+        >
+      : never;
 
 // Extract the schema type from database fragment dependencies
 // Database fragments have ImplicitDatabaseDependencies<TSchema> which includes `schema: TSchema`
@@ -68,7 +172,7 @@ interface FragmentResult<
 }
 
 // Safe: Catch-all for any fragment result type
-type AnyFragmentResult = FragmentResult<
+export type AnyFragmentResult = FragmentResult<
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -111,6 +215,7 @@ interface FragmentBuilderConfig<
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TInternalRoutes extends readonly AnyRouteOrFactory[],
 > {
+  kind: "builder";
   definition: FragmentDefinition<
     TConfig,
     TOptions,
@@ -138,6 +243,43 @@ interface FragmentBuilderConfig<
     TRoutesOrFactories,
     TInternalRoutes
   >;
+  migrateToVersion?: number;
+}
+
+/**
+ * Configuration for a pre-built fragment instance
+ */
+interface FragmentInstanceConfig<
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
+  TRequestStorage,
+  TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+> {
+  kind: "instance";
+  fragment: FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    FragnoPublicConfig
+  >;
+  migrateToVersion?: number;
+}
+
+/**
+ * Configuration for a fragment factory
+ */
+interface FragmentFactoryConfig {
+  kind: "factory";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  definition: FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>;
+  factory: (context: FragmentFactoryContext) => FragmentFactoryResult;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  config?: any;
   migrateToVersion?: number;
 }
 
@@ -176,7 +318,23 @@ interface DatabaseFragmentsTestResult<
 /**
  * Internal storage for fragment configurations
  */
-type FragmentConfigMap = Map<string, AnyFragmentBuilderConfig>;
+type AnyFragmentInstanceConfig = FragmentInstanceConfig<
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any // eslint-disable-line @typescript-eslint/no-explicit-any
+>;
+
+type AnyFragmentFactoryConfig = FragmentFactoryConfig;
+
+type AnyFragmentConfig =
+  | AnyFragmentBuilderConfig
+  | AnyFragmentInstanceConfig
+  | AnyFragmentFactoryConfig;
+
+type FragmentConfigMap = Map<string, AnyFragmentConfig>;
 
 /**
  * Builder for creating multiple database fragments for testing
@@ -256,10 +414,99 @@ export class DatabaseFragmentsTestBuilder<
     keyof TFragments extends never ? THandlerThisContext : TFirstFragmentThisContext
   > {
     this.#fragments.set(name, {
+      kind: "builder",
       definition: builder.definition,
       builder,
       migrateToVersion: options?.migrateToVersion,
     });
+    return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  /**
+   * Add a pre-built fragment instance to the test setup
+   *
+   * @param name - Unique name for the fragment
+   * @param fragment - Already-built fragment instance
+   */
+  withFragmentInstance<
+    TName extends string,
+    TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+    TDeps,
+    TServices extends Record<string, unknown>,
+    TServiceThisContext extends RequestThisContext,
+    THandlerThisContext extends RequestThisContext,
+    TRequestStorage,
+  >(
+    name: TName,
+    fragment: FragnoInstantiatedFragment<
+      TRoutes,
+      TDeps,
+      TServices,
+      TServiceThisContext,
+      THandlerThisContext,
+      TRequestStorage,
+      FragnoPublicConfig
+    >,
+    options?: { migrateToVersion?: number },
+  ): DatabaseFragmentsTestBuilder<
+    TFragments & {
+      [K in TName]: FragmentResult<
+        TDeps,
+        BoundServices<TServices>,
+        TServiceThisContext,
+        THandlerThisContext,
+        TRequestStorage,
+        TRoutes,
+        ExtractSchemaFromDeps<TDeps>
+      >;
+    },
+    TAdapter,
+    keyof TFragments extends never ? THandlerThisContext : TFirstFragmentThisContext
+  > {
+    this.#fragments.set(name, {
+      kind: "instance",
+      fragment,
+      migrateToVersion: options?.migrateToVersion,
+    });
+
+    return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  /**
+   * Add a fragment factory to the test setup.
+   * The factory runs after the adapter is created.
+   *
+   * @param name - Unique name for the fragment
+   * @param definition - Fragment definition (used to extract schema/namespace)
+   * @param factory - Factory that returns a builder or a pre-built fragment
+   */
+  withFragmentFactory<TName extends string, TFactoryResult extends FragmentFactoryResult>(
+    name: TName,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    definition: FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>,
+    factory: (context: FragmentFactoryContext) => TFactoryResult,
+    options?: {
+      migrateToVersion?: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config?: any;
+    },
+  ): DatabaseFragmentsTestBuilder<
+    TFragments & {
+      [K in TName]: FragmentResultFromFactoryResult<TFactoryResult>;
+    },
+    TAdapter,
+    keyof TFragments extends never
+      ? HandlerThisContextFromFactoryResult<TFactoryResult>
+      : TFirstFragmentThisContext
+  > {
+    this.#fragments.set(name, {
+      kind: "factory",
+      definition,
+      factory,
+      config: options?.config,
+      migrateToVersion: options?.migrateToVersion,
+    });
+
     return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
@@ -276,25 +523,45 @@ export class DatabaseFragmentsTestBuilder<
     }
 
     if (this.#fragments.size === 0) {
-      throw new Error("At least one fragment must be added using withFragment()");
+      throw new Error(
+        "At least one fragment must be added using withFragment(), withFragmentFactory(), or withFragmentInstance().",
+      );
     }
 
     const adapterConfig = this.#adapter;
 
     // Extract fragment names and configs
-    const fragmentNames = Array.from(this.#fragments.keys());
-    const fragmentConfigs = Array.from(this.#fragments.values());
+    const fragmentEntries = Array.from(this.#fragments.entries());
+    const fragmentNames = fragmentEntries.map(([name]) => name);
 
     // Extract schemas from definitions and prepare schema configs
     const schemaConfigs: SchemaConfig[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builderConfigs: Array<{ config: any; routes: any; options: any }> = [];
+    const fragmentPlans: Array<{
+      name: string;
+      kind: "builder" | "instance" | "factory";
+      schema: AnySchema;
+      namespace: string | null;
+      migrateToVersion?: number;
+      builderConfig?: {
+        builder: AnyFragmentBuilderConfig["builder"];
+        definition: AnyFragmentBuilderConfig["definition"];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        config: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        routes: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        options: any;
+      };
+      factory?: FragmentFactoryConfig["factory"];
+      cachedFactoryResult?: FragmentFactoryResult;
+      fragment?: AnyFragnoInstantiatedFragment;
+    }> = [];
 
-    for (const fragmentConfig of fragmentConfigs) {
-      const builder = fragmentConfig.builder;
-      const definition = builder.definition;
-
-      // Extract schema and namespace from definition by calling dependencies with a mock adapter
+    const extractSchemaFromDefinition = (
+      definition: FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      actualConfig: any,
+    ) => {
       let schema: AnySchema | undefined;
       let namespace: string | null | undefined;
 
@@ -318,24 +585,18 @@ export class DatabaseFragmentsTestBuilder<
             close: async () => {},
           };
 
-          // Use the actual config from the builder instead of an empty mock
-          // This ensures dependencies can be properly initialized (e.g., Stripe with API keys)
-          const actualConfig = builder.config ?? {};
-
           const deps = definition.dependencies({
-            config: actualConfig,
+            config: actualConfig ?? {},
             options: {
               databaseAdapter: mockAdapter as any, // eslint-disable-line @typescript-eslint/no-explicit-any
             } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
           });
 
-          // The schema and namespace are in deps for database fragments
           if (deps && typeof deps === "object" && "schema" in deps) {
             schema = (deps as any).schema; // eslint-disable-line @typescript-eslint/no-explicit-any
             namespace = (deps as any).namespace; // eslint-disable-line @typescript-eslint/no-explicit-any
           }
         } catch (error) {
-          // If extraction fails, provide a helpful error message
           const errorMessage =
             error instanceof Error
               ? error.message
@@ -365,17 +626,91 @@ export class DatabaseFragmentsTestBuilder<
         );
       }
 
+      return { schema, namespace };
+    };
+
+    for (const [name, fragmentConfig] of fragmentEntries) {
+      if (fragmentConfig.kind === "builder") {
+        const builder = fragmentConfig.builder;
+        const definition = builder.definition;
+        const { schema, namespace } = extractSchemaFromDefinition(definition, builder.config ?? {});
+
+        schemaConfigs.push({
+          schema,
+          namespace,
+          migrateToVersion: fragmentConfig.migrateToVersion,
+        });
+
+        fragmentPlans.push({
+          name,
+          kind: "builder",
+          schema,
+          namespace,
+          migrateToVersion: fragmentConfig.migrateToVersion,
+          builderConfig: {
+            builder: fragmentConfig.builder,
+            definition: fragmentConfig.definition,
+            config: builder.config ?? {},
+            routes: builder.routes ?? [],
+            options: builder.options ?? {},
+          },
+        });
+        continue;
+      }
+
+      if (fragmentConfig.kind === "factory") {
+        const definition = fragmentConfig.definition;
+        const { schema, namespace } = extractSchemaFromDefinition(
+          definition,
+          fragmentConfig.config ?? {},
+        );
+
+        schemaConfigs.push({
+          schema,
+          namespace,
+          migrateToVersion: fragmentConfig.migrateToVersion,
+        });
+
+        fragmentPlans.push({
+          name,
+          kind: "factory",
+          schema,
+          namespace,
+          migrateToVersion: fragmentConfig.migrateToVersion,
+          factory: fragmentConfig.factory,
+        });
+
+        continue;
+      }
+
+      const fragment = fragmentConfig.fragment;
+      const deps = fragment.$internal?.deps as
+        | {
+            schema?: AnySchema;
+            namespace?: string | null;
+          }
+        | undefined;
+
+      if (!deps?.schema) {
+        throw new Error(
+          `Fragment '${name}' does not have a database schema in deps. ` +
+            `Make sure you're using defineFragment().extend(withDatabase(schema)).`,
+        );
+      }
+
       schemaConfigs.push({
-        schema,
-        namespace,
+        schema: deps.schema,
+        namespace: deps.namespace ?? null,
         migrateToVersion: fragmentConfig.migrateToVersion,
       });
 
-      // Extract config, routes, and options from builder using public getters
-      builderConfigs.push({
-        config: builder.config ?? {},
-        routes: builder.routes ?? [],
-        options: builder.options ?? {},
+      fragmentPlans.push({
+        name,
+        kind: "instance",
+        schema: deps.schema,
+        namespace: deps.namespace ?? null,
+        migrateToVersion: fragmentConfig.migrateToVersion,
+        fragment,
       });
     }
 
@@ -383,33 +718,81 @@ export class DatabaseFragmentsTestBuilder<
 
     // Helper to create fragments with service wiring
     const createFragments = () => {
+      const resolveBuilderConfig = (builder: AnyFragmentBuilderConfig["builder"]) => ({
+        builder,
+        definition: builder.definition,
+        config: builder.config ?? {},
+        routes: builder.routes ?? [],
+        options: builder.options ?? {},
+      });
+
+      const isBuilder = (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        value: any,
+      ): value is AnyFragmentBuilderConfig["builder"] =>
+        Boolean(value) && typeof value === "object" && "build" in value && "definition" in value;
+
       // First pass: create fragments without service dependencies to extract provided services
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const providedServicesByName: Record<string, { service: any; orm: any }> = {};
-      const fragmentResults: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const instanceResults = new Map<string, any>(); // eslint-disable-line @typescript-eslint/no-explicit-any
+      const builderConfigs = new Map<string, ReturnType<typeof resolveBuilderConfig>>();
 
-      for (let i = 0; i < fragmentConfigs.length; i++) {
-        const fragmentConfig = fragmentConfigs[i]!;
-        const builderConfig = builderConfigs[i]!;
-        const namespace = schemaConfigs[i]!.namespace;
-        const schema = schemaConfigs[i]!.schema;
-        const orm = testContext.getOrm(namespace);
+      for (const plan of fragmentPlans) {
+        const orm = testContext.getOrm(plan.namespace);
+        let fragment: AnyFragnoInstantiatedFragment | undefined;
+        let builderConfig = plan.builderConfig;
 
-        // Merge builder options with database adapter
-        const mergedOptions = {
-          ...builderConfig.options,
-          databaseAdapter: adapter,
-        };
+        if (plan.kind === "factory") {
+          const result =
+            plan.cachedFactoryResult ??
+            plan.factory!({
+              adapter,
+              test: testContext,
+            });
 
-        // Instantiate fragment using the builder
-        const fragment = fragmentConfig.builder.withOptions(mergedOptions).build();
+          if (!plan.cachedFactoryResult) {
+            plan.cachedFactoryResult = result;
+          }
 
-        // Extract provided services based on serviceDependencies metadata
-        // Note: serviceDependencies lists services this fragment USES, not provides
-        // For provided services, we need to check what's actually in fragment.services
-        // and match against other fragments' service dependencies
+          if (isBuilder(result)) {
+            builderConfig = resolveBuilderConfig(result);
+          } else {
+            fragment = result;
+          }
+        }
 
-        // Store all services as potentially provided
+        const usesBuilder = plan.kind === "builder" || !!builderConfig;
+
+        if (usesBuilder) {
+          const resolvedBuilderConfig = builderConfig ?? plan.builderConfig!;
+          const mergedOptions = {
+            ...resolvedBuilderConfig.options,
+            databaseAdapter: adapter,
+          };
+
+          fragment = resolvedBuilderConfig.builder.withOptions(mergedOptions).build();
+          builderConfigs.set(plan.name, resolvedBuilderConfig);
+        } else {
+          fragment = fragment ?? plan.fragment!;
+
+          const deps = fragment.$internal?.deps as
+            | { databaseAdapter?: DatabaseAdapter<unknown> }
+            | undefined;
+          if (deps?.databaseAdapter && deps.databaseAdapter !== adapter) {
+            throw new Error(
+              `Fragment '${plan.name}' was built with a different database adapter instance. ` +
+                `Use withFragment() or ensure the fragment uses the same adapter instance as the test builder.`,
+            );
+          }
+        }
+
+        if (!fragment) {
+          throw new Error(
+            `Fragment '${plan.name}' did not return a valid fragment instance from its factory.`,
+          );
+        }
+
         for (const [serviceName, serviceImpl] of Object.entries(fragment.services)) {
           providedServicesByName[serviceName] = {
             service: serviceImpl,
@@ -417,30 +800,40 @@ export class DatabaseFragmentsTestBuilder<
           };
         }
 
-        // Store the fragment result
-        const deps = fragment.$internal?.deps;
-
-        fragmentResults.push({
-          fragment,
-          services: fragment.services,
-          deps: deps || {},
-          callRoute: fragment.callRoute.bind(fragment),
-          get db() {
-            return orm;
-          },
-          _orm: orm,
-          _schema: schema,
-        });
+        if (!usesBuilder) {
+          const deps = fragment.$internal?.deps;
+          instanceResults.set(plan.name, {
+            fragment,
+            services: fragment.services,
+            deps: deps || {},
+            callRoute: fragment.callRoute.bind(fragment),
+            get db() {
+              return orm;
+            },
+            _orm: orm,
+            _schema: plan.schema,
+          });
+        }
       }
 
       // Second pass: rebuild fragments with service dependencies wired up
-      for (let i = 0; i < fragmentConfigs.length; i++) {
-        const fragmentConfig = fragmentConfigs[i]!;
-        const definition = fragmentConfig.builder.definition;
-        const builderConfig = builderConfigs[i]!;
-        const namespace = schemaConfigs[i]!.namespace;
-        const schema = schemaConfigs[i]!.schema;
-        const orm = testContext.getOrm(namespace);
+      const fragmentResults: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+      for (const plan of fragmentPlans) {
+        const orm = testContext.getOrm(plan.namespace);
+
+        if (instanceResults.has(plan.name)) {
+          fragmentResults.push(instanceResults.get(plan.name));
+          continue;
+        }
+
+        const builderConfig = builderConfigs.get(plan.name);
+        if (!builderConfig) {
+          throw new Error(
+            `Fragment '${plan.name}' was expected to produce a builder for service wiring.`,
+          );
+        }
+        const definition = builderConfig.definition;
 
         // Build service implementations for services this fragment uses
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -462,16 +855,14 @@ export class DatabaseFragmentsTestBuilder<
         };
 
         // Rebuild the fragment with service implementations using the builder
-        const fragment = fragmentConfig.builder
+        const fragment = builderConfig.builder
           .withOptions(mergedOptions)
           .withServices(serviceImplementations as any) // eslint-disable-line @typescript-eslint/no-explicit-any
           .build();
 
-        // Update the result
-        // Access deps from the internal property
         const deps = fragment.$internal?.deps;
 
-        fragmentResults[i] = {
+        fragmentResults.push({
           fragment,
           services: fragment.services,
           deps: deps || {},
@@ -480,8 +871,8 @@ export class DatabaseFragmentsTestBuilder<
             return orm;
           },
           _orm: orm,
-          _schema: schema,
-        };
+          _schema: plan.schema,
+        });
       }
 
       return fragmentResults;
