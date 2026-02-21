@@ -298,6 +298,7 @@ describe("generateSchema and migrate", () => {
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
+      CREATE INDEX "idx_namespace_status_last_attempt" ON "fragno_hooks" USING btree ("namespace","status","lastAttemptAt");
       CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
       CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
       CREATE INDEX "idx_outbox_mutations_entry" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp");

@@ -12,7 +12,7 @@ import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-b
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
-import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
+import { dbNow } from "../query/db-now";
 import type { FragnoId } from "../schema/create";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 
@@ -243,107 +243,22 @@ describe("Hook Service", () => {
     const events = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+          () => [fragment.services.hookService.getHooksByNamespace("test-namespace")] as const,
         )
         .transform(({ serviceResult: [result] }) => result)
         .execute();
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
+    const event = events.find((entry) => entry.hookName === "onTest" && entry.status === "pending");
+    expect(event).toBeDefined();
+    expect(event).toMatchObject({
       hookName: "onTest",
       payload: { test: "data" },
       attempts: 0,
       maxAttempts: 5,
-      idempotencyKey: nonce,
+      status: "pending",
+      nonce,
     });
-  });
-
-  it("should mark a hook event as completed", async () => {
-    const nonce = "test-nonce-2";
-    let eventId: FragnoId;
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          eventId = uow.create("fragno_hooks", {
-            namespace: "test-namespace",
-            hookName: "onComplete",
-            payload: { test: "data" },
-            status: "pending",
-            attempts: 0,
-            maxAttempts: 5,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-    });
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .withServiceCalls(() => [fragment.services.hookService.markHookCompleted(eventId)] as const)
-        .execute();
-    });
-
-    const result = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
-        .transform(({ serviceResult: [event] }) => event)
-        .execute();
-    });
-
-    expect(result).toBeDefined();
-    expect(result?.status).toBe("completed");
-    expect(result?.lastAttemptAt).toBeInstanceOf(Date);
-  });
-
-  it("should reject marking completed with a stale id", async () => {
-    const namespace = "complete-stale";
-    const nonce = "test-nonce-complete-stale";
-    let staleId!: FragnoId;
-
-    await fragment.inContext(async function () {
-      const createdId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace,
-            hookName: "onCompleteStale",
-            payload: { test: "data" },
-            status: "pending",
-            attempts: 0,
-            maxAttempts: 5,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-      staleId = createdId;
-    });
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .withServiceCalls(
-          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
-        )
-        .execute();
-    });
-
-    await expect(
-      fragment.inContext(async function () {
-        await this.handlerTx()
-          .withServiceCalls(
-            () => [fragment.services.hookService.markHookCompleted(staleId)] as const,
-          )
-          .execute();
-      }),
-    ).rejects.toThrow(ConcurrencyConflictError);
   });
 
   it("should mark a hook event as processing", async () => {
@@ -499,167 +414,6 @@ describe("Hook Service", () => {
     expect(result?.error).toBe("Max attempts reached");
   });
 
-  it("should retrieve stale events ready for retry", async () => {
-    const nonce = "test-nonce-6";
-    let eventId: FragnoId;
-
-    const pastTime = new Date(Date.now() - 10000);
-
-    await fragment.inContext(async function () {
-      const createdId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace: "test-namespace",
-            hookName: "onStale",
-            payload: { test: "stale" },
-            status: "pending",
-            attempts: 1,
-            maxAttempts: 5,
-            lastAttemptAt: pastTime,
-            nextRetryAt: pastTime,
-            error: "Previous error",
-            nonce,
-          });
-        })
-        .execute();
-      eventId = createdId;
-    });
-
-    const events = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    const staleEvent = events.find((e) => e.id.externalId === eventId.externalId);
-    expect(staleEvent).toBeDefined();
-    expect(staleEvent?.hookName).toBe("onStale");
-    expect(staleEvent?.attempts).toBe(1);
-  });
-
-  it("should detect conflicts when requeueing after another update in the same transaction", async () => {
-    const namespace = "requeue-conflict";
-    const nonce = "test-nonce-requeue-conflict";
-    let eventId!: FragnoId;
-
-    const staleBefore = new Date(Date.now() - 60_000);
-    const lastAttemptAt = new Date(Date.now() - 120_000);
-
-    await fragment.inContext(async function () {
-      eventId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace,
-            hookName: "onRequeueConflict",
-            payload: { test: "requeue" },
-            status: "processing",
-            attempts: 0,
-            maxAttempts: 5,
-            lastAttemptAt,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-    });
-
-    await expect(
-      fragment.inContext(async function () {
-        await this.handlerTx({ retryPolicy: new NoRetryPolicy() })
-          .withServiceCalls(
-            () =>
-              [
-                fragment.services.hookService.markHookProcessing(eventId),
-                fragment.services.hookService.requeueStuckProcessingHooks(namespace, staleBefore),
-              ] as const,
-          )
-          .execute();
-      }),
-    ).rejects.toThrow(ConcurrencyConflictError);
-  });
-
-  it("should not retrieve events from different namespace", async () => {
-    const nonce = "test-nonce-7";
-
-    await fragment.inContext(async function () {
-      await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          uow.create("fragno_hooks", {
-            namespace: "other-namespace",
-            hookName: "onOther",
-            payload: { test: "other" },
-            status: "pending",
-            attempts: 0,
-            maxAttempts: 5,
-            lastAttemptAt: null,
-            nextRetryAt: null,
-            error: null,
-            nonce,
-          });
-        })
-        .execute();
-    });
-
-    const events = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    const otherEvent = events.find((e) => e.hookName === "onOther");
-    expect(otherEvent).toBeUndefined();
-  });
-
-  it("should not retrieve events not yet ready for retry", async () => {
-    const nonce = "test-nonce-8";
-    let eventId: FragnoId;
-
-    const futureTime = new Date(Date.now() + 60000);
-
-    await fragment.inContext(async function () {
-      const createdId = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(internalSchema);
-          return uow.create("fragno_hooks", {
-            namespace: "test-namespace",
-            hookName: "onFuture",
-            payload: { test: "future" },
-            status: "pending",
-            attempts: 1,
-            maxAttempts: 5,
-            lastAttemptAt: new Date(),
-            nextRetryAt: futureTime,
-            error: "Previous error",
-            nonce,
-          });
-        })
-        .execute();
-      eventId = createdId;
-    });
-
-    const events = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    const futureEvent = events.find((e) => e.id.externalId === eventId.externalId);
-    expect(futureEvent).toBeUndefined();
-  });
-
   it("should claim only ready pending events and mark them processing", async () => {
     const namespace = "claim-ready";
     const pastTime = new Date(Date.now() - 10000);
@@ -668,6 +422,7 @@ describe("Hook Service", () => {
     let nullRetryId!: FragnoId;
     let pastRetryId!: FragnoId;
     let futureRetryId!: FragnoId;
+    let otherNamespaceId!: FragnoId;
 
     await fragment.inContext(async function () {
       await this.handlerTx()
@@ -709,6 +464,18 @@ describe("Hook Service", () => {
             error: "Previous error",
             nonce: "test-nonce-claim-future",
           });
+          otherNamespaceId = uow.create("fragno_hooks", {
+            namespace: "other-namespace",
+            hookName: "onOtherNamespace",
+            payload: { test: "other" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-claim-other",
+          });
         })
         .execute();
     });
@@ -727,30 +494,36 @@ describe("Hook Service", () => {
     expect(claimedIds.has(nullRetryId.externalId)).toBe(true);
     expect(claimedIds.has(pastRetryId.externalId)).toBe(true);
     expect(claimedIds.has(futureRetryId.externalId)).toBe(false);
+    expect(claimedIds.has(otherNamespaceId.externalId)).toBe(false);
 
-    const [nullEvent, pastEvent, futureEvent] = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              fragment.services.hookService.getHookById(nullRetryId),
-              fragment.services.hookService.getHookById(pastRetryId),
-              fragment.services.hookService.getHookById(futureRetryId),
-            ] as const,
-        )
-        .transform(({ serviceResult: [nullResult, pastResult, futureResult] }) => [
-          nullResult,
-          pastResult,
-          futureResult,
-        ])
-        .execute();
-    });
+    const [nullEvent, pastEvent, futureEvent, otherEvent] = await fragment.inContext(
+      async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [
+                fragment.services.hookService.getHookById(nullRetryId),
+                fragment.services.hookService.getHookById(pastRetryId),
+                fragment.services.hookService.getHookById(futureRetryId),
+                fragment.services.hookService.getHookById(otherNamespaceId),
+              ] as const,
+          )
+          .transform(({ serviceResult: [nullResult, pastResult, futureResult, otherResult] }) => [
+            nullResult,
+            pastResult,
+            futureResult,
+            otherResult,
+          ])
+          .execute();
+      },
+    );
 
     expect(nullEvent?.status).toBe("processing");
     expect(nullEvent?.lastAttemptAt).toBeInstanceOf(Date);
     expect(pastEvent?.status).toBe("processing");
     expect(pastEvent?.lastAttemptAt).toBeInstanceOf(Date);
     expect(futureEvent?.status).toBe("pending");
+    expect(otherEvent?.status).toBe("pending");
   });
 
   it("should return claimed ids with incremented versions", async () => {
@@ -790,6 +563,94 @@ describe("Hook Service", () => {
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.id.externalId).toBe(createdId.externalId);
     expect(claimed[0]?.id.version).toBe(createdId.version + 1);
+  });
+
+  it("should claim stale processing events and return stuck metadata", async () => {
+    const namespace = "claim-stuck";
+    const staleBefore = dbNow().plus({ minutes: -1 });
+    const staleLastAttemptAt = new Date(Date.now() - 5 * 60_000);
+    const freshLastAttemptAt = new Date(Date.now() - 10_000);
+    const staleNextRetryAt = new Date(Date.now() + 60_000);
+
+    let staleId!: FragnoId;
+    let freshId!: FragnoId;
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          staleId = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onStuck",
+            payload: { test: "stuck" },
+            status: "processing",
+            attempts: 1,
+            maxAttempts: 5,
+            lastAttemptAt: staleLastAttemptAt,
+            nextRetryAt: staleNextRetryAt,
+            error: null,
+            nonce: "test-nonce-stuck",
+          });
+          freshId = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onFresh",
+            payload: { test: "fresh" },
+            status: "processing",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: freshLastAttemptAt,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-fresh",
+          });
+        })
+        .execute();
+    });
+
+    const claimResult = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.claimStuckProcessingHookEvents(namespace, staleBefore),
+            ] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(claimResult.events).toHaveLength(1);
+    expect(claimResult.events[0]?.hookName).toBe("onStuck");
+    expect(claimResult.events[0]?.id.version).toBe(staleId.version + 1);
+
+    expect(claimResult.stuckEvents).toHaveLength(1);
+    expect(claimResult.stuckEvents[0]?.hookName).toBe("onStuck");
+    expect(claimResult.stuckEvents[0]?.id.externalId).toBe(staleId.externalId);
+    expect(claimResult.stuckEvents[0]?.id.version).toBe(staleId.version);
+    expect(claimResult.stuckEvents[0]?.lastAttemptAt?.getTime()).toBe(staleLastAttemptAt.getTime());
+    expect(claimResult.stuckEvents[0]?.nextRetryAt?.getTime()).toBe(staleNextRetryAt.getTime());
+
+    const [staleEvent, freshEvent] = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.getHookById(staleId),
+              fragment.services.hookService.getHookById(freshId),
+            ] as const,
+        )
+        .transform(({ serviceResult: [staleResult, freshResult] }) => [staleResult, freshResult])
+        .execute();
+    });
+
+    expect(staleEvent?.status).toBe("processing");
+    expect(staleEvent?.nextRetryAt).toBeNull();
+    expect(staleEvent?.lastAttemptAt).toBeInstanceOf(Date);
+    expect(staleEvent?.lastAttemptAt?.getTime()).toBeGreaterThan(staleLastAttemptAt.getTime());
+    expect(freshEvent?.lastAttemptAt).toBeInstanceOf(Date);
+    expect(
+      Math.abs((freshEvent?.lastAttemptAt?.getTime() ?? 0) - freshLastAttemptAt.getTime()),
+    ).toBeLessThan(2000);
   });
 
   it("should return now when pending hooks have no nextRetryAt", async () => {

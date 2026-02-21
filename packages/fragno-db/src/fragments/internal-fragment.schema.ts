@@ -85,5 +85,8 @@ export const internalSchema = schema("fragno_internal", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_sync_request_id", ["requestId"], { unique: true });
-    });
+    })
+    .alterTable("fragno_hooks", (t) =>
+      t.createIndex("idx_namespace_status_last_attempt", ["namespace", "status", "lastAttemptAt"]),
+    );
 });
