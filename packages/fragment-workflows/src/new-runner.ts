@@ -4,7 +4,7 @@ import { ConcurrencyConflictError, type IUnitOfWork } from "@fragno-dev/db";
 import type { WorkflowsRegistry, WorkflowsRunner } from "./workflow";
 import { createWorkflowsBindingsForRunner } from "./bindings-runner";
 import { workflowsSchema } from "./schema";
-import { isPausedStatus, isTerminalStatus } from "./runner/status";
+import { isTerminalStatus } from "./runner/status";
 import { createRunnerState } from "./runner/state";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
 import type {
@@ -126,7 +126,18 @@ async function buildTickPlan(
   if (instance.runNumber !== payload.runNumber) {
     return { processed, operations };
   }
-  if (isTerminalStatus(instance.status) || isPausedStatus(instance.status)) {
+  if (isTerminalStatus(instance.status) || instance.status === "paused") {
+    return { processed, operations };
+  }
+  if (instance.status === "waitingForPause" || instance.pauseRequested) {
+    processed = 1;
+    operations.push((uow) => {
+      uow
+        .forSchema(workflowsSchema)
+        .update("workflow_instance", instance.id, (b) =>
+          b.set({ status: "paused", updatedAt: b.now() }).check(),
+        );
+    });
     return { processed, operations };
   }
 
