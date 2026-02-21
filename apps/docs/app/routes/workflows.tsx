@@ -89,7 +89,7 @@ export const workflows = { approval: ApprovalWorkflow } as const;`,
 import { createWorkflowsRunner, workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
 const fragment = instantiate(workflowsFragmentDefinition)
-  .withConfig({ workflows, runtime: defaultFragnoRuntime, enableRunnerTick: true })
+    .withConfig({ workflows, runtime: defaultFragnoRuntime })
   .withRoutes([workflowsRoutesFactory])
   .withOptions({ databaseAdapter })
   .build();

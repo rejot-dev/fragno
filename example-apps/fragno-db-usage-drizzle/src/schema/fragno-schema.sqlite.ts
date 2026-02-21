@@ -35,6 +35,7 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),
+  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt),
   uniqueIndex("uidx_fragno_hooks_idx_fragno_hooks_external_id_d04b86f6").on(table.id)
 ])
 
@@ -438,7 +439,6 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
   pauseRequested: integer("pauseRequested", { mode: "boolean" }).notNull().default(false),
-  retentionUntil: integer("retentionUntil", { mode: "timestamp" }),
   runNumber: integer("runNumber").notNull().default(0),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
@@ -511,76 +511,12 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
   uniqueIndex("uidx_workflow_event_idx_workflow_event_external_id_workd61ca377").on(table.id)
 ])
 
-export const workflow_task_workflows = sqliteTable("workflow_task_workflows", {
-  id: text("id").notNull().unique().$defaultFn(() => createId()),
-  instanceRef: integer("instanceRef").notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
-  runNumber: integer("runNumber").notNull(),
-  kind: text("kind").notNull(),
-  runAt: integer("runAt", { mode: "timestamp" }).notNull(),
-  status: text("status").notNull(),
-  attempts: integer("attempts").notNull().default(0),
-  maxAttempts: integer("maxAttempts").notNull(),
-  lastError: text("lastError"),
-  lockedUntil: integer("lockedUntil", { mode: "timestamp" }),
-  lockOwner: text("lockOwner"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
-  _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.instanceRef],
-    foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_task_workflow_instance_taskInstance_workfloc70ca854"
-  }),
-  index("idx_workflow_task_idx_workflow_task_status_runAt_workfl9555454f").on(table.status, table.runAt),
-  index("idx_workflow_task_idx_workflow_task_status_lockedUntil_d7c21c4e").on(table.status, table.lockedUntil),
-  uniqueIndex("uidx_workflow_task_idx_workflow_task_workflowName_instad0a3dfbc").on(table.workflowName, table.instanceId, table.runNumber),
-  uniqueIndex("uidx_workflow_task_idx_workflow_task_external_id_workfl38de22c2").on(table.id)
-])
-
-export const workflow_log_workflows = sqliteTable("workflow_log_workflows", {
-  id: text("id").notNull().unique().$defaultFn(() => createId()),
-  instanceRef: integer("instanceRef").notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
-  runNumber: integer("runNumber").notNull(),
-  stepKey: text("stepKey"),
-  attempt: integer("attempt"),
-  level: text("level").notNull(),
-  category: text("category").notNull(),
-  message: text("message").notNull(),
-  data: text("data", { mode: "json" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.instanceRef],
-    foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_log_workflow_instance_logInstance_workflowsb79df5f6"
-  }),
-  index("idx_workflow_log_idx_workflow_log_history_createdAt_woracbe60e0").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
-  index("idx_workflow_log_idx_workflow_log_level_createdAt_workf5249eadc").on(table.workflowName, table.instanceId, table.runNumber, table.level, table.createdAt),
-  index("idx_workflow_log_idx_workflow_log_category_createdAt_wo557f68d7").on(table.workflowName, table.instanceId, table.runNumber, table.category, table.createdAt),
-  index("idx_workflow_log_idx_workflow_log_instanceRef_runNumber7006b0b7").on(table.instanceRef, table.runNumber, table.createdAt),
-  uniqueIndex("uidx_workflow_log_idx_workflow_log_external_id_workflow4fb96252").on(table.id)
-])
-
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
   workflow_stepList: many(workflow_step_workflows, {
     relationName: "workflow_step_workflow_instance"
   }),
   workflow_eventList: many(workflow_event_workflows, {
     relationName: "workflow_event_workflow_instance"
-  }),
-  workflow_taskList: many(workflow_task_workflows, {
-    relationName: "workflow_task_workflow_instance"
-  }),
-  workflow_logList: many(workflow_log_workflows, {
-    relationName: "workflow_log_workflow_instance"
   })
 }));
 
@@ -600,22 +536,6 @@ export const workflow_event_workflowsRelations = relations(workflow_event_workfl
   })
 }));
 
-export const workflow_task_workflowsRelations = relations(workflow_task_workflows, ({ one }) => ({
-  taskInstance: one(workflow_instance_workflows, {
-    relationName: "workflow_task_workflow_instance",
-    fields: [workflow_task_workflows.instanceRef],
-    references: [workflow_instance_workflows._internalId]
-  })
-}));
-
-export const workflow_log_workflowsRelations = relations(workflow_log_workflows, ({ one }) => ({
-  logInstance: one(workflow_instance_workflows, {
-    relationName: "workflow_log_workflow_instance",
-    fields: [workflow_log_workflows.instanceRef],
-    references: [workflow_instance_workflows._internalId]
-  })
-}));
-
 export const workflows_schema = {
   workflow_instance_workflows: workflow_instance_workflows,
   workflow_instance_workflowsRelations: workflow_instance_workflowsRelations,
@@ -629,13 +549,5 @@ export const workflows_schema = {
   workflow_event_workflowsRelations: workflow_event_workflowsRelations,
   workflow_event: workflow_event_workflows,
   workflow_eventRelations: workflow_event_workflowsRelations,
-  workflow_task_workflows: workflow_task_workflows,
-  workflow_task_workflowsRelations: workflow_task_workflowsRelations,
-  workflow_task: workflow_task_workflows,
-  workflow_taskRelations: workflow_task_workflowsRelations,
-  workflow_log_workflows: workflow_log_workflows,
-  workflow_log_workflowsRelations: workflow_log_workflowsRelations,
-  workflow_log: workflow_log_workflows,
-  workflow_logRelations: workflow_log_workflowsRelations,
-  schemaVersion: 9
+  schemaVersion: 5
 }
