@@ -9,7 +9,6 @@ import type {
   WorkflowEnqueuedHookPayload,
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
-  WorkflowLogLevel,
   WorkflowRegistryEntry,
   WorkflowsFragmentConfig,
 } from "./workflow";
@@ -84,18 +83,6 @@ type WorkflowEventRecord = {
   consumedByStepKey: string | null;
 };
 
-type WorkflowLogRecord = {
-  id: FragnoId;
-  runNumber: number;
-  stepKey: string | null;
-  attempt: number | null;
-  level: WorkflowLogLevel;
-  category: string;
-  message: string;
-  data: unknown | null;
-  createdAt: Date;
-};
-
 type WorkflowStepHistoryEntry = {
   id: string;
   runNumber: number;
@@ -125,18 +112,6 @@ type WorkflowEventHistoryEntry = {
   consumedByStepKey: string | null;
 };
 
-type WorkflowLogHistoryEntry = {
-  id: string;
-  runNumber: number;
-  stepKey: string | null;
-  attempt: number | null;
-  level: WorkflowLogLevel;
-  category: string;
-  message: string;
-  data: unknown | null;
-  createdAt: Date;
-};
-
 type ListInstancesParams = {
   workflowName: string;
   status?: InstanceStatus["status"];
@@ -149,14 +124,6 @@ type ListHistoryParams = {
   workflowName: string;
   instanceId: string;
   runNumber: number;
-  pageSize?: number;
-  stepsCursor?: Cursor;
-  eventsCursor?: Cursor;
-  includeLogs?: boolean;
-  logsCursor?: Cursor;
-  logLevel?: WorkflowLogLevel;
-  logCategory?: string;
-  order?: "asc" | "desc";
 };
 
 type InstanceDetails = { id: string; details: InstanceStatus };
@@ -263,20 +230,6 @@ function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowEventHistor
   };
 }
 
-function buildLogHistoryEntry(log: WorkflowLogRecord): WorkflowLogHistoryEntry {
-  return {
-    id: log.id.toString(),
-    runNumber: log.runNumber,
-    stepKey: log.stepKey,
-    attempt: log.attempt,
-    level: log.level,
-    category: log.category,
-    message: log.message,
-    data: log.data ?? null,
-    createdAt: log.createdAt,
-  };
-}
-
 function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
 }
@@ -288,8 +241,13 @@ function isPausedStatus(status: InstanceStatus["status"]) {
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
   .provideHooks(({ defineHook, config }) => ({
-    onWorkflowEnqueued: defineHook(async function (_payload: WorkflowEnqueuedHookPayload) {
-      await config.runner?.tick();
+    onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
+      if (!config.runner?.tick) {
+        return;
+      }
+      // nextRetryAt is null if the try is immediate, in that case we can use createdAt.
+      const timestamp = this.nextRetryAt ?? this.createdAt;
+      await config.runner.tick({ ...payload, timestamp });
     }),
   }))
   .providesBaseService(({ defineService, config }) => {
@@ -349,7 +307,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               status: "queued",
               params,
               pauseRequested: false,
-              retentionUntil: null,
               runNumber: 0,
               startedAt: null,
               completedAt: null,
@@ -358,24 +315,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               errorMessage: null,
             });
 
-            uow.create("workflow_task", {
-              instanceRef,
-              workflowName,
-              instanceId,
-              runNumber: 0,
-              kind: "run",
-              runAt: uow.now(),
-              status: "pending",
-              attempts: 0,
-              maxAttempts: 1,
-              lastError: null,
-              lockedUntil: null,
-              lockOwner: null,
-            });
-
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
               instanceId,
+              instanceRef: String(instanceRef),
+              runNumber: 0,
               reason: "create",
             });
 
@@ -393,7 +337,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       },
       createBatch: function (workflowName: string, instances: { id: string; params?: unknown }[]) {
         if (instances.length === 0) {
-          return Promise.resolve([]);
+          return this.serviceTx(workflowsSchema)
+            .transform(() => [])
+            .build();
         }
 
         return this.serviceTx(workflowsSchema)
@@ -429,7 +375,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 status: "queued",
                 params: instance.params ?? {},
                 pauseRequested: false,
-                retentionUntil: null,
                 runNumber: 0,
                 startedAt: null,
                 completedAt: null,
@@ -438,24 +383,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 errorMessage: null,
               });
 
-              uow.create("workflow_task", {
-                instanceRef,
-                workflowName,
-                instanceId: instance.id,
-                runNumber: 0,
-                kind: "run",
-                runAt: uow.now(),
-                status: "pending",
-                attempts: 0,
-                maxAttempts: 1,
-                lastError: null,
-                lockedUntil: null,
-                lockOwner: null,
-              });
-
               uow.triggerHook("onWorkflowEnqueued", {
                 workflowName,
                 instanceId: instance.id,
+                instanceRef: String(instanceRef),
+                runNumber: 0,
                 reason: "create",
               });
 
@@ -602,36 +534,17 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      listHistory: function ({
-        workflowName,
-        instanceId,
-        runNumber,
-        pageSize = DEFAULT_PAGE_SIZE,
-        stepsCursor,
-        eventsCursor,
-        includeLogs,
-        logsCursor,
-        logLevel,
-        logCategory,
-        order = "desc",
-      }: ListHistoryParams) {
-        const stepsOrder = stepsCursor?.orderDirection ?? order;
-        const eventsOrder = eventsCursor?.orderDirection ?? order;
-        const logsOrder = logsCursor?.orderDirection ?? order;
-        const stepsPageSize = stepsCursor?.pageSize ?? pageSize;
-        const eventsPageSize = eventsCursor?.pageSize ?? pageSize;
-        const logsPageSize = logsCursor?.pageSize ?? pageSize;
-
+      listHistory: function ({ workflowName, instanceId, runNumber }: ListHistoryParams) {
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) => {
-            let chain = uow
+            return uow
               .findFirst("workflow_instance", (b) =>
                 b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
                   eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
                 ),
               )
-              .findWithCursor("workflow_step", (b) => {
-                const query = b
+              .find("workflow_step", (b) =>
+                b
                   .whereIndex("idx_workflow_step_history_createdAt", (eb) =>
                     eb.and(
                       eb("workflowName", "=", workflowName),
@@ -639,13 +552,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                       eb("runNumber", "=", runNumber),
                     ),
                   )
-                  .orderByIndex("idx_workflow_step_history_createdAt", stepsOrder)
-                  .pageSize(stepsPageSize);
-
-                return stepsCursor ? query.after(stepsCursor) : query;
-              })
-              .findWithCursor("workflow_event", (b) => {
-                const query = b
+                  .orderByIndex("idx_workflow_step_history_createdAt", "desc"),
+              )
+              .find("workflow_event", (b) =>
+                b
                   .whereIndex("idx_workflow_event_history_createdAt", (eb) =>
                     eb.and(
                       eb("workflowName", "=", workflowName),
@@ -653,91 +563,23 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                       eb("runNumber", "=", runNumber),
                     ),
                   )
-                  .orderByIndex("idx_workflow_event_history_createdAt", eventsOrder)
-                  .pageSize(eventsPageSize);
-
-                return eventsCursor ? query.after(eventsCursor) : query;
-              });
-
-            const effectiveLogLevel = includeLogs ? logLevel : undefined;
-            const effectiveLogCategory = includeLogs ? logCategory : undefined;
-            const effectiveLogsCursor = includeLogs ? logsCursor : undefined;
-            const effectiveLogsPageSize = includeLogs ? logsPageSize : 1;
-
-            return chain.findWithCursor("workflow_log", (b) => {
-              if (effectiveLogLevel) {
-                const query = b
-                  .whereIndex("idx_workflow_log_level_createdAt", (eb) =>
-                    eb.and(
-                      eb("workflowName", "=", workflowName),
-                      eb("instanceId", "=", instanceId),
-                      eb("runNumber", "=", runNumber),
-                      eb("level", "=", effectiveLogLevel),
-                    ),
-                  )
-                  .orderByIndex("idx_workflow_log_level_createdAt", logsOrder)
-                  .pageSize(effectiveLogsPageSize);
-
-                return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
-              }
-
-              if (effectiveLogCategory) {
-                const query = b
-                  .whereIndex("idx_workflow_log_category_createdAt", (eb) =>
-                    eb.and(
-                      eb("workflowName", "=", workflowName),
-                      eb("instanceId", "=", instanceId),
-                      eb("runNumber", "=", runNumber),
-                      eb("category", "=", effectiveLogCategory),
-                    ),
-                  )
-                  .orderByIndex("idx_workflow_log_category_createdAt", logsOrder)
-                  .pageSize(effectiveLogsPageSize);
-
-                return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
-              }
-
-              const query = b
-                .whereIndex("idx_workflow_log_history_createdAt", (eb) =>
-                  eb.and(
-                    eb("workflowName", "=", workflowName),
-                    eb("instanceId", "=", instanceId),
-                    eb("runNumber", "=", runNumber),
-                  ),
-                )
-                .orderByIndex("idx_workflow_log_history_createdAt", logsOrder)
-                .pageSize(effectiveLogsPageSize);
-
-              return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
-            });
+                  .orderByIndex("idx_workflow_event_history_createdAt", "desc"),
+              );
           })
           .mutate(({ retrieveResult }) => {
-            const [instance, steps, events, logs] = retrieveResult as [
+            const [instance, steps, events] = retrieveResult as [
               WorkflowInstanceRecord | undefined,
-              { items: WorkflowStepRecord[]; cursor?: Cursor; hasNextPage: boolean },
-              { items: WorkflowEventRecord[]; cursor?: Cursor; hasNextPage: boolean },
-              { items: WorkflowLogRecord[]; cursor?: Cursor; hasNextPage: boolean },
+              WorkflowStepRecord[],
+              WorkflowEventRecord[],
             ];
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }
 
-            const filteredLogs =
-              includeLogs && logLevel && logCategory
-                ? logs?.items.filter((log) => log.category === logCategory)
-                : logs?.items;
-
             return {
               runNumber,
-              steps: steps.items.map(buildStepHistoryEntry),
-              events: events.items.map(buildEventHistoryEntry),
-              stepsCursor: steps.cursor,
-              stepsHasNextPage: steps.hasNextPage,
-              eventsCursor: events.cursor,
-              eventsHasNextPage: events.hasNextPage,
-              logs: includeLogs ? (filteredLogs?.map(buildLogHistoryEntry) ?? []) : undefined,
-              logsCursor: includeLogs ? logs.cursor : undefined,
-              logsHasNextPage: includeLogs ? logs.hasNextPage : undefined,
+              steps: steps.map(buildStepHistoryEntry),
+              events: events.map(buildEventHistoryEntry),
             };
           })
           .build();
@@ -806,19 +648,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       resumeInstance: function (workflowName: string, instanceId: string) {
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
-            uow
-              .findFirst("workflow_instance", (b) =>
-                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
-                ),
-              )
-              .find("workflow_task", (b) =>
-                b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
-                ),
+            uow.findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
               ),
+            ),
           )
-          .mutate(({ uow, retrieveResult: [instance, tasks] }) => {
+          .mutate(({ uow, retrieveResult: [instance] }) => {
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }
@@ -827,8 +663,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             if (currentStatus !== "paused") {
               return buildInstanceStatus(instance);
             }
-
-            const task = tasks.find((candidate) => candidate.runNumber === instance.runNumber);
 
             uow.update("workflow_instance", instance.id, (b) =>
               b
@@ -840,41 +674,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 .check(),
             );
 
-            if (task) {
-              uow.update("workflow_task", task.id, (b) =>
-                b
-                  .set({
-                    kind: "resume",
-                    runAt: b.now(),
-                    status: "pending",
-                    attempts: 0,
-                    lastError: null,
-                    lockedUntil: null,
-                    lockOwner: null,
-                    updatedAt: b.now(),
-                  })
-                  .check(),
-              );
-            } else {
-              uow.create("workflow_task", {
-                instanceRef: instance.id,
-                workflowName,
-                instanceId,
-                runNumber: instance.runNumber,
-                kind: "resume",
-                runAt: uow.now(),
-                status: "pending",
-                attempts: 0,
-                maxAttempts: 1,
-                lastError: null,
-                lockedUntil: null,
-                lockOwner: null,
-              });
-            }
-
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
               instanceId,
+              instanceRef: String(instance.id),
+              runNumber: instance.runNumber,
               reason: "resume",
             });
 
@@ -958,24 +762,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 .check(),
             );
 
-            uow.create("workflow_task", {
-              instanceRef: instance.id,
-              workflowName,
-              instanceId,
-              runNumber: nextRun,
-              kind: "run",
-              runAt: uow.now(),
-              status: "pending",
-              attempts: 0,
-              maxAttempts: 1,
-              lastError: null,
-              lockedUntil: null,
-              lockOwner: null,
-            });
-
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
               instanceId,
+              instanceRef: String(instance.id),
+              runNumber: nextRun,
               reason: "create",
             });
 
@@ -1010,14 +801,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                     eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", eb.now())),
                   ),
                 ),
-              )
-              .find("workflow_task", (b) =>
-                b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
-                ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [instance, steps, tasks] }) => {
+          .mutate(({ uow, retrieveResult: [instance, steps] }) => {
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }
@@ -1039,50 +825,17 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             });
 
             const currentRunSteps = steps.filter((step) => step.runNumber === instance.runNumber);
-            const currentTask = tasks.find(
-              (candidate) => candidate.runNumber === instance.runNumber,
-            );
             const shouldWake =
               currentStatus === "waiting" &&
               !isPausedStatus(currentStatus) &&
               currentRunSteps.some((step) => step.waitEventType === options.type);
 
             if (shouldWake) {
-              if (currentTask) {
-                uow.update("workflow_task", currentTask.id, (b) =>
-                  b
-                    .set({
-                      kind: "wake",
-                      runAt: b.now(),
-                      status: "pending",
-                      attempts: 0,
-                      lastError: null,
-                      lockedUntil: null,
-                      lockOwner: null,
-                      updatedAt: b.now(),
-                    })
-                    .check(),
-                );
-              } else {
-                uow.create("workflow_task", {
-                  instanceRef: instance.id,
-                  workflowName,
-                  instanceId,
-                  runNumber: instance.runNumber,
-                  kind: "wake",
-                  runAt: uow.now(),
-                  status: "pending",
-                  attempts: 0,
-                  maxAttempts: 1,
-                  lastError: null,
-                  lockedUntil: null,
-                  lockOwner: null,
-                });
-              }
-
               uow.triggerHook("onWorkflowEnqueued", {
                 workflowName,
                 instanceId,
+                instanceRef: String(instance.id),
+                runNumber: instance.runNumber,
                 reason: "event",
               });
             }

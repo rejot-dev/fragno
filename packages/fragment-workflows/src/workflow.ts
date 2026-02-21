@@ -35,14 +35,16 @@ export type WorkflowLogger = {
   error: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyTxResult = TxResult<any, any>;
+
 export type WorkflowStepTx = {
-  serviceCalls: (factory: () => readonly TxResult<unknown, unknown>[]) => void;
+  serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
 };
 
 /** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
-  log: WorkflowLogger;
   do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
   do<T>(
     name: string,
@@ -211,27 +213,13 @@ export function defineWorkflow(
   return { ...options, run };
 }
 
-/** Base class for user-defined workflows (legacy). */
-export abstract class WorkflowEntrypoint<_Env = unknown, Params = unknown, Output = unknown> {
-  public workflows!: WorkflowBindings;
-
-  abstract run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<Output> | Output;
-}
-
-/** Legacy class-based workflow registry entry. */
-export type LegacyWorkflowDefinition<TParams = unknown, TOutput = unknown> = {
-  name: string;
-  workflow: new (...args: unknown[]) => WorkflowEntrypoint<unknown, TParams, TOutput>;
-};
-
-/** Workflow registry entry (function-based or legacy class-based). */
-export type WorkflowRegistryEntry =
-  | WorkflowDefinition<unknown, unknown, StandardSchemaV1 | undefined, StandardSchemaV1 | undefined>
-  | LegacyWorkflowDefinition<unknown, unknown>;
-
-export const isLegacyWorkflowDefinition = (
-  entry: WorkflowRegistryEntry,
-): entry is LegacyWorkflowDefinition => "workflow" in entry;
+/** Workflow registry entry (function-based). */
+export type WorkflowRegistryEntry = WorkflowDefinition<
+  unknown,
+  unknown,
+  StandardSchemaV1 | undefined,
+  StandardSchemaV1 | undefined
+>;
 
 export type WorkflowParamsFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
@@ -241,9 +229,7 @@ export type WorkflowParamsFromEntry<TEntry> =
     StandardSchemaV1 | undefined
   >
     ? TParams
-    : TEntry extends LegacyWorkflowDefinition<infer TParams, unknown>
-      ? TParams
-      : unknown;
+    : unknown;
 
 export type WorkflowOutputFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
@@ -253,9 +239,7 @@ export type WorkflowOutputFromEntry<TEntry> =
     StandardSchemaV1 | undefined
   >
     ? TOutput
-    : TEntry extends LegacyWorkflowDefinition<unknown, infer TOutput>
-      ? TOutput
-      : unknown;
+    : unknown;
 
 /** Map of binding keys to workflow definitions. */
 export type WorkflowsRegistry = Record<string, WorkflowRegistryEntry>;
@@ -272,6 +256,8 @@ export class NonRetryableError extends Error {
 export type WorkflowEnqueuedHookPayload = {
   workflowName: string;
   instanceId: string;
+  instanceRef: string;
+  runNumber: number;
   reason: "create" | "event" | "resume" | "retry" | "wake";
 };
 
@@ -284,73 +270,22 @@ export interface WorkflowsDispatcher {
   wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
 }
 
-/** Controls how much work a runner processes per tick. */
-export type RunnerTickOptions = {
-  maxInstances?: number;
-  maxSteps?: number;
-};
-
 /** Runner interface used by routes and dispatchers. */
 export interface WorkflowsRunner {
-  tick: (options?: RunnerTickOptions) => Promise<number> | number;
+  /** timestamp is database time of the durable hook enqueue event */
+  tick: (payload: WorkflowEnqueuedHookPayload & { timestamp: Date }) => Promise<number> | number;
 }
-
-/** Request metadata passed into authorization hooks. */
-export type WorkflowsAuthorizeContext = {
-  method: string;
-  path: string;
-  pathParams: Record<string, string>;
-  query: URLSearchParams;
-  headers: Headers;
-  input?: unknown;
-};
 
 /** Actions available on workflow instances. */
 export type WorkflowManagementAction = "pause" | "resume" | "terminate" | "restart";
 
-/** Authorization hook signature for workflow routes. */
-export type WorkflowsAuthorizeHook<TContext extends WorkflowsAuthorizeContext> = (
-  context: TContext,
-) => Promise<Response | void> | Response | void;
-
-/** Authorization context for instance creation requests. */
-export type WorkflowsAuthorizeInstanceCreationContext = WorkflowsAuthorizeContext & {
-  workflowName: string;
-  instances: { id?: string; params?: unknown }[];
-};
-
-/** Authorization context for management actions. */
-export type WorkflowsAuthorizeManagementContext = WorkflowsAuthorizeContext & {
-  workflowName: string;
-  instanceId: string;
-  action: WorkflowManagementAction;
-};
-
-/** Authorization context for sendEvent requests. */
-export type WorkflowsAuthorizeSendEventContext = WorkflowsAuthorizeContext & {
-  workflowName: string;
-  instanceId: string;
-  eventType: string;
-  payload?: unknown;
-};
-
 /** Authorization context for runner tick requests. */
-export type WorkflowsAuthorizeRunnerTickContext = WorkflowsAuthorizeContext & {
-  options: RunnerTickOptions;
-};
-
 /** Configuration for the workflows fragment. */
 export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
   workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
   runtime: FragnoRuntime;
-  enableRunnerTick?: boolean;
-  authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
-  authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;
-  authorizeManagement?: WorkflowsAuthorizeHook<WorkflowsAuthorizeManagementContext>;
-  authorizeSendEvent?: WorkflowsAuthorizeHook<WorkflowsAuthorizeSendEventContext>;
-  authorizeRunnerTick?: WorkflowsAuthorizeHook<WorkflowsAuthorizeRunnerTickContext>;
 }
 
 const TERMINAL_STATUSES: InstanceStatus["status"][] = ["complete", "terminated", "errored"];

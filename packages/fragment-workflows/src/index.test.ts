@@ -34,7 +34,7 @@ describe("Workflows Fragment", () => {
       .withFragment(
         "workflows",
         instantiate(workflowsFragmentDefinition)
-          .withConfig({ workflows, enableRunnerTick: true, runner, runtime: defaultFragnoRuntime })
+          .withConfig({ workflows, runner, runtime: defaultFragnoRuntime })
           .withRoutes([workflowsRoutesFactory]),
       )
       .build();
@@ -86,7 +86,6 @@ describe("Workflows Fragment", () => {
       status: "pending",
       params: { source: "tests" },
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 0,
     });
 
@@ -121,38 +120,9 @@ describe("Workflows Fragment", () => {
       consumedByStepKey: null,
     });
 
-    await db.create("workflow_task", {
-      instanceRef,
-      workflowName,
-      instanceId,
-      runNumber: 0,
-      kind: "run",
-      runAt: new Date(),
-      status: "pending",
-      maxAttempts: 5,
-      lastError: null,
-      lockedUntil: null,
-      lockOwner: null,
-    });
-
-    await db.create("workflow_log", {
-      instanceRef,
-      workflowName,
-      instanceId,
-      runNumber: 0,
-      stepKey: "step-1",
-      attempt: 1,
-      level: "info",
-      category: "tests",
-      message: "Created log entry",
-      data: { ok: true },
-    });
-
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
-    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    const [log] = await db.find("workflow_log", (b) => b.whereIndex("primary"));
 
     expect(instance).toMatchObject({
       workflowName,
@@ -160,7 +130,6 @@ describe("Workflows Fragment", () => {
       status: "pending",
       params: { source: "tests" },
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 0,
     });
     expect(instance.createdAt).toBeInstanceOf(Date);
@@ -197,35 +166,6 @@ describe("Workflows Fragment", () => {
       consumedByStepKey: null,
     });
     expect(event.createdAt).toBeInstanceOf(Date);
-
-    expect(task).toMatchObject({
-      workflowName,
-      instanceId,
-      runNumber: 0,
-      kind: "run",
-      status: "pending",
-      attempts: 0,
-      maxAttempts: 5,
-      lastError: null,
-      lockedUntil: null,
-      lockOwner: null,
-    });
-    expect(task.runAt).toBeInstanceOf(Date);
-    expect(task.createdAt).toBeInstanceOf(Date);
-    expect(task.updatedAt).toBeInstanceOf(Date);
-
-    expect(log).toMatchObject({
-      workflowName,
-      instanceId,
-      runNumber: 0,
-      stepKey: "step-1",
-      attempt: 1,
-      level: "info",
-      category: "tests",
-      message: "Created log entry",
-      data: { ok: true },
-    });
-    expect(log.createdAt).toBeInstanceOf(Date);
   });
 
   test("should expose NonRetryableError defaults", () => {
@@ -285,18 +225,6 @@ describe("Workflows Fragment", () => {
       });
     });
 
-    test("POST /_runner/tick should call the runner", async () => {
-      runner.tick.mockResolvedValue(2);
-
-      const response = await fragment.callRoute("POST", "/_runner/tick", {
-        body: { maxInstances: 2, maxSteps: 5 },
-      });
-      assert(response.type === "json");
-
-      expect(runner.tick).toHaveBeenCalledWith({ maxInstances: 2, maxSteps: 5 });
-      expect(response.data).toEqual({ processed: 2 });
-    });
-
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
       const instanceRef = await db.create("workflow_instance", {
         workflowName: "demo-workflow",
@@ -304,7 +232,6 @@ describe("Workflows Fragment", () => {
         status: "queued",
         params: {},
         pauseRequested: false,
-        retentionUntil: null,
         runNumber: 2,
         startedAt: null,
         completedAt: null,
@@ -357,140 +284,219 @@ describe("Workflows Fragment", () => {
       expect(response.data.steps).toHaveLength(1);
       expect(response.data.events).toHaveLength(1);
     });
-  });
 
-  describe("Authorization hooks", () => {
-    const authorizeRequest = vi.fn();
-    const authorizeInstanceCreation = vi.fn();
-    const authorizeManagement = vi.fn();
-    const authorizeSendEvent = vi.fn();
-    const authorizeRunnerTick = vi.fn();
-    const authRunner = {
-      tick: vi.fn(),
-    };
-
-    const setupAuth = async () => {
-      const { fragments: authFragments, test: authTestContext } = await buildDatabaseFragmentsTest()
-        .withTestAdapter({ type: "drizzle-pglite" })
-        .withFragment(
-          "workflows",
-          instantiate(workflowsFragmentDefinition)
-            .withConfig({
-              workflows,
-              enableRunnerTick: true,
-              runner: authRunner,
-              runtime: defaultFragnoRuntime,
-              authorizeRequest,
-              authorizeInstanceCreation,
-              authorizeManagement,
-              authorizeSendEvent,
-              authorizeRunnerTick,
-            })
-            .withRoutes([workflowsRoutesFactory]),
-        )
-        .build();
-
-      const { fragment: authFragment, db: authDb } = authFragments.workflows;
-      return { authFragments, authTestContext, authFragment, authDb };
-    };
-
-    type AuthSetup = Awaited<ReturnType<typeof setupAuth>>;
-
-    let _authFragments: AuthSetup["authFragments"];
-    let authTestContext: AuthSetup["authTestContext"];
-    let authFragment: AuthSetup["authFragment"];
-    let authDb: AuthSetup["authDb"];
-
-    beforeAll(async () => {
-      ({
-        authFragments: _authFragments,
-        authTestContext,
-        authFragment,
-        authDb,
-      } = await setupAuth());
-    });
-
-    beforeEach(async () => {
-      await authTestContext.resetDatabase();
-      authorizeRequest.mockReset();
-      authorizeInstanceCreation.mockReset();
-      authorizeManagement.mockReset();
-      authorizeSendEvent.mockReset();
-      authorizeRunnerTick.mockReset();
-      authRunner.tick.mockReset();
-    });
-
-    test("authorizeRequest can block requests", async () => {
-      authorizeRequest.mockReturnValue(
-        Response.json({ message: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 }),
-      );
-
-      const response = await authFragment.callRoute("GET", "/");
-      assert(response.type === "error");
-      expect(response.status).toBe(401);
-      expect(response.error.code).toBe("UNAUTHORIZED");
-    });
-
-    test("authorizeInstanceCreation can block create", async () => {
-      authorizeInstanceCreation.mockReturnValue(
-        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
-      );
-
-      const response = await authFragment.callRoute("POST", "/:workflowName/instances", {
-        pathParams: { workflowName: "demo-workflow" },
-        body: { id: "blocked-create" },
+    test("GET /:workflowName/instances/:instanceId/history should default to latest run", async () => {
+      const instanceRef = await db.create("workflow_instance", {
+        workflowName: "demo-workflow",
+        instanceId: "history-latest",
+        status: "queued",
+        params: {},
+        pauseRequested: false,
+        runNumber: 3,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
       });
-      assert(response.type === "error");
-      expect(response.status).toBe(403);
 
-      const instances = await authDb.find("workflow_instance", (b) => b.whereIndex("primary"));
-      expect(instances).toHaveLength(0);
-    });
+      await db.create("workflow_step", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-latest",
+        runNumber: 2,
+        stepKey: "step-old",
+        name: "Old",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { ok: false },
+        errorName: null,
+        errorMessage: null,
+      });
 
-    test("authorizeManagement can block instance actions", async () => {
-      authorizeManagement.mockReturnValue(
-        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
-      );
+      await db.create("workflow_step", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-latest",
+        runNumber: 3,
+        stepKey: "step-new",
+        name: "New",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { ok: true },
+        errorName: null,
+        errorMessage: null,
+      });
 
-      const response = await authFragment.callRoute(
-        "POST",
-        "/:workflowName/instances/:instanceId/pause",
+      await db.create("workflow_event", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-latest",
+        runNumber: 3,
+        type: "latest",
+        payload: { latest: true },
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+
+      const response = await fragment.callRoute(
+        "GET",
+        "/:workflowName/instances/:instanceId/history",
         {
-          pathParams: { workflowName: "demo-workflow", instanceId: "blocked-manage" },
+          pathParams: { workflowName: "demo-workflow", instanceId: "history-latest" },
         },
       );
-      assert(response.type === "error");
-      expect(response.status).toBe(403);
+
+      assert(response.type === "json");
+      expect(response.data.runNumber).toBe(3);
+      expect(response.data.steps).toHaveLength(1);
+      expect(response.data.steps[0].stepKey).toBe("step-new");
+      expect(response.data.events).toHaveLength(1);
+      expect(response.data.events[0].type).toBe("latest");
     });
 
-    test("authorizeSendEvent can block event delivery", async () => {
-      authorizeSendEvent.mockReturnValue(
-        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
-      );
+    test("GET /:workflowName/instances/:instanceId/history/:run should return requested run", async () => {
+      const instanceRef = await db.create("workflow_instance", {
+        workflowName: "demo-workflow",
+        instanceId: "history-run",
+        status: "queued",
+        params: {},
+        pauseRequested: false,
+        runNumber: 3,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
 
-      const response = await authFragment.callRoute(
-        "POST",
-        "/:workflowName/instances/:instanceId/events",
+      await db.create("workflow_step", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-run",
+        runNumber: 2,
+        stepKey: "step-old",
+        name: "Old",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { ok: false },
+        errorName: null,
+        errorMessage: null,
+      });
+
+      await db.create("workflow_step", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-run",
+        runNumber: 3,
+        stepKey: "step-new",
+        name: "New",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { ok: true },
+        errorName: null,
+        errorMessage: null,
+      });
+
+      await db.create("workflow_event", {
+        instanceRef,
+        workflowName: "demo-workflow",
+        instanceId: "history-run",
+        runNumber: 2,
+        type: "legacy",
+        payload: { legacy: true },
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+
+      const response = await fragment.callRoute(
+        "GET",
+        "/:workflowName/instances/:instanceId/history/:run",
         {
-          pathParams: { workflowName: "demo-workflow", instanceId: "blocked-event" },
-          body: { type: "approval" },
+          pathParams: { workflowName: "demo-workflow", instanceId: "history-run", run: "2" },
         },
       );
-      assert(response.type === "error");
-      expect(response.status).toBe(403);
+
+      assert(response.type === "json");
+      expect(response.data.runNumber).toBe(2);
+      expect(response.data.steps).toHaveLength(1);
+      expect(response.data.steps[0].stepKey).toBe("step-old");
+      expect(response.data.events).toHaveLength(1);
+      expect(response.data.events[0].type).toBe("legacy");
     });
 
-    test("authorizeRunnerTick can block runner tick", async () => {
-      authorizeRunnerTick.mockReturnValue(
-        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
+    test("GET /:workflowName/instances/:instanceId/history/:run should reject invalid run", async () => {
+      await db.create("workflow_instance", {
+        workflowName: "demo-workflow",
+        instanceId: "history-invalid-run",
+        status: "queued",
+        params: {},
+        pauseRequested: false,
+        runNumber: 1,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+
+      const response = await fragment.callRoute(
+        "GET",
+        "/:workflowName/instances/:instanceId/history/:run",
+        {
+          pathParams: {
+            workflowName: "demo-workflow",
+            instanceId: "history-invalid-run",
+            run: "nope",
+          },
+        },
       );
 
-      const response = await authFragment.callRoute("POST", "/_runner/tick", {
-        body: { maxInstances: 1 },
-      });
-      assert(response.type === "error");
-      expect(response.status).toBe(403);
-      expect(authRunner.tick).not.toHaveBeenCalled();
+      expect(response.type).toBe("error");
+      if (response.type === "error") {
+        expect(response.error.code).toBe("INVALID_RUN_NUMBER");
+        expect(response.status).toBe(400);
+      }
+    });
+
+    test("GET /:workflowName/instances/:instanceId/history should return 404 for missing instance", async () => {
+      const response = await fragment.callRoute(
+        "GET",
+        "/:workflowName/instances/:instanceId/history",
+        {
+          pathParams: { workflowName: "demo-workflow", instanceId: "missing-history" },
+        },
+      );
+
+      expect(response.type).toBe("error");
+      if (response.type === "error") {
+        expect(response.error.code).toBe("INSTANCE_NOT_FOUND");
+        expect(response.status).toBe(404);
+      }
     });
   });
 });

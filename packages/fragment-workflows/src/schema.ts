@@ -1,4 +1,4 @@
-// Database schema for workflow instances, steps, events, tasks, and logs.
+// Database schema for workflow instances, steps, and events.
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -27,7 +27,6 @@ export const workflowsSchema = schema("workflows", (s) => {
           .addColumn("errorName", column("string").nullable())
           .addColumn("errorMessage", column("string").nullable())
           .addColumn("pauseRequested", column("bool").defaultTo(false))
-          .addColumn("retentionUntil", column("timestamp").nullable())
           .addColumn("runNumber", column("integer").defaultTo(0))
           .createIndex(
             "idx_workflow_instance_workflowName_instanceId",
@@ -132,87 +131,6 @@ export const workflowsSchema = schema("workflows", (s) => {
             "createdAt",
           ]);
       })
-      // Scheduler tasks used by runners to drive execution.
-      .addTable("workflow_task", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("instanceRef", referenceColumn())
-          .addColumn("workflowName", column("string"))
-          .addColumn("instanceId", column("string"))
-          .addColumn("runNumber", column("integer"))
-          .addColumn("kind", column("string"))
-          .addColumn("runAt", column("timestamp"))
-          .addColumn("status", column("string"))
-          .addColumn("attempts", column("integer").defaultTo(0))
-          .addColumn("maxAttempts", column("integer"))
-          .addColumn("lastError", column("string").nullable())
-          .addColumn("lockedUntil", column("timestamp").nullable())
-          .addColumn("lockOwner", column("string").nullable())
-          .addColumn(
-            "createdAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .addColumn(
-            "updatedAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .createIndex("idx_workflow_task_status_runAt", ["status", "runAt"])
-          .createIndex("idx_workflow_task_status_lockedUntil", ["status", "lockedUntil"])
-          .createIndex(
-            "idx_workflow_task_workflowName_instanceId_runNumber",
-            ["workflowName", "instanceId", "runNumber"],
-            { unique: true },
-          );
-      })
-      // Structured logs emitted by workflow steps.
-      .addTable("workflow_log", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("instanceRef", referenceColumn())
-          .addColumn("workflowName", column("string"))
-          .addColumn("instanceId", column("string"))
-          .addColumn("runNumber", column("integer"))
-          .addColumn("stepKey", column("string").nullable())
-          .addColumn("attempt", column("integer").nullable())
-          .addColumn("level", column("string"))
-          .addColumn("category", column("string"))
-          .addColumn("message", column("string"))
-          .addColumn("data", column("json").nullable())
-          .addColumn(
-            "createdAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .createIndex("idx_workflow_log_history_createdAt", [
-            "workflowName",
-            "instanceId",
-            "runNumber",
-            "createdAt",
-          ])
-          .createIndex("idx_workflow_log_level_createdAt", [
-            "workflowName",
-            "instanceId",
-            "runNumber",
-            "level",
-            "createdAt",
-          ])
-          .createIndex("idx_workflow_log_category_createdAt", [
-            "workflowName",
-            "instanceId",
-            "runNumber",
-            "category",
-            "createdAt",
-          ])
-          .createIndex("idx_workflow_log_instanceRef_runNumber_createdAt", [
-            "instanceRef",
-            "runNumber",
-            "createdAt",
-          ]);
-      })
-      .addReference("taskInstance", {
-        type: "one",
-        from: { table: "workflow_task", column: "instanceRef" },
-        to: { table: "workflow_instance", column: "id" },
-      })
       .addReference("stepInstance", {
         type: "one",
         from: { table: "workflow_step", column: "instanceRef" },
@@ -221,11 +139,6 @@ export const workflowsSchema = schema("workflows", (s) => {
       .addReference("eventInstance", {
         type: "one",
         from: { table: "workflow_event", column: "instanceRef" },
-        to: { table: "workflow_instance", column: "id" },
-      })
-      .addReference("logInstance", {
-        type: "one",
-        from: { table: "workflow_log", column: "instanceRef" },
         to: { table: "workflow_instance", column: "id" },
       })
   );

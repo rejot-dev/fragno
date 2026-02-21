@@ -26,7 +26,7 @@ export function createSchemaFragments<TUOWConfig>(adapter: DatabaseAdapter<TUOWC
     },
   );
   const workflowsFragment = createWorkflowsFragment(
-    { runtime: defaultFragnoRuntime, workflows: {}, enableRunnerTick: false },
+    { runtime: defaultFragnoRuntime, workflows: {} },
     { databaseAdapter: adapter },
   );
 

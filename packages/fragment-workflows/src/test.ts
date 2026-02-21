@@ -2,8 +2,14 @@ import {
   instantiate,
   type AnyFragnoInstantiatedFragment,
   type FragnoRuntime,
+  type InstantiatedFragmentFromDefinition,
 } from "@fragno-dev/core";
-import type { DatabaseFragmentsTestBuilder, SupportedAdapter, TestContext } from "@fragno-dev/test";
+import type {
+  AnyFragmentResult,
+  DatabaseFragmentsTestBuilder,
+  SupportedAdapter,
+  TestContext,
+} from "@fragno-dev/test";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
@@ -12,8 +18,8 @@ import { createWorkflowsRunner } from "./new-runner";
 import type {
   InstanceStatus,
   InstanceStatusWithOutput,
-  RunnerTickOptions,
   WorkflowDuration,
+  WorkflowEnqueuedHookPayload,
   WorkflowOutputFromEntry,
   WorkflowParamsFromEntry,
   WorkflowsFragmentConfig,
@@ -50,29 +56,10 @@ export type WorkflowsHistoryEvent = {
   consumedByStepKey: string | null;
 };
 
-export type WorkflowsHistoryLog = {
-  id: string;
-  runNumber: number;
-  stepKey: string | null;
-  attempt: number | null;
-  level: "debug" | "info" | "warn" | "error";
-  category: string;
-  message: string;
-  data: unknown | null;
-  createdAt: Date;
-};
-
 export type WorkflowsHistory = {
   runNumber: number;
   steps: WorkflowsHistoryStep[];
   events: WorkflowsHistoryEvent[];
-  stepsCursor?: string;
-  stepsHasNextPage: boolean;
-  eventsCursor?: string;
-  eventsHasNextPage: boolean;
-  logs?: WorkflowsHistoryLog[];
-  logsCursor?: string;
-  logsHasNextPage?: boolean;
 };
 
 export type WorkflowsTestClock = {
@@ -85,29 +72,53 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
   time: WorkflowsTestClock;
 };
 
-export type WorkflowsTestHarnessOptions<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
+type WorkflowsHarnessFragmentInstance = InstantiatedFragmentFromDefinition<
+  typeof workflowsFragmentDefinition
+>;
+
+export type WorkflowsTestHarnessFragment = {
+  fragment: WorkflowsHarnessFragmentInstance;
+  db: SimpleQueryInterface<typeof workflowsSchema>;
+  services: WorkflowsHarnessFragmentInstance["services"];
+  deps: WorkflowsHarnessFragmentInstance["$internal"]["deps"];
+  callRoute: WorkflowsHarnessFragmentInstance["callRoute"];
+};
+
+type WorkflowsTestHarnessFragments<TFragments extends Record<string, AnyFragmentResult>> =
+  TFragments & {
+    workflows: WorkflowsTestHarnessFragment;
+  };
+
+export type WorkflowsTestHarnessOptions<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TConfiguredFragments extends Record<string, AnyFragmentResult> = TFragments,
+> = {
   workflows: TRegistry;
   adapter: SupportedAdapter;
   /**
    * Builder returned by `buildDatabaseFragmentsTest()` from @fragno-dev/test.
    */
-  testBuilder: DatabaseFragmentsTestBuilder<{}, undefined>;
+  testBuilder: DatabaseFragmentsTestBuilder<TFragments, SupportedAdapter | undefined>;
+  configureBuilder?: (
+    builder: DatabaseFragmentsTestBuilder<TFragments, SupportedAdapter>,
+  ) => DatabaseFragmentsTestBuilder<TConfiguredFragments, SupportedAdapter>;
   clockStartAt?: Date | number;
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
   autoTickHooks?: boolean;
-  fragmentConfig?: Omit<
-    WorkflowsFragmentConfig<TRegistry>,
-    "workflows" | "runner" | "enableRunnerTick" | "runtime"
-  >;
+  fragmentConfig?: Omit<WorkflowsFragmentConfig<TRegistry>, "workflows" | "runner" | "runtime">;
   runnerOptions?: {
     runnerId?: string;
-    leaseMs?: number;
   };
 };
 
-export type WorkflowsTestHarness<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
-  fragment: AnyFragnoInstantiatedFragment;
+export type WorkflowsTestHarness<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+> = {
+  fragments: WorkflowsTestHarnessFragments<TFragments>;
+  fragment: WorkflowsHarnessFragmentInstance;
   db: SimpleQueryInterface<typeof workflowsSchema>;
   runner: ReturnType<typeof createWorkflowsRunner>;
   clock: WorkflowsTestClock;
@@ -154,23 +165,17 @@ export type WorkflowsTestHarness<TRegistry extends WorkflowsRegistry = Workflows
   getHistory: (
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: {
-      runNumber?: number;
-      pageSize?: number;
-      stepsCursor?: string;
-      eventsCursor?: string;
-      logsCursor?: string;
-      includeLogs?: boolean;
-      logLevel?: "debug" | "info" | "warn" | "error";
-      logCategory?: string;
-      order?: "asc" | "desc";
-    },
+    options?: { runNumber?: number },
   ) => Promise<WorkflowsHistory>;
-  tick: (options?: RunnerTickOptions) => Promise<number>;
-  runUntilIdle: (options?: {
-    tickOptions?: RunnerTickOptions;
-    maxTicks?: number;
-  }) => Promise<{ processed: number; ticks: number }>;
+  tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
+  runUntilIdle: (
+    payload: WorkflowEnqueuedHookPayload,
+    options?: RunUntilIdleOptions,
+  ) => Promise<{ processed: number; ticks: number }>;
+};
+
+type RunUntilIdleOptions = {
+  maxTicks?: number;
 };
 
 const createTestClock = (startAt?: Date | number): WorkflowsTestClock => {
@@ -246,7 +251,7 @@ const resolveWorkflowName = (
 
 const assertJsonResponse = <T>(response: {
   type: string;
-  data?: T;
+  data?: unknown;
   error?: { message: string; code: string };
 }) => {
   if (response.type !== "json") {
@@ -259,9 +264,13 @@ const assertJsonResponse = <T>(response: {
   return response.data as T;
 };
 
-export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegistry>(
-  options: WorkflowsTestHarnessOptions<TRegistry>,
-): Promise<WorkflowsTestHarness<TRegistry>> {
+export async function createWorkflowsTestHarness<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TConfiguredFragments extends Record<string, AnyFragmentResult> = TFragments,
+>(
+  options: WorkflowsTestHarnessOptions<TRegistry, TFragments, TConfiguredFragments>,
+): Promise<WorkflowsTestHarness<TRegistry, TConfiguredFragments>> {
   const runtime =
     options.runtime ??
     createWorkflowsTestRuntime({ startAt: options.clockStartAt, seed: options.randomSeed });
@@ -283,8 +292,11 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     ...options.fragmentConfig,
   };
 
-  const { fragments, test } = await options.testBuilder
-    .withTestAdapter(adapterConfig)
+  const baseBuilder = options.testBuilder.withTestAdapter(adapterConfig);
+  const configuredBuilder = options.configureBuilder
+    ? options.configureBuilder(baseBuilder)
+    : baseBuilder;
+  const { fragments, test } = await configuredBuilder
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
@@ -293,13 +305,15 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     )
     .build();
 
-  const { fragment, db } = fragments.workflows;
+  const fragmentsWithWorkflows = fragments as WorkflowsTestHarnessFragments<TConfiguredFragments>;
+  const { fragment, db } = fragmentsWithWorkflows.workflows;
+  const callRoute: AnyFragnoInstantiatedFragment["callRoute"] =
+    fragmentsWithWorkflows.workflows.callRoute;
   const runner = createWorkflowsRunner({
     fragment,
     workflows,
     runtime,
     runnerId: options.runnerOptions?.runnerId,
-    leaseMs: options.runnerOptions?.leaseMs,
   });
   if (options.autoTickHooks !== false) {
     config.runner = runner;
@@ -310,7 +324,7 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     instanceOptions?: { id?: string; params?: unknown },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute("POST", "/:workflowName/instances", {
+    const response = await callRoute("POST", "/:workflowName/instances", {
       pathParams: { workflowName },
       body: instanceOptions ?? {},
     });
@@ -323,7 +337,7 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     instances: { id: string; params?: unknown }[],
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute("POST", "/:workflowName/instances/batch", {
+    const response = await callRoute("POST", "/:workflowName/instances/batch", {
       pathParams: { workflowName },
       body: { instances },
     });
@@ -339,14 +353,10 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     eventOptions: { type: string; payload?: unknown },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute(
-      "POST",
-      "/:workflowName/instances/:instanceId/events",
-      {
-        pathParams: { workflowName, instanceId },
-        body: eventOptions,
-      },
-    );
+    const response = await callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName, instanceId },
+      body: eventOptions,
+    });
     const data = assertJsonResponse<{ status: InstanceStatus }>(response);
     return data.status;
   };
@@ -356,7 +366,7 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
     instanceId: string,
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute("GET", "/:workflowName/instances/:instanceId", {
+    const response = await callRoute("GET", "/:workflowName/instances/:instanceId", {
       pathParams: { workflowName, instanceId },
     });
     const data = assertJsonResponse<{ details: InstanceStatus }>(response);
@@ -366,72 +376,40 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
   const getHistory = async (
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
-    historyOptions?: {
-      runNumber?: number;
-      pageSize?: number;
-      stepsCursor?: string;
-      eventsCursor?: string;
-      logsCursor?: string;
-      includeLogs?: boolean;
-      logLevel?: "debug" | "info" | "warn" | "error";
-      logCategory?: string;
-      order?: "asc" | "desc";
-    },
+    historyOptions?: { runNumber?: number },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const query: Record<string, string> = {};
     if (historyOptions?.runNumber !== undefined) {
-      query["runNumber"] = String(historyOptions.runNumber);
+      const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history/:run", {
+        pathParams: {
+          workflowName,
+          instanceId,
+          run: String(historyOptions.runNumber),
+        },
+      });
+      return assertJsonResponse<WorkflowsHistory>(response);
     }
-    if (historyOptions?.pageSize !== undefined) {
-      query["pageSize"] = String(historyOptions.pageSize);
-    }
-    if (historyOptions?.stepsCursor) {
-      query["stepsCursor"] = historyOptions.stepsCursor;
-    }
-    if (historyOptions?.eventsCursor) {
-      query["eventsCursor"] = historyOptions.eventsCursor;
-    }
-    if (historyOptions?.logsCursor) {
-      query["logsCursor"] = historyOptions.logsCursor;
-    }
-    if (historyOptions?.includeLogs !== undefined) {
-      query["includeLogs"] = historyOptions.includeLogs ? "true" : "false";
-    }
-    if (historyOptions?.logLevel) {
-      query["logLevel"] = historyOptions.logLevel;
-    }
-    if (historyOptions?.logCategory) {
-      query["logCategory"] = historyOptions.logCategory;
-    }
-    if (historyOptions?.order) {
-      query["order"] = historyOptions.order;
-    }
-    const response = await fragment.callRoute(
-      "GET",
-      "/:workflowName/instances/:instanceId/history",
-      {
-        pathParams: { workflowName, instanceId },
-        query,
-      },
-    );
+
+    const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history", {
+      pathParams: { workflowName, instanceId },
+    });
     return assertJsonResponse<WorkflowsHistory>(response);
   };
 
-  const tick = async (tickOptions?: RunnerTickOptions) => {
-    return await runner.tick(tickOptions ?? {});
-  };
+  const tick = async (payload: WorkflowEnqueuedHookPayload) =>
+    await runner.tick({ ...payload, timestamp: clock.now() });
 
-  const runUntilIdle = async (runOptions?: {
-    tickOptions?: RunnerTickOptions;
-    maxTicks?: number;
-  }) => {
-    const maxTicks = runOptions?.maxTicks ?? 25;
+  const runUntilIdle = async (
+    payload: WorkflowEnqueuedHookPayload,
+    options?: RunUntilIdleOptions,
+  ) => {
+    const maxTicks = options?.maxTicks ?? 25;
+
     let ticks = 0;
     let processed = 0;
 
     while (ticks < maxTicks) {
-      const result = await runner.tick(runOptions?.tickOptions ?? {});
+      const result = await runner.tick({ ...payload, timestamp: clock.now() });
       ticks += 1;
       processed += result;
       if (result === 0) {
@@ -443,16 +421,23 @@ export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegi
   };
 
   return {
+    fragments: fragmentsWithWorkflows,
     fragment,
     db,
     runner,
     clock,
     runtime,
     test,
-    createInstance: createInstance as WorkflowsTestHarness<TRegistry>["createInstance"],
-    createBatch: createBatch as WorkflowsTestHarness<TRegistry>["createBatch"],
-    sendEvent: sendEvent as WorkflowsTestHarness<TRegistry>["sendEvent"],
-    getStatus: getStatus as WorkflowsTestHarness<TRegistry>["getStatus"],
+    createInstance: createInstance as WorkflowsTestHarness<
+      TRegistry,
+      TConfiguredFragments
+    >["createInstance"],
+    createBatch: createBatch as WorkflowsTestHarness<
+      TRegistry,
+      TConfiguredFragments
+    >["createBatch"],
+    sendEvent: sendEvent as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["sendEvent"],
+    getStatus: getStatus as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["getStatus"],
     getHistory,
     tick,
     runUntilIdle,

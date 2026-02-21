@@ -40,13 +40,6 @@ const sendEventSchema = z.object({
   payload: z.unknown().optional(),
 });
 
-const runnerTickSchema = z
-  .object({
-    maxInstances: z.coerce.number().int().positive().optional(),
-    maxSteps: z.coerce.number().int().positive().optional(),
-  })
-  .default({});
-
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
   error: z
@@ -123,18 +116,6 @@ const historyEventSchema = z.object({
   consumedByStepKey: z.string().nullable(),
 });
 
-const historyLogSchema = z.object({
-  id: z.string(),
-  runNumber: z.number(),
-  stepKey: z.string().nullable(),
-  attempt: z.number().nullable(),
-  level: z.enum(["debug", "info", "warn", "error"]),
-  category: z.string(),
-  message: z.string(),
-  data: z.unknown().nullable(),
-  createdAt: z.date(),
-});
-
 const stubHandler = async () => new Response();
 
 export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute }) => [
@@ -208,30 +189,28 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   defineRoute({
     method: "GET",
     path: "/:workflowName/instances/:instanceId/history",
-    queryParameters: [
-      "runNumber",
-      "pageSize",
-      "stepsCursor",
-      "eventsCursor",
-      "logsCursor",
-      "includeLogs",
-      "logLevel",
-      "logCategory",
-      "order",
-    ],
     outputSchema: z.object({
       runNumber: z.number(),
       steps: z.array(historyStepSchema),
       events: z.array(historyEventSchema),
-      stepsCursor: z.string().optional(),
-      stepsHasNextPage: z.boolean(),
-      eventsCursor: z.string().optional(),
-      eventsHasNextPage: z.boolean(),
-      logs: z.array(historyLogSchema).optional(),
-      logsCursor: z.string().optional(),
-      logsHasNextPage: z.boolean().optional(),
     }),
     errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+    handler: stubHandler,
+  }),
+  defineRoute({
+    method: "GET",
+    path: "/:workflowName/instances/:instanceId/history/:run",
+    outputSchema: z.object({
+      runNumber: z.number(),
+      steps: z.array(historyStepSchema),
+      events: z.array(historyEventSchema),
+    }),
+    errorCodes: [
+      "WORKFLOW_NOT_FOUND",
+      "INVALID_INSTANCE_ID",
+      "INVALID_RUN_NUMBER",
+      "INSTANCE_NOT_FOUND",
+    ],
     handler: stubHandler,
   }),
   defineRoute({
@@ -276,15 +255,6 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
       "INSTANCE_NOT_FOUND",
       "INSTANCE_TERMINAL",
     ],
-    handler: stubHandler,
-  }),
-  defineRoute({
-    method: "POST",
-    path: "/_runner/tick",
-    inputSchema: runnerTickSchema,
-    outputSchema: z.object({
-      processed: z.number(),
-    }),
     handler: stubHandler,
   }),
 ]);

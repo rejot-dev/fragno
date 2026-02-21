@@ -26,7 +26,6 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] Example app layout: homepage + threads view (list + detail)
    - [x] CLI auth mirrors Workflows (repeatable headers; no fixed auth scheme)
    - [x] `apiKey` optional if `getApiKey` provided (at least one required)
-   - [x] `enableRunnerTick` default false
    - [x] CLI covers full non-webhook HTTP surface (threads/messages/runs/events/artifacts + stream)
 3. [ ] Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
        `example-fragments/chatno/src/server/chatno-api.ts`)
@@ -115,7 +114,6 @@ Validation:
      - [ ] `POST /ai/webhooks/openai`
    - [ ] Runner:
      - [ ] `POST /ai/_runner/tick`
-     - [ ] only mount when `enableRunnerTick === true` (default false)
 2. [ ] Define zod schemas for each route input/output and the NDJSON stream event union.
 3. [ ] Add typed client bindings:
    - [ ] `packages/fragment-ai/src/client/*` per Fragno conventions
@@ -348,5 +346,4 @@ Validation:
 ## Interview: Remaining Gaps / Decisions
 
 - [x] `apiKey` optional if `getApiKey` is provided (at least one required).
-- [x] `enableRunnerTick` defaults to false.
 - [x] CLI commands cover threads, messages, runs, run events, artifacts, and streaming.
