@@ -13,7 +13,7 @@ import {
 } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { defineWorkflow } from "./workflow";
+import { defineWorkflow, NonRetryableError } from "./workflow";
 import { createWorkflowsTestHarness } from "./test";
 
 describe("Workflows Runner", () => {
@@ -847,6 +847,71 @@ describe("Workflows Runner", () => {
     expect(mutationRows[0]).toMatchObject({ note });
   });
 
+  test("marks workflow errored when WorkflowStepTx mutation fails", async () => {
+    const mutationErrorSchema = schema("mutation_error_test", (s) =>
+      s.addTable("mutation_record", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("note", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_note_unique", ["note"], { unique: true }),
+      ),
+    );
+
+    const mutationErrorFragmentDefinition = defineFragment("mutation-error-fragment")
+      .extend(withDatabase(mutationErrorSchema))
+      .build();
+
+    const MutationErrorWorkflow = defineWorkflow(
+      { name: "mutation-error-workflow" },
+      async (event, step) => {
+        const note = `dup-${event.instanceId}`;
+        await step.do("mutate", (tx) => {
+          tx.mutate((ctx) => {
+            const uow = ctx.forSchema(mutationErrorSchema);
+            uow.create("mutation_record", { note });
+            uow.create("mutation_record", { note });
+          });
+          return "done";
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { MUTATION_ERROR: MutationErrorWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragment("mutationError", instantiate(mutationErrorFragmentDefinition)),
+    });
+
+    const instanceId = await harness.createInstance("MUTATION_ERROR");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("MUTATION_ERROR", instanceId);
+    expect(status.status).toBe("errored");
+    expect(status.error?.message).toBeTruthy();
+
+    const mutationRows = await harness.fragments["mutationError"].db.find("mutation_record", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(mutationRows).toHaveLength(0);
+  });
+
   test("rejects non-mutate serviceCalls in WorkflowStepTx", async () => {
     const serviceCallsSchema = schema("service_calls_test", (s) =>
       s.addTable("service_record", (t) =>
@@ -961,6 +1026,41 @@ describe("Workflows Runner", () => {
       stepKey: "do:unstable",
       status: "completed",
       attempts: 2,
+    });
+  });
+
+  test("does not retry NonRetryableError", async () => {
+    let attempts = 0;
+    const NonRetryWorkflow = defineWorkflow(
+      { name: "non-retry-workflow" },
+      async (_event, step) => {
+        await step.do("boom", { retries: { limit: 2, delay: 0, backoff: "constant" } }, () => {
+          attempts += 1;
+          throw new NonRetryableError("NO_RETRY");
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { NO_RETRY: NonRetryWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("NO_RETRY");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("NO_RETRY", instanceId);
+    expect(status.status).toBe("errored");
+    expect(status.error?.message).toBe("NO_RETRY");
+    expect(attempts).toBe(1);
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "do:boom",
+      status: "errored",
+      attempts: 1,
     });
   });
 

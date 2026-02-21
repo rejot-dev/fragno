@@ -17,7 +17,7 @@ import type {
   WorkflowStepCreateDraft,
   WorkflowStepUpdateDraft,
 } from "./types";
-import { isMutateOnlyTx, toError } from "./utils";
+import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
 export type RunnerStepSuspendReason =
   | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
@@ -183,6 +183,22 @@ export class RunnerStep implements WorkflowStep {
       return result;
     } catch (err) {
       const error = toError(err);
+      if (isNonRetryableError(error)) {
+        this.#upsertStep(stepKey, {
+          name,
+          type: "do",
+          status: "errored",
+          attempts: attempt,
+          maxAttempts,
+          timeoutMs,
+          errorName: error.name,
+          errorMessage: error.message,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+        });
+        throw error;
+      }
       const retries = config?.retries;
       const canRetry = retries && attempt <= retries.limit;
 
