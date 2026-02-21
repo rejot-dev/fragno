@@ -40,6 +40,8 @@ Format:
 - [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment
   design: public API shape, database schema and indexes, lifecycle semantics (run/replay/wait/
   sleep), runner/tick behavior, durable hooks wiring, HTTP routes, and CLI/management surface.
+- [Workflows Scenario DSL — Spec](./spec-workflows-scenarios.md) — TypeScript scenario DSL for
+  workflows testing, including deterministic clocks, runner ticks, and scenario steps.
 - [Workflows Reliability Fixes — Spec](./spec-workflows-smoke-fixes.md) — Reliability fixes for the
   workflows fragment and durable hooks: batch create, task leasing, retries, timeouts, pagination,
   dispatcher clock skew, retention/GC, and Postgres resilience.

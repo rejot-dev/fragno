@@ -1,1838 +1,1294 @@
-// Tests for workflow runner task claiming, execution, and pause/suspend behavior.
-import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { getInternalFragment, type TxResult } from "@fragno-dev/db";
-import type { FragnoId } from "@fragno-dev/db/schema";
-import { workflowsFragmentDefinition } from "./definition";
-import { createWorkflowsRunner } from "./runner";
-import * as runnerTask from "./runner/task";
+// Tests for the new runner using the workflows test harness.
+import { describe, expect, test } from "vitest";
+
+// TODO: Missing coverage areas for the runner test suite:
+// 1. Instance status fields beyond status/output (error shape, currentStep, pauseRequested)
+// 2. Concurrency conflict handling / idempotency of duplicate ticks
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import {
-  defineWorkflow,
-  NonRetryableError,
-  type WorkflowEvent,
-  type WorkflowStep,
-} from "./workflow";
-import { workflowsRoutesFactory } from "./routes";
-import { workflowsSchema } from "./schema";
+  defineFragment,
+  instantiate,
+  type AnyFragnoInstantiatedFragment,
+  type InstantiatedFragmentFromDefinition,
+} from "@fragno-dev/core";
+import { withDatabase } from "@fragno-dev/db";
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { defineWorkflow } from "./workflow";
+import { createWorkflowsTestHarness } from "./test";
 
 describe("Workflows Runner", () => {
-  let doCallCount = 0;
-  let concurrentCallCount = 0;
-  let retryCallCount = 0;
-  let priorityOrder: string[] = [];
-  let replayCallCount = 0;
-  let distinctCallCount = 0;
-  let pauseBoundaryCount = 0;
-  let pauseResumeCount = 0;
-  let retryLogCount = 0;
-  let maxAttemptsCallCount = 0;
-  let mutationOrder: string[] = [];
-  let replayStepCallCount = 0;
-  let replayMutationCallCount = 0;
-  let pauseBoundaryStarted: Promise<void>;
-  let pauseBoundaryStartedResolve: (() => void) | null = null;
-  let pauseBoundaryContinue: (() => void) | null = null;
-  let terminateBoundaryCount = 0;
-  let terminateBoundaryStarted: Promise<void>;
-  let terminateBoundaryStartedResolve: (() => void) | null = null;
-  let terminateBoundaryContinue: (() => void) | null = null;
-  let restartBoundaryCount = 0;
-  let restartBoundaryStarted: Promise<void>;
-  let restartBoundaryStartedResolve: (() => void) | null = null;
-  let restartBoundaryContinue: (() => void) | null = null;
-  const instanceRefs = new Map<string, FragnoId>();
-  let workflowServices: {
-    createInstance: (
-      workflowName: string,
-      options?: { id?: string; params?: unknown },
-    ) => TxResult<unknown, unknown>;
-  } | null = null;
-
-  const DemoWorkflow = defineWorkflow(
-    { name: "demo-workflow" },
-    async (event: WorkflowEvent<{ count: number }>, step: WorkflowStep) => {
-      const first = await step.do("calc", () => {
-        doCallCount += 1;
-        return { count: event.payload.count + 1 };
-      });
-      const second = await step.do("calc", () => {
-        doCallCount += 1;
-        return { count: 999 };
-      });
-      return { first, second };
-    },
-  );
-
-  const EventWorkflow = defineWorkflow(
-    { name: "event-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.waitForEvent("wait-ready", { type: "ready", timeout: "1 hour" });
-    },
-  );
-
-  const TimeoutWorkflow = defineWorkflow(
-    { name: "timeout-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.waitForEvent("wait-timeout", { type: "timeout", timeout: "1 s" });
-    },
-  );
-
-  const TimeoutCleanupWorkflow = defineWorkflow(
-    { name: "timeout-cleanup-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("cleanup-timeout", { timeout: "1 s" }, () => ({ ok: true }));
-    },
-  );
-
-  const SlowWorkflow = defineWorkflow(
-    { name: "slow-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("slow-step", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        return { ok: true };
-      });
-    },
-  );
-
-  const RetryWorkflow = defineWorkflow(
-    { name: "retry-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do(
-        "retry-step",
-        { retries: { limit: 1, delay: "40 ms", backoff: "constant" } },
-        () => {
-          retryCallCount += 1;
-          if (retryCallCount === 1) {
-            throw new Error("RETRY_ME");
-          }
-          return { ok: true };
-        },
-      );
-    },
-  );
-
-  const RetryLogWorkflow = defineWorkflow(
-    { name: "retry-logs-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do(
-        "retry-log-step",
-        { retries: { limit: 1, delay: "25 ms", backoff: "constant" } },
-        async () => {
-          await step.log.info("attempt");
-          retryLogCount += 1;
-          if (retryLogCount === 1) {
-            throw new Error("RETRY_LOG");
-          }
-          return { ok: true };
-        },
-      );
-    },
-  );
-
-  const MaxAttemptsWorkflow = defineWorkflow(
-    { name: "max-attempts-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do(
-        "max-attempt-step",
-        { retries: { limit: 0, delay: "10 ms", backoff: "constant" } },
-        () => {
-          maxAttemptsCallCount += 1;
-          throw new Error("MAX_ATTEMPT_FAIL");
-        },
-      );
-    },
-  );
-
-  const StepMutationWorkflow = defineWorkflow(
-    { name: "step-mutation-workflow" },
-    async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
-      const instanceRef = instanceRefs.get(event.instanceId);
-      if (!instanceRef) {
-        throw new Error("TEST_INSTANCE_REF_MISSING");
-      }
-      const services = workflowServices;
-      if (!services) {
-        throw new Error("TEST_SERVICES_MISSING");
-      }
-
-      const childId = `child-${event.instanceId}`;
-      return await step.do("mutate-step", (tx) => {
-        tx.serviceCalls(() => [
-          services.createInstance("demo-workflow", {
-            id: childId,
-            params: { count: 41 },
-          }),
-        ]);
-
-        tx.mutate(({ forSchema }) => {
-          const uow = forSchema(workflowsSchema);
-          uow.create("workflow_log", {
-            instanceRef,
-            workflowName: "step-mutation-workflow",
-            instanceId: event.instanceId,
-            runNumber: 0,
-            stepKey: "mutate-step",
-            attempt: 1,
-            level: "info",
-            category: "workflow",
-            message: "step-mutation",
-            data: { note: event.payload.note },
-          });
-        });
-
-        return { childId };
-      });
-    },
-  );
-
-  const MutationOrderingWorkflow = defineWorkflow(
-    { name: "mutation-order-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("order-step", (tx) => {
-        mutationOrder.push("callback-start");
-        tx.mutate(() => {
-          mutationOrder.push("mutation");
-        });
-        mutationOrder.push("callback-end");
-        return { ok: true };
-      });
-    },
-  );
-
-  const StepMutationReplayWorkflow = defineWorkflow(
-    { name: "step-mutation-replay-workflow" },
-    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      const services = workflowServices;
-      if (!services) {
-        throw new Error("TEST_SERVICES_MISSING");
-      }
-
-      const childId = `child-${event.instanceId}`;
-      const created = await step.do("spawn-child", (tx) => {
-        replayStepCallCount += 1;
-        tx.serviceCalls(() => [
-          services.createInstance("demo-workflow", { id: childId, params: { count: 9 } }),
-        ]);
-        tx.mutate(() => {
-          replayMutationCallCount += 1;
-        });
-        return { childId };
-      });
-
-      const waited = await step.waitForEvent("await-resume", {
-        type: "resume",
-        timeout: "1 hour",
-      });
-
-      return { created, waited };
-    },
-  );
-
-  const StepMutationUniqueConstraintWorkflow = defineWorkflow(
-    { name: "step-mutation-unique-workflow" },
-    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("unique-step", (tx) => {
-        tx.mutate(({ forSchema }) => {
-          const uow = forSchema(workflowsSchema);
-          uow.create("workflow_instance", {
-            workflowName: "step-mutation-unique-workflow",
-            instanceId: event.instanceId,
-            status: "queued",
-            params: {},
-            pauseRequested: false,
-            retentionUntil: null,
-            runNumber: 0,
-            startedAt: null,
-            completedAt: null,
-            output: null,
-            errorName: null,
-            errorMessage: null,
-          });
-        });
-        return { ok: true };
-      });
-    },
-  );
-
-  const UniqueConstraintWorkflow = defineWorkflow(
-    { name: "unique-constraint-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do(
-        "unique-step",
-        { retries: { limit: 2, delay: "25 ms", backoff: "constant" } },
-        () => {
-          throw new NonRetryableError("STEP_UNIQUE_CONSTRAINT_VIOLATION", "UniqueConstraintError");
-        },
-      );
-    },
-  );
-
-  const ConcurrentWorkflow = defineWorkflow(
-    { name: "concurrent-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("single-run", async () => {
-        concurrentCallCount += 1;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        return { ok: true };
-      });
-    },
-  );
-
-  const PauseSleepWorkflow = defineWorkflow(
-    { name: "pause-sleep-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      await step.sleep("pause-sleep", "50 ms");
+  test("runs a simple workflow to completion", async () => {
+    const SimpleWorkflow = defineWorkflow({ name: "simple-workflow" }, async () => {
       return { ok: true };
-    },
-  );
+    });
 
-  const ScheduledWorkflow = defineWorkflow(
-    { name: "scheduled-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      await step.sleep("scheduled-sleep", "10 minutes");
-      return { ok: true };
-    },
-  );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { SIMPLE: SimpleWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
 
-  const PauseBoundaryWorkflow = defineWorkflow(
-    { name: "pause-boundary-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      await step.do("pause-boundary", () => {
-        pauseBoundaryCount += 1;
-        return new Promise<{ ok: boolean }>((resolve) => {
-          pauseBoundaryContinue = () => resolve({ ok: true });
-          if (pauseBoundaryStartedResolve) {
-            pauseBoundaryStartedResolve();
-          }
-        });
+    const instanceId = await harness.createInstance("SIMPLE");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("SIMPLE", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ ok: true });
+  });
+
+  test("records a completed step", async () => {
+    const StepWorkflow = defineWorkflow({ name: "step-workflow" }, async (_event, step) => {
+      const value = await step.do("compute", () => 42);
+      return { value };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { STEP: StepWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("STEP");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("STEP", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ value: 42 });
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      name: "compute",
+      type: "do",
+      status: "completed",
+      stepKey: "do:compute",
+    });
+  });
+
+  test("runs multiple steps and consumes a queued event", async () => {
+    const EventWorkflow = defineWorkflow({ name: "eventful-workflow" }, async (_event, step) => {
+      const seed = await step.do("seed", () => 3);
+      const ready = await step.waitForEvent<{ value: number }>("ready", { type: "ready" });
+      const sum = await step.do("sum", () => seed + ready.payload.value);
+      return { seed, sum, eventValue: ready.payload.value };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EVENTFUL: EventWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("EVENTFUL");
+    await harness.sendEvent("EVENTFUL", instanceId, { type: "ready", payload: { value: 9 } });
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("EVENTFUL", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ seed: 3, sum: 12, eventValue: 9 });
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(3);
+    expect(steps.map((step) => step.stepKey).sort()).toEqual([
+      "do:seed",
+      "do:sum",
+      "waitForEvent:ready",
+    ]);
+
+    const events = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "ready",
+      consumedByStepKey: "waitForEvent:ready",
+    });
+    expect(events[0].deliveredAt).toBeInstanceOf(Date);
+  });
+
+  test("runs parallel steps and records both results", async () => {
+    const ParallelWorkflow = defineWorkflow({ name: "parallel-workflow" }, async (_event, step) => {
+      const [alpha, beta] = await Promise.all([
+        step.do("alpha", async () => "A"),
+        step.do("beta", async () => "B"),
+      ]);
+      return { alpha, beta };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARALLEL: ParallelWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("PARALLEL");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("PARALLEL", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ alpha: "A", beta: "B" });
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(2);
+    expect(steps.map((step) => step.stepKey).sort()).toEqual(["do:alpha", "do:beta"]);
+  });
+
+  test("simulates a fetch inside a step", async () => {
+    const FetchWorkflow = defineWorkflow({ name: "fetch-workflow" }, async (_event, step) => {
+      const response = await step.do("fetch", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return { status: 200, json: { ok: true, source: "fake" } };
       });
+      return response;
+    });
 
-      const resumed = await step.do("after-pause", () => {
-        pauseResumeCount += 1;
-        return { ok: true };
-      });
+    const harness = await createWorkflowsTestHarness({
+      workflows: { FETCH: FetchWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
 
-      return resumed;
-    },
-  );
+    const instanceId = await harness.createInstance("FETCH");
+    await drainDurableHooks(harness.fragment);
 
-  const TerminateBoundaryWorkflow = defineWorkflow(
-    { name: "terminate-boundary-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      await step.do("terminate-boundary", () => {
-        terminateBoundaryCount += 1;
-        return new Promise<{ ok: boolean }>((resolve) => {
-          terminateBoundaryContinue = () => resolve({ ok: true });
-          if (terminateBoundaryStartedResolve) {
-            terminateBoundaryStartedResolve();
-          }
-        });
-      });
+    const status = await harness.getStatus("FETCH", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({
+      status: 200,
+      json: { ok: true, source: "fake" },
+    });
 
-      return { ok: true };
-    },
-  );
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      name: "fetch",
+      type: "do",
+      status: "completed",
+      stepKey: "do:fetch",
+    });
+  });
 
-  const RestartBoundaryWorkflow = defineWorkflow(
-    { name: "restart-boundary-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("restart-boundary", () => {
-        restartBoundaryCount += 1;
-        if (restartBoundaryCount > 1) {
-          return { ok: true };
+  test("waits for an event before completing", async () => {
+    // Theory: initial "create" tick may be treated as a wake run, so waitForEvent
+    // goes down the wake path and errors immediately. If so, we should only use
+    // taskKind="wake" for actual wake/retry hooks, not create/event/resume.
+    const WaitWorkflow = defineWorkflow({ name: "wait-workflow" }, async (_event, step) => {
+      const ready = await step.waitForEvent<{ ok: boolean }>("ready", { type: "ready" });
+      return { ok: ready.payload.ok };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WAIT: WaitWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("WAIT");
+    await drainDurableHooks(harness.fragment);
+
+    const waitingStatus = await harness.getStatus("WAIT", instanceId);
+    expect(waitingStatus.status).toBe("waiting");
+
+    const [waitingStep] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(waitingStep).toMatchObject({
+      stepKey: "waitForEvent:ready",
+      status: "waiting",
+    });
+
+    await harness.sendEvent("WAIT", instanceId, { type: "ready", payload: { ok: true } });
+    await drainDurableHooks(harness.fragment);
+
+    const finalStatus = await harness.getStatus("WAIT", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ ok: true });
+  });
+
+  test("suspends on sleep and marks wake time", async () => {
+    // Theory: sleep is completing immediately because the runner treats the first tick as
+    // a wake attempt. That would bypass suspension and mark the sleep as completed.
+    const SleepWorkflow = defineWorkflow({ name: "sleep-workflow" }, async (_event, step) => {
+      await step.sleep("nap", "10 minutes");
+      return { done: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { SLEEP: SleepWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("SLEEP");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("SLEEP", instanceId);
+    expect(status.status).toBe("waiting");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "sleep:nap",
+      status: "waiting",
+    });
+    expect(stepRecord?.wakeAt).toBeInstanceOf(Date);
+  });
+
+  test("completes sleep on explicit wake tick", async () => {
+    const SleepWorkflow = defineWorkflow({ name: "sleep-wake-workflow" }, async (_event, step) => {
+      await step.sleep("nap", "10 minutes");
+      return { done: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { SLEEP_WAKE: SleepWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("SLEEP_WAKE");
+    await drainDurableHooks(harness.fragment);
+
+    const waitingStatus = await harness.getStatus("SLEEP_WAKE", instanceId);
+    expect(waitingStatus.status).toBe("waiting");
+
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    harness.clock.advanceBy("10 minutes");
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "wake",
+    });
+
+    const finalStatus = await harness.getStatus("SLEEP_WAKE", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ done: true });
+  });
+
+  test("suspends on sleepUntil and completes on wake", async () => {
+    let wakeAt: Date | null = null;
+
+    const SleepUntilWorkflow = defineWorkflow(
+      { name: "sleep-until-workflow" },
+      async (_event, step) => {
+        if (!wakeAt) {
+          throw new Error("MISSING_WAKE_AT");
         }
-        return new Promise<{ ok: boolean }>((resolve) => {
-          restartBoundaryContinue = () => resolve({ ok: true });
-          if (restartBoundaryStartedResolve) {
-            restartBoundaryStartedResolve();
-          }
-        });
-      });
-    },
-  );
+        await step.sleepUntil("alarm", wakeAt);
+        return { done: true };
+      },
+    );
 
-  const PriorityWorkflow = defineWorkflow(
-    { name: "priority-workflow" },
-    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      return await step.do("record-order", () => {
-        priorityOrder.push(event.instanceId);
+    const harness = await createWorkflowsTestHarness({
+      workflows: { SLEEP_UNTIL: SleepUntilWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("SLEEP_UNTIL");
+    wakeAt = new Date(harness.clock.now().getTime() + 5 * 60 * 1000);
+    await drainDurableHooks(harness.fragment);
+
+    const waitingStatus = await harness.getStatus("SLEEP_UNTIL", instanceId);
+    expect(waitingStatus.status).toBe("waiting");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "sleep:alarm",
+      status: "waiting",
+    });
+    expect(stepRecord.wakeAt?.getTime()).toBe(wakeAt.getTime());
+
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    harness.clock.set(wakeAt);
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "wake",
+    });
+
+    const finalStatus = await harness.getStatus("SLEEP_UNTIL", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ done: true });
+  });
+
+  test("waitForEvent times out on wake tick", async () => {
+    const TimeoutWorkflow = defineWorkflow(
+      { name: "event-timeout-workflow" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready", timeout: "5 minutes" });
         return { ok: true };
-      });
-    },
-  );
+      },
+    );
 
-  const ReplayWorkflow = defineWorkflow(
-    { name: "replay-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      const first = await step.do("replay-first", () => {
-        replayCallCount += 1;
-        return { ok: true };
-      });
-      const waited = await step.waitForEvent("replay-wait", { type: "go", timeout: "1 hour" });
-      return { first, waited };
-    },
-  );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { TIMEOUT: TimeoutWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
 
-  const LoopWorkflow = defineWorkflow(
-    { name: "loop-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      let seq = 0;
-      let total = 0;
+    const instanceId = await harness.createInstance("TIMEOUT");
+    await drainDurableHooks(harness.fragment);
 
-      while (true) {
-        const received = await step.waitForEvent(`loop-${seq}`, {
-          type: "message",
-          timeout: "1 hour",
+    const waitingStatus = await harness.getStatus("TIMEOUT", instanceId);
+    expect(waitingStatus.status).toBe("waiting");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "waitForEvent:ready",
+      status: "waiting",
+      waitEventType: "ready",
+    });
+    expect(stepRecord.wakeAt).toBeInstanceOf(Date);
+
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    const wakeAt = stepRecord.wakeAt ?? harness.clock.now();
+    harness.clock.set(new Date(wakeAt.getTime() + 1));
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "wake",
+    });
+
+    const finalStatus = await harness.getStatus("TIMEOUT", instanceId);
+    expect(finalStatus.status).toBe("errored");
+    expect(finalStatus.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+
+    const [erroredStep] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(erroredStep).toMatchObject({
+      stepKey: "waitForEvent:ready",
+      status: "errored",
+      errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+    });
+  });
+
+  test("getHistory returns ordered step and event data", async () => {
+    const HistoryWorkflow = defineWorkflow({ name: "history-workflow" }, async (_event, step) => {
+      const seed = await step.do("seed", () => 3);
+      const ready = await step.waitForEvent<{ ok: boolean }>("ready", { type: "ready" });
+      const result = await step.do("result", () => (ready.payload.ok ? seed + 1 : seed));
+      return { result };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { HISTORY: HistoryWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("HISTORY");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    let status = await harness.getStatus("HISTORY", instanceId);
+    expect(status.status).toBe("waiting");
+
+    await harness.sendEvent("HISTORY", instanceId, { type: "ready", payload: { ok: true } });
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
+    status = await harness.getStatus("HISTORY", instanceId);
+    expect(status.status).toBe("complete");
+
+    const history = await harness.getHistory("HISTORY", instanceId);
+    expect(history.runNumber).toBe(0);
+
+    const stepKeys = history.steps.map((step) => step.stepKey).sort();
+    expect(stepKeys).toEqual(["do:result", "do:seed", "waitForEvent:ready"]);
+
+    const stepTimestamps = history.steps.map((step) =>
+      new Date(step.createdAt as Date | string).getTime(),
+    );
+    expect([...stepTimestamps].sort((a, b) => b - a)).toEqual(stepTimestamps);
+
+    expect(history.events).toHaveLength(1);
+    expect(history.events[0]).toMatchObject({
+      type: "ready",
+      payload: { ok: true },
+      consumedByStepKey: "waitForEvent:ready",
+    });
+    const deliveredAt = history.events[0].deliveredAt;
+    expect(deliveredAt).toBeTruthy();
+    expect(new Date(deliveredAt as Date | string).toString()).not.toBe("Invalid Date");
+
+    const historyByRun = await harness.getHistory("HISTORY", instanceId, { runNumber: 0 });
+    expect(historyByRun.runNumber).toBe(0);
+    expect(historyByRun.steps).toHaveLength(3);
+    expect(historyByRun.events).toHaveLength(1);
+  });
+
+  test("consumes multiple events of the same type in order", async () => {
+    const EventOrderWorkflow = defineWorkflow(
+      { name: "event-order-workflow" },
+      async (_event, step) => {
+        const first = await step.waitForEvent<{ value: number }>("first", {
+          type: "ready",
         });
-        const payload = received.payload as { value?: number; done?: boolean };
-        total += payload.value ?? 0;
-        if (payload.done) {
-          return { total, seq };
-        }
-        seq += 1;
-      }
-    },
-  );
-
-  const ConstantStepWorkflow = defineWorkflow(
-    { name: "constant-step-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      const first = await step.waitForEvent("same-step", { type: "message", timeout: "1 hour" });
-      const second = await step.waitForEvent("same-step", { type: "message", timeout: "1 hour" });
-      return { first, second };
-    },
-  );
-
-  const LoggingWorkflow = defineWorkflow(
-    { name: "logging-workflow" },
-    async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
-      await step.log.info("starting", { note: event.payload.note }, { category: "workflow" });
-      return await step.do("logged-step", async () => {
-        await step.log.warn("inside", { note: event.payload.note });
-        return { ok: true };
-      });
-    },
-  );
-
-  const ReplayLogWorkflow = defineWorkflow(
-    { name: "replay-logs-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      await step.log.info("start");
-      await step.waitForEvent("replay-log-wait", { type: "go", timeout: "1 hour" });
-      await step.log.info("after");
-      return { ok: true };
-    },
-  );
-
-  const DistinctStepWorkflow = defineWorkflow(
-    { name: "distinct-step-workflow" },
-    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
-      const first = await step.do("step-one", () => {
-        distinctCallCount += 1;
-        return { id: 1 };
-      });
-      const second = await step.do("step-two", () => {
-        distinctCallCount += 1;
-        return { id: 2 };
-      });
-      return { first, second };
-    },
-  );
-
-  const ChildWorkflow = defineWorkflow(
-    { name: "child-workflow" },
-    async (event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) => {
-      return await step.do("child-run", () => ({
-        parentId: event.payload.parentId,
-      }));
-    },
-  );
-
-  const ParentWorkflow = defineWorkflow(
-    { name: "parent-workflow" },
-    async (event: WorkflowEvent<{ label: string }>, step: WorkflowStep, context) => {
-      return await step.do("spawn-child", async () => {
-        const child = await context.workflows["child"].create({
-          id: `child-${event.instanceId}`,
-          params: { parentId: event.instanceId },
+        const second = await step.waitForEvent<{ value: number }>("second", {
+          type: "ready",
         });
+        return { first: first.payload.value, second: second.payload.value };
+      },
+    );
 
-        return { childId: child.id, label: event.payload.label };
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EVENT_ORDER: EventOrderWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("EVENT_ORDER");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    await harness.sendEvent("EVENT_ORDER", instanceId, {
+      type: "ready",
+      payload: { value: 1 },
+    });
+    await harness.sendEvent("EVENT_ORDER", instanceId, {
+      type: "ready",
+      payload: { value: 2 },
+    });
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
+    const finalStatus = await harness.getStatus("EVENT_ORDER", instanceId);
+    expect(finalStatus.status).toBe("complete");
+
+    const events = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(events).toHaveLength(2);
+
+    const [firstEvent, secondEvent] = [...events].sort((a, b) =>
+      String(a.id).localeCompare(String(b.id)),
+    );
+
+    expect(finalStatus.output).toEqual({
+      first: (firstEvent.payload as { value: number }).value,
+      second: (secondEvent.payload as { value: number }).value,
+    });
+    expect(firstEvent).toMatchObject({
+      type: "ready",
+      consumedByStepKey: "waitForEvent:first",
+    });
+    expect(secondEvent).toMatchObject({
+      type: "ready",
+      consumedByStepKey: "waitForEvent:second",
+    });
+  });
+
+  test("treats event hooks as run ticks", async () => {
+    const EventReasonWorkflow = defineWorkflow(
+      { name: "event-reason-workflow" },
+      async (_event, step) => {
+        const ready = await step.waitForEvent<{ ok: boolean }>("ready", { type: "ready" });
+        return { ok: ready.payload.ok };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EVENT_REASON: EventReasonWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("EVENT_REASON");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    let status = await harness.getStatus("EVENT_REASON", instanceId);
+    expect(status.status).toBe("waiting");
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
+    status = await harness.getStatus("EVENT_REASON", instanceId);
+    expect(status.status).toBe("waiting");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "waitForEvent:ready",
+      status: "waiting",
+      waitEventType: "ready",
+    });
+  });
+
+  test("treats resume hooks as run ticks", async () => {
+    const ResumeReasonWorkflow = defineWorkflow(
+      { name: "resume-reason-workflow" },
+      async (_event, step) => {
+        const ready = await step.waitForEvent<{ ok: boolean }>("ready", { type: "ready" });
+        return { ok: ready.payload.ok };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RESUME_REASON: ResumeReasonWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("RESUME_REASON");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    let status = await harness.getStatus("RESUME_REASON", instanceId);
+    expect(status.status).toBe("waiting");
+
+    const pauseResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/pause",
+      {
+        pathParams: { workflowName: "resume-reason-workflow", instanceId },
+      },
+    );
+    expect(pauseResponse.type).toBe("json");
+    if (pauseResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${pauseResponse.type}`);
+    }
+    expect((pauseResponse.data as { ok: true }).ok).toBe(true);
+
+    const pausedStatus = await harness.getStatus("RESUME_REASON", instanceId);
+    expect(pausedStatus.status).toBe("paused");
+
+    const resumeResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/resume",
+      {
+        pathParams: { workflowName: "resume-reason-workflow", instanceId },
+      },
+    );
+    expect(resumeResponse.type).toBe("json");
+    if (resumeResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${resumeResponse.type}`);
+    }
+    expect((resumeResponse.data as { ok: true }).ok).toBe(true);
+
+    const queuedStatus = await harness.getStatus("RESUME_REASON", instanceId);
+    expect(queuedStatus.status).toBe("queued");
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "resume",
+    });
+
+    status = await harness.getStatus("RESUME_REASON", instanceId);
+    expect(status.status).toBe("waiting");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "waitForEvent:ready",
+      status: "waiting",
+      waitEventType: "ready",
+    });
+  });
+
+  test("keeps paused workflows from consuming events until resume", async () => {
+    const PauseEventWorkflow = defineWorkflow(
+      { name: "pause-event-workflow" },
+      async (_event, step) => {
+        const ready = await step.waitForEvent<{ ok: boolean }>("ready", { type: "ready" });
+        return { ok: ready.payload.ok };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PAUSE_EVENT: PauseEventWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("PAUSE_EVENT");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    let status = await harness.getStatus("PAUSE_EVENT", instanceId);
+    expect(status.status).toBe("waiting");
+
+    const pauseResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/pause",
+      {
+        pathParams: { workflowName: "pause-event-workflow", instanceId },
+      },
+    );
+    expect(pauseResponse.type).toBe("json");
+    if (pauseResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${pauseResponse.type}`);
+    }
+    expect((pauseResponse.data as { ok: true }).ok).toBe(true);
+
+    status = await harness.getStatus("PAUSE_EVENT", instanceId);
+    expect(status.status).toBe("paused");
+
+    await harness.sendEvent("PAUSE_EVENT", instanceId, {
+      type: "ready",
+      payload: { ok: true },
+    });
+
+    status = await harness.getStatus("PAUSE_EVENT", instanceId);
+    expect(status.status).toBe("paused");
+
+    const [eventRecord] = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(eventRecord).toMatchObject({
+      type: "ready",
+      consumedByStepKey: null,
+      deliveredAt: null,
+    });
+
+    const resumeResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/resume",
+      {
+        pathParams: { workflowName: "pause-event-workflow", instanceId },
+      },
+    );
+    expect(resumeResponse.type).toBe("json");
+    if (resumeResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${resumeResponse.type}`);
+    }
+    expect((resumeResponse.data as { ok: true }).ok).toBe(true);
+
+    const queuedStatus = await harness.getStatus("PAUSE_EVENT", instanceId);
+    expect(queuedStatus.status).toBe("queued");
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "resume",
+    });
+
+    const finalStatus = await harness.getStatus("PAUSE_EVENT", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ ok: true });
+
+    const [consumedEvent] = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(consumedEvent).toMatchObject({
+      type: "ready",
+      consumedByStepKey: "waitForEvent:ready",
+    });
+    expect(consumedEvent.deliveredAt).toBeInstanceOf(Date);
+  });
+
+  test("applies WorkflowStepTx mutations", async () => {
+    const mutationsSchema = schema("mutations_test", (s) =>
+      s.addTable("mutation_record", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("note", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_note", ["note"]),
+      ),
+    );
+
+    const mutationsFragmentDefinition = defineFragment("mutations-fragment")
+      .extend(withDatabase(mutationsSchema))
+      .build();
+
+    const MutateWorkflow = defineWorkflow({ name: "mutate-workflow" }, async (event, step) => {
+      const note = `fromTx-${event.instanceId}`;
+      const result = await step.do("mutate", (tx) => {
+        tx.mutate((ctx) => {
+          ctx.forSchema(mutationsSchema).create("mutation_record", { note });
+        });
+        return "mutated";
       });
-    },
-  );
+      return { result };
+    });
 
-  const workflows = {
-    demo: DemoWorkflow,
-    events: EventWorkflow,
-    timeout: TimeoutWorkflow,
-    timeoutCleanup: TimeoutCleanupWorkflow,
-    slow: SlowWorkflow,
-    retry: RetryWorkflow,
-    retryLogs: RetryLogWorkflow,
-    maxAttempts: MaxAttemptsWorkflow,
-    stepMutation: StepMutationWorkflow,
-    mutationOrder: MutationOrderingWorkflow,
-    stepMutationReplay: StepMutationReplayWorkflow,
-    stepMutationUnique: StepMutationUniqueConstraintWorkflow,
-    uniqueConstraint: UniqueConstraintWorkflow,
-    concurrent: ConcurrentWorkflow,
-    pauseSleep: PauseSleepWorkflow,
-    pauseBoundary: PauseBoundaryWorkflow,
-    terminateBoundary: TerminateBoundaryWorkflow,
-    restartBoundary: RestartBoundaryWorkflow,
-    priority: PriorityWorkflow,
-    replay: ReplayWorkflow,
-    loop: LoopWorkflow,
-    constantStep: ConstantStepWorkflow,
-    logging: LoggingWorkflow,
-    replayLogs: ReplayLogWorkflow,
-    distinct: DistinctStepWorkflow,
-    scheduled: ScheduledWorkflow,
-    child: ChildWorkflow,
-    parent: ParentWorkflow,
-  };
+    const harness = await createWorkflowsTestHarness({
+      workflows: { MUTATE: MutateWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragment("mutations", instantiate(mutationsFragmentDefinition)),
+    });
 
-  const setup = async () => {
-    const runtime = defaultFragnoRuntime;
-    const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withFragment(
-        "workflows",
-        instantiate(workflowsFragmentDefinition)
-          .withConfig({
-            workflows,
-            runtime,
-          })
-          .withRoutes([workflowsRoutesFactory]),
+    const instanceId = await harness.createInstance("MUTATE");
+    const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("primary"),
+    );
+    const note = `fromTx-${instanceId}`;
+
+    await harness.tick({
+      workflowName: createdInstance.workflowName,
+      instanceId: createdInstance.instanceId,
+      instanceRef: String(createdInstance.id),
+      runNumber: createdInstance.runNumber,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("MUTATE", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ result: "mutated" });
+
+    const mutationRows = await harness.fragments["mutations"].db.find("mutation_record", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(mutationRows).toHaveLength(1);
+    expect(mutationRows[0]).toMatchObject({ note });
+  });
+
+  test("rejects non-mutate serviceCalls in WorkflowStepTx", async () => {
+    const serviceCallsSchema = schema("service_calls_test", (s) =>
+      s.addTable("service_record", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("note", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_note", ["note"]),
+      ),
+    );
+
+    const serviceCallsFragmentDefinition = defineFragment("service-calls-fragment")
+      .extend(withDatabase(serviceCallsSchema))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          listRecords: function () {
+            return this.serviceTx(serviceCallsSchema)
+              .retrieve((uow) => uow.find("service_record", (b) => b.whereIndex("primary")))
+              .build();
+          },
+        }),
       )
       .build();
 
-    const { fragment, db } = fragments.workflows;
-    const runner = createWorkflowsRunner({ fragment, workflows, runtime });
-    return { fragments, testContext, fragment, db, runner, runtime };
-  };
+    let serviceCallFragment: InstantiatedFragmentFromDefinition<
+      typeof serviceCallsFragmentDefinition
+    >;
 
-  type Setup = Awaited<ReturnType<typeof setup>>;
-
-  let _fragments: Setup["fragments"];
-  let testContext: Setup["testContext"];
-  let fragment: Setup["fragment"];
-  let db: Setup["db"];
-  let runner: Setup["runner"];
-  let runtime: Setup["runtime"];
-
-  beforeAll(async () => {
-    ({ fragments: _fragments, testContext, fragment, db, runner, runtime } = await setup());
-    workflowServices = fragment.services as {
-      createInstance: (
-        workflowName: string,
-        options?: { id?: string; params?: unknown },
-      ) => TxResult<unknown, unknown>;
-    };
-  });
-
-  const createInstance = async (workflowName: string, params: unknown) => {
-    const response = await fragment.callRoute("POST", "/:workflowName/instances", {
-      pathParams: { workflowName },
-      body: { params },
-    });
-    if (response.type !== "json") {
-      throw new Error("Expected json response");
-    }
-    return response.data.id as string;
-  };
-
-  const getInstanceRef = async (workflowName: string, instanceId: string) => {
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
-      ),
-    );
-    if (!instance) {
-      throw new Error(`Instance not found: ${workflowName}/${instanceId}`);
-    }
-    return instance.id;
-  };
-
-  beforeEach(async () => {
-    await testContext.resetDatabase();
-    instanceRefs.clear();
-    doCallCount = 0;
-    concurrentCallCount = 0;
-    retryCallCount = 0;
-    priorityOrder = [];
-    replayCallCount = 0;
-    distinctCallCount = 0;
-    pauseBoundaryCount = 0;
-    pauseResumeCount = 0;
-    retryLogCount = 0;
-    maxAttemptsCallCount = 0;
-    mutationOrder = [];
-    replayStepCallCount = 0;
-    replayMutationCallCount = 0;
-    pauseBoundaryContinue = null;
-    pauseBoundaryStartedResolve = null;
-    pauseBoundaryStarted = new Promise((resolve) => {
-      pauseBoundaryStartedResolve = resolve;
-    });
-    terminateBoundaryCount = 0;
-    terminateBoundaryContinue = null;
-    terminateBoundaryStartedResolve = null;
-    terminateBoundaryStarted = new Promise((resolve) => {
-      terminateBoundaryStartedResolve = resolve;
-    });
-    restartBoundaryCount = 0;
-    restartBoundaryContinue = null;
-    restartBoundaryStartedResolve = null;
-    restartBoundaryStarted = new Promise((resolve) => {
-      restartBoundaryStartedResolve = resolve;
-    });
-  });
-
-  test("tick should execute workflow and reuse cached steps", async () => {
-    const id = await createInstance("demo-workflow", { count: 1 });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(processed).toBe(1);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", id)),
-      ),
+    const ServiceCallWorkflow = defineWorkflow(
+      { name: "service-call-workflow" },
+      async (_event, step) => {
+        await step.do("call", (tx) => {
+          tx.serviceCalls(() => [serviceCallFragment.services.listRecords()]);
+          return "queued";
+        });
+        return { ok: true };
+      },
     );
 
-    expect(instance?.status).toBe("complete");
-    expect(instance?.output).toEqual({
-      first: { count: 2 },
-      second: { count: 2 },
-    });
-    expect(doCallCount).toBe(1);
-
-    const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(steps).toHaveLength(1);
-    expect(steps[0].status).toBe("completed");
-  });
-
-  test("step-scoped mutations should run with step commit", async () => {
-    const id = await createInstance("step-mutation-workflow", { note: "hello" });
-    const instanceRef = await getInstanceRef("step-mutation-workflow", id);
-    instanceRefs.set(id, instanceRef);
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const childInstance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", `child-${id}`)),
-      ),
-    );
-    expect(childInstance).not.toBeNull();
-
-    const logs = await db.find("workflow_log", (b) => b.whereIndex("primary"));
-    const log = logs.find(
-      (entry) =>
-        entry.workflowName === "step-mutation-workflow" &&
-        entry.instanceId === id &&
-        entry.message === "step-mutation",
-    );
-    expect(log).toBeTruthy();
-  });
-
-  test("step-scoped mutations should run after the step callback", async () => {
-    const id = await createInstance("mutation-order-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    expect(mutationOrder).toEqual(["callback-start", "callback-end", "mutation"]);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "mutation-order-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(instance?.status).toBe("complete");
-  });
-
-  test("step-scoped mutations should not re-run on replay", async () => {
-    const id = await createInstance("step-mutation-replay-workflow", {});
-
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(firstTick).toBe(1);
-    expect(replayStepCallCount).toBe(1);
-    expect(replayMutationCallCount).toBe(1);
-
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "step-mutation-replay-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(waiting?.status).toBe("waiting");
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "step-mutation-replay-workflow", instanceId: id },
-      body: { type: "resume", payload: { ok: true } },
-    });
-
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(secondTick).toBe(1);
-    expect(replayStepCallCount).toBe(1);
-    expect(replayMutationCallCount).toBe(1);
-
-    const childInstance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", `child-${id}`)),
-      ),
-    );
-    expect(childInstance).not.toBeNull();
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "step-mutation-replay-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(completed?.status).toBe("complete");
-  });
-
-  test("step-scoped unique constraint violations should fail steps without retry", async () => {
-    const id = await createInstance("step-mutation-unique-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const step = await db.findFirst("workflow_step", (b) =>
-      b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "step-mutation-unique-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-          eb("stepKey", "=", "unique-step"),
+    const harness = await createWorkflowsTestHarness({
+      workflows: { SERVICE_CALL: ServiceCallWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragmentFactory(
+          "serviceCalls",
+          serviceCallsFragmentDefinition,
+          ({ adapter }) => {
+            const fragment = instantiate(serviceCallsFragmentDefinition)
+              .withOptions({ databaseAdapter: adapter })
+              .build();
+            serviceCallFragment = fragment;
+            return fragment;
+          },
         ),
-      ),
-    );
-    expect(step?.status).toBe("errored");
-    expect(step?.attempts).toBe(1);
-    expect(step?.nextRetryAt).toBeNull();
-    expect(step?.errorName).toBe("UniqueConstraintError");
+    });
 
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "step-mutation-unique-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(instance?.status).toBe("errored");
-    expect(instance?.errorName).toBe("UniqueConstraintError");
+    const instanceId = await harness.createInstance("SERVICE_CALL");
+
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("SERVICE_CALL", instanceId);
+    expect(status.status).toBe("errored");
+    expect(status.error?.message).toBe("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
   });
 
-  test("unique constraint violations should fail steps without retry", async () => {
-    const id = await createInstance("unique-constraint-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const step = await db.findFirst("workflow_step", (b) =>
-      b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "unique-constraint-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-          eb("stepKey", "=", "unique-step"),
-        ),
-      ),
-    );
-    expect(step?.status).toBe("errored");
-    expect(step?.attempts).toBe(1);
-    expect(step?.nextRetryAt).toBeNull();
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "unique-constraint-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(instance?.status).toBe("errored");
-    expect(instance?.errorName).toBe("UniqueConstraintError");
-  });
-
-  test("tick should flush step boundaries after each step", async () => {
-    const flushSpy = vi.spyOn(runnerTask, "flushStepBoundary");
-    const flushRunner = createWorkflowsRunner({ fragment, workflows, runtime });
-    flushSpy.mockClear();
-
-    try {
-      const id = await createInstance("distinct-step-workflow", {});
-
-      const processed = await flushRunner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-      expect(distinctCallCount).toBe(2);
-      expect(flushSpy).toHaveBeenCalledTimes(2);
-
-      const instance = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "distinct-step-workflow"), eb("instanceId", "=", id)),
-        ),
+  test("retries a failed step and succeeds", async () => {
+    let attempts = 0;
+    const RetryWorkflow = defineWorkflow({ name: "retry-workflow" }, async (_event, step) => {
+      const result = await step.do(
+        "unstable",
+        { retries: { limit: 1, delay: 0, backoff: "constant" } },
+        () => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error("RETRY_ME");
+          }
+          return "ok";
+        },
       );
-      expect(instance?.status).toBe("complete");
-    } finally {
-      flushSpy.mockRestore();
-    }
-  });
-
-  test("tick should cache steps by name", async () => {
-    const id = await createInstance("distinct-step-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(processed).toBe(1);
-    expect(distinctCallCount).toBe(2);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "distinct-step-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(instance?.status).toBe("complete");
-    expect(instance?.output).toEqual({
-      first: { id: 1 },
-      second: { id: 2 },
+      return { result };
     });
 
-    const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(steps).toHaveLength(2);
-  });
-
-  test("tick should expose workflow bindings for child workflows", async () => {
-    const parentId = await createInstance("parent-workflow", { label: "primary" });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(processed).toBe(1);
-
-    const parentInstance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "parent-workflow"), eb("instanceId", "=", parentId)),
-      ),
-    );
-
-    expect(parentInstance?.status).toBe("complete");
-    expect(parentInstance?.output).toEqual({
-      childId: `child-${parentId}`,
-      label: "primary",
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RETRY: RetryWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
 
-    const childInstance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "child-workflow"),
-          eb("instanceId", "=", `child-${parentId}`),
-        ),
-      ),
-    );
+    const instanceId = await harness.createInstance("RETRY");
+    await drainDurableHooks(harness.fragment);
 
-    expect(childInstance?.status).toBe("queued");
+    const status = await harness.getStatus("RETRY", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ result: "ok" });
 
-    const childTask = await db.findFirst("workflow_task", (b) =>
-      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "child-workflow"),
-          eb("instanceId", "=", `child-${parentId}`),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    expect(childTask?.status).toBe("pending");
-  });
-
-  test("tick should replay cached steps across ticks", async () => {
-    const id = await createInstance("replay-workflow", {});
-
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(firstTick).toBe(1);
-    expect(replayCallCount).toBe(1);
-
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "replay-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(waiting?.status).toBe("waiting");
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "replay-workflow", instanceId: id },
-      body: { type: "go", payload: { ok: true } },
-    });
-
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(secondTick).toBe(1);
-    expect(replayCallCount).toBe(1);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "replay-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(completed?.status).toBe("complete");
-    expect(completed?.output).toMatchObject({
-      first: { ok: true },
-      waited: { type: "go", payload: { ok: true } },
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "do:unstable",
+      status: "completed",
+      attempts: 2,
     });
   });
 
-  test("tick should consume buffered events for waitForEvent", async () => {
-    const id = await createInstance("event-workflow", {});
-    const instanceRef = await getInstanceRef("event-workflow", id);
-
-    await db.create("workflow_event", {
-      instanceRef,
-      workflowName: "event-workflow",
-      instanceId: id,
-      runNumber: 0,
-      type: "ready",
-      payload: { ok: true },
-      deliveredAt: null,
-      consumedByStepKey: null,
-    });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "event-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(instance?.status).toBe("complete");
-    expect(instance?.output).toEqual({
-      type: "ready",
-      payload: { ok: true },
-      timestamp: expect.any(String),
-    });
-
-    const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
-    expect(event.deliveredAt).toBeInstanceOf(Date);
-    expect(event.consumedByStepKey).toBe("wait-ready");
-  });
-
-  test("loop workflow should suspend between events and continue on replay", async () => {
-    const id = await createInstance("loop-workflow", {});
-
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(firstTick).toBe(1);
-
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(waiting?.status).toBe("waiting");
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "loop-workflow", instanceId: id },
-      body: { type: "message", payload: { value: 2 } },
-    });
-
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(secondTick).toBe(1);
-
-    const waitingAgain = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(waitingAgain?.status).toBe("waiting");
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "loop-workflow", instanceId: id },
-      body: { type: "message", payload: { value: 3, done: true } },
-    });
-
-    const thirdTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(thirdTick).toBe(1);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(completed?.status).toBe("complete");
-    expect(completed?.output).toEqual({ total: 5, seq: 1 });
-
-    const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    const stepKeys = steps.map((step) => step.stepKey).sort();
-    expect(stepKeys).toEqual(["loop-0", "loop-1"]);
-  });
-
-  test("constant step name should replay the first event", async () => {
-    const id = await createInstance("constant-step-workflow", {});
-
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(firstTick).toBe(1);
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "constant-step-workflow", instanceId: id },
-      body: { type: "message", payload: { value: 1 } },
-    });
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "constant-step-workflow", instanceId: id },
-      body: { type: "message", payload: { value: 2 } },
-    });
-
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(secondTick).toBe(1);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "constant-step-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-    expect(completed?.status).toBe("complete");
-    expect(completed?.output).toEqual({
-      first: { type: "message", payload: { value: 1 }, timestamp: expect.any(String) },
-      second: { type: "message", payload: { value: 1 }, timestamp: expect.any(String) },
-    });
-
-    const events = await db.find("workflow_event", (b) => b.whereIndex("primary"));
-    const delivered = events.filter((event) => event.deliveredAt !== null);
-    const undelivered = events.filter((event) => event.deliveredAt === null);
-    expect(delivered).toHaveLength(1);
-    expect(undelivered).toHaveLength(1);
-    expect(delivered[0]?.payload).toEqual({ value: 1 });
-    expect(undelivered[0]?.payload).toEqual({ value: 2 });
-  });
-
-  test("tick should error when waitForEvent times out", async () => {
-    vi.useFakeTimers();
-    try {
-      const id = await createInstance("timeout-workflow", {});
-
-      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-
-      const waiting = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(waiting?.status).toBe("waiting");
-
-      await vi.advanceTimersByTimeAsync(1100);
-
-      const processedTimeout = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processedTimeout).toBe(1);
-
-      const errored = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(errored?.status).toBe("errored");
-      expect(errored?.errorName).toBe("WaitForEventTimeoutError");
-
-      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-      expect(step).toMatchObject({ stepKey: "wait-timeout", status: "errored" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("waitForEvent should accept events created before wakeAt even if processed late", async () => {
-    vi.useFakeTimers();
-    try {
-      const id = await createInstance("timeout-workflow", {});
-      const instanceRef = await getInstanceRef("timeout-workflow", id);
-
-      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-
-      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-      if (!step.wakeAt) {
-        throw new Error("Missing wakeAt");
-      }
-
-      await db.create("workflow_event", {
-        instanceRef,
-        workflowName: "timeout-workflow",
-        instanceId: id,
-        runNumber: 0,
-        type: "timeout",
-        payload: { ok: true },
-        createdAt: new Date(step.wakeAt.getTime() - 100),
-        deliveredAt: null,
-        consumedByStepKey: null,
+  test("marks workflow errored when step throws", async () => {
+    const ErrorWorkflow = defineWorkflow({ name: "error-workflow" }, async (_event, step) => {
+      await step.do("boom", () => {
+        throw new Error("BOOM");
       });
-
-      await vi.advanceTimersByTimeAsync(1100);
-
-      const processedLate = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processedLate).toBe(1);
-
-      const completed = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(completed?.status).toBe("complete");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("waitForEvent should ignore events created after wakeAt", async () => {
-    vi.useFakeTimers();
-    try {
-      const id = await createInstance("timeout-workflow", {});
-      const instanceRef = await getInstanceRef("timeout-workflow", id);
-
-      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-
-      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-      if (!step.wakeAt) {
-        throw new Error("Missing wakeAt");
-      }
-
-      await vi.advanceTimersByTimeAsync(1100);
-
-      await db.create("workflow_event", {
-        instanceRef,
-        workflowName: "timeout-workflow",
-        instanceId: id,
-        runNumber: 0,
-        type: "timeout",
-        payload: { ok: true },
-        createdAt: new Date(step.wakeAt.getTime() + 100),
-        deliveredAt: null,
-        consumedByStepKey: null,
-      });
-
-      const processedLate = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processedLate).toBe(1);
-
-      const errored = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(errored?.status).toBe("errored");
-
-      const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
-      expect(event.deliveredAt).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("do should clear timeout timers after success", async () => {
-    vi.useFakeTimers();
-    try {
-      const before = vi.getTimerCount();
-      const id = await createInstance("timeout-cleanup-workflow", {});
-
-      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-
-      const instance = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "timeout-cleanup-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-      expect(instance?.status).toBe("complete");
-      expect(vi.getTimerCount()).toBe(before);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("tick should schedule retries before completing a step", async () => {
-    vi.useFakeTimers();
-    try {
-      const id = await createInstance("retry-workflow", {});
-
-      const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(firstTick).toBe(1);
-      expect(retryCallCount).toBe(1);
-
-      const waiting = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(waiting?.status).toBe("waiting");
-
-      const [waitingStep] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-      expect(waitingStep).toMatchObject({ stepKey: "retry-step", status: "waiting" });
-      expect(waitingStep?.nextRetryAt).toBeInstanceOf(Date);
-
-      await vi.advanceTimersByTimeAsync(60);
-
-      const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(secondTick).toBe(1);
-      expect(retryCallCount).toBe(2);
-
-      const completed = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-
-      expect(completed?.status).toBe("complete");
-      expect(completed?.output).toEqual({ ok: true });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("do should guard against attempts exceeding maxAttempts", async () => {
-    const id = await createInstance("max-attempts-workflow", {});
-    const instanceRef = await getInstanceRef("max-attempts-workflow", id);
-
-    await db.create("workflow_step", {
-      instanceRef,
-      workflowName: "max-attempts-workflow",
-      instanceId: id,
-      runNumber: 0,
-      stepKey: "max-attempt-step",
-      name: "max-attempt-step",
-      type: "do",
-      status: "waiting",
-      attempts: 1,
-      maxAttempts: 1,
-      timeoutMs: null,
-      nextRetryAt: new Date(Date.now() - 1000),
-      wakeAt: null,
-      waitEventType: null,
-      result: null,
-      errorName: null,
-      errorMessage: null,
+      return { ok: true };
     });
 
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-    expect(maxAttemptsCallCount).toBe(0);
-
-    const errored = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "max-attempts-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(errored?.status).toBe("errored");
-    expect(errored?.errorName).toBe("StepMaxAttemptsExceeded");
-
-    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(step.status).toBe("errored");
-  });
-
-  test("tick should persist step logs with context", async () => {
-    const id = await createInstance("logging-workflow", { note: "alpha" });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(processed).toBe(1);
-
-    const logs = await db.find("workflow_log", (b) =>
-      b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "logging-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    expect(logs).toHaveLength(2);
-
-    const startLog = logs.find((entry) => entry.message === "starting");
-    const insideLog = logs.find((entry) => entry.message === "inside");
-
-    expect(startLog).toMatchObject({
-      stepKey: null,
-      attempt: null,
-      level: "info",
-      category: "workflow",
+    const harness = await createWorkflowsTestHarness({
+      workflows: { ERROR: ErrorWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
-    expect(insideLog).toMatchObject({
-      stepKey: "logged-step",
-      attempt: 1,
-      level: "warn",
-      category: "workflow",
+
+    const instanceId = await harness.createInstance("ERROR");
+    await drainDurableHooks(harness.fragment);
+
+    const status = await harness.getStatus("ERROR", instanceId);
+    expect(status.status).toBe("errored");
+
+    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(stepRecord).toMatchObject({
+      stepKey: "do:boom",
+      status: "errored",
     });
   });
 
-  test("tick should persist retry logs and mark replay entries", async () => {
-    vi.useFakeTimers();
-    try {
-      const id = await createInstance("retry-logs-workflow", {});
+  test("pauses a queued instance and resumes to completion", async () => {
+    let runs = 0;
+    const PauseWorkflow = defineWorkflow(
+      { name: "pause-management-workflow" },
+      async (_event, step) => {
+        const value = await step.do("count", () => {
+          runs += 1;
+          return runs;
+        });
+        return { value };
+      },
+    );
 
-      const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(firstTick).toBe(1);
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PAUSE: PauseWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
 
-      const waiting = await db.findFirst("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-          eb.and(eb("workflowName", "=", "retry-logs-workflow"), eb("instanceId", "=", id)),
-        ),
-      );
-      expect(waiting?.status).toBe("waiting");
+    const instanceId = await harness.createInstance("PAUSE");
 
-      await vi.advanceTimersByTimeAsync(40);
-
-      const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(secondTick).toBe(1);
-
-      const logs = await db.find("workflow_log", (b) =>
-        b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
-          eb.and(
-            eb("workflowName", "=", "retry-logs-workflow"),
-            eb("instanceId", "=", id),
-            eb("runNumber", "=", 0),
-          ),
-        ),
-      );
-
-      const attemptNumbers = logs
-        .map((entry) => entry.attempt)
-        .filter((value): value is number => value !== null)
-        .sort((a, b) => a - b);
-      expect(attemptNumbers).toEqual([1, 2]);
-      expect(logs).toHaveLength(2);
-    } finally {
-      vi.useRealTimers();
+    const pauseResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/pause",
+      {
+        pathParams: { workflowName: "pause-management-workflow", instanceId },
+      },
+    );
+    expect(pauseResponse.type).toBe("json");
+    if (pauseResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${pauseResponse.type}`);
     }
-  });
+    expect((pauseResponse.data as { ok: true }).ok).toBe(true);
 
-  test("tick should mark replay logs after waiting for events", async () => {
-    const id = await createInstance("replay-logs-workflow", {});
+    const pausedStatus = await harness.getStatus("PAUSE", instanceId);
+    expect(pausedStatus.status).toBe("paused");
 
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(firstTick).toBe(1);
+    await drainDurableHooks(harness.fragment);
 
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName: "replay-logs-workflow", instanceId: id },
-      body: { type: "go", payload: { ok: true } },
-    });
+    const stillPaused = await harness.getStatus("PAUSE", instanceId);
+    expect(stillPaused.status).toBe("paused");
+    expect(runs).toBe(0);
 
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(secondTick).toBe(1);
-
-    const logs = await db.find("workflow_log", (b) =>
-      b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "replay-logs-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
+    const resumeResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/resume",
+      {
+        pathParams: { workflowName: "pause-management-workflow", instanceId },
+      },
     );
-
-    const startLogs = logs.filter((entry) => entry.message === "start");
-    expect(startLogs).toHaveLength(2);
-  });
-
-  test("tick should renew task lease while executing", async () => {
-    const leaseMs = 100;
-    const leaseRunner = createWorkflowsRunner({
-      fragment,
-      workflows,
-      runtime,
-      leaseMs,
-      runnerId: "lease-runner",
-    });
-
-    const id = await createInstance("slow-workflow", {});
-
-    const tickPromise = leaseRunner.tick({ maxInstances: 1, maxSteps: 5 });
-
-    const fetchTask = () =>
-      db.findFirst("workflow_task", (b) =>
-        b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-          eb.and(
-            eb("workflowName", "=", "slow-workflow"),
-            eb("instanceId", "=", id),
-            eb("runNumber", "=", 0),
-          ),
-        ),
-      );
-
-    let initialTask: Awaited<ReturnType<typeof fetchTask>> = null;
-    const startWait = Date.now();
-    while (!initialTask && Date.now() - startWait < 500) {
-      const candidate = await fetchTask();
-      if (candidate?.lockOwner === "lease-runner") {
-        initialTask = candidate;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(resumeResponse.type).toBe("json");
+    if (resumeResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${resumeResponse.type}`);
     }
+    expect((resumeResponse.data as { ok: true }).ok).toBe(true);
 
-    expect(initialTask).not.toBeNull();
-    expect(initialTask?.lockOwner).toBe("lease-runner");
-    expect(initialTask?.lockedUntil).toBeInstanceOf(Date);
+    await drainDurableHooks(harness.fragment);
 
-    await new Promise((resolve) => setTimeout(resolve, leaseMs + 60));
+    const finalStatus = await harness.getStatus("PAUSE", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ value: 1 });
 
-    const renewedTask = await fetchTask();
-    expect(renewedTask).not.toBeNull();
-    expect(renewedTask?.lockOwner).toBe("lease-runner");
-    expect(renewedTask?.lockedUntil?.getTime()).toBeGreaterThan(
-      initialTask?.lockedUntil?.getTime() ?? 0,
-    );
-
-    await tickPromise;
-  });
-
-  test("concurrent ticks should only process a task once", async () => {
-    const id = await createInstance("concurrent-workflow", {});
-
-    const runnerA = createWorkflowsRunner({
-      fragment,
-      workflows,
-      runtime,
-      runnerId: "runner-a",
-    });
-    const runnerB = createWorkflowsRunner({
-      fragment,
-      workflows,
-      runtime,
-      runnerId: "runner-b",
-    });
-
-    const [processedA, processedB] = await Promise.all([
-      runnerA.tick({ maxInstances: 1, maxSteps: 5 }),
-      runnerB.tick({ maxInstances: 1, maxSteps: 5 }),
-    ]);
-
-    expect(processedA + processedB).toBe(1);
-    expect(concurrentCallCount).toBe(1);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(instance?.status).toBe("complete");
-  });
-
-  test("expired processing lease should allow takeover", async () => {
-    const id = await createInstance("concurrent-workflow", {});
-
-    const task = await db.findFirst("workflow_task", (b) =>
-      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "concurrent-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    if (!task) {
-      throw new Error("Expected workflow task");
-    }
-
-    await db.update("workflow_task", task.id, (b) =>
-      b.set({
-        status: "processing",
-        lockOwner: "stale-runner",
-        lockedUntil: new Date(Date.now() - 1000),
-        updatedAt: new Date(),
-      }),
-    );
-
-    const runner = createWorkflowsRunner({
-      fragment,
-      workflows,
-      runtime,
-      runnerId: "fresh-runner",
-    });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-    expect(concurrentCallCount).toBe(1);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(instance?.status).toBe("complete");
-  });
-
-  test("pending task with a lease should still be claimable", async () => {
-    const id = await createInstance("concurrent-workflow", {});
-
-    const task = await db.findFirst("workflow_task", (b) =>
-      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "concurrent-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    if (!task) {
-      throw new Error("Expected workflow task");
-    }
-
-    await db.update("workflow_task", task.id, (b) =>
-      b.set({
-        status: "pending",
-        lockOwner: "stale-runner",
-        lockedUntil: new Date(Date.now() + 60_000),
-        updatedAt: new Date(),
-      }),
-    );
-
-    const runner = createWorkflowsRunner({
-      fragment,
-      workflows,
-      runtime,
-      runnerId: "fresh-runner",
-    });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-    expect(concurrentCallCount).toBe(1);
-
-    const instance = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(instance?.status).toBe("complete");
-  });
-
-  test("tick should prioritize wake/retry/resume before run tasks", async () => {
-    const now = new Date();
-    const createInstanceRecord = (instanceId: string) =>
-      db.create("workflow_instance", {
-        workflowName: "priority-workflow",
-        instanceId,
-        status: "queued",
-        params: {},
-        pauseRequested: false,
-        retentionUntil: null,
-        runNumber: 0,
-        startedAt: null,
-        completedAt: null,
-        output: null,
-        errorName: null,
-        errorMessage: null,
-      });
-
-    const instanceIds = ["run-1", "wake-1", "retry-1", "resume-1"];
-    const instanceRefs = await Promise.all(instanceIds.map(createInstanceRecord));
-    const instanceRefById = new Map(instanceIds.map((id, index) => [id, instanceRefs[index]]));
-
-    const createTask = (instanceId: string, kind: "run" | "wake" | "retry" | "resume") =>
-      db.create("workflow_task", {
-        instanceRef: instanceRefById.get(instanceId)!,
-        workflowName: "priority-workflow",
-        instanceId,
-        runNumber: 0,
-        kind,
-        runAt: now,
-        status: "pending",
-        attempts: 0,
-        maxAttempts: 1,
-        lastError: null,
-        lockedUntil: null,
-        lockOwner: null,
-      });
-
-    await Promise.all([
-      createTask("run-1", "run"),
-      createTask("wake-1", "wake"),
-      createTask("retry-1", "retry"),
-      createTask("resume-1", "resume"),
-    ]);
-
-    for (let i = 0; i < 4; i += 1) {
-      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-      expect(processed).toBe(1);
-    }
-
-    expect(priorityOrder).toEqual(["wake-1", "retry-1", "resume-1", "run-1"]);
-  });
-
-  test("tick should clean up tasks for terminated instances", async () => {
-    const now = new Date();
-    const instanceRef = await db.create("workflow_instance", {
-      workflowName: "demo-workflow",
-      instanceId: "terminated-1",
-      status: "terminated",
-      params: {},
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toMatchObject({
+      status: "complete",
       pauseRequested: false,
-      retentionUntil: null,
-      runNumber: 0,
-      startedAt: null,
-      completedAt: now,
-      output: null,
-      errorName: null,
-      errorMessage: null,
     });
-
-    await db.create("workflow_task", {
-      instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "terminated-1",
-      runNumber: 0,
-      kind: "run",
-      runAt: now,
-      status: "pending",
-      attempts: 0,
-      maxAttempts: 1,
-      lastError: null,
-      lockedUntil: null,
-      lockOwner: null,
-    });
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(0);
-
-    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(tasks).toHaveLength(0);
   });
 
-  test("pause requested during run should stop at step boundary", async () => {
-    const id = await createInstance("pause-boundary-workflow", {});
+  test("terminates a queued instance and ignores pending ticks", async () => {
+    let runs = 0;
+    const TerminateWorkflow = defineWorkflow(
+      { name: "terminate-management-workflow" },
+      async (_event, step) => {
+        const value = await step.do("count", () => {
+          runs += 1;
+          return runs;
+        });
+        return { value };
+      },
+    );
 
-    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
-
-    await pauseBoundaryStarted;
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/pause", {
-      pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
+    const harness = await createWorkflowsTestHarness({
+      workflows: { TERM: TerminateWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
 
-    if (!pauseBoundaryContinue) {
-      throw new Error("pause boundary continuation missing");
+    const instanceId = await harness.createInstance("TERM");
+
+    const terminateResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/terminate",
+      {
+        pathParams: { workflowName: "terminate-management-workflow", instanceId },
+      },
+    );
+    expect(terminateResponse.type).toBe("json");
+    if (terminateResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${terminateResponse.type}`);
     }
-    pauseBoundaryContinue();
+    expect((terminateResponse.data as { ok: true }).ok).toBe(true);
 
-    const processed = await tickPromise;
-    expect(processed).toBe(1);
-    expect(pauseBoundaryCount).toBe(1);
-    expect(pauseResumeCount).toBe(0);
+    await drainDurableHooks(harness.fragment);
 
-    const paused = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "pause-boundary-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
+    const status = await harness.getStatus("TERM", instanceId);
+    expect(status.status).toBe("terminated");
+    expect(runs).toBe(0);
 
-    expect(paused?.status).toBe("paused");
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(0);
 
-    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(tasks).toHaveLength(0);
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/resume", {
-      pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toMatchObject({
+      status: "terminated",
+      pauseRequested: false,
     });
-
-    const resumedProcessed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(resumedProcessed).toBe(1);
-    expect(pauseResumeCount).toBe(1);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "pause-boundary-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(completed?.status).toBe("complete");
+    expect(instance.completedAt).toBeInstanceOf(Date);
   });
 
-  test("terminate requested during run should stop without overwriting status", async () => {
-    const id = await createInstance("terminate-boundary-workflow", {});
+  test("restarts a completed instance with a new run", async () => {
+    let runs = 0;
+    const RestartWorkflow = defineWorkflow(
+      { name: "restart-management-workflow" },
+      async (_event, step) => {
+        const value = await step.do("count", () => {
+          runs += 1;
+          return runs;
+        });
+        return { value };
+      },
+    );
 
-    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
-
-    await terminateBoundaryStarted;
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/terminate", {
-      pathParams: { workflowName: "terminate-boundary-workflow", instanceId: id },
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RESTART: RestartWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
     });
 
-    if (!terminateBoundaryContinue) {
-      throw new Error("terminate boundary continuation missing");
+    const instanceId = await harness.createInstance("RESTART");
+    await drainDurableHooks(harness.fragment);
+
+    const firstStatus = await harness.getStatus("RESTART", instanceId);
+    expect(firstStatus.status).toBe("complete");
+    expect(firstStatus.output).toEqual({ value: 1 });
+
+    const restartResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/restart",
+      {
+        pathParams: { workflowName: "restart-management-workflow", instanceId },
+      },
+    );
+    expect(restartResponse.type).toBe("json");
+    if (restartResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${restartResponse.type}`);
     }
-    terminateBoundaryContinue();
+    expect((restartResponse.data as { ok: true }).ok).toBe(true);
 
-    const processed = await tickPromise;
-    expect(processed).toBe(0);
-    expect(terminateBoundaryCount).toBe(1);
+    const queuedStatus = await harness.getStatus("RESTART", instanceId);
+    expect(queuedStatus.status).toBe("queued");
+    expect(queuedStatus.output).toBeUndefined();
 
-    const terminated = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "terminate-boundary-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
+    await drainDurableHooks(harness.fragment);
 
-    expect(terminated?.status).toBe("terminated");
+    const finalStatus = await harness.getStatus("RESTART", instanceId);
+    expect(finalStatus.status).toBe("complete");
+    expect(finalStatus.output).toEqual({ value: 2 });
 
-    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(step).toMatchObject({ stepKey: "terminate-boundary", status: "completed" });
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance.runNumber).toBe(1);
 
-    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(tasks).toHaveLength(0);
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(2);
+    expect(steps.map((step) => step.runNumber).sort((a, b) => a - b)).toEqual([0, 1]);
   });
 
-  test("restart during run should prevent stale run updates", async () => {
-    const id = await createInstance("restart-boundary-workflow", {});
-
-    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
-
-    await restartBoundaryStarted;
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/restart", {
-      pathParams: { workflowName: "restart-boundary-workflow", instanceId: id },
+  test("createBatch creates multiple instances and runs them", async () => {
+    const BatchWorkflow = defineWorkflow({ name: "batch-workflow" }, async (event, step) => {
+      const result = await step.do("result", () => ({
+        instanceId: event.instanceId,
+      }));
+      return result;
     });
 
-    if (!restartBoundaryContinue) {
-      throw new Error("restart boundary continuation missing");
+    const harness = await createWorkflowsTestHarness({
+      workflows: { BATCH: BatchWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const response = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/batch",
+      {
+        pathParams: { workflowName: "batch-workflow" },
+        body: { instances: [{ id: "batch-1" }, { id: "batch-2" }, { id: "batch-3" }] },
+      },
+    );
+
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      throw new Error(`Unexpected response: ${response.type}`);
     }
-    restartBoundaryContinue();
+    const created = (
+      response.data as {
+        instances: Array<{ id: string; details: { status: string } }>;
+      }
+    ).instances;
 
-    const processed = await tickPromise;
-    expect(processed).toBe(0);
-    expect(restartBoundaryCount).toBe(1);
+    expect(created).toHaveLength(3);
+    expect(created.map((entry) => entry.id)).toEqual(["batch-1", "batch-2", "batch-3"]);
+    expect(created.map((entry) => entry.details.status)).toEqual(["queued", "queued", "queued"]);
 
-    const queued = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "restart-boundary-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(queued?.status).toBe("queued");
-    expect(queued?.runNumber).toBe(1);
-
-    const processedRestart = await runner.tick({ maxInstances: 1, maxSteps: 10 });
-    expect(processedRestart).toBe(1);
-    expect(restartBoundaryCount).toBe(2);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "restart-boundary-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(completed?.status).toBe("complete");
-    expect(completed?.runNumber).toBe(1);
-  });
-
-  test("pause should not freeze sleep timers", async () => {
-    const id = await createInstance("pause-sleep-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "pause-sleep-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(waiting?.status).toBe("waiting");
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/pause", {
-      pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 80));
-
-    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/resume", {
-      pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
-    });
-
-    const resumedProcessed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(resumedProcessed).toBe(1);
-
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "pause-sleep-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
-
-    expect(completed?.status).toBe("complete");
-    expect(completed?.output).toEqual({ ok: true });
-
-    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(step).toMatchObject({ stepKey: "pause-sleep", status: "completed" });
-  });
-
-  test("sleep should reschedule the task as pending", async () => {
-    const id = await createInstance("pause-sleep-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const task = await db.findFirst("workflow_task", (b) =>
-      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "pause-sleep-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    expect(task?.kind).toBe("wake");
-    expect(task?.status).toBe("pending");
-    expect(task?.lockOwner).toBeNull();
-    expect(task?.lockedUntil).toBeNull();
-  });
-
-  test("scheduled sleep should create a durable hook with processAt", async () => {
-    const id = await createInstance("scheduled-workflow", {});
-
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
-
-    const task = await db.findFirst("workflow_task", (b) =>
-      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "scheduled-workflow"),
-          eb("instanceId", "=", id),
-          eb("runNumber", "=", 0),
-        ),
-      ),
-    );
-
-    expect(task?.kind).toBe("wake");
-    expect(task?.runAt).toBeInstanceOf(Date);
-    expect(task?.runAt.getTime()).toBeGreaterThan(Date.now());
-
-    const internalFragment = getInternalFragment(testContext.adapter);
-    const namespace = fragment.$internal.deps.namespace;
-    if (!namespace) {
-      throw new Error("Expected workflows namespace to be defined.");
+    const instances = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    for (const instance of instances) {
+      await harness.runUntilIdle({
+        workflowName: instance.workflowName,
+        instanceId: instance.instanceId,
+        instanceRef: String(instance.id),
+        runNumber: instance.runNumber,
+        reason: "create",
+      });
     }
-    const hooks = await internalFragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
+
+    const statuses = await Promise.all(
+      ["batch-1", "batch-2", "batch-3"].map((id) => harness.getStatus("BATCH", id)),
+    );
+    expect(statuses.map((status) => status.status)).toEqual(["complete", "complete", "complete"]);
+    expect(statuses.map((status) => status.output)).toEqual([
+      { instanceId: "batch-1" },
+      { instanceId: "batch-2" },
+      { instanceId: "batch-3" },
+    ]);
+
+    expect(instances).toHaveLength(3);
+  });
+
+  test("createBatch skips existing and duplicate instance ids", async () => {
+    const BatchWorkflow = defineWorkflow({ name: "batch-skip-workflow" }, async (event, step) => {
+      const value = await step.do("result", () => event.instanceId);
+      return { value };
     });
 
-    const scheduledHook = hooks.find((hook) => {
-      const payload = hook.payload as { instanceId?: string } | null;
-      return (
-        hook.hookName === "onWorkflowEnqueued" &&
-        hook.status === "pending" &&
-        payload?.instanceId === id
+    const harness = await createWorkflowsTestHarness({
+      workflows: { BATCH_SKIP: BatchWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("BATCH_SKIP", { id: "existing-1" });
+
+    const response = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/batch",
+      {
+        pathParams: { workflowName: "batch-skip-workflow" },
+        body: {
+          instances: [{ id: "existing-1" }, { id: "dup-1" }, { id: "dup-1" }, { id: "fresh-1" }],
+        },
+      },
+    );
+
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      throw new Error(`Unexpected response: ${response.type}`);
+    }
+    const created = (
+      response.data as {
+        instances: Array<{ id: string; details: { status: string } }>;
+      }
+    ).instances;
+
+    expect(created.map((entry) => entry.id)).toEqual(["dup-1", "fresh-1"]);
+
+    const instances = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instances).toHaveLength(3);
+
+    for (const instance of instances.filter((entry) => entry.instanceId !== "existing-1")) {
+      await harness.runUntilIdle({
+        workflowName: instance.workflowName,
+        instanceId: instance.instanceId,
+        instanceRef: String(instance.id),
+        runNumber: instance.runNumber,
+        reason: "create",
+      });
+    }
+
+    const status = await harness.getStatus("BATCH_SKIP", "fresh-1");
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ value: "fresh-1" });
+  });
+
+  test("createBatch route returns created instances", async () => {
+    const RouteBatchWorkflow = defineWorkflow(
+      { name: "batch-route-workflow" },
+      async (_event, step) => {
+        const value = await step.do("result", () => "ok");
+        return { value };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { BATCH_ROUTE: RouteBatchWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const previousDebug = process.env["FRAGNO_DEBUG_BATCH_ROUTE"];
+    process.env["FRAGNO_DEBUG_BATCH_ROUTE"] = "1";
+    try {
+      const response = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+        "POST",
+        "/:workflowName/instances/batch",
+        {
+          pathParams: { workflowName: "batch-route-workflow" },
+          body: { instances: [{ id: "route-1" }, { id: "route-2" }] },
+        },
       );
-    });
 
-    assert(scheduledHook?.nextRetryAt);
-    expect(scheduledHook.nextRetryAt.getTime()).toBe(task?.runAt.getTime());
+      expect(response.type).toBe("json");
+      if (response.type !== "json") {
+        throw new Error(`Unexpected response: ${response.type}`);
+      }
+      const instances = (
+        response.data as {
+          instances: Array<{ id: string; details: { status: string } }>;
+        }
+      ).instances;
+      expect(instances.map((entry) => entry.id)).toEqual(["route-1", "route-2"]);
+      expect(instances.map((entry) => entry.details.status)).toEqual(["queued", "queued"]);
+    } finally {
+      if (previousDebug === undefined) {
+        delete process.env["FRAGNO_DEBUG_BATCH_ROUTE"];
+      } else {
+        process.env["FRAGNO_DEBUG_BATCH_ROUTE"] = previousDebug;
+      }
+    }
   });
 });

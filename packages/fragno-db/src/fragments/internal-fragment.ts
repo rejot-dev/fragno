@@ -169,6 +169,41 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   .providesService("hookService", ({ defineService }) => {
     return defineService({
       /**
+       * Get pending hook events for processing.
+       * Returns all pending events for the given namespace that are ready to be processed.
+       */
+      getPendingHookEvents(namespace: string) {
+        const now = dbNow();
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_hooks", (b) =>
+              b.whereIndex("idx_namespace_status_retry", (eb) =>
+                eb.and(
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "pending"),
+                  eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            return events.map((event) => ({
+              id: event.id,
+              hookName: event.hookName,
+              payload: event.payload as unknown,
+              status: event.status,
+              attempts: event.attempts,
+              maxAttempts: event.maxAttempts,
+              lastAttemptAt: event.lastAttemptAt,
+              nextRetryAt: event.nextRetryAt,
+              createdAt: event.createdAt,
+              idempotencyKey: event.nonce,
+            }));
+          })
+          .build();
+      },
+
+      /**
        * Claim pending hook events for processing.
        * Returns ready events and marks them as processing in the same transaction.
        */
@@ -191,8 +226,12 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               id: event.id,
               hookName: event.hookName,
               payload: event.payload,
+              status: event.status,
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
+              lastAttemptAt: event.lastAttemptAt,
+              nextRetryAt: event.nextRetryAt,
+              createdAt: event.createdAt,
               idempotencyKey: event.nonce,
             }));
           })
@@ -209,6 +248,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           .transform(({ retrieveResult }) =>
             retrieveResult.map((event) => ({
               ...event,
+              status: "processing" as const,
               id: new FragnoId({
                 externalId: event.id.externalId,
                 internalId: event.id.internalId,
@@ -242,12 +282,14 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             return events.map((event) => ({
               id: event.id,
               hookName: event.hookName,
-              payload: event.payload,
+              payload: event.payload as unknown,
+              status: event.status,
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
               idempotencyKey: event.nonce,
               lastAttemptAt: event.lastAttemptAt,
               nextRetryAt: event.nextRetryAt,
+              createdAt: event.createdAt,
             }));
           })
           .mutate(({ uow, retrieveResult }) => {

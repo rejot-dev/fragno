@@ -51,7 +51,7 @@ describe("Workflows Fragment Services", () => {
     runner.tick.mockReset();
   });
 
-  test("createInstance should create instance and task records", async () => {
+  test("createInstance should create instance records", async () => {
     const result = await runService<{ id: string; details: { status: string } }>(() =>
       fragment.services.createInstance("demo-workflow", {
         params: { source: "service-test" },
@@ -62,8 +62,6 @@ describe("Workflows Fragment Services", () => {
     expect(result.details.status).toBe("queued");
 
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
-    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-
     expect(instance).toMatchObject({
       workflowName: "demo-workflow",
       instanceId: result.id,
@@ -71,15 +69,6 @@ describe("Workflows Fragment Services", () => {
       pauseRequested: false,
       runNumber: 0,
     });
-    expect(task).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId: result.id,
-      runNumber: 0,
-      kind: "run",
-      status: "pending",
-      attempts: 0,
-    });
-    expect(task.runAt).toBeInstanceOf(Date);
   });
 
   test("createInstance should tick the runner via durable hook", async () => {
@@ -114,7 +103,7 @@ describe("Workflows Fragment Services", () => {
     expect(instances).toHaveLength(2);
   });
 
-  test("pause and resume should update status and task", async () => {
+  test("pause and resume should update status", async () => {
     const created = await runService<{ id: string }>(() =>
       fragment.services.createInstance("demo-workflow", { id: "pause-1" }),
     );
@@ -129,13 +118,7 @@ describe("Workflows Fragment Services", () => {
     );
     expect(resumed.status).toBe("queued");
 
-    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(task).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId: created.id,
-      kind: "resume",
-      status: "pending",
-    });
+    expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
   test("terminate should mark instance as terminated", async () => {
@@ -145,7 +128,6 @@ describe("Workflows Fragment Services", () => {
       status: "queued",
       params: {},
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 0,
       startedAt: null,
       completedAt: null,
@@ -212,14 +194,6 @@ describe("Workflows Fragment Services", () => {
       completedAt: null,
     });
 
-    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    const restartTask = tasks.find((task) => task.runNumber === 1 && task.kind === "run");
-    expect(restartTask).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId: created.id,
-      status: "pending",
-    });
-
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
@@ -272,14 +246,6 @@ describe("Workflows Fragment Services", () => {
       payload: { approved: true },
     });
 
-    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(task).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId: created.id,
-      kind: "wake",
-      status: "pending",
-    });
-
     await drainDurableHooks(fragment);
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
@@ -292,28 +258,12 @@ describe("Workflows Fragment Services", () => {
       status: "waiting",
       params: {},
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 0,
       startedAt: null,
       completedAt: null,
       output: null,
       errorName: null,
       errorMessage: null,
-    });
-
-    await db.create("workflow_task", {
-      instanceRef,
-      workflowName: "demo-workflow",
-      instanceId,
-      runNumber: 0,
-      kind: "run",
-      runAt: new Date(),
-      status: "pending",
-      attempts: 0,
-      maxAttempts: 1,
-      lastError: null,
-      lockedUntil: null,
-      lockOwner: null,
     });
 
     runner.tick.mockClear();
@@ -353,8 +303,6 @@ describe("Workflows Fragment Services", () => {
       type: "approval",
     });
 
-    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
-    expect(task.kind).not.toBe("wake");
     expect(runner.tick).not.toHaveBeenCalled();
   });
 
@@ -483,7 +431,6 @@ describe("Workflows Fragment Services", () => {
       status: "queued",
       params: {},
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 3,
       startedAt: null,
       completedAt: null,
@@ -506,7 +453,6 @@ describe("Workflows Fragment Services", () => {
       status: "queued",
       params: {},
       pauseRequested: false,
-      retentionUntil: null,
       runNumber: 1,
       startedAt: null,
       completedAt: null,
@@ -581,145 +527,18 @@ describe("Workflows Fragment Services", () => {
       runNumber: number;
       steps: Array<{ stepKey: string }>;
       events: Array<{ type: string }>;
-      stepsHasNextPage: boolean;
-      eventsHasNextPage: boolean;
     }>(() =>
       fragment.services.listHistory({
         workflowName: "demo-workflow",
         instanceId: "history-2",
         runNumber: 1,
-        pageSize: 1,
       }),
     );
 
     expect(history.runNumber).toBe(1);
-    expect(history.steps).toHaveLength(1);
-    expect(history.events).toHaveLength(1);
-    expect(history.stepsHasNextPage).toBe(true);
-    expect(history.eventsHasNextPage).toBe(true);
+    expect(history.steps).toHaveLength(2);
+    expect(history.events).toHaveLength(2);
     expect(history.steps[0]?.stepKey).toBeTruthy();
     expect(history.events[0]?.type).toBeTruthy();
-  });
-
-  test("listHistory should include logs with filtering and pagination", async () => {
-    const instanceRef = await db.create("workflow_instance", {
-      workflowName: "demo-workflow",
-      instanceId: "history-logs",
-      status: "queued",
-      params: {},
-      pauseRequested: false,
-      retentionUntil: null,
-      runNumber: 1,
-      startedAt: null,
-      completedAt: null,
-      output: null,
-      errorName: null,
-      errorMessage: null,
-    });
-
-    await db.create("workflow_log", {
-      instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-logs",
-      runNumber: 1,
-      stepKey: "step-1",
-      attempt: 1,
-      level: "info",
-      category: "alpha",
-      message: "first",
-      data: { ok: true },
-      createdAt: new Date(1000),
-    });
-
-    await db.create("workflow_log", {
-      instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-logs",
-      runNumber: 1,
-      stepKey: "step-2",
-      attempt: 1,
-      level: "error",
-      category: "alpha",
-      message: "second",
-      data: { ok: false },
-      createdAt: new Date(2000),
-    });
-
-    await db.create("workflow_log", {
-      instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-logs",
-      runNumber: 1,
-      stepKey: null,
-      attempt: null,
-      level: "warn",
-      category: "beta",
-      message: "third",
-      data: null,
-      createdAt: new Date(3000),
-    });
-
-    const withoutLogs = await runService<{
-      logs?: unknown;
-      logsCursor?: string;
-    }>(() =>
-      fragment.services.listHistory({
-        workflowName: "demo-workflow",
-        instanceId: "history-logs",
-        runNumber: 1,
-      }),
-    );
-
-    expect(withoutLogs.logs).toBeUndefined();
-    expect(withoutLogs.logsCursor).toBeUndefined();
-
-    const firstPage = await runService<{
-      logs: Array<{ message: string }>;
-      logsHasNextPage?: boolean;
-    }>(() =>
-      fragment.services.listHistory({
-        workflowName: "demo-workflow",
-        instanceId: "history-logs",
-        runNumber: 1,
-        pageSize: 2,
-        includeLogs: true,
-        order: "asc",
-      }),
-    );
-
-    expect(firstPage.logs).toHaveLength(2);
-    expect(firstPage.logsHasNextPage).toBe(true);
-    expect(firstPage.logs[0]?.message).toBe("first");
-
-    const errorOnly = await runService<{
-      logs: Array<{ level: string; message: string }>;
-    }>(() =>
-      fragment.services.listHistory({
-        workflowName: "demo-workflow",
-        instanceId: "history-logs",
-        runNumber: 1,
-        includeLogs: true,
-        logLevel: "error",
-      }),
-    );
-
-    expect(errorOnly.logs).toHaveLength(1);
-    expect(errorOnly.logs[0]?.message).toBe("second");
-    expect(errorOnly.logs[0]?.level).toBe("error");
-
-    const categoryOnly = await runService<{
-      logs: Array<{ category: string }>;
-    }>(() =>
-      fragment.services.listHistory({
-        workflowName: "demo-workflow",
-        instanceId: "history-logs",
-        runNumber: 1,
-        includeLogs: true,
-        logCategory: "beta",
-      }),
-    );
-
-    expect(categoryOnly.logs).toHaveLength(1);
-    expect(categoryOnly.logs[0]?.category).toBe("beta");
   });
 });

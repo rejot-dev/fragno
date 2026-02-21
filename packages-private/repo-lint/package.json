@@ -1,0 +1,9 @@
+{
+  "name": "@fragno-private/repo-lint",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "lint": "pnpm -C ../.. exec oxlint .",
+    "lint:fix": "pnpm -C ../.. exec oxlint --fix ."
+  }
+}
