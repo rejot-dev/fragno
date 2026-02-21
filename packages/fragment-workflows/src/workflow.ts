@@ -12,14 +12,13 @@ export type WorkflowEvent<T> = {
   instanceId: string;
 };
 
-/** Retry/timeout behavior for a step execution. */
+/** Retry behavior for a step execution. */
 export type WorkflowStepConfig = {
   retries?: {
     limit: number;
     delay: WorkflowDuration;
     backoff?: "constant" | "linear" | "exponential";
   };
-  timeout?: WorkflowDuration;
 };
 
 export type WorkflowLogLevel = "debug" | "info" | "warn" | "error";
