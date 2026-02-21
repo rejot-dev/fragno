@@ -157,9 +157,7 @@ export class RunnerStep implements WorkflowStep {
 
     const attempt = (snapshot?.attempts ?? 0) + 1;
     const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
-    const timeoutMs = config?.timeout
-      ? parseDurationMs(config.timeout)
-      : (snapshot?.timeoutMs ?? null);
+    const timeoutMs = snapshot?.timeoutMs ?? null;
 
     const txQueue = this.#createStepTxQueue();
 
@@ -321,7 +319,7 @@ export class RunnerStep implements WorkflowStep {
       return snapshot.result as { type: string; payload: Readonly<T>; timestamp: Date };
     }
 
-    const event = this.#findPendingEvent(options.type);
+    const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);
     if (event) {
       this.#queueEventUpdate(event, {
         consumedByStepKey: stepKey,
@@ -432,8 +430,11 @@ export class RunnerStep implements WorkflowStep {
     };
   }
 
-  #findPendingEvent(type: string): WorkflowEventRecord | undefined {
-    return this.#state.events.find((event) => event.type === type && !event.consumedByStepKey);
+  #findPendingEvent(type: string, wakeAt?: Date | null): WorkflowEventRecord | undefined {
+    return this.#state.events.find(
+      (event) =>
+        event.type === type && !event.consumedByStepKey && (!wakeAt || event.createdAt <= wakeAt),
+    );
   }
 
   #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {

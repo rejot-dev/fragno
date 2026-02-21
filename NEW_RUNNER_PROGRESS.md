@@ -82,12 +82,10 @@
 
 ## Review gaps to address (new runner vs old runner):
 
-- Step timeouts are computed but not enforced (no timeout wrapper around step callbacks).
 - `pauseRequested` is not checked/cleared during execution, so a pause can be overwritten by
   completion.
 - Retry/sleep/waitForEvent replays do not respect persisted `nextRetryAt`/`wakeAt`, which can extend
   waits or execute early.
-- `waitForEvent` can consume events even if they arrive after the timeout deadline.
 - Step keys now use `type:name` with no migration; existing `name`-keyed steps will re-run.
 - NonRetryable/unique-constraint handling from the old runner is missing, so retries can loop on
   unique conflicts.
@@ -107,10 +105,12 @@
 - Make hook timestamp required end-to-end (no fallback to instance timestamps), and update any
   direct `tick` call sites/tests.
 - Add runner-focused tests for retry/sleep/waitForEvent/timeouts/error cases.
+- Remove `step.do` timeout support (timeouts now only apply to `waitForEvent`).
+- Enforce `waitForEvent` timeout deadlines when consuming events.
 
 ## Up Next
 
-1. Define/implement semantics for `NonRetryableError` and step timeouts.
+1. Define/implement semantics for `NonRetryableError`.
 2. Decide whether to add an explicit “running” transition and/or pauseRequested handling during
    execution.
 3. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
