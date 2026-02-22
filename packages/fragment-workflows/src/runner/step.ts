@@ -251,7 +251,7 @@ export class RunnerStep implements WorkflowStep {
       return;
     }
 
-    if (this.#taskKind === "wake") {
+    if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
       this.#upsertStep(stepKey, {
         name,
         type: "sleep",
@@ -264,6 +264,10 @@ export class RunnerStep implements WorkflowStep {
         nextRetryAt: null,
       });
       return;
+    }
+
+    if (snapshot?.status === "waiting") {
+      throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs: null });
     }
 
     if (!snapshot) {
@@ -293,7 +297,7 @@ export class RunnerStep implements WorkflowStep {
       return;
     }
 
-    if (this.#taskKind === "wake") {
+    if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
       this.#upsertStep(stepKey, {
         name,
         type: "sleep",
@@ -306,6 +310,10 @@ export class RunnerStep implements WorkflowStep {
         nextRetryAt: null,
       });
       return;
+    }
+
+    if (snapshot?.status === "waiting") {
+      throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs: null });
     }
 
     if (!snapshot) {
@@ -369,7 +377,25 @@ export class RunnerStep implements WorkflowStep {
 
     const timeoutMs = options.timeout ? parseDurationMs(options.timeout) : null;
 
-    if (this.#taskKind === "wake") {
+    if (snapshot?.status === "waiting") {
+      if (this.#taskKind !== "wake") {
+        throw new RunnerStepSuspended({
+          type: "waitForEvent",
+          stepKey,
+          eventType: options.type,
+          delayMs: null,
+        });
+      }
+
+      if (!snapshot.wakeAt) {
+        throw new RunnerStepSuspended({
+          type: "waitForEvent",
+          stepKey,
+          eventType: options.type,
+          delayMs: null,
+        });
+      }
+
       const error = new Error("WAIT_FOR_EVENT_TIMEOUT");
       this.#upsertStep(stepKey, {
         name,
@@ -510,8 +536,6 @@ export class RunnerStep implements WorkflowStep {
   #buildStepCreateBase(stepKey: string, data: WorkflowStepUpdateDraft): WorkflowStepCreateDraft {
     return {
       instanceRef: this.#state.instance.id,
-      workflowName: this.#state.instance.workflowName,
-      instanceId: this.#state.instance.instanceId,
       runNumber: this.#state.instance.runNumber,
       stepKey,
       name: data.name ?? stepKey,

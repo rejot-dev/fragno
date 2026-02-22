@@ -13,6 +13,7 @@ import {
   defineScenario,
   runScenario,
   type WorkflowScenarioEventRow,
+  type WorkflowScenarioHookRow,
   type WorkflowScenarioInstanceRow,
   type WorkflowScenarioStepRow,
 } from "./scenario";
@@ -411,6 +412,242 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("wake tick does not skip a new sleep in the same run", async () => {
+    const SequentialSleepWorkflow = defineWorkflow(
+      { name: "sequential-sleep-workflow" },
+      async (_event, step) => {
+        await step.sleep("first", "10 minutes");
+        await step.sleep("second", "10 minutes");
+        return { done: true };
+      },
+    );
+
+    const workflows = { SEQUENTIAL_SLEEP: SequentialSleepWorkflow };
+
+    type ScenarioVars = {
+      waitingSteps?: WorkflowScenarioStepRow[];
+      firstWakeAt?: Date;
+      afterWakeStatus?: { status: string; output?: { done: boolean } };
+      afterWakeSteps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "sequential-sleep-wake",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "SEQUENTIAL_SLEEP", id: "sequential-sleep-1" }),
+        scenarioSteps.tick({
+          workflow: "SEQUENTIAL_SLEEP",
+          instanceId: "sequential-sleep-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) =>
+            ctx.vars.waitingSteps?.find((step) => step.stepKey === "sleep:first")?.wakeAt ?? null,
+          storeAs: "firstWakeAt",
+        }),
+        scenarioSteps.tick({
+          workflow: "SEQUENTIAL_SLEEP",
+          instanceId: "sequential-sleep-1",
+          reason: "wake",
+          timestamp: (ctx) => {
+            const wakeAt = ctx.vars.firstWakeAt;
+            if (!wakeAt) {
+              throw new Error("MISSING_FIRST_WAKE_AT");
+            }
+            return wakeAt;
+          },
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
+          storeAs: "afterWakeStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
+          storeAs: "afterWakeSteps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.firstWakeAt).toBeInstanceOf(Date);
+          expect(ctx.vars.afterWakeStatus?.status).toBe("waiting");
+
+          const steps = ctx.vars.afterWakeSteps ?? [];
+          const firstStep = steps.find((step) => step.stepKey === "sleep:first");
+          const secondStep = steps.find((step) => step.stepKey === "sleep:second");
+
+          expect(firstStep).toMatchObject({ status: "completed" });
+          expect(secondStep).toMatchObject({ status: "waiting" });
+          expect(secondStep?.wakeAt).toBeInstanceOf(Date);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("does not complete sleep on early wake tick", async () => {
+    const SleepWorkflow = defineWorkflow({ name: "sleep-early-workflow" }, async (_event, step) => {
+      await step.sleep("nap", "10 minutes");
+      return { done: true };
+    });
+
+    const workflows = { SLEEP_EARLY: SleepWorkflow };
+
+    type ScenarioVars = {
+      waiting?: { status: string };
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      afterWake?: { status: string };
+      afterSteps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "sleep-early-wake",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "SLEEP_EARLY", id: "sleep-early-1" }),
+        scenarioSteps.tick({
+          workflow: "SLEEP_EARLY",
+          instanceId: "sleep-early-1",
+          reason: "create",
+        }),
+        // After the first tick the workflow is waiting with a persisted wakeAt.
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
+          storeAs: "waiting",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SLEEP_EARLY", "sleep-early-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        // Simulate an early wake hook (or duplicate hook) firing before wakeAt.
+        // The runner should suspend again and keep the step waiting.
+        scenarioSteps.tick({
+          workflow: "SLEEP_EARLY",
+          instanceId: "sleep-early-1",
+          reason: "wake",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
+          storeAs: "afterWake",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SLEEP_EARLY", "sleep-early-1"),
+          storeAs: "afterSteps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          // If this assertion fails, we are completing sleep early based on the hook
+          // timestamp instead of the persisted wakeAt.
+          expect(ctx.vars.waiting?.status).toBe("waiting");
+          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
+          expect(ctx.vars.afterWake?.status).toBe("waiting");
+          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
+            stepKey: "sleep:nap",
+            status: "waiting",
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("does not enqueue duplicate wake hooks when replaying before wakeAt", async () => {
+    const SleepWorkflow = defineWorkflow(
+      { name: "sleep-replay-workflow" },
+      async (_event, step) => {
+        await step.sleep("nap", "10 minutes");
+        return { done: true };
+      },
+    );
+
+    const workflows = { SLEEP_REPLAY: SleepWorkflow };
+
+    type ScenarioVars = {
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      firstWakeHooks?: WorkflowScenarioHookRow[];
+      secondWakeHooks?: WorkflowScenarioHookRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "sleep-replay-no-reschedule",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "SLEEP_REPLAY", id: "sleep-replay-1" }),
+        scenarioSteps.tick({
+          workflow: "SLEEP_REPLAY",
+          instanceId: "sleep-replay-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SLEEP_REPLAY", "sleep-replay-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        scenarioSteps.read({
+          read: async (ctx) => {
+            const hooks = await ctx.state.internal.getHooks({
+              hookName: "onWorkflowEnqueued",
+              status: "pending",
+              workflowName: "sleep-replay-workflow",
+              instanceId: "sleep-replay-1",
+            });
+            return hooks.filter((hook) => {
+              const payload = hook.payload as { reason?: string };
+              return payload.reason === "wake";
+            });
+          },
+          storeAs: "firstWakeHooks",
+        }),
+        // Replay the run before wakeAt. We should NOT enqueue another wake hook.
+        scenarioSteps.tick({
+          workflow: "SLEEP_REPLAY",
+          instanceId: "sleep-replay-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: async (ctx) => {
+            const hooks = await ctx.state.internal.getHooks({
+              hookName: "onWorkflowEnqueued",
+              status: "pending",
+              workflowName: "sleep-replay-workflow",
+              instanceId: "sleep-replay-1",
+            });
+            return hooks.filter((hook) => {
+              const payload = hook.payload as { reason?: string };
+              return payload.reason === "wake";
+            });
+          },
+          storeAs: "secondWakeHooks",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
+          expect(ctx.vars.firstWakeHooks).toHaveLength(1);
+          expect(ctx.vars.secondWakeHooks).toHaveLength(1);
+          expect(ctx.vars.secondWakeHooks?.[0].nextRetryAt?.getTime()).toBe(
+            ctx.vars.firstWakeHooks?.[0].nextRetryAt?.getTime(),
+          );
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("suspends on sleepUntil and completes on wake", async () => {
     let wakeAt: Date | null = null;
 
@@ -475,6 +712,87 @@ describe("Workflows Runner (Scenario DSL)", () => {
         scenarioSteps.assert((ctx) => {
           expect(ctx.vars.final?.status).toBe("complete");
           expect(ctx.vars.final?.output).toEqual({ done: true });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("does not timeout waitForEvent on early wake tick", async () => {
+    const TimeoutWorkflow = defineWorkflow(
+      { name: "early-event-timeout-workflow" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready", timeout: "5 minutes" });
+        return { ok: true };
+      },
+    );
+
+    const workflows = { TIMEOUT_EARLY: TimeoutWorkflow };
+
+    type ScenarioVars = {
+      waiting?: { status: string };
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      afterWake?: { status: string; error?: { message?: string } };
+      afterSteps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "wait-timeout-early",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "TIMEOUT_EARLY", id: "timeout-early-1" }),
+        scenarioSteps.tick({
+          workflow: "TIMEOUT_EARLY",
+          instanceId: "timeout-early-1",
+          reason: "create",
+        }),
+        // First tick should put the workflow into waiting state with a wakeAt timeout.
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TIMEOUT_EARLY", "timeout-early-1"),
+          storeAs: "waiting",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_EARLY", "timeout-early-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        // Simulate a wake hook arriving early (before the timeout deadline).
+        // The runner should keep waiting instead of timing out early.
+        scenarioSteps.tick({
+          workflow: "TIMEOUT_EARLY",
+          instanceId: "timeout-early-1",
+          reason: "wake",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TIMEOUT_EARLY", "timeout-early-1"),
+          storeAs: "afterWake",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_EARLY", "timeout-early-1"),
+          storeAs: "afterSteps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          // If this fails, we are using the hook timestamp as "now" and timing out
+          // without checking the persisted wakeAt deadline.
+          expect(ctx.vars.waiting?.status).toBe("waiting");
+          expect(ctx.vars.waitingSteps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:ready",
+            status: "waiting",
+            waitEventType: "ready",
+          });
+          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
+          expect(ctx.vars.afterWake?.status).toBe("waiting");
+          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:ready",
+            status: "waiting",
+            waitEventType: "ready",
+          });
         }),
       ],
     });
@@ -1166,6 +1484,95 @@ describe("Workflows Runner (Scenario DSL)", () => {
             stepKey: "do:unstable",
             status: "completed",
             attempts: 2,
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("does not retry before nextRetryAt", async () => {
+    let attempts = 0;
+    const RetryWorkflow = defineWorkflow({ name: "retry-early-workflow" }, async (_event, step) => {
+      const result = await step.do(
+        "unstable",
+        { retries: { limit: 1, delay: "5 minutes", backoff: "constant" } },
+        () => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error("RETRY_ME");
+          }
+          return "ok";
+        },
+      );
+      return { result };
+    });
+
+    const workflows = { RETRY_EARLY: RetryWorkflow };
+
+    type ScenarioVars = {
+      waiting?: { status: string };
+      waitingSteps?: WorkflowScenarioStepRow[];
+      nextRetryAt?: Date;
+      afterRetry?: { status: string; output?: { result: string } };
+      afterSteps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "retry-early",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "RETRY_EARLY", id: "retry-early-1" }),
+        scenarioSteps.tick({
+          workflow: "RETRY_EARLY",
+          instanceId: "retry-early-1",
+          reason: "create",
+        }),
+        // First tick should record a failed attempt and a nextRetryAt timestamp.
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RETRY_EARLY", "retry-early-1"),
+          storeAs: "waiting",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("RETRY_EARLY", "retry-early-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].nextRetryAt ?? null,
+          storeAs: "nextRetryAt",
+        }),
+        // Simulate an early retry hook before nextRetryAt.
+        // The runner should suspend again and not execute the retry yet.
+        scenarioSteps.tick({
+          workflow: "RETRY_EARLY",
+          instanceId: "retry-early-1",
+          reason: "retry",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RETRY_EARLY", "retry-early-1"),
+          storeAs: "afterRetry",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("RETRY_EARLY", "retry-early-1"),
+          storeAs: "afterSteps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          // If this fails, we are retrying early based on the hook timestamp instead
+          // of honoring the persisted nextRetryAt.
+          expect(ctx.vars.waiting?.status).toBe("waiting");
+          expect(ctx.vars.waitingSteps?.[0]).toMatchObject({
+            stepKey: "do:unstable",
+            status: "waiting",
+            attempts: 1,
+          });
+          expect(ctx.vars.waitingSteps?.[0].nextRetryAt).toBeInstanceOf(Date);
+          expect(ctx.vars.afterRetry?.status).toBe("waiting");
+          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
+            stepKey: "do:unstable",
+            status: "waiting",
+            attempts: 1,
           });
         }),
       ],
