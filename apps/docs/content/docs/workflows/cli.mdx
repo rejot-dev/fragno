@@ -53,7 +53,7 @@ export FRAGNO_WF_HEADERS="Authorization: Bearer $TOKEN;X-Env: staging"
 ```bash
 fragno-wf workflows list -b https://host.example.com/api/workflows
 
-fragno-wf instances list -b https://host.example.com/api/workflows -w approvals --status running
+fragno-wf instances list -b https://host.example.com/api/workflows -w approvals --status active
 
 fragno-wf instances get -b https://host.example.com/api/workflows -w approvals -i inst_123
 

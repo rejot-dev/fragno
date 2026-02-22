@@ -110,9 +110,12 @@
 - Teach the runner to consume system pause events and pause on the next tick boundary; user
   `waitForEvent` ignores system events, and history filters them out by default.
 - Refactor `buildTickPlan` into smaller helpers for selection, pause planning, and run planning.
+- Remove legacy pause fields/status (`pauseRequested`, `waitingForPause`) so pause is entirely
+  system-event driven.
+- Remove the `running` instance status and rename `queued` to `active` across APIs, tests, and docs.
+- Remove the `unknown` instance status and enforce strict status values when reading instances.
 
 ## Up Next
 
-1. Decide whether to add an explicit “running” transition (status is currently unused).
-2. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
-3. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.
+1. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
+2. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.

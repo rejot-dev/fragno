@@ -59,15 +59,15 @@ describe("Workflows Fragment Services", () => {
     );
 
     expect(result.id).toBeTruthy();
-    expect(result.details.status).toBe("queued");
+    expect(result.details.status).toBe("active");
 
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(instance).toMatchObject({
       workflowName: "demo-workflow",
-      instanceId: result.id,
-      status: "queued",
+      status: "active",
       runNumber: 0,
     });
+    expect(instance.id.toString()).toBe(result.id);
   });
 
   test("createInstance should tick the runner via durable hook", async () => {
@@ -113,11 +113,11 @@ describe("Workflows Fragment Services", () => {
     const paused = await runService<{ status: string }>(() =>
       fragment.services.pauseInstance("demo-workflow", created.id),
     );
-    expect(paused.status).toBe("queued");
+    expect(paused.status).toBe("active");
 
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(instance).toMatchObject({
-      status: "queued",
+      status: "active",
     });
 
     const [pauseEvent] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
@@ -139,11 +139,11 @@ describe("Workflows Fragment Services", () => {
     const resumed = await runService<{ status: string }>(() =>
       fragment.services.resumeInstance("demo-workflow", created.id),
     );
-    expect(resumed.status).toBe("queued");
+    expect(resumed.status).toBe("active");
 
     const [resumedInstance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(resumedInstance).toMatchObject({
-      status: "queued",
+      status: "active",
     });
 
     await drainDurableHooks(fragment);
@@ -173,9 +173,9 @@ describe("Workflows Fragment Services", () => {
 
   test("terminate should mark instance as terminated", async () => {
     await db.create("workflow_instance", {
+      id: "terminate-1",
       workflowName: "demo-workflow",
-      instanceId: "terminate-1",
-      status: "queued",
+      status: "active",
       params: {},
       runNumber: 0,
       startedAt: null,
@@ -197,9 +197,9 @@ describe("Workflows Fragment Services", () => {
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(instance).toMatchObject({
       workflowName: "demo-workflow",
-      instanceId: "terminate-1",
       status: "terminated",
     });
+    expect(instance.id.toString()).toBe("terminate-1");
     expect(instance.completedAt).toBeInstanceOf(Date);
     await drainDurableHooks(fragment);
     expect(runner.tick.mock.calls.length).toBe(tickCallsBefore);
@@ -226,13 +226,12 @@ describe("Workflows Fragment Services", () => {
       fragment.services.restartInstance("demo-workflow", created.id),
     );
 
-    expect(restarted.status).toBe("queued");
+    expect(restarted.status).toBe("active");
 
     const [restartedInstance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(restartedInstance).toMatchObject({
       workflowName: "demo-workflow",
-      instanceId: created.id,
-      status: "queued",
+      status: "active",
       runNumber: 1,
       output: null,
       errorName: null,
@@ -240,6 +239,7 @@ describe("Workflows Fragment Services", () => {
       startedAt: null,
       completedAt: null,
     });
+    expect(restartedInstance.id.toString()).toBe(created.id);
 
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
@@ -258,10 +258,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef: instance.id,
-      workflowName: "demo-workflow",
-      instanceId: created.id,
       runNumber: 0,
-      stepKey: "wait-1",
+      stepKey: "waitForEvent:wait-1",
       name: "Wait for approval",
       type: "waitForEvent",
       status: "waiting",
@@ -287,8 +285,6 @@ describe("Workflows Fragment Services", () => {
 
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId: created.id,
       type: "approval",
       payload: { approved: true },
     });
@@ -300,8 +296,8 @@ describe("Workflows Fragment Services", () => {
   test("sendEvent should not wake when waitForEvent has timed out", async () => {
     const instanceId = "event-timeout";
     const instanceRef = await db.create("workflow_instance", {
+      id: instanceId,
       workflowName: "demo-workflow",
-      instanceId,
       status: "waiting",
       params: {},
       runNumber: 0,
@@ -316,10 +312,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef,
-      workflowName: "demo-workflow",
-      instanceId,
       runNumber: 0,
-      stepKey: "wait-timeout",
+      stepKey: "waitForEvent:wait-timeout",
       name: "Wait for approval",
       type: "waitForEvent",
       status: "waiting",
@@ -344,8 +338,6 @@ describe("Workflows Fragment Services", () => {
     await drainDurableHooks(fragment);
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event).toMatchObject({
-      workflowName: "demo-workflow",
-      instanceId,
       type: "approval",
     });
 
@@ -393,10 +385,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef: instance.id,
-      workflowName: "demo-workflow",
-      instanceId: created.id,
       runNumber: 0,
-      stepKey: "step-1",
+      stepKey: "do:step-1",
       name: "first",
       type: "do",
       status: "complete",
@@ -415,10 +405,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef: instance.id,
-      workflowName: "demo-workflow",
-      instanceId: created.id,
       runNumber: 0,
-      stepKey: "step-2",
+      stepKey: "waitForEvent:step-2",
       name: "await-approval",
       type: "waitForEvent",
       status: "waiting",
@@ -451,14 +439,13 @@ describe("Workflows Fragment Services", () => {
 
     const currentStep = await runService<WorkflowInstanceCurrentStep | undefined>(() =>
       fragment.services.getInstanceCurrentStep({
-        workflowName: "demo-workflow",
         instanceId: created.id,
         runNumber: meta.runNumber,
       }),
     );
 
     expect(currentStep).toMatchObject({
-      stepKey: "step-2",
+      stepKey: "waitForEvent:step-2",
       name: "await-approval",
       type: "waitForEvent",
       status: "waiting",
@@ -470,9 +457,9 @@ describe("Workflows Fragment Services", () => {
 
   test("getInstanceRunNumber should return current run", async () => {
     await db.create("workflow_instance", {
+      id: "history-1",
       workflowName: "demo-workflow",
-      instanceId: "history-1",
-      status: "queued",
+      status: "active",
       params: {},
       runNumber: 3,
       startedAt: null,
@@ -491,9 +478,9 @@ describe("Workflows Fragment Services", () => {
 
   test("listHistory should return steps and events for a run", async () => {
     const instanceRef = await db.create("workflow_instance", {
+      id: "history-2",
       workflowName: "demo-workflow",
-      instanceId: "history-2",
-      status: "queued",
+      status: "active",
       params: {},
       runNumber: 1,
       startedAt: null,
@@ -505,10 +492,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-2",
       runNumber: 1,
-      stepKey: "step-1",
+      stepKey: "do:step-1",
       name: "Step One",
       type: "do",
       status: "completed",
@@ -525,10 +510,8 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_step", {
       instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-2",
       runNumber: 1,
-      stepKey: "step-2",
+      stepKey: "sleep:step-2",
       name: "Step Two",
       type: "sleep",
       status: "waiting",
@@ -545,8 +528,6 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_event", {
       instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-2",
       runNumber: 1,
       actor: "user",
       type: "approval",
@@ -557,8 +538,6 @@ describe("Workflows Fragment Services", () => {
 
     await db.create("workflow_event", {
       instanceRef,
-      workflowName: "demo-workflow",
-      instanceId: "history-2",
       runNumber: 1,
       actor: "user",
       type: "note",
