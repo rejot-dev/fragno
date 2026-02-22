@@ -31,8 +31,7 @@ Returns the registered workflow names.
 
 Query parameters:
 
-- `status` (optional):
-  `queued | running | paused | errored | terminated | complete | waiting | waitingForPause | unknown`
+- `status` (optional): `active | paused | errored | terminated | complete | waiting`
 - `pageSize` (optional, default 25, max 100)
 - `cursor` (optional)
 
@@ -112,8 +111,7 @@ Body:
 { "maxInstances": 10, "maxSteps": 100 }
 ```
 
-Returns `{ "processed": number }`. If `enableRunnerTick` is false, the route returns
-`RUNNER_TICK_DISABLED`.
+Returns `{ "processed": number }`.
 
 ## Authorization hooks
 

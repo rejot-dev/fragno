@@ -1,670 +1,548 @@
-// Workflow step executor with in-memory state, retries, and waiting semantics.
+// Runner implementation of the WorkflowStep interface.
 
-import type { FragnoRuntime } from "@fragno-dev/core";
+import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 import type {
+  AnyTxResult,
   WorkflowDuration,
-  WorkflowLogger,
-  WorkflowLogLevel,
-  WorkflowLogOptions,
   WorkflowStep,
   WorkflowStepConfig,
   WorkflowStepTx,
 } from "../workflow";
-import { NonRetryableError } from "../workflow";
-import type { WorkflowLogCreate, WorkflowStepRecord } from "./types";
-import {
-  computeRetryDelayMs,
-  isUniqueConstraintError,
-  normalizeRetryConfig,
-  normalizeWaitTimeoutMs,
-} from "./utils";
 import { parseDurationMs } from "../utils";
-import { isTerminalStatus } from "./status";
-import type { RunnerState } from "./state";
-import {
-  clearStepMutationBuffer,
-  getStepSnapshot,
-  getStepMutationBuffer,
-  getStepMutationBufferIfExists,
-  queueEventUpdate,
-  queueLogCreate,
-  queueStepCreate,
-  queueStepUpdate,
-  resetMutations,
-} from "./state";
+import type { RunnerState, WorkflowStepSnapshot } from "./state";
+import type {
+  RunnerTaskKind,
+  WorkflowEventRecord,
+  WorkflowEventUpdate,
+  WorkflowStepCreateDraft,
+  WorkflowStepUpdateDraft,
+} from "./types";
+import { isSystemEventActor } from "../system-events";
+import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
-class WorkflowSuspend extends Error {
-  constructor(
-    readonly kind: "wake" | "retry",
-    readonly runAt: Date,
-  ) {
-    super("WORKFLOW_SUSPEND");
+export type RunnerStepSuspendReason =
+  | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
+  | {
+      type: "waitForEvent";
+      stepKey: string;
+      eventType: string;
+      delayMs?: number | null;
+      runAt?: Date;
+    }
+  | { type: "retry"; stepKey: string; delayMs?: number | null };
+
+export class RunnerStepSuspended extends Error {
+  readonly reason: RunnerStepSuspendReason;
+
+  constructor(reason: RunnerStepSuspendReason) {
+    super("WORKFLOW_STEP_SUSPENDED");
+    this.name = "RunnerStepSuspended";
+    this.reason = reason;
   }
 }
 
-class WorkflowPause extends Error {
-  constructor() {
-    super("WORKFLOW_PAUSE");
-  }
-}
-
-class WorkflowAbort extends Error {
-  constructor() {
-    super("WORKFLOW_ABORT");
-  }
-}
-
-class WaitForEventTimeoutError extends Error {
-  constructor() {
-    super("WAIT_FOR_EVENT_TIMEOUT");
-    this.name = "WaitForEventTimeoutError";
-  }
-}
-
-const coerceDate = (timestamp: Date | number) =>
-  timestamp instanceof Date ? timestamp : new Date(timestamp);
-
-const coerceEventTimestamp = (timestamp: unknown) => {
-  if (timestamp instanceof Date) {
-    return timestamp;
-  }
-  if (typeof timestamp === "string" || typeof timestamp === "number") {
-    return new Date(timestamp);
-  }
-  return new Date(NaN);
+type RunnerStepOptions = {
+  state: RunnerState;
+  taskKind: RunnerTaskKind;
 };
 
-export class RunnerStep implements WorkflowStep {
-  log: WorkflowLogger;
-  #state: RunnerState;
-  #workflowName: string;
-  #instanceRef: WorkflowStepRecord["instanceRef"];
-  #instanceId: string;
-  #runNumber: number;
-  #inFlightSteps = new Set<string>();
-  #maxSteps: number;
-  #stepCount = 0;
-  #time: FragnoRuntime["time"];
-  #getDbNow: () => Promise<Date>;
-  #flushStepBoundary:
-    | ((
-        mutations: RunnerState["mutations"],
-        stepMutations: ReturnType<typeof getStepMutationBufferIfExists>,
-      ) => Promise<boolean>)
-    | null = null;
-  #activeStepKey: string | null = null;
-  #activeAttempt: number | null = null;
+type StepTxQueue = {
+  tx: WorkflowStepTx;
+  commit: () => void;
+};
 
-  constructor(options: {
-    state: RunnerState;
-    workflowName: string;
-    instanceRef: WorkflowStepRecord["instanceRef"];
-    instanceId: string;
-    runNumber: number;
-    maxSteps: number;
-    time: FragnoRuntime["time"];
-    getDbNow: () => Promise<Date>;
-    flushStepBoundary: (
-      mutations: RunnerState["mutations"],
-      stepMutations: ReturnType<typeof getStepMutationBufferIfExists>,
-    ) => Promise<boolean>;
-  }) {
+/**
+ * Build a deterministic step key from type and name.
+ * Bigger picture: stable step keys are the identity for replayable workflow steps.
+ */
+function buildStepKey(type: string, name: string): string {
+  return `${type}:${name}`;
+}
+
+/**
+ * Normalize timestamps to a Date instance.
+ * Bigger picture: step scheduling uses consistent Date objects for comparisons.
+ */
+function coerceTimestamp(timestamp: Date | number): Date {
+  return timestamp instanceof Date ? timestamp : new Date(timestamp);
+}
+
+/**
+ * Strip delay-only fields from persisted snapshots.
+ * Bigger picture: runner state stores the durable fields, not scheduling hints.
+ */
+function stripDelayFields<T extends Record<string, unknown>>(data: T): T {
+  const { nextRetryDelayMs, wakeDelayMs, ...rest } = data as T & {
+    nextRetryDelayMs?: unknown;
+    wakeDelayMs?: unknown;
+  };
+  return rest as T;
+}
+
+/**
+ * Treat both \"complete\" and \"completed\" as terminal step statuses.
+ * Bigger picture: keeps runner compatible with existing persisted values.
+ */
+function isCompletedStatus(status?: string | null): boolean {
+  return status === "completed" || status === "complete";
+}
+
+/**
+ * Compute retry delay based on the configured backoff strategy.
+ * Bigger picture: centralizes retry timing so scheduling is deterministic.
+ */
+function computeBackoffDelayMs(
+  retries: NonNullable<WorkflowStepConfig["retries"]>,
+  attempt: number,
+): number {
+  const baseDelay = parseDurationMs(retries.delay);
+  switch (retries.backoff) {
+    case "linear":
+      return baseDelay * Math.max(attempt, 1);
+    case "exponential":
+      return baseDelay * Math.pow(2, Math.max(attempt - 1, 0));
+    default:
+      return baseDelay;
+  }
+}
+
+export class RunnerStep implements WorkflowStep {
+  #state: RunnerState;
+  #taskKind: RunnerTaskKind;
+
+  constructor(options: RunnerStepOptions) {
     this.#state = options.state;
-    this.#workflowName = options.workflowName;
-    this.#instanceRef = options.instanceRef;
-    this.#instanceId = options.instanceId;
-    this.#runNumber = options.runNumber;
-    this.#maxSteps = options.maxSteps;
-    this.#time = options.time;
-    this.#getDbNow = options.getDbNow;
-    this.#flushStepBoundary = options.flushStepBoundary;
-    this.log = {
-      debug: (message, data, opts) => this.#writeLog("debug", message, data, opts),
-      info: (message, data, opts) => this.#writeLog("info", message, data, opts),
-      warn: (message, data, opts) => this.#writeLog("warn", message, data, opts),
-      error: (message, data, opts) => this.#writeLog("error", message, data, opts),
-    };
+    this.#taskKind = options.taskKind;
   }
 
+  async do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
+  async do<T>(
+    name: string,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+  ): Promise<T>;
   async do<T>(
     name: string,
     configOrCallback: WorkflowStepConfig | ((tx: WorkflowStepTx) => Promise<T> | T),
     maybeCallback?: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T> {
-    const { config, callback } =
+    const config =
+      typeof configOrCallback === "function" ? undefined : (configOrCallback as WorkflowStepConfig);
+    const callback =
       typeof configOrCallback === "function"
-        ? { config: undefined, callback: configOrCallback }
-        : { config: configOrCallback, callback: maybeCallback };
+        ? configOrCallback
+        : (maybeCallback as typeof maybeCallback);
 
     if (!callback) {
-      throw new Error("Missing step callback");
+      throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
     }
 
-    this.#beginStep(name);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
+    const stepKey = buildStepKey("do", name);
+    const snapshot = this.#state.stepsByKey.get(stepKey);
+
+    if (snapshot && isCompletedStatus(snapshot.status)) {
+      return snapshot.result as T;
+    }
+
+    if (snapshot?.status === "errored") {
+      const error = new Error(snapshot.errorMessage ?? "STEP_FAILED");
+      error.name = snapshot.errorName ?? "Error";
+      throw error;
+    }
+
+    if (snapshot?.status === "waiting" && snapshot.nextRetryAt) {
+      if (this.#taskKind !== "retry") {
+        throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
+      }
+    }
+
+    const attempt = (snapshot?.attempts ?? 0) + 1;
+    const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
+    const timeoutMs = snapshot?.timeoutMs ?? null;
+
+    const txQueue = this.#createStepTxQueue();
 
     try {
-      const existing = getStepSnapshot(this.#state, name);
-      if (existing && existing.type !== "do") {
-        throw new Error("STEP_TYPE_MISMATCH");
-      }
+      const result = await callback(txQueue.tx);
+      txQueue.commit();
 
-      if (existing?.status === "completed") {
-        clearStepMutationBuffer(this.#state, name);
-        await this.#throwIfPauseRequested();
-        return existing.result as T;
-      }
-
-      if (existing?.status === "waiting" && existing.nextRetryAt) {
-        if (existing.nextRetryAt > dbNow) {
-          clearStepMutationBuffer(this.#state, name);
-          await this.#throwIfPauseRequested();
-          throw new WorkflowSuspend("retry", existing.nextRetryAt);
-        }
-      }
-
-      if (existing?.status === "errored") {
-        clearStepMutationBuffer(this.#state, name);
-        const err = new Error(existing.errorMessage ?? "STEP_FAILED");
-        err.name = existing.errorName ?? "Error";
-        throw err;
-      }
-
-      const { maxAttempts, delayMs, backoff } = normalizeRetryConfig(config);
-      const timeoutMs = config?.timeout ? parseDurationMs(config.timeout) : null;
-
-      if (existing && (existing.attempts ?? 0) >= maxAttempts) {
-        if (existing.id) {
-          queueStepUpdate(this.#state, name, existing.id, {
-            status: "errored",
-            errorName: "StepMaxAttemptsExceeded",
-            errorMessage: "STEP_MAX_ATTEMPTS_EXCEEDED",
-            updatedAt: now,
-          });
-        }
-        throw new NonRetryableError("STEP_MAX_ATTEMPTS_EXCEEDED", "StepMaxAttemptsExceeded");
-      }
-
-      const attempt = (existing?.attempts ?? 0) + 1;
-
-      const startUpdate = {
-        status: "running",
+      this.#upsertStep(stepKey, {
+        name,
+        type: "do",
+        status: "completed",
         attempts: attempt,
         maxAttempts,
         timeoutMs,
-        nextRetryAt: null,
+        result,
         errorName: null,
         errorMessage: null,
-        updatedAt: now,
-      };
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+      });
 
-      if (existing?.id) {
-        queueStepUpdate(this.#state, name, existing.id, startUpdate);
-      } else {
-        queueStepCreate(this.#state, name, {
-          instanceRef: this.#instanceRef,
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
+      return result;
+    } catch (err) {
+      const error = toError(err);
+      if (isNonRetryableError(error)) {
+        this.#upsertStep(stepKey, {
           name,
           type: "do",
-          status: "running",
+          status: "errored",
           attempts: attempt,
           maxAttempts,
           timeoutMs,
+          errorName: error.name,
+          errorMessage: error.message,
           nextRetryAt: null,
           wakeAt: null,
           waitEventType: null,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
         });
-      }
-
-      clearStepMutationBuffer(this.#state, name);
-      this.#setStepContext(name, attempt);
-
-      try {
-        const result = await this.#runWithTimeout(() => callback(this.#createStepTx()), timeoutMs);
-        const completionUpdate = {
-          status: "completed",
-          result,
-          updatedAt: this.#time.now(),
-        };
-        const snapshot = getStepSnapshot(this.#state, name);
-        queueStepUpdate(this.#state, name, snapshot?.id, completionUpdate);
-        await this.#flushBoundary();
-        await this.#throwIfPauseRequested();
-        return result;
-      } catch (err) {
-        if (
-          err instanceof WorkflowSuspend ||
-          err instanceof WorkflowPause ||
-          err instanceof WorkflowAbort
-        ) {
-          throw err;
-        }
-
-        const error = err as Error;
-        const nonRetryable = error instanceof NonRetryableError;
-        const shouldRetry = !nonRetryable && attempt < maxAttempts;
-
-        let nextRetryAt: Date | null = null;
-        if (shouldRetry) {
-          let retryBase: Date;
-          try {
-            retryBase = await this.#getDbNow();
-          } catch {
-            retryBase = this.#time.now();
-          }
-          nextRetryAt = new Date(
-            retryBase.getTime() + computeRetryDelayMs(attempt, delayMs, backoff),
-          );
-        }
-
-        const failureUpdate = {
-          status: shouldRetry ? "waiting" : "errored",
-          errorName: error.name,
-          errorMessage: error.message,
-          nextRetryAt,
-          updatedAt: this.#time.now(),
-        };
-        const snapshot = getStepSnapshot(this.#state, name);
-        queueStepUpdate(this.#state, name, snapshot?.id, failureUpdate);
-
-        if (shouldRetry && nextRetryAt) {
-          clearStepMutationBuffer(this.#state, name);
-          await this.#throwIfPauseRequested();
-          throw new WorkflowSuspend("retry", nextRetryAt);
-        }
-
-        clearStepMutationBuffer(this.#state, name);
         throw error;
       }
-    } finally {
-      this.#endStep(name);
+      const retries = config?.retries;
+      const canRetry = retries && attempt <= retries.limit;
+
+      if (canRetry) {
+        const delayMs = computeBackoffDelayMs(retries, attempt);
+
+        this.#upsertStep(stepKey, {
+          name,
+          type: "do",
+          status: "waiting",
+          attempts: attempt,
+          maxAttempts: retries.limit + 1,
+          timeoutMs,
+          errorName: error.name,
+          errorMessage: error.message,
+          nextRetryDelayMs: delayMs,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+        });
+
+        throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs });
+      }
+
+      this.#upsertStep(stepKey, {
+        name,
+        type: "do",
+        status: "errored",
+        attempts: attempt,
+        maxAttempts,
+        timeoutMs,
+        errorName: error.name,
+        errorMessage: error.message,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+      });
+
+      throw error;
     }
   }
 
-  #createStepTx(): WorkflowStepTx {
-    return {
-      serviceCalls: (factory) => {
-        if (!this.#activeStepKey || this.#activeAttempt === null) {
-          throw new Error("STEP_TX_UNAVAILABLE");
-        }
-        const buffer = getStepMutationBuffer(this.#state, this.#activeStepKey, this.#activeAttempt);
-        buffer.serviceCalls.push(factory);
-      },
-      mutate: (fn) => {
-        if (!this.#activeStepKey || this.#activeAttempt === null) {
-          throw new Error("STEP_TX_UNAVAILABLE");
-        }
-        const buffer = getStepMutationBuffer(this.#state, this.#activeStepKey, this.#activeAttempt);
-        buffer.mutations.push(fn);
-      },
-    };
-  }
-
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
-    const dbNow = await this.#getDbNow();
-    const wakeAt = new Date(dbNow.getTime() + parseDurationMs(duration));
-    return this.#sleepUntil(name, wakeAt);
+    const delayMs = parseDurationMs(duration);
+    const stepKey = buildStepKey("sleep", name);
+    const snapshot = this.#state.stepsByKey.get(stepKey);
+
+    if (isCompletedStatus(snapshot?.status)) {
+      return;
+    }
+
+    if (this.#taskKind === "wake") {
+      this.#upsertStep(stepKey, {
+        name,
+        type: "sleep",
+        status: "completed",
+        attempts: snapshot?.attempts ?? 0,
+        maxAttempts: snapshot?.maxAttempts ?? 1,
+        timeoutMs: snapshot?.timeoutMs ?? null,
+        wakeAt: null,
+        waitEventType: null,
+        nextRetryAt: null,
+      });
+      return;
+    }
+
+    if (snapshot?.status === "waiting") {
+      throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs: null });
+    }
+
+    if (!snapshot) {
+      this.#upsertStep(stepKey, {
+        name,
+        type: "sleep",
+        status: "waiting",
+        attempts: 0,
+        maxAttempts: 1,
+        timeoutMs: null,
+        wakeDelayMs: delayMs,
+        wakeAt: null,
+        waitEventType: null,
+        nextRetryAt: null,
+      });
+    }
+
+    throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs });
   }
 
   async sleepUntil(name: string, timestamp: Date | number): Promise<void> {
-    const wakeAt = coerceDate(timestamp);
-    return this.#sleepUntil(name, wakeAt);
+    const stepKey = buildStepKey("sleep", name);
+    const target = coerceTimestamp(timestamp);
+    const snapshot = this.#state.stepsByKey.get(stepKey);
+
+    if (isCompletedStatus(snapshot?.status)) {
+      return;
+    }
+
+    if (this.#taskKind === "wake") {
+      this.#upsertStep(stepKey, {
+        name,
+        type: "sleep",
+        status: "completed",
+        attempts: snapshot?.attempts ?? 0,
+        maxAttempts: snapshot?.maxAttempts ?? 1,
+        timeoutMs: snapshot?.timeoutMs ?? null,
+        wakeAt: null,
+        waitEventType: null,
+        nextRetryAt: null,
+      });
+      return;
+    }
+
+    if (snapshot?.status === "waiting") {
+      throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs: null });
+    }
+
+    if (!snapshot) {
+      this.#upsertStep(stepKey, {
+        name,
+        type: "sleep",
+        status: "waiting",
+        attempts: 0,
+        maxAttempts: 1,
+        timeoutMs: null,
+        wakeAt: target,
+        waitEventType: null,
+        nextRetryAt: null,
+      });
+    }
+
+    throw new RunnerStepSuspended({ type: "sleep", stepKey, runAt: target });
   }
 
   async waitForEvent<T = unknown>(
     name: string,
     options: { type: string; timeout?: WorkflowDuration },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
-    this.#beginStep(name);
-    this.#setStepContext(name, null);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
+    const stepKey = buildStepKey("waitForEvent", name);
+    const snapshot = this.#state.stepsByKey.get(stepKey);
 
-    try {
-      const existing = getStepSnapshot(this.#state, name);
-      if (existing && existing.type !== "waitForEvent") {
-        throw new Error("STEP_TYPE_MISMATCH");
-      }
+    if (snapshot && isCompletedStatus(snapshot.status)) {
+      return snapshot.result as { type: string; payload: Readonly<T>; timestamp: Date };
+    }
 
-      if (existing?.status === "completed" && existing.result) {
-        await this.#throwIfPauseRequested();
-        const result = existing.result as {
-          type: string;
-          payload: Readonly<T>;
-          timestamp: Date | string | number;
-        };
-        return { ...result, timestamp: coerceEventTimestamp(result.timestamp) };
-      }
+    const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);
+    if (event) {
+      this.#queueEventUpdate(event, {
+        consumedByStepKey: stepKey,
+      });
+      event.consumedByStepKey = stepKey;
 
-      if (existing?.status === "errored") {
-        throw new WaitForEventTimeoutError();
-      }
+      const result = {
+        type: event.type,
+        payload: (event.payload ?? null) as Readonly<T>,
+        timestamp: event.createdAt,
+      };
 
-      const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = existing?.wakeAt ?? new Date(dbNow.getTime() + timeoutMs);
-
-      const event = this.#state.events.find((candidate) => {
-        if (candidate.type !== options.type || candidate.deliveredAt !== null) {
-          return false;
-        }
-        const createdAt = coerceEventTimestamp(candidate.createdAt);
-        if (Number.isNaN(createdAt.getTime())) {
-          return false;
-        }
-        return createdAt <= wakeAt;
+      this.#upsertStep(stepKey, {
+        name,
+        type: "waitForEvent",
+        status: "completed",
+        attempts: snapshot?.attempts ?? 0,
+        maxAttempts: snapshot?.maxAttempts ?? 1,
+        timeoutMs: snapshot?.timeoutMs ?? null,
+        result,
+        waitEventType: options.type,
+        errorName: null,
+        errorMessage: null,
+        nextRetryAt: null,
+        wakeAt: null,
       });
 
-      if (event) {
-        const eventTimestamp = coerceEventTimestamp(event.createdAt);
-        const result = {
-          type: event.type,
-          payload: event.payload as Readonly<T>,
-          timestamp: eventTimestamp,
-        };
+      return result;
+    }
 
-        queueEventUpdate(this.#state, event, {
-          deliveredAt: now,
-          consumedByStepKey: name,
-        });
+    const timeoutMs = options.timeout ? parseDurationMs(options.timeout) : null;
 
-        if (existing?.id) {
-          queueStepUpdate(this.#state, name, existing.id, {
-            status: "completed",
-            result,
-            updatedAt: now,
-          });
-        } else {
-          queueStepCreate(this.#state, name, {
-            instanceRef: this.#instanceRef,
-            workflowName: this.#workflowName,
-            instanceId: this.#instanceId,
-            runNumber: this.#runNumber,
-            stepKey: name,
-            name,
-            type: "waitForEvent",
-            status: "completed",
-            attempts: 1,
-            maxAttempts: 1,
-            timeoutMs: normalizeWaitTimeoutMs(options.timeout),
-            nextRetryAt: null,
-            wakeAt: null,
-            waitEventType: options.type,
-            result,
-            errorName: null,
-            errorMessage: null,
-            createdAt: now,
-            updatedAt: now,
-          });
+    if (snapshot?.status === "waiting" && this.#taskKind !== "wake") {
+      throw new RunnerStepSuspended({
+        type: "waitForEvent",
+        stepKey,
+        eventType: options.type,
+        delayMs: null,
+      });
+    }
+
+    if (this.#taskKind === "wake") {
+      const error = new Error("WAIT_FOR_EVENT_TIMEOUT");
+      this.#upsertStep(stepKey, {
+        name,
+        type: "waitForEvent",
+        status: "errored",
+        attempts: snapshot?.attempts ?? 0,
+        maxAttempts: snapshot?.maxAttempts ?? 1,
+        timeoutMs: snapshot?.timeoutMs ?? null,
+        errorName: error.name,
+        errorMessage: error.message,
+        waitEventType: options.type,
+        nextRetryAt: null,
+        wakeAt: null,
+      });
+      throw error;
+    }
+
+    if (!snapshot) {
+      this.#upsertStep(stepKey, {
+        name,
+        type: "waitForEvent",
+        status: "waiting",
+        attempts: 0,
+        maxAttempts: 1,
+        timeoutMs,
+        wakeDelayMs: timeoutMs ?? undefined,
+        waitEventType: options.type,
+        nextRetryAt: null,
+        wakeAt: null,
+      });
+    }
+
+    throw new RunnerStepSuspended({
+      type: "waitForEvent",
+      stepKey,
+      eventType: options.type,
+      delayMs: timeoutMs ?? null,
+    });
+  }
+
+  #createStepTxQueue(): StepTxQueue {
+    const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
+    const pendingServiceCalls: AnyTxResult[] = [];
+
+    const tx: WorkflowStepTx = {
+      mutate: (fn) => {
+        pendingMutations.push(fn);
+      },
+      serviceCalls: (factory) => {
+        let calls: readonly AnyTxResult[];
+        try {
+          calls = factory();
+        } catch (error) {
+          const err = toError(error);
+          if (err.message.startsWith("Cannot add retrieval operation in state")) {
+            throw new Error("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
+          }
+          throw err;
         }
-
-        await this.#flushBoundary();
-        await this.#throwIfPauseRequested();
-        return { ...result, timestamp: coerceEventTimestamp(result.timestamp) };
-      }
-
-      if (wakeAt <= dbNow) {
-        if (existing?.id) {
-          queueStepUpdate(this.#state, name, existing.id, {
-            status: "errored",
-            errorName: "WaitForEventTimeoutError",
-            errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-            updatedAt: now,
-          });
+        for (const call of calls) {
+          if (!isMutateOnlyTx(call)) {
+            throw new Error("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
+          }
+          pendingServiceCalls.push(call);
         }
-        throw new WaitForEventTimeoutError();
-      }
-
-      if (existing?.id) {
-        queueStepUpdate(this.#state, name, existing.id, {
-          status: "waiting",
-          wakeAt,
-          waitEventType: options.type,
-          timeoutMs,
-          updatedAt: now,
-        });
-      } else {
-        queueStepCreate(this.#state, name, {
-          instanceRef: this.#instanceRef,
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
-          name,
-          type: "waitForEvent",
-          status: "waiting",
-          attempts: 0,
-          maxAttempts: 1,
-          timeoutMs,
-          nextRetryAt: null,
-          wakeAt,
-          waitEventType: options.type,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
-    } finally {
-      this.#endStep(name);
-    }
-  }
-
-  async #sleepUntil(name: string, wakeAt: Date): Promise<void> {
-    this.#beginStep(name);
-    this.#setStepContext(name, null);
-    const now = this.#time.now();
-    const dbNow = await this.#getDbNow();
-
-    try {
-      const existing = getStepSnapshot(this.#state, name);
-      if (existing && existing.type !== "sleep") {
-        throw new Error("STEP_TYPE_MISMATCH");
-      }
-
-      if (existing?.status === "completed") {
-        await this.#throwIfPauseRequested();
-        return;
-      }
-
-      if (existing?.wakeAt && existing.wakeAt <= dbNow) {
-        if (existing.id) {
-          queueStepUpdate(this.#state, name, existing.id, {
-            status: "completed",
-            updatedAt: now,
-          });
-        }
-        await this.#flushBoundary();
-        await this.#throwIfPauseRequested();
-        return;
-      }
-
-      if (existing?.id) {
-        queueStepUpdate(this.#state, name, existing.id, {
-          status: "waiting",
-          wakeAt: existing.wakeAt ?? wakeAt,
-          updatedAt: now,
-        });
-      } else {
-        queueStepCreate(this.#state, name, {
-          instanceRef: this.#instanceRef,
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
-          name,
-          type: "sleep",
-          status: "waiting",
-          attempts: 0,
-          maxAttempts: 1,
-          timeoutMs: null,
-          nextRetryAt: null,
-          wakeAt,
-          waitEventType: null,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
-    } finally {
-      this.#endStep(name);
-    }
-  }
-
-  #beginStep(stepKey: string) {
-    if (this.#inFlightSteps.has(stepKey)) {
-      throw new Error("DUPLICATE_STEP_KEY");
-    }
-    this.#inFlightSteps.add(stepKey);
-    this.#stepCount += 1;
-    if (this.#stepCount > this.#maxSteps) {
-      throw new Error("MAX_STEPS_EXCEEDED");
-    }
-  }
-
-  #endStep(stepKey: string) {
-    this.#inFlightSteps.delete(stepKey);
-    if (this.#activeStepKey === stepKey) {
-      this.#activeStepKey = null;
-      this.#activeAttempt = null;
-    }
-  }
-
-  #setStepContext(stepKey: string, attempt: number | null) {
-    this.#activeStepKey = stepKey;
-    this.#activeAttempt = attempt;
-  }
-
-  async #throwIfPauseRequested() {
-    // Use the latest heartbeat snapshot to avoid extra database roundtrips per step.
-    if (this.#state.remoteStateRefresh) {
-      await this.#state.remoteStateRefresh();
-    }
-
-    const remote = this.#state.remoteState;
-    if (remote.missing) {
-      return;
-    }
-
-    if (remote.runNumber !== this.#runNumber || isTerminalStatus(remote.status)) {
-      throw new WorkflowAbort();
-    }
-
-    if (
-      remote.pauseRequested ||
-      remote.status === "waitingForPause" ||
-      remote.status === "paused"
-    ) {
-      throw new WorkflowPause();
-    }
-  }
-
-  async #runWithTimeout<T>(callback: () => Promise<T> | T, timeoutMs: number | null): Promise<T> {
-    if (!timeoutMs) {
-      return await callback();
-    }
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        Promise.resolve().then(callback),
-        new Promise<T>((_, reject) => {
-          timer = setTimeout(() => {
-            reject(new Error("STEP_TIMEOUT"));
-          }, timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
-    }
-  }
-
-  async #writeLog(
-    level: WorkflowLogLevel,
-    message: string,
-    data?: unknown,
-    options?: WorkflowLogOptions,
-  ): Promise<void> {
-    const log: WorkflowLogCreate = {
-      instanceRef: this.#instanceRef,
-      workflowName: this.#workflowName,
-      instanceId: this.#instanceId,
-      runNumber: this.#runNumber,
-      stepKey: this.#activeStepKey,
-      attempt: this.#activeAttempt,
-      level,
-      category: options?.category ?? "workflow",
-      message,
-      data: data ?? null,
-      createdAt: this.#time.now(),
+      },
     };
 
-    queueLogCreate(this.#state, log);
+    return {
+      tx,
+      commit: () => {
+        this.#state.mutations.txMutations.push(...pendingMutations);
+        this.#state.mutations.txServiceCalls.push(...pendingServiceCalls);
+      },
+    };
   }
 
-  async #flushBoundary(): Promise<void> {
-    if (!this.#flushStepBoundary) {
+  #findPendingEvent(type: string, wakeAt?: Date | null): WorkflowEventRecord | undefined {
+    return this.#state.events.find(
+      (event) =>
+        !isSystemEventActor(event.actor) &&
+        event.type === type &&
+        !event.consumedByStepKey &&
+        (!wakeAt || event.createdAt <= wakeAt),
+    );
+  }
+
+  #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {
+    const key = event.id.toString();
+    const existing = this.#state.mutations.eventUpdates.get(key);
+    if (existing) {
+      this.#state.mutations.eventUpdates.set(key, {
+        id: existing.id,
+        data: { ...existing.data, ...data },
+      });
       return;
     }
 
-    const stepMutations =
-      this.#activeStepKey && this.#activeAttempt !== null
-        ? getStepMutationBufferIfExists(this.#state, this.#activeStepKey, this.#activeAttempt)
-        : null;
-    const hasStepMutations =
-      !!stepMutations &&
-      (stepMutations.serviceCalls.length > 0 || stepMutations.mutations.length > 0);
+    this.#state.mutations.eventUpdates.set(key, { id: event.id, data });
+  }
 
-    const { stepCreates, stepUpdates, eventUpdates, logs } = this.#state.mutations;
-    if (
-      !hasStepMutations &&
-      stepCreates.size === 0 &&
-      stepUpdates.size === 0 &&
-      eventUpdates.size === 0 &&
-      logs.length === 0
-    ) {
-      return;
+  #upsertStep(stepKey: string, data: WorkflowStepUpdateDraft) {
+    const snapshot = this.#state.stepsByKey.get(stepKey);
+    const existingCreate = this.#state.mutations.stepCreates.get(stepKey);
+
+    if (existingCreate) {
+      this.#state.mutations.stepCreates.set(stepKey, {
+        ...existingCreate,
+        ...data,
+      });
+    } else if (snapshot?.id) {
+      const existingUpdate = this.#state.mutations.stepUpdates.get(stepKey);
+      if (existingUpdate) {
+        this.#state.mutations.stepUpdates.set(stepKey, {
+          id: existingUpdate.id,
+          data: { ...existingUpdate.data, ...data },
+        });
+      } else {
+        this.#state.mutations.stepUpdates.set(stepKey, { id: snapshot.id, data });
+      }
+    } else {
+      const createBase = this.#buildStepCreateBase(stepKey, data);
+      this.#state.mutations.stepCreates.set(stepKey, {
+        ...createBase,
+        ...data,
+      });
     }
 
-    try {
-      const ok = await this.#flushStepBoundary(this.#state.mutations, stepMutations);
-      if (!ok) {
-        throw new WorkflowAbort();
-      }
-    } catch (err) {
-      if (err instanceof WorkflowAbort) {
-        throw err;
-      }
-      if (isUniqueConstraintError(err)) {
-        throw new NonRetryableError("STEP_UNIQUE_CONSTRAINT_VIOLATION", "UniqueConstraintError");
-      }
-      throw err;
-    }
+    const nextSnapshot = {
+      ...snapshot,
+      ...(existingCreate && stripDelayFields(existingCreate)),
+      ...stripDelayFields(data),
+    } as WorkflowStepSnapshot;
 
-    resetMutations(this.#state);
-    if (this.#activeStepKey) {
-      clearStepMutationBuffer(this.#state, this.#activeStepKey);
-    }
+    this.#state.stepsByKey.set(stepKey, nextSnapshot);
+  }
+
+  #buildStepCreateBase(stepKey: string, data: WorkflowStepUpdateDraft): WorkflowStepCreateDraft {
+    return {
+      instanceRef: this.#state.instance.id,
+      runNumber: this.#state.instance.runNumber,
+      stepKey,
+      name: data.name ?? stepKey,
+      type: data.type ?? "do",
+      status: data.status ?? "waiting",
+      attempts: data.attempts ?? 0,
+      maxAttempts: data.maxAttempts ?? 1,
+      timeoutMs: data.timeoutMs ?? null,
+      nextRetryAt: data.nextRetryAt ?? null,
+      wakeAt: data.wakeAt ?? null,
+      waitEventType: data.waitEventType ?? null,
+      result: data.result ?? null,
+      errorName: data.errorName ?? null,
+      errorMessage: data.errorMessage ?? null,
+      nextRetryDelayMs: data.nextRetryDelayMs,
+      wakeDelayMs: data.wakeDelayMs,
+    };
   }
 }
-
-export { WorkflowSuspend, WorkflowPause, WorkflowAbort };

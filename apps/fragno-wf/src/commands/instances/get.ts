@@ -49,7 +49,6 @@ export const instancesGetCommand = define({
 
     console.log(`Workflow: ${String(meta["workflowName"] ?? workflowName)}`);
     console.log(`Run number: ${String(meta["runNumber"] ?? "-")}`);
-    console.log(`Pause requested: ${String(meta["pauseRequested"] ?? false)}`);
     console.log(`Created at: ${formatDate(meta["createdAt"])}`);
     console.log(`Updated at: ${formatDate(meta["updatedAt"])}`);
     console.log(`Started at: ${formatDate(meta["startedAt"])}`);

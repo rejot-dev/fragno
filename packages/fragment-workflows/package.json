@@ -37,6 +37,10 @@
     "./test": {
       "types": "./dist/node/test.d.ts",
       "default": "./dist/node/test.js"
+    },
+    "./scenario": {
+      "types": "./dist/node/scenario.d.ts",
+      "default": "./dist/node/scenario.js"
     }
   },
   "main": "./dist/node/index.js",

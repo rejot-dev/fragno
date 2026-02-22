@@ -42,7 +42,6 @@ const adapter = new SqlAdapter({
 const runtime = defaultFragnoRuntime;
 const config: WorkflowsFragmentConfig = {
   workflows,
-  enableRunnerTick: true,
   runtime,
 };
 

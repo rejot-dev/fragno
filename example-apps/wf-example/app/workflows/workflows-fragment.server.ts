@@ -26,27 +26,10 @@ export function getWorkflowsServer() {
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
   let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
-  const authRejectPct = Number(process.env["WF_AUTH_REJECT_PCT"] ?? "0");
-  const authEnabled = Number.isFinite(authRejectPct) && authRejectPct > 0;
-
-  const authorizeRandomReject: WorkflowsFragmentConfig["authorizeRequest"] = async () => {
-    if (!authEnabled) {
-      return;
-    }
-    if (Math.random() * 100 < authRejectPct) {
-      return Response.json({ message: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-    }
-  };
 
   const config: WorkflowsFragmentConfig = {
     workflows,
-    enableRunnerTick: true,
     runtime,
-    authorizeRequest: authEnabled ? authorizeRandomReject : undefined,
-    authorizeInstanceCreation: authEnabled ? authorizeRandomReject : undefined,
-    authorizeManagement: authEnabled ? authorizeRandomReject : undefined,
-    authorizeSendEvent: authEnabled ? authorizeRandomReject : undefined,
-    authorizeRunnerTick: authEnabled ? authorizeRandomReject : undefined,
   };
   const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig(config)

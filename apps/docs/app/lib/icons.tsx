@@ -18,6 +18,7 @@ import {
   Workflow,
   Upload,
   Hammer,
+  ListChecks,
 } from "lucide-react";
 
 /**
@@ -46,4 +47,5 @@ export const iconComponents = {
   Upload,
   CircleQuestionMark: CircleHelp, // Note: CircleQuestionMark -> CircleHelp in lucide-react
   Hammer,
+  ListChecks,
 } as const;
