@@ -1,5 +1,18 @@
 # @fragno-dev/chatno
 
+## 0.0.21
+
+### Patch Changes
+
+- 4d141f8: fix: remove development exports from published packages
+- Updated dependencies [3e2ff94]
+- Updated dependencies [4d141f8]
+- Updated dependencies [c8841b5]
+- Updated dependencies [9eeba53]
+- Updated dependencies [0f9b7ef]
+- Updated dependencies [7bda0b2]
+  - @fragno-dev/core@0.2.1
+
 ## 0.0.20
 
 ### Patch Changes
