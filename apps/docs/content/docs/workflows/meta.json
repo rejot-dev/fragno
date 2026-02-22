@@ -3,5 +3,14 @@
   "description": "Durable workflows fragment",
   "icon": "Workflow",
   "root": true,
-  "pages": ["index", "quickstart", "fragment", "routes", "cli", "runner-dispatcher", "debugging"]
+  "pages": [
+    "index",
+    "quickstart",
+    "scenario-dsl",
+    "fragment",
+    "routes",
+    "cli",
+    "runner-dispatcher",
+    "debugging"
+  ]
 }
