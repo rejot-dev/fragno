@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/example-fragment",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "exports": {
     ".": {
       "browser": "./dist/browser/index.js",

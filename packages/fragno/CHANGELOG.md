@@ -1,5 +1,16 @@
 # @fragno-dev/core
 
+## 0.2.1
+
+### Patch Changes
+
+- 3e2ff94: feat: register schemas via adapter registry and mount internal routes
+- 4d141f8: fix: remove development exports from published packages
+- c8841b5: feat: add callServices helper with implicit request context
+- 9eeba53: feat: add internal fragment describe metadata and adapter identity
+- 0f9b7ef: refactor: replace linked fragments with internal routes
+- 7bda0b2: feat(db): add sync command registry, registration, and sync entrypoint
+
 ## 0.2.0
 
 ### Minor Changes
