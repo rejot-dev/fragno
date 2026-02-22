@@ -1613,7 +1613,17 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
       if (!relation) {
         continue;
       }
-      output[relationName] = this.decodeRow(relationData[relationName], relation.table, resolver);
+      const relationRow = relationData[relationName];
+      const internalIdKey = relation.table.getInternalIdColumn().name;
+      if (
+        Object.prototype.hasOwnProperty.call(relationRow, internalIdKey) &&
+        isNullish(relationRow[internalIdKey])
+      ) {
+        output[relationName] = relation.type === "many" ? [] : null;
+        continue;
+      }
+
+      output[relationName] = this.decodeRow(relationRow, relation.table, resolver);
     }
 
     for (const key in columnValues) {

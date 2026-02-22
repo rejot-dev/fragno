@@ -33,6 +33,11 @@ describe("decodeResult", () => {
         type: "one",
         from: { table: "posts", column: "userId" },
         to: { table: "users", column: "id" },
+      })
+      .addReference("posts", {
+        type: "many",
+        from: { table: "users", column: "id" },
+        to: { table: "posts", column: "userId" },
       });
   });
 
@@ -299,6 +304,48 @@ describe("decodeResult", () => {
       expect(author["id"].externalId).toBe("user1");
       expect(author["id"].internalId).toBe(BigInt(200));
       expect(author["name"]).toBe("Alice");
+    });
+
+    it("should return null for missing one relations when internal id is null", () => {
+      const result = decodeResult(
+        {
+          id: "post1",
+          title: "My Post",
+          "author:id": null,
+          "author:_internalId": null,
+          "author:_version": null,
+          "author:name": null,
+        },
+        postsTable,
+        sqliteConfig,
+      );
+
+      expect(result).toEqual({
+        id: "post1",
+        title: "My Post",
+        author: null,
+      });
+    });
+
+    it("should return empty array for missing many relations when internal id is null", () => {
+      const result = decodeResult(
+        {
+          id: "user1",
+          name: "Alice",
+          "posts:id": null,
+          "posts:_internalId": null,
+          "posts:_version": null,
+          "posts:title": null,
+        },
+        usersTable,
+        sqliteConfig,
+      );
+
+      expect(result).toEqual({
+        id: "user1",
+        name: "Alice",
+        posts: [],
+      });
     });
   });
 

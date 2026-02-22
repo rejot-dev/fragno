@@ -5,6 +5,9 @@ import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
 
+const isNullish = (value: unknown): value is null | undefined =>
+  value === null || value === undefined;
+
 /**
  * Decodes a database result record to application format.
  *
@@ -84,9 +87,19 @@ export function decodeResult(
       continue;
     }
 
+    const relationRow = relationData[relationName];
+    const internalIdKey = relation.table.getInternalIdColumn().name;
+    if (
+      Object.prototype.hasOwnProperty.call(relationRow, internalIdKey) &&
+      isNullish(relationRow[internalIdKey])
+    ) {
+      output[relationName] = relation.type === "many" ? [] : null;
+      continue;
+    }
+
     // Recursively decode the relation data
     output[relationName] = decodeResult(
-      relationData[relationName],
+      relationRow,
       relation.table,
       driverConfig,
       sqliteStorageMode,

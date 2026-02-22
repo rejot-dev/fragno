@@ -39,6 +39,13 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
       })
+      .addTable("optional_emails", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("user_id", referenceColumn().nullable())
+          .addColumn("email", column("string"))
+          .createIndex("optional_emails_user_idx", ["user_id"]);
+      })
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -56,6 +63,11 @@ describe("SqlAdapter SQLite", () => {
       .addReference("author", {
         type: "one",
         from: { table: "posts", column: "user_id" },
+        to: { table: "users", column: "id" },
+      })
+      .addReference("user", {
+        type: "one",
+        from: { table: "optional_emails", column: "user_id" },
         to: { table: "users", column: "id" },
       })
       .addReference("post", {
@@ -149,7 +161,7 @@ describe("SqlAdapter SQLite", () => {
       Parameters<typeof createUow.find>[0]
     >();
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
-      "users" | "emails" | "posts" | "comments"
+      "users" | "emails" | "posts" | "comments" | "optional_emails"
     >();
 
     const { success: createSuccess } = await createUow.executeMutations();
@@ -378,6 +390,26 @@ describe("SqlAdapter SQLite", () => {
         age: 20,
       },
     });
+  });
+
+  it("should return null for left-joined relation when foreign key is null", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-optional-email");
+    createUow.create("optional_emails", {
+      user_id: null,
+      email: "optional@example.com",
+    });
+    await createUow.executeMutations();
+
+    const uow = queryEngine
+      .createUnitOfWork("join-optional-email")
+      .find("optional_emails", (b) => b.whereIndex("primary").join((jb) => jb.user()));
+
+    const [[email]] = await uow.executeRetrieve();
+
+    expect(email.email).toBe("optional@example.com");
+    expect(email.user).toBeNull();
   });
 
   it("should support complex nested joins (comments -> post -> author)", async () => {
