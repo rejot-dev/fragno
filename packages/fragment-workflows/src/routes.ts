@@ -19,7 +19,6 @@ const instanceStatusSchema = z.enum([
   "terminated",
   "complete",
   "waiting",
-  "waitingForPause",
   "unknown",
 ]);
 
@@ -86,7 +85,6 @@ const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
   runNumber: z.number(),
   params: z.unknown(),
-  pauseRequested: z.boolean(),
   createdAt: z.date(),
   updatedAt: z.date(),
   startedAt: z.date().nullable(),

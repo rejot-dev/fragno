@@ -16,7 +16,6 @@ describe("workflows client helpers", () => {
 
   it("detects waiting statuses", () => {
     expect(workflowsClient.helpers.isWaitingStatus("waiting")).toBe(true);
-    expect(workflowsClient.helpers.isWaitingStatus("waitingForPause")).toBe(true);
     expect(workflowsClient.helpers.isWaitingStatus("queued")).toBe(false);
   });
 });

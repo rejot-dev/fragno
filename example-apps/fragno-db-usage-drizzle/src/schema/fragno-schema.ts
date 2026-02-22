@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
 
@@ -432,7 +432,6 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   output: json("output"),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  pauseRequested: boolean("pauseRequested").notNull().default(false),
   runNumber: integer("runNumber").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)

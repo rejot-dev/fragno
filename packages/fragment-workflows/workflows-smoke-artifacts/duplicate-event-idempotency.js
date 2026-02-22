@@ -128,7 +128,7 @@ async function runInstance(id) {
   await sleep(800);
 
   const pausedStatus = await getStatus(id);
-  if (!["paused", "waitingForPause"].includes(pausedStatus.details.status)) {
+  if (pausedStatus.details.status !== "paused") {
     throw new Error(
       `Instance ${id} progressed while paused: ${pausedStatus.details.status} (${pausedStatus.meta?.currentStep?.waitEventType ?? "step"})`,
     );

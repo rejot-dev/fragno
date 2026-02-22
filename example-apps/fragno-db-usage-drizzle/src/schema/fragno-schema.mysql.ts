@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
+import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey } from "drizzle-orm/mysql-core"
 import { createId } from "@fragno-dev/db/id"
 import { sql, relations } from "drizzle-orm"
 
@@ -424,7 +424,6 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   output: json("output"),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  pauseRequested: boolean("pauseRequested").notNull().default(false),
   runNumber: int("runNumber").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)

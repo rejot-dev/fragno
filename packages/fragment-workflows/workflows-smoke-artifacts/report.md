@@ -200,50 +200,6 @@ Result:
                             0
 ```
 
-DB checks (rejected pause left `pauseRequested=false`):
-
-```sql
-SELECT
-  "instanceId",
-  "pauseRequested"
-FROM
-  "workflow_instance_workflows"
-WHERE
-  "instanceId" IN (
-    'auth_ml5hpy93_7',
-    'auth_ml5hpy93_9',
-    'auth_ml5hpy93_11',
-    'auth_ml5hpy93_12',
-    'auth_ml5hpy93_14',
-    'auth_ml5hpy93_17',
-    'auth_ml5hpy93_19',
-    'auth_ml5hpy93_22',
-    'auth_ml5hpy93_24',
-    'auth_ml5hpy93_26',
-    'auth_ml5hpy93_28'
-  )
-ORDER BY
-  "instanceId";
-```
-
-Result:
-
-```
-    instanceId    | pauseRequested
-------------------+----------------
- auth_ml5hpy93_11 | f
- auth_ml5hpy93_12 | f
- auth_ml5hpy93_14 | f
- auth_ml5hpy93_17 | f
- auth_ml5hpy93_19 | f
- auth_ml5hpy93_22 | f
- auth_ml5hpy93_24 | f
- auth_ml5hpy93_26 | f
- auth_ml5hpy93_28 | f
- auth_ml5hpy93_7  | f
- auth_ml5hpy93_9  | f
-```
-
 DB checks (rejected approval/fulfillment left no event rows):
 
 ```sql

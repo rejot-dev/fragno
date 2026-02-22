@@ -82,7 +82,7 @@ async function main() {
   const progressed = [];
   for (const id of ids) {
     const status = await getStatus(id);
-    if (status.details.status !== "paused" && status.details.status !== "waitingForPause") {
+    if (status.details.status !== "paused") {
       progressed.push({ id, status: status.details.status, currentStep: status.meta?.currentStep });
     }
   }

@@ -159,9 +159,6 @@ export function applyOutcome(
   outcome: RunnerTaskOutcome,
 ) {
   const schemaUow = uow.forSchema(workflowsSchema);
-  const shouldPause =
-    outcome.type === "suspended" &&
-    (instance.pauseRequested || instance.status === "waitingForPause");
 
   schemaUow.update("workflow_instance", instance.id, (b) => {
     const baseUpdate = {
@@ -187,13 +184,13 @@ export function applyOutcome(
               completedAt: b.now(),
             }
           : outcome.type === "suspended"
-            ? { status: shouldPause ? "paused" : "waiting" }
+            ? { status: "waiting" }
             : {};
 
     return b.set({ ...baseUpdate, ...outcomeUpdate }).check();
   });
 
-  if (outcome.type !== "suspended" || shouldPause) {
+  if (outcome.type !== "suspended") {
     return;
   }
 
@@ -213,7 +210,7 @@ export function applyOutcome(
     "onWorkflowEnqueued",
     {
       workflowName: instance.workflowName,
-      instanceId: instance.instanceId,
+      instanceId: instance.id.toString(),
       instanceRef: String(instance.id),
       runNumber: instance.runNumber,
       reason: kind,

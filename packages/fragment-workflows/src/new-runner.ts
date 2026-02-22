@@ -127,13 +127,6 @@ function planConsumePauseEvents(pauseEvents: WorkflowEventRecord[]): RunnerTickP
   };
 }
 
-function shouldPauseInstance(
-  instance: WorkflowInstanceRecord,
-  pauseEvents: WorkflowEventRecord[],
-): boolean {
-  return instance.status === "waitingForPause" || instance.pauseRequested || pauseEvents.length > 0;
-}
-
 function planPauseInstance(
   instance: WorkflowInstanceRecord,
   pauseEvents: WorkflowEventRecord[],
@@ -144,7 +137,7 @@ function planPauseInstance(
       (uow) => {
         const schemaUow = uow.forSchema(workflowsSchema);
         schemaUow.update("workflow_instance", instance.id, (b) =>
-          b.set({ status: "paused", pauseRequested: true, updatedAt: b.now() }).check(),
+          b.set({ status: "paused", updatedAt: b.now() }).check(),
         );
         for (const event of pauseEvents) {
           schemaUow.update("workflow_event", event.id, (b) =>
@@ -259,7 +252,7 @@ async function buildTickPlan(
     return planConsumePauseEvents(pendingPauseEvents);
   }
 
-  if (shouldPauseInstance(selectionResult.instance, pendingPauseEvents)) {
+  if (pendingPauseEvents.length > 0) {
     return planPauseInstance(selectionResult.instance, pendingPauseEvents);
   }
 

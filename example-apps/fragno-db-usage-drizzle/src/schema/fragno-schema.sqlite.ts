@@ -438,7 +438,6 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   output: text("output", { mode: "json" }),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  pauseRequested: integer("pauseRequested", { mode: "boolean" }).notNull().default(false),
   runNumber: integer("runNumber").notNull().default(0),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)

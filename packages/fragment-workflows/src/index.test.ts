@@ -85,7 +85,6 @@ describe("Workflows Fragment", () => {
       workflowName,
       status: "pending",
       params: { source: "tests" },
-      pauseRequested: false,
       runNumber: 0,
     });
 
@@ -130,7 +129,6 @@ describe("Workflows Fragment", () => {
       instanceId,
       status: "pending",
       params: { source: "tests" },
-      pauseRequested: false,
       runNumber: 0,
     });
     expect(instance.createdAt).toBeInstanceOf(Date);
@@ -232,7 +230,6 @@ describe("Workflows Fragment", () => {
         instanceId: "history-route",
         status: "queued",
         params: {},
-        pauseRequested: false,
         runNumber: 2,
         startedAt: null,
         completedAt: null,
@@ -293,7 +290,6 @@ describe("Workflows Fragment", () => {
         instanceId: "history-latest",
         status: "queued",
         params: {},
-        pauseRequested: false,
         runNumber: 3,
         startedAt: null,
         completedAt: null,
@@ -376,7 +372,6 @@ describe("Workflows Fragment", () => {
         instanceId: "history-run",
         status: "queued",
         params: {},
-        pauseRequested: false,
         runNumber: 3,
         startedAt: null,
         completedAt: null,
@@ -459,7 +454,6 @@ describe("Workflows Fragment", () => {
         instanceId: "history-invalid-run",
         status: "queued",
         params: {},
-        pauseRequested: false,
         runNumber: 1,
         startedAt: null,
         completedAt: null,
