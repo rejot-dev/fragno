@@ -8,18 +8,16 @@ const workflowNameSchema = z.string().min(1).max(64);
 const identifierSchema = z
   .string()
   .min(1)
-  .max(100)
+  .max(30)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
 
 const instanceStatusSchema = z.enum([
-  "queued",
-  "running",
+  "active",
   "paused",
   "errored",
   "terminated",
   "complete",
   "waiting",
-  "unknown",
 ]);
 
 const listInstancesQuerySchema = z.object({
@@ -406,7 +404,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             const currentStep = await this.handlerTx()
               .withServiceCalls(() => [
                 services.getInstanceCurrentStep({
-                  workflowName,
                   instanceId,
                   runNumber: meta.runNumber,
                 }),
@@ -444,23 +441,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             return idError;
           }
 
-          let resolvedRunNumber: number;
-          try {
-            resolvedRunNumber = await this.handlerTx()
-              .withServiceCalls(() => [services.getInstanceRunNumber(workflowName, instanceId)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-          } catch (err) {
-            return handleServiceError(err, errorResponder);
-          }
-
           try {
             const result = await this.handlerTx()
               .withServiceCalls(() => [
                 services.listHistory({
                   workflowName,
                   instanceId,
-                  runNumber: resolvedRunNumber,
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)

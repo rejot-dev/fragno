@@ -22,14 +22,12 @@ import type {
 const DEFAULT_PAGE_SIZE = 25;
 
 const INSTANCE_STATUSES = new Set<InstanceStatus["status"]>([
-  "queued",
-  "running",
+  "active",
   "paused",
   "errored",
   "terminated",
   "complete",
   "waiting",
-  "unknown",
 ]);
 
 const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "terminated", "errored"]);
@@ -126,19 +124,25 @@ type ListInstancesParams = {
 type ListHistoryParams = {
   workflowName: string;
   instanceId: string;
-  runNumber: number;
+  runNumber?: number;
 };
 
 type InstanceDetails = { id: string; details: InstanceStatus };
 
 function generateInstanceId(randomUuid: () => string) {
-  return `inst_${randomUuid()}`;
+  const prefix = "inst_";
+  const maxLength = 30;
+  const raw = randomUuid().replace(/-/g, "");
+  const suffixLength = Math.max(maxLength - prefix.length, 0);
+  return `${prefix}${raw.slice(0, suffixLength)}`;
 }
 
 function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceStatus {
-  const status = INSTANCE_STATUSES.has(instance.status as InstanceStatus["status"])
-    ? (instance.status as InstanceStatus["status"])
-    : "unknown";
+  if (!INSTANCE_STATUSES.has(instance.status as InstanceStatus["status"])) {
+    throw new Error(`INSTANCE_STATUS_INVALID:${instance.status}`);
+  }
+
+  const status = instance.status as InstanceStatus["status"];
 
   const error =
     instance.errorName || instance.errorMessage
@@ -289,8 +293,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -300,9 +304,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }
 
             const instanceRef = uow.create("workflow_instance", {
+              id: instanceId,
               workflowName,
-              instanceId,
-              status: "queued",
+              status: "active",
               params,
               runNumber: 0,
               startedAt: null,
@@ -323,7 +327,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             return {
               id: instanceId,
               details: buildInstanceStatus({
-                status: "queued",
+                status: "active",
                 output: null,
                 errorName: null,
                 errorMessage: null,
@@ -342,11 +346,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.find("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
                 eb.and(
                   eb("workflowName", "=", workflowName),
                   eb(
-                    "instanceId",
+                    "id",
                     "in",
                     instances.map((instance) => instance.id),
                   ),
@@ -355,7 +359,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             ),
           )
           .mutate(({ uow, retrieveResult: [existingInstances] }) => {
-            const existingIds = new Set(existingInstances.map((record) => record.instanceId));
+            const existingIds = new Set(existingInstances.map((record) => record.id.toString()));
             const processedIds = new Set<string>();
 
             const created: InstanceDetails[] = [];
@@ -367,9 +371,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               processedIds.add(instance.id);
 
               const instanceRef = uow.create("workflow_instance", {
+                id: instance.id,
                 workflowName,
-                instanceId: instance.id,
-                status: "queued",
+                status: "active",
                 params: instance.params ?? {},
                 runNumber: 0,
                 startedAt: null,
@@ -390,7 +394,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               created.push({
                 id: instance.id,
                 details: buildInstanceStatus({
-                  status: "queued",
+                  status: "active",
                   output: null,
                   errorName: null,
                   errorMessage: null,
@@ -406,8 +410,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -423,8 +427,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -437,11 +441,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceCurrentStep: function ({
-        workflowName,
         instanceId,
         runNumber,
       }: {
-        workflowName: string;
         instanceId: string;
         runNumber: number;
       }) {
@@ -449,14 +451,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .retrieve((uow) =>
             uow.findWithCursor("workflow_step", (b) => {
               return b
-                .whereIndex("idx_workflow_step_history_createdAt", (eb) =>
-                  eb.and(
-                    eb("workflowName", "=", workflowName),
-                    eb("instanceId", "=", instanceId),
-                    eb("runNumber", "=", runNumber),
-                  ),
+                .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                  eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
                 )
-                .orderByIndex("idx_workflow_step_history_createdAt", "desc")
+                .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc")
                 .pageSize(1);
             }),
           )
@@ -470,8 +468,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -508,10 +506,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               }
 
               const query = b
-                .whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                .whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
                   eb("workflowName", "=", workflowName),
                 )
-                .orderByIndex("idx_workflow_instance_workflowName_instanceId", effectiveOrder)
+                .orderByIndex("idx_workflow_instance_workflowName_id", effectiveOrder)
                 .pageSize(effectivePageSize);
 
               return cursor ? query.after(cursor) : query;
@@ -520,7 +518,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .transformRetrieve(([instances]) => {
             return {
               instances: instances.items.map((instance) => ({
-                id: instance.instanceId,
+                id: instance.id.toString(),
                 details: buildInstanceStatus(instance),
                 createdAt: instance.createdAt,
               })),
@@ -535,31 +533,27 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .retrieve((uow) => {
             return uow
               .findFirst("workflow_instance", (b) =>
-                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
                 ),
               )
               .find("workflow_step", (b) =>
                 b
-                  .whereIndex("idx_workflow_step_history_createdAt", (eb) =>
-                    eb.and(
-                      eb("workflowName", "=", workflowName),
-                      eb("instanceId", "=", instanceId),
-                      eb("runNumber", "=", runNumber),
-                    ),
+                  .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                    runNumber === undefined
+                      ? eb("instanceRef", "=", instanceId)
+                      : eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
                   )
-                  .orderByIndex("idx_workflow_step_history_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc"),
               )
               .find("workflow_event", (b) =>
                 b
-                  .whereIndex("idx_workflow_event_history_createdAt", (eb) =>
-                    eb.and(
-                      eb("workflowName", "=", workflowName),
-                      eb("instanceId", "=", instanceId),
-                      eb("runNumber", "=", runNumber),
-                    ),
+                  .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+                    runNumber === undefined
+                      ? eb("instanceRef", "=", instanceId)
+                      : eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
                   )
-                  .orderByIndex("idx_workflow_event_history_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "desc"),
               );
           })
           .mutate(({ retrieveResult }) => {
@@ -572,10 +566,20 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               throw new Error("INSTANCE_NOT_FOUND");
             }
 
+            const resolvedRunNumber = runNumber ?? instance.runNumber;
+            const selectedSteps =
+              runNumber === undefined
+                ? steps.filter((step) => step.runNumber === resolvedRunNumber)
+                : steps;
+            const selectedEvents =
+              runNumber === undefined
+                ? events.filter((event) => event.runNumber === resolvedRunNumber)
+                : events;
+
             return {
-              runNumber,
-              steps: steps.map(buildStepHistoryEntry),
-              events: events
+              runNumber: resolvedRunNumber,
+              steps: selectedSteps.map(buildStepHistoryEntry),
+              events: selectedEvents
                 .filter((event) => !isSystemEventActor(event.actor))
                 .map(buildEventHistoryEntry),
             };
@@ -586,8 +590,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -607,8 +611,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.create("workflow_event", {
               instanceRef: instance.id,
-              workflowName,
-              instanceId,
               runNumber: instance.runNumber,
               actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
               type: WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
@@ -619,7 +621,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
-              instanceId,
+              instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
               runNumber: instance.runNumber,
               reason: "event",
@@ -633,8 +635,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -651,7 +653,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             uow.update("workflow_instance", instance.id, (b) =>
               b
                 .set({
-                  status: "queued",
+                  status: "active",
                   updatedAt: b.now(),
                 })
                 .check(),
@@ -659,14 +661,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
-              instanceId,
+              instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
               runNumber: instance.runNumber,
               reason: "resume",
             });
 
             return buildInstanceStatus({
-              status: "queued",
+              status: "active",
               output: instance.output,
               errorName: instance.errorName,
               errorMessage: instance.errorMessage,
@@ -678,8 +680,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -716,8 +718,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
               ),
             ),
           )
@@ -731,7 +733,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             uow.update("workflow_instance", instance.id, (b) =>
               b
                 .set({
-                  status: "queued",
+                  status: "active",
                   runNumber: nextRun,
                   startedAt: null,
                   completedAt: null,
@@ -745,14 +747,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
-              instanceId,
+              instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
               runNumber: nextRun,
               reason: "create",
             });
 
             return buildInstanceStatus({
-              status: "queued",
+              status: "active",
               output: null,
               errorName: null,
               errorMessage: null,
@@ -769,15 +771,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .retrieve((uow) =>
             uow
               .findFirst("workflow_instance", (b) =>
-                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
                 ),
               )
               .find("workflow_step", (b) =>
-                b.whereIndex("idx_workflow_step_status_wakeAt", (eb) =>
+                b.whereIndex("idx_workflow_step_instanceRef_status_wakeAt", (eb) =>
                   eb.and(
-                    eb("workflowName", "=", workflowName),
-                    eb("instanceId", "=", instanceId),
+                    eb("instanceRef", "=", instanceId),
                     eb("status", "=", "waiting"),
                     eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", eb.now())),
                   ),
@@ -796,8 +797,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.create("workflow_event", {
               instanceRef: instance.id,
-              workflowName,
-              instanceId,
               runNumber: instance.runNumber,
               actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
@@ -814,7 +813,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             if (shouldWake) {
               uow.triggerHook("onWorkflowEnqueued", {
                 workflowName,
-                instanceId,
+                instanceId: instance.id.toString(),
                 instanceRef: String(instance.id),
                 runNumber: instance.runNumber,
                 reason: "event",

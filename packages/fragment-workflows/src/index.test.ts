@@ -81,7 +81,7 @@ describe("Workflows Fragment", () => {
     const instanceId = "instance-1";
 
     const instanceRef = await db.create("workflow_instance", {
-      instanceId,
+      id: instanceId,
       workflowName,
       status: "pending",
       params: { source: "tests" },
@@ -90,10 +90,8 @@ describe("Workflows Fragment", () => {
 
     await db.create("workflow_step", {
       instanceRef,
-      workflowName,
-      instanceId,
       runNumber: 0,
-      stepKey: "step-1",
+      stepKey: "do:step-1",
       name: "Start",
       type: "do",
       status: "completed",
@@ -110,8 +108,6 @@ describe("Workflows Fragment", () => {
 
     await db.create("workflow_event", {
       instanceRef,
-      workflowName,
-      instanceId,
       runNumber: 0,
       actor: "user",
       type: "approval",
@@ -126,19 +122,17 @@ describe("Workflows Fragment", () => {
 
     expect(instance).toMatchObject({
       workflowName,
-      instanceId,
       status: "pending",
       params: { source: "tests" },
       runNumber: 0,
     });
+    expect(instance.id.toString()).toBe(instanceId);
     expect(instance.createdAt).toBeInstanceOf(Date);
     expect(instance.updatedAt).toBeInstanceOf(Date);
 
     expect(step).toMatchObject({
-      workflowName,
-      instanceId,
       runNumber: 0,
-      stepKey: "step-1",
+      stepKey: "do:step-1",
       name: "Start",
       type: "do",
       status: "completed",
@@ -156,8 +150,6 @@ describe("Workflows Fragment", () => {
     expect(step.updatedAt).toBeInstanceOf(Date);
 
     expect(event).toMatchObject({
-      workflowName,
-      instanceId,
       runNumber: 0,
       type: "approval",
       payload: { approved: true },
@@ -184,15 +176,15 @@ describe("Workflows Fragment", () => {
     });
 
     const status = await instance.status();
-    expect(status.status).toBe("queued");
+    expect(status.status).toBe("active");
 
     const stored = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", "binding-1")),
+      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+        eb.and(eb("workflowName", "=", "demo-workflow"), eb("id", "=", "binding-1")),
       ),
     );
 
-    expect(stored?.instanceId).toBe("binding-1");
+    expect(stored?.id.toString()).toBe("binding-1");
   });
 
   describe("Routes", () => {
@@ -214,21 +206,21 @@ describe("Workflows Fragment", () => {
 
       expect(response.data).toMatchObject({
         id: "route-1",
-        details: { status: "queued" },
+        details: { status: "active" },
       });
 
       const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
       expect(instance).toMatchObject({
         workflowName: "demo-workflow",
-        instanceId: "route-1",
       });
+      expect(instance?.id.toString()).toBe("route-1");
     });
 
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
       const instanceRef = await db.create("workflow_instance", {
+        id: "history-route",
         workflowName: "demo-workflow",
-        instanceId: "history-route",
-        status: "queued",
+        status: "active",
         params: {},
         runNumber: 2,
         startedAt: null,
@@ -240,10 +232,8 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_step", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-route",
         runNumber: 2,
-        stepKey: "step-1",
+        stepKey: "do:step-1",
         name: "Example",
         type: "do",
         status: "completed",
@@ -260,8 +250,6 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_event", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-route",
         runNumber: 2,
         actor: "user",
         type: "approval",
@@ -286,9 +274,9 @@ describe("Workflows Fragment", () => {
 
     test("GET /:workflowName/instances/:instanceId/history should default to latest run", async () => {
       const instanceRef = await db.create("workflow_instance", {
+        id: "history-latest",
         workflowName: "demo-workflow",
-        instanceId: "history-latest",
-        status: "queued",
+        status: "active",
         params: {},
         runNumber: 3,
         startedAt: null,
@@ -300,10 +288,8 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_step", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-latest",
         runNumber: 2,
-        stepKey: "step-old",
+        stepKey: "do:step-old",
         name: "Old",
         type: "do",
         status: "completed",
@@ -320,10 +306,8 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_step", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-latest",
         runNumber: 3,
-        stepKey: "step-new",
+        stepKey: "do:step-new",
         name: "New",
         type: "do",
         status: "completed",
@@ -340,8 +324,6 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_event", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-latest",
         runNumber: 3,
         actor: "user",
         type: "latest",
@@ -361,16 +343,16 @@ describe("Workflows Fragment", () => {
       assert(response.type === "json");
       expect(response.data.runNumber).toBe(3);
       expect(response.data.steps).toHaveLength(1);
-      expect(response.data.steps[0].stepKey).toBe("step-new");
+      expect(response.data.steps[0].stepKey).toBe("do:step-new");
       expect(response.data.events).toHaveLength(1);
       expect(response.data.events[0].type).toBe("latest");
     });
 
     test("GET /:workflowName/instances/:instanceId/history/:run should return requested run", async () => {
       const instanceRef = await db.create("workflow_instance", {
+        id: "history-run",
         workflowName: "demo-workflow",
-        instanceId: "history-run",
-        status: "queued",
+        status: "active",
         params: {},
         runNumber: 3,
         startedAt: null,
@@ -382,10 +364,8 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_step", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-run",
         runNumber: 2,
-        stepKey: "step-old",
+        stepKey: "do:step-old",
         name: "Old",
         type: "do",
         status: "completed",
@@ -402,10 +382,8 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_step", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-run",
         runNumber: 3,
-        stepKey: "step-new",
+        stepKey: "do:step-new",
         name: "New",
         type: "do",
         status: "completed",
@@ -422,12 +400,10 @@ describe("Workflows Fragment", () => {
 
       await db.create("workflow_event", {
         instanceRef,
-        workflowName: "demo-workflow",
-        instanceId: "history-run",
         runNumber: 2,
         actor: "user",
-        type: "legacy",
-        payload: { legacy: true },
+        type: "prior",
+        payload: { prior: true },
         deliveredAt: null,
         consumedByStepKey: null,
       });
@@ -443,16 +419,16 @@ describe("Workflows Fragment", () => {
       assert(response.type === "json");
       expect(response.data.runNumber).toBe(2);
       expect(response.data.steps).toHaveLength(1);
-      expect(response.data.steps[0].stepKey).toBe("step-old");
+      expect(response.data.steps[0].stepKey).toBe("do:step-old");
       expect(response.data.events).toHaveLength(1);
-      expect(response.data.events[0].type).toBe("legacy");
+      expect(response.data.events[0].type).toBe("prior");
     });
 
     test("GET /:workflowName/instances/:instanceId/history/:run should reject invalid run", async () => {
       await db.create("workflow_instance", {
+        id: "history-invalid-run",
         workflowName: "demo-workflow",
-        instanceId: "history-invalid-run",
-        status: "queued",
+        status: "active",
         params: {},
         runNumber: 1,
         startedAt: null,

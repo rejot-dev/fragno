@@ -155,7 +155,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 2. [x] Add service methods for “current step” summary and instance metadata retrieval.
 3. [x] Add tests covering:
    - metadata fields are correct
-   - `currentStep` matches the latest step state for `running|waiting|paused`
+   - `currentStep` matches the latest step state for `active|waiting|paused`
 
 ## Phase 10 — Durable workflow log lines (workflow-authored + optional system logs)
 

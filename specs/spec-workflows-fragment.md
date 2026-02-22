@@ -26,7 +26,7 @@ The fragment must:
   - creating/listing workflow instances
   - checking instance status
   - pausing/resuming/terminating/restarting instances
-  - sending events to running or future `waitForEvent` calls
+  - sending events to active or future `waitForEvent` calls
   - listing workflow log lines (workflow-authored + engine/system logs)
   - a runner “tick” endpoint for scheduled processing (supported; can be disabled/secured)
 
@@ -334,15 +334,7 @@ Programmatic interface (in addition to HTTP):
 
 ```ts
 export type InstanceStatus = {
-  status:
-    | "queued"
-    | "running"
-    | "paused"
-    | "errored"
-    | "terminated"
-    | "complete"
-    | "waiting"
-    | "unknown";
+  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
   error?: { name: string; message: string };
   output?: unknown;
 };
@@ -376,8 +368,7 @@ export interface Workflow<TParams = unknown> {
 
 Status meanings (Cloudflare-like):
 
-- `queued`: eligible to run but not currently running (awaiting runner capacity).
-- `running`: runner is actively executing workflow code.
+- `active`: eligible to run; execution will begin on the next tick.
 - `waiting`: hibernating (sleep, retry delay, or waiting for an event/timeout).
 - `paused`: explicitly paused by user; runner must not advance until resumed.
 - `complete|terminated|errored`: terminal.
@@ -579,7 +570,7 @@ Represents durable steps and durable waits (sleep/event) uniformly.
 - `stepKey` (string) — deterministic identifier (see 9.2)
 - `name` (string, <= 256 chars)
 - `type` ("do" | "sleep" | "waitForEvent")
-- `status` ("pending" | "running" | "waiting" | "completed" | "errored")
+- `status` ("pending" | "waiting" | "completed" | "errored")
 - `attempts` (integer)
 - `maxAttempts` (integer)
 - `timeoutMs` (integer, nullable)
@@ -720,7 +711,7 @@ equivalent to distributed runners).
 
 #### 9.1.2 Task ordering (Cloudflare-like)
 
-Cloudflare prioritizes instances resuming from `waiting` over newly `queued` instances. We replicate
+Cloudflare prioritizes instances resuming from `waiting` over newly `active` instances. We replicate
 this by ordering claimed tasks so that “resume/wake/retry” work runs before “start new runs”.
 
 Requirement:
@@ -758,7 +749,7 @@ Definition:
 Requirements:
 
 - After each step boundary, the runner **flushes** the in-memory step/log/event buffers to the DB.
-- If the workflow run is still **running** (i.e., more steps remain in the same tick), the flush
+- If the workflow run is still **executing** (i.e., more steps remain in the same tick), the flush
   **must not** reschedule the task or change instance status (beyond updating `updatedAt`).
 - If the boundary **suspends** or **completes** the run (waiting/paused/complete/errored), the flush
   may be combined with the existing instance/task transition transaction.
@@ -843,11 +834,11 @@ State transitions should be Cloudflare-like and idempotent where reasonable.
 - `pause()`:
   - enqueue a system pause event for the instance and schedule a tick
   - runner consumes pause events before executing user code and sets status `paused`
-  - queued or waiting instances pause on the next tick without executing user code
+  - active or waiting instances pause on the next tick without executing user code
   - if already `paused`, no-op
   - if `complete|terminated|errored`, error
 - `resume()`:
-  - if `paused`, set status `queued` and enqueue a run task for `now`
+  - if `paused`, set status `active` and enqueue a run task for `now`
   - otherwise no-op (Cloudflare docs: resume on non-paused has no effect)
 - `terminate()`:
   - if `complete|terminated|errored`, error
@@ -855,7 +846,7 @@ State transitions should be Cloudflare-like and idempotent where reasonable.
 - `restart()`:
   - increment `runNumber`
   - keep all prior runs for audit (do not delete); runner always scopes by `runNumber`
-  - clear waits and mark instance status `queued`
+  - clear waits and mark instance status `active`
   - enqueue a run task for `now`
   - do not deliver buffered events from prior runs (events are scoped by `runNumber`)
   - note: “cancel in-progress steps” is best-effort; if user code is currently executing, it may run
@@ -1026,7 +1017,7 @@ All routes are mounted under the Fragment’s `mountRoute` (default: `/api/<frag
   - Body: `{ type: string; payload?: unknown }`
   - Returns: `{ status: InstanceStatus }`
   - Semantics: buffered delivery (Cloudflare-like + pause support):
-    - store the event even if the instance is `queued`, `waiting`, or `paused`
+    - store the event even if the instance is `active`, `waiting`, or `paused`
     - deliver when the workflow reaches a matching `waitForEvent(type)`
     - reject if the instance is `complete`, `terminated`, or `errored`
     - does not create instances (instance must exist)
@@ -1188,7 +1179,7 @@ Cloudflare-style expectations:
 6. No explicit instance delete API in v1 (SPEC §14.1)
 7. Programmatic starts via `fragment.workflows.<bindingKey>.create/get/createBatch` and
    `context.workflows` inside workflows (SPEC §6.5, §6.6)
-8. `sendEvent` buffers for `queued|waiting|paused` and rejects for `complete|terminated|errored`
+8. `sendEvent` buffers for `active|waiting|paused` and rejects for `complete|terminated|errored`
    (SPEC §9.5, §11.7)
 9. `createBatch` excludes skipped IDs from the response (Cloudflare-like) (SPEC §11.4)
 10. `sendEvent` does not create instances (SPEC §11.7)
@@ -1209,7 +1200,7 @@ Requirements:
   composing from host/mount/fragment pieces.
 - Makes it possible to understand:
   - which workflows exist
-  - which instances are running/waiting/paused/errored
+  - which instances are active/waiting/paused/errored
   - what the current step is (or last step + wait reason)
   - what happened (history + events + logs)
 - Outputs human-friendly text only (if machine output is needed, call the HTTP API directly).
@@ -1273,7 +1264,7 @@ No additional workflow feature additions are planned as part of this spec update
 
 1. **Instance labels/tags + query filters** (e.g. `labels: { tenantId, orderId }`) and list/search
    endpoints.
-2. **Concurrency controls** per workflow (max running instances), plus queue depth visibility.
+2. **Concurrency controls** per workflow (max active instances), plus queue depth visibility.
 3. **Dead-letter / manual retry tooling**: re-enqueue, retry now, reset a step, retry a failed run.
 4. **Signals/queries** (Temporal-like): “send signal” distinct from events; “query current state”
    without replaying.
@@ -1323,7 +1314,7 @@ Child issues:
    - Extend runner state to store per-step mutation buffers and clear them on retries.
 3. **Per-step persistence refactor** (Spec §9.1.4)
    - Introduce a step-boundary flush path that commits step/log/event updates while keeping the
-     instance `running` when more steps remain.
+     instance `active` when more steps remain.
    - Ensure task/instance transitions are still committed when the run suspends or completes.
 4. **Execute step-scoped mutations in step commits** (Spec §9.1.5)
    - Merge buffered `serviceTx` calls + mutation callbacks into the step commit transaction.

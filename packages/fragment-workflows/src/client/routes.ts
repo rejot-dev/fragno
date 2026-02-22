@@ -4,18 +4,16 @@ import { z } from "zod";
 const identifierSchema = z
   .string()
   .min(1)
-  .max(100)
+  .max(30)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
 
 const instanceStatusSchema = z.enum([
-  "queued",
-  "running",
+  "active",
   "paused",
   "errored",
   "terminated",
   "complete",
   "waiting",
-  "unknown",
 ]);
 
 const createInstanceSchema = z.object({
@@ -114,6 +112,12 @@ const historyEventSchema = z.object({
   consumedByStepKey: z.string().nullable(),
 });
 
+const historyOutputSchema = z.object({
+  runNumber: z.number(),
+  steps: z.array(historyStepSchema),
+  events: z.array(historyEventSchema),
+});
+
 const stubHandler = async () => new Response();
 
 export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute }) => [
@@ -187,22 +191,14 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   defineRoute({
     method: "GET",
     path: "/:workflowName/instances/:instanceId/history",
-    outputSchema: z.object({
-      runNumber: z.number(),
-      steps: z.array(historyStepSchema),
-      events: z.array(historyEventSchema),
-    }),
+    outputSchema: historyOutputSchema,
     errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
     handler: stubHandler,
   }),
   defineRoute({
     method: "GET",
     path: "/:workflowName/instances/:instanceId/history/:run",
-    outputSchema: z.object({
-      runNumber: z.number(),
-      steps: z.array(historyStepSchema),
-      events: z.array(historyEventSchema),
-    }),
+    outputSchema: historyOutputSchema,
     errorCodes: [
       "WORKFLOW_NOT_FOUND",
       "INVALID_INSTANCE_ID",
