@@ -154,6 +154,98 @@ function planPauseInstance(
   };
 }
 
+function planPauseOrTerminal(
+  instance: WorkflowInstanceRecord,
+  pauseEvents: WorkflowEventRecord[],
+): RunnerTickPlan | null {
+  if (isTerminalStatus(instance.status)) {
+    return planConsumePauseEvents(pauseEvents);
+  }
+
+  if (instance.status === "paused") {
+    return planConsumePauseEvents(pauseEvents);
+  }
+
+  if (pauseEvents.length > 0) {
+    return planPauseInstance(instance, pauseEvents);
+  }
+
+  return null;
+}
+
+function planEarlyReschedule(
+  selectionResult: RunnerTickSelectionResult,
+  payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
+): RunnerTickPlan | null {
+  if (payload.reason === "wake") {
+    let wakeAt: Date | null = null;
+    for (const step of selectionResult.steps) {
+      if (step.status !== "waiting" || !step.wakeAt) {
+        continue;
+      }
+      if (!wakeAt || step.wakeAt < wakeAt) {
+        wakeAt = step.wakeAt;
+      }
+    }
+
+    if (wakeAt && payload.timestamp < wakeAt) {
+      return {
+        processed: 1,
+        operations: [
+          (uow) => {
+            uow.triggerHook(
+              "onWorkflowEnqueued",
+              {
+                workflowName: selectionResult.instance.workflowName,
+                instanceId: selectionResult.instance.id.toString(),
+                instanceRef: String(selectionResult.instance.id),
+                runNumber: selectionResult.instance.runNumber,
+                reason: "wake",
+              },
+              { processAt: wakeAt },
+            );
+          },
+        ],
+      };
+    }
+  }
+
+  if (payload.reason === "retry") {
+    let nextRetryAt: Date | null = null;
+    for (const step of selectionResult.steps) {
+      if (step.status !== "waiting" || !step.nextRetryAt) {
+        continue;
+      }
+      if (!nextRetryAt || step.nextRetryAt < nextRetryAt) {
+        nextRetryAt = step.nextRetryAt;
+      }
+    }
+
+    if (nextRetryAt && payload.timestamp < nextRetryAt) {
+      return {
+        processed: 1,
+        operations: [
+          (uow) => {
+            uow.triggerHook(
+              "onWorkflowEnqueued",
+              {
+                workflowName: selectionResult.instance.workflowName,
+                instanceId: selectionResult.instance.id.toString(),
+                instanceRef: String(selectionResult.instance.id),
+                runNumber: selectionResult.instance.runNumber,
+                reason: "retry",
+              },
+              { processAt: nextRetryAt },
+            );
+          },
+        ],
+      };
+    }
+  }
+
+  return null;
+}
+
 async function planRunTask(
   selection: RunnerTickSelectionResult,
   ctx: RunnerTickContext,
@@ -188,7 +280,7 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
   return {
     payload: instance.params ?? {},
     timestamp,
-    instanceId: instance.instanceId,
+    instanceId: instance.id.toString(),
   };
 }
 
@@ -242,20 +334,20 @@ async function buildTickPlan(
     return { processed: 0, operations: [] };
   }
 
+  // Phase 1: pause/terminal handling (consumes pause events or pauses the instance).
   const pendingPauseEvents = findPendingPauseEvents(selectionResult.events);
-
-  if (isTerminalStatus(selectionResult.instance.status)) {
-    return planConsumePauseEvents(pendingPauseEvents);
+  const pausePlan = planPauseOrTerminal(selectionResult.instance, pendingPauseEvents);
+  if (pausePlan) {
+    return pausePlan;
   }
 
-  if (selectionResult.instance.status === "paused") {
-    return planConsumePauseEvents(pendingPauseEvents);
+  // Phase 2: early wake/retry hooks reschedule to the persisted deadline.
+  const earlyPlan = planEarlyReschedule(selectionResult, payload);
+  if (earlyPlan) {
+    return earlyPlan;
   }
 
-  if (pendingPauseEvents.length > 0) {
-    return planPauseInstance(selectionResult.instance, pendingPauseEvents);
-  }
-
+  // Phase 3: execute user workflow code and apply buffered mutations/outcome.
   return await planRunTask(selectionResult, ctx, payload);
 }
 
@@ -382,13 +474,13 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
                 )
                 .find("workflow_step", (b) =>
                   b
-                    .whereIndex("idx_workflow_step_instanceRef_runNumber", (eb) =>
+                    .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
                       eb.and(
                         eb("instanceRef", "=", payload.instanceRef),
                         eb("runNumber", "=", payload.runNumber),
                       ),
                     )
-                    .orderByIndex("idx_workflow_step_instanceRef_runNumber", "asc"),
+                    .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
                 )
                 .find("workflow_event", (b) =>
                   b

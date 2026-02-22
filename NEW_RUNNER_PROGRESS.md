@@ -114,8 +114,11 @@
   system-event driven.
 - Remove the `running` instance status and rename `queued` to `active` across APIs, tests, and docs.
 - Remove the `unknown` instance status and enforce strict status values when reading instances.
+- Gate early wake/retry hooks against persisted `wakeAt`/`nextRetryAt` (reschedule if early) using
+  hook timestamps.
+- Prevent wait replays from re-enqueueing hooks by suspending without new delay/runAt.
+- Add a regression test to ensure replays do not enqueue duplicate wake hooks.
 
 ## Up Next
 
-1. Ensure replay respects persisted `wakeAt`/`nextRetryAt` (no extending waits or early retries).
-2. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.
+1. Decide on step key migration strategy (`type:name` vs legacy `name`) and document it.
