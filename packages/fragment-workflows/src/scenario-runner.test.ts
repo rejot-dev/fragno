@@ -810,6 +810,11 @@ describe("Workflows Runner (Scenario DSL)", () => {
           instanceId: "resume-reason-1",
           storeAs: "pauseResponse",
         }),
+        scenarioSteps.tick({
+          workflow: "RESUME_REASON",
+          instanceId: "resume-reason-1",
+          reason: "event",
+        }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
           storeAs: "pausedStatus",
@@ -892,6 +897,11 @@ describe("Workflows Runner (Scenario DSL)", () => {
           instanceId: "pause-event-1",
           storeAs: "pauseResponse",
         }),
+        scenarioSteps.tick({
+          workflow: "PAUSE_EVENT",
+          instanceId: "pause-event-1",
+          reason: "event",
+        }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
           storeAs: "pausedStatus",
@@ -939,19 +949,19 @@ describe("Workflows Runner (Scenario DSL)", () => {
           expect(ctx.vars.finalStatus?.status).toBe("complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ ok: true });
 
-          const [eventBefore] = ctx.vars.eventsBefore ?? [];
-          expect(eventBefore).toMatchObject({
+          const readyBefore = (ctx.vars.eventsBefore ?? []).find((event) => event.type === "ready");
+          expect(readyBefore).toMatchObject({
             type: "ready",
             consumedByStepKey: null,
             deliveredAt: null,
           });
 
-          const [eventAfter] = ctx.vars.eventsAfter ?? [];
-          expect(eventAfter).toMatchObject({
+          const readyAfter = (ctx.vars.eventsAfter ?? []).find((event) => event.type === "ready");
+          expect(readyAfter).toMatchObject({
             type: "ready",
             consumedByStepKey: "waitForEvent:ready",
           });
-          expect(eventAfter.deliveredAt).toBeInstanceOf(Date);
+          expect(readyAfter?.deliveredAt).toBeInstanceOf(Date);
         }),
       ],
     });
@@ -1241,11 +1251,11 @@ describe("Workflows Runner (Scenario DSL)", () => {
           instanceId: "pause-1",
           storeAs: "pauseResponse",
         }),
+        scenarioSteps.runCreateUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
           storeAs: "pausedStatus",
         }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
         scenarioSteps.resume({
           workflow: "PAUSE",
           instanceId: "pause-1",
@@ -1273,7 +1283,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
           expect(ctx.vars.finalStatus?.output).toEqual({ value: 1 });
           expect(ctx.vars.instance).toMatchObject({
             status: "complete",
-            pauseRequested: false,
           });
           expect(runs).toBe(1);
         }),
@@ -1335,7 +1344,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
           expect(ctx.vars.steps).toHaveLength(0);
           expect(ctx.vars.instance).toMatchObject({
             status: "terminated",
-            pauseRequested: false,
           });
           expect(ctx.vars.instance?.completedAt).toBeInstanceOf(Date);
           expect(runs).toBe(0);

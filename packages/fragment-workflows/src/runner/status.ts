@@ -3,5 +3,4 @@
 export const isTerminalStatus = (status: string) =>
   status === "complete" || status === "terminated" || status === "errored";
 
-export const isPausedStatus = (status: string) =>
-  status === "paused" || status === "waitingForPause";
+export const isPausedStatus = (status: string) => status === "paused";

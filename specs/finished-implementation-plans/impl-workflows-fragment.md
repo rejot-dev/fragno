@@ -134,8 +134,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
      `example-apps/fragno-db-usage-drizzle/src/fragno/workflows-fragment.ts`)
 6. Review remaining issues from `specs/workflows-fragment-implementation-plan-issues.md` and fix
    them.
-   - [x] Preserve wakeAt on sleep/wait replay; keep pauseRequested on suspend; normalize
-         waitForEvent replay timestamps.
+   - [x] Preserve wakeAt on sleep/wait replay; normalize waitForEvent replay timestamps.
    - [x] Guard background runner ticks against unhandled rejections in example app.
 7. [x] Add JSDoc coverage for public workflows APIs to meet docstring requirements.
 
@@ -151,7 +150,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 9 — Management surface completeness (CLI-ready)
 
 1. [x] Extend instance read APIs to return operator-friendly metadata (SPEC §11.5):
-   - `runNumber`, `params`, timestamps, `pauseRequested`
+   - `runNumber`, `params`, timestamps
    - `currentStep` summary (last step + wait/retry fields)
 2. [x] Add service methods for “current step” summary and instance metadata retrieval.
 3. [x] Add tests covering:

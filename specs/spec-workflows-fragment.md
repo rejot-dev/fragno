@@ -342,7 +342,6 @@ export type InstanceStatus = {
     | "terminated"
     | "complete"
     | "waiting"
-    | "waitingForPause"
     | "unknown";
   error?: { name: string; message: string };
   output?: unknown;
@@ -380,7 +379,6 @@ Status meanings (Cloudflare-like):
 - `queued`: eligible to run but not currently running (awaiting runner capacity).
 - `running`: runner is actively executing workflow code.
 - `waiting`: hibernating (sleep, retry delay, or waiting for an event/timeout).
-- `waitingForPause`: pause requested; runner will pause at the next step boundary.
 - `paused`: explicitly paused by user; runner must not advance until resumed.
 - `complete|terminated|errored`: terminal.
 
@@ -562,7 +560,6 @@ Required columns (suggested):
 - `params` (json)
 - `output` (json, nullable)
 - `errorName` (string, nullable), `errorMessage` (string, nullable)
-- `pauseRequested` (boolean)
 - `retentionUntil` (timestamp, nullable) — for GC/pruning (default: `null` = infinite retention)
 - `runNumber` (integer) — increments on `restart` (keeps `instanceId` stable)
 
@@ -844,11 +841,11 @@ Implementation requirements:
 State transitions should be Cloudflare-like and idempotent where reasonable.
 
 - `pause()`:
-  - if `running`, set `pauseRequested=true`, status `waitingForPause`
-  - if `queued|waiting`, set status `paused` immediately (no need to wait for a step boundary)
-  - if already `paused|waitingForPause`, no-op
+  - enqueue a system pause event for the instance and schedule a tick
+  - runner consumes pause events before executing user code and sets status `paused`
+  - queued or waiting instances pause on the next tick without executing user code
+  - if already `paused`, no-op
   - if `complete|terminated|errored`, error
-  - runner checks `pauseRequested` after each step boundary and transitions to `paused`
 - `resume()`:
   - if `paused`, set status `queued` and enqueue a run task for `now`
   - otherwise no-op (Cloudflare docs: resume on non-paused has no effect)
@@ -858,7 +855,7 @@ State transitions should be Cloudflare-like and idempotent where reasonable.
 - `restart()`:
   - increment `runNumber`
   - keep all prior runs for audit (do not delete); runner always scopes by `runNumber`
-  - clear waits/pauseRequested and mark instance status `queued`
+  - clear waits and mark instance status `queued`
   - enqueue a run task for `now`
   - do not deliver buffered events from prior runs (events are scoped by `runNumber`)
   - note: “cancel in-progress steps” is best-effort; if user code is currently executing, it may run
@@ -989,7 +986,6 @@ All routes are mounted under the Fragment’s `mountRoute` (default: `/api/<frag
         workflowName: string;
         runNumber: number;
         params: unknown;
-        pauseRequested: boolean;
         createdAt: Date;
         updatedAt: Date;
         startedAt: Date | null;

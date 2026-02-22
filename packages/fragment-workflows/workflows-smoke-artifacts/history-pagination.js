@@ -271,11 +271,7 @@ async function main() {
   await createInstance(instanceId);
 
   await pauseInstance(instanceId);
-  await waitForStatus(
-    instanceId,
-    (status) => ["paused", "waitingForPause"].includes(status.details.status),
-    "paused",
-  );
+  await waitForStatus(instanceId, (status) => status.details.status === "paused", "paused");
 
   console.log(`Sending ${eventCount} approval events while paused...`);
   await createEvents(instanceId, "approval", eventCount, `approval_${runId}`);
