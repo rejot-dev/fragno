@@ -492,7 +492,6 @@ const scenario = defineScenario({
     clockStartAt: 0,
   },
   steps: [
-    steps.setTime({ timestamp: 0, storeAs: "startTime" }),
     steps.create({
       workflow: "sleep",
       id: "sleep-1",
@@ -544,11 +543,10 @@ const scenario = defineScenario({
       instanceId: "retry-1",
       storeAs: "retryStatus",
     }),
-    steps.advanceTime({ duration: "10 minutes", storeAs: "afterRetryDelay" }),
-    steps.runUntilIdle({
+    steps.advanceTimeAndRunUntilIdle({
       workflow: "retry",
       instanceId: "retry-1",
-      reason: "retry",
+      advanceBy: "10 minutes",
       storeAs: "retrySecondRun",
     }),
     steps.runUntilIdle({
@@ -562,11 +560,10 @@ const scenario = defineScenario({
       instanceId: (ctx) => String(ctx.vars.sleepId),
       storeAs: "sleepStatus",
     }),
-    steps.advanceTime({ duration: "1 hour", storeAs: "afterSleep" }),
-    steps.runUntilIdle({
+    steps.advanceTimeAndRunUntilIdle({
       workflow: "sleep",
       instanceId: (ctx) => String(ctx.vars.sleepId),
-      reason: "wake",
+      advanceBy: "1 hour",
       storeAs: "sleepFinalRun",
     }),
     steps.event({

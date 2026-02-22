@@ -172,6 +172,37 @@ await harness.runUntilIdle();
 const status = await harness.getStatus("approval", instanceId);
 ```
 
+## Scenario DSL
+
+The scenario DSL lets you describe multi-step flows using a deterministic clock with minimal setup.
+It uses the workflows test harness under the hood and cleans up automatically.
+
+```ts title="lib/workflows.scenario.test.ts"
+import { defineScenario, runScenario, steps } from "@fragno-dev/workflows/scenario";
+import { workflows } from "./workflows";
+
+const scenario = defineScenario({
+  name: "approval-flow",
+  workflows,
+  steps: [
+    steps.initializeAndRunUntilIdle({
+      workflow: "approval",
+      id: "approval-1",
+      params: { requestId: "req_1", amount: 125 },
+    }),
+    steps.eventAndRunUntilIdle({
+      workflow: "approval",
+      instanceId: "approval-1",
+      event: { type: "approval", payload: { approved: true } },
+    }),
+  ],
+});
+
+await runScenario(scenario);
+```
+
+For a full walkthrough, see the [Scenario DSL guide](/docs/workflows/scenario-dsl).
+
 ## HTTP Tick Integration
 
 If you want an external scheduler to drive execution, send `POST /_runner/tick` to your fragment. A

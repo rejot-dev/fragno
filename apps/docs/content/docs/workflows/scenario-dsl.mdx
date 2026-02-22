@@ -1,0 +1,112 @@
+---
+title: Scenario DSL
+description: Script end-to-end workflow tests with a deterministic clock.
+icon: ListChecks
+---
+
+## Overview
+
+The Scenario DSL lets you script full workflow flows as a sequence of steps. Scenarios run
+sequentially, default to an in-memory SQLite adapter, and clean up after success or failure.
+
+Import from `@fragno-dev/workflows/scenario`:
+
+```ts
+import { defineScenario, runScenario, steps } from "@fragno-dev/workflows/scenario";
+```
+
+## Basic Example
+
+```ts title="lib/workflows.scenario.test.ts"
+import { defineScenario, runScenario, steps } from "@fragno-dev/workflows/scenario";
+import { workflows } from "./workflows";
+
+const scenario = defineScenario({
+  name: "approval-flow",
+  workflows,
+  steps: [
+    steps.initializeAndRunUntilIdle({
+      workflow: "approval",
+      id: "approval-1",
+      params: { requestId: "req_1", amount: 125 },
+      storeAs: "approvalId",
+    }),
+    steps.eventAndRunUntilIdle({
+      workflow: "approval",
+      instanceId: "approval-1",
+      event: { type: "approval", payload: { approved: true } },
+    }),
+    steps.read({
+      read: (ctx) => ctx.state.getStatus("approval", "approval-1"),
+      storeAs: "finalStatus",
+    }),
+  ],
+});
+
+const result = await runScenario(scenario);
+```
+
+## Time Control
+
+Use `advanceTimeAndRunUntilIdle` to move time forward or set an absolute clock and then wake the
+instance:
+
+```ts
+steps.advanceTimeAndRunUntilIdle({
+  workflow: "approval",
+  instanceId: "approval-1",
+  advanceBy: "1 hour",
+});
+
+steps.advanceTimeAndRunUntilIdle({
+  workflow: "approval",
+  instanceId: "approval-1",
+  setTo: new Date("2030-01-01T00:00:00Z"),
+});
+```
+
+## Instance Control Steps
+
+Use built-in steps to pause, resume, terminate, and restart instances without manual route calls:
+
+```ts title="lib/workflows.scenario.management.test.ts"
+import { defineScenario, runScenario, steps } from "@fragno-dev/workflows/scenario";
+import { workflows } from "./workflows";
+
+await runScenario(
+  defineScenario({
+    name: "pause-resume",
+    workflows,
+    steps: [
+      steps.create({ workflow: "approval", id: "approval-1" }),
+      steps.pause({ workflow: "approval", instanceId: "approval-1" }),
+      steps.resume({ workflow: "approval", instanceId: "approval-1" }),
+      steps.terminate({ workflow: "approval", instanceId: "approval-1" }),
+    ],
+  }),
+);
+```
+
+## Customize the Harness
+
+You can override default harness options, including the adapter and runtime:
+
+```ts
+import { createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
+import { defineScenario, runScenario, steps } from "@fragno-dev/workflows/scenario";
+
+const runtime = createWorkflowsTestRuntime({ startAt: 0, seed: 42 });
+
+await runScenario(
+  defineScenario({
+    name: "deterministic",
+    workflows,
+    harness: {
+      runtime,
+      adapter: { type: "kysely-sqlite" },
+      autoTickHooks: false,
+    },
+    steps: [steps.create({ workflow: "approval", id: "approval-1" })],
+  }),
+);
+```
