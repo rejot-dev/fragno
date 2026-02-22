@@ -98,38 +98,42 @@ export const workflowsSchema = schema("workflows", (s) => {
       })
       // External events delivered to waiting workflows.
       .addTable("workflow_event", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("instanceRef", referenceColumn())
-          .addColumn("workflowName", column("string"))
-          .addColumn("instanceId", column("string"))
-          .addColumn("runNumber", column("integer"))
-          .addColumn("type", column("string"))
-          .addColumn("payload", column("json").nullable())
-          .addColumn(
-            "createdAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .addColumn("deliveredAt", column("timestamp").nullable())
-          .addColumn("consumedByStepKey", column("string").nullable())
-          .createIndex("idx_workflow_event_type_deliveredAt", [
-            "workflowName",
-            "instanceId",
-            "runNumber",
-            "type",
-            "deliveredAt",
-          ])
-          .createIndex("idx_workflow_event_instanceRef_runNumber_createdAt", [
-            "instanceRef",
-            "runNumber",
-            "createdAt",
-          ])
-          .createIndex("idx_workflow_event_history_createdAt", [
-            "workflowName",
-            "instanceId",
-            "runNumber",
-            "createdAt",
-          ]);
+        return (
+          t
+            .addColumn("id", idColumn())
+            .addColumn("instanceRef", referenceColumn())
+            .addColumn("workflowName", column("string"))
+            .addColumn("instanceId", column("string"))
+            .addColumn("runNumber", column("integer"))
+            // actor describes who emitted the event; typical values are "user" and "system".
+            .addColumn("actor", column("string").defaultTo("user"))
+            .addColumn("type", column("string"))
+            .addColumn("payload", column("json").nullable())
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            )
+            .addColumn("deliveredAt", column("timestamp").nullable())
+            .addColumn("consumedByStepKey", column("string").nullable())
+            .createIndex("idx_workflow_event_type_deliveredAt", [
+              "workflowName",
+              "instanceId",
+              "runNumber",
+              "type",
+              "deliveredAt",
+            ])
+            .createIndex("idx_workflow_event_instanceRef_runNumber_createdAt", [
+              "instanceRef",
+              "runNumber",
+              "createdAt",
+            ])
+            .createIndex("idx_workflow_event_history_createdAt", [
+              "workflowName",
+              "instanceId",
+              "runNumber",
+              "createdAt",
+            ])
+        );
       })
       .addReference("stepInstance", {
         type: "one",

@@ -108,17 +108,71 @@ describe("Workflows Fragment Services", () => {
       fragment.services.createInstance("demo-workflow", { id: "pause-1" }),
     );
 
+    await drainDurableHooks(fragment);
+    runner.tick.mockClear();
+
     const paused = await runService<{ status: string }>(() =>
       fragment.services.pauseInstance("demo-workflow", created.id),
     );
-    expect(paused.status).toBe("paused");
+    expect(paused.status).toBe("queued");
+
+    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toMatchObject({
+      status: "queued",
+      pauseRequested: false,
+    });
+
+    const [pauseEvent] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(pauseEvent).toMatchObject({
+      actor: "system",
+      type: "pause",
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+
+    await drainDurableHooks(fragment);
+    expect(runner.tick).toHaveBeenCalledTimes(1);
+
+    await db.update("workflow_instance", instance.id, (b) =>
+      b.set({ status: "paused", pauseRequested: true, updatedAt: new Date() }),
+    );
+    runner.tick.mockClear();
 
     const resumed = await runService<{ status: string }>(() =>
       fragment.services.resumeInstance("demo-workflow", created.id),
     );
     expect(resumed.status).toBe("queued");
 
+    const [resumedInstance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(resumedInstance).toMatchObject({
+      status: "queued",
+      pauseRequested: false,
+    });
+
+    await drainDurableHooks(fragment);
     expect(runner.tick).toHaveBeenCalledTimes(1);
+  });
+
+  test("pauseInstance does not set pauseRequested for waiting instances", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "pause-waiting" }),
+    );
+    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+
+    await db.update("workflow_instance", instance.id, (b) =>
+      b.set({ status: "waiting", updatedAt: new Date() }),
+    );
+
+    const paused = await runService<{ status: string }>(() =>
+      fragment.services.pauseInstance("demo-workflow", created.id),
+    );
+    expect(paused.status).toBe("waiting");
+
+    const [pausedInstance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(pausedInstance).toMatchObject({
+      status: "waiting",
+      pauseRequested: false,
+    });
   });
 
   test("terminate should mark instance as terminated", async () => {
@@ -506,6 +560,7 @@ describe("Workflows Fragment Services", () => {
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
+      actor: "user",
       type: "approval",
       payload: { approved: true },
       deliveredAt: null,
@@ -517,6 +572,7 @@ describe("Workflows Fragment Services", () => {
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
+      actor: "user",
       type: "note",
       payload: { note: "extra" },
       deliveredAt: null,

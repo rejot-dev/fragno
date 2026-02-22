@@ -4,6 +4,12 @@ import { withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "./schema";
+import {
+  isSystemEventActor,
+  WORKFLOW_EVENT_ACTOR_SYSTEM,
+  WORKFLOW_EVENT_ACTOR_USER,
+  WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
+} from "./system-events";
 import type {
   InstanceStatus,
   WorkflowEnqueuedHookPayload,
@@ -76,6 +82,7 @@ type WorkflowStepRecord = {
 type WorkflowEventRecord = {
   id: FragnoId;
   runNumber: number;
+  actor: string | null;
   type: string;
   payload: unknown | null;
   createdAt: Date;
@@ -579,7 +586,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             return {
               runNumber,
               steps: steps.map(buildStepHistoryEntry),
-              events: events.map(buildEventHistoryEntry),
+              events: events
+                .filter((event) => !isSystemEventActor(event.actor))
+                .map(buildEventHistoryEntry),
             };
           })
           .build();
@@ -603,43 +612,29 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               throw new Error("INSTANCE_TERMINAL");
             }
 
-            if (currentStatus === "running") {
-              uow.update("workflow_instance", instance.id, (b) =>
-                b
-                  .set({
-                    status: "waitingForPause",
-                    pauseRequested: true,
-                    updatedAt: b.now(),
-                  })
-                  .check(),
-              );
-
-              return buildInstanceStatus({
-                status: "waitingForPause",
-                output: instance.output,
-                errorName: instance.errorName,
-                errorMessage: instance.errorMessage,
-              });
+            if (currentStatus === "paused" || currentStatus === "waitingForPause") {
+              return buildInstanceStatus(instance);
             }
 
-            if (currentStatus === "queued" || currentStatus === "waiting") {
-              uow.update("workflow_instance", instance.id, (b) =>
-                b
-                  .set({
-                    status: "paused",
-                    pauseRequested: false,
-                    updatedAt: b.now(),
-                  })
-                  .check(),
-              );
+            uow.create("workflow_event", {
+              instanceRef: instance.id,
+              workflowName,
+              instanceId,
+              runNumber: instance.runNumber,
+              actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
+              type: WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
+              payload: null,
+              deliveredAt: null,
+              consumedByStepKey: null,
+            });
 
-              return buildInstanceStatus({
-                status: "paused",
-                output: instance.output,
-                errorName: instance.errorName,
-                errorMessage: instance.errorMessage,
-              });
-            }
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId,
+              instanceRef: String(instance.id),
+              runNumber: instance.runNumber,
+              reason: "event",
+            });
 
             return buildInstanceStatus(instance);
           })
@@ -818,6 +813,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName,
               instanceId,
               runNumber: instance.runNumber,
+              actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
               payload: options.payload ?? null,
               deliveredAt: null,
