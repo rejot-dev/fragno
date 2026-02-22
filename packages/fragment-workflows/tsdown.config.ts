@@ -7,6 +7,7 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
+      "./src/scenario.ts",
       "./src/test.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
