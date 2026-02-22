@@ -2,7 +2,9 @@
   "pages": [
     "getting-started",
     "features",
+    "rules-of-fragno",
     "database-integration",
+    "hook-processors",
     "testing",
     "troubleshooting",
     "faq"

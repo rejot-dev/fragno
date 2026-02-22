@@ -1,0 +1,139 @@
+---
+title: Rules of Fragno
+description: Three rules for Fragno DB transactions, hooks, and IDs
+---
+
+These rules apply when you use `@fragno-dev/db`.
+
+## 1. One `handlerTx()` per route
+
+Each route should execute a **single** `handlerTx()` call. If you need multiple operations, compose
+them inside one transaction (or via `.withServiceCalls(...)`), instead of starting extra
+`handlerTx()` calls.
+
+Exception: it can be acceptable to run **two** `handlerTx()` calls when you deliberately split a
+flow into **retrieve → async work → mutate**, so the async work happens outside the transaction.
+Keep this rare and explicit.
+
+`handlerTx()` is two-phase: **schedule all reads in one `.retrieve(...)`**, then **schedule all
+writes in one `.mutate(...)`**, then `.execute()`.
+
+If you need related data, use `.join(...)` and multiple `.find...` calls inside the same
+`.retrieve(...)` instead of starting extra `handlerTx()` calls.
+
+```ts
+const result = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema)
+      .findFirst("order", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", orderId)).join((j) => j.customer()),
+      )
+      .find("order_item", (b) =>
+        b.whereIndex("idx_order_item_orderId", (eb) => eb("orderId", "=", orderId)),
+      ),
+  )
+  .mutate(({ forSchema, retrieveResult: [order, items] }) => {
+    if (!order) return { ok: false as const };
+    const uow = forSchema(mySchema);
+    uow.update("order", order.id, (b) => b.set({ status: "processing" }));
+    return { ok: true as const, items };
+  })
+  .execute();
+```
+
+See [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) for the full
+builder pattern.
+
+## 2. Webhook routes are thin; durable hooks do the work
+
+Webhook routes should validate, **trigger a durable hook**, and return. Heavy or async work belongs
+in a `defineHook(...)` implementation, where you can use `this.handlerTx()` and
+`this.idempotencyKey`.
+
+```ts
+defineRoute({
+  method: "POST",
+  path: "/webhook",
+  handler: async function ({ input }, { json }) {
+    const payload = await input.valid();
+
+    await this.handlerTx()
+      .mutate(({ uow }) => {
+        uow.triggerHook("onWebhookReceived", payload);
+      })
+      .execute();
+
+    return json({ ok: true });
+  },
+});
+
+export const fragmentDef = defineFragment<Config>("example")
+  .extend(withDatabase(mySchema))
+  .provideHooks(({ defineHook, config }) => ({
+    onWebhookReceived: defineHook(async function (payload: WebhookPayload) {
+      await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(mySchema).findFirst("event", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", payload.eventId)),
+          ),
+        )
+        .mutate(({ forSchema, retrieveResult: [event] }) => {
+          if (!event) {
+            forSchema(mySchema).create("event", { id: payload.eventId, receivedAt: new Date() });
+          }
+        })
+        .execute();
+
+      await config.onWebhookReceived?.({ idempotencyKey: this.idempotencyKey, payload });
+    }),
+  }))
+  .build();
+```
+
+See [Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks) for the
+execution model and retry behavior.
+
+## 3. `idColumn()` is your app-facing ID
+
+`idColumn()` is the primary identifier for your records. It **can** store upstream IDs, but it
+doesn't have to — you can also let it auto-generate (CUID) values. Fragno automatically adds
+`_internalId` and `_version` under the hood, so you do not need extra columns to mirror either.
+
+References can point at `idColumn()` values. `referenceColumn()` accepts ID strings (or `FragnoId`
+objects) and the query layer resolves them for you.
+
+```ts
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
+export const mySchema = schema("example", (s) =>
+  s
+    .addTable("user", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
+    .addTable("note", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("userId", referenceColumn())
+        .addColumn("content", column("string")),
+    )
+    .addReference("author", {
+      type: "one",
+      from: { table: "note", column: "userId" },
+      to: { table: "user", column: "id" },
+    }),
+);
+
+await this.handlerTx()
+  .mutate(({ forSchema }) => {
+    const uow = forSchema(mySchema);
+    uow.create("user", { id: "user_123", name: "Ada" }); // upstream ID is OK
+    uow.create("user", { name: "Lin" }); // auto-generated CUID is OK
+    uow.create("note", {
+      id: "note_456",
+      userId: "user_123",
+      content: "Hello from an app-facing ID",
+    });
+  })
+  .execute();
+```
+
+See [Defining Schemas](/docs/fragno/for-library-authors/database-integration/defining-schemas) for
+more on `idColumn()` and `referenceColumn()`.

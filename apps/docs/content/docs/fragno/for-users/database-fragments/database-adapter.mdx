@@ -1,0 +1,130 @@
+---
+title: Database Adapter
+description: Configure SqlAdapter, schema outputs, and driver configs
+---
+
+Fragno uses a single runtime adapter for SQL databases: `SqlAdapter`.
+
+At runtime, Fragno **always executes SQL via a Kysely `Dialect`**. Drizzle and Prisma are **schema
+output workflows**: the Fragno CLI can generate Drizzle or Prisma schema files, but the runtime
+adapter is still `SqlAdapter` + Kysely `Dialect` + a `DriverConfig`.
+
+## Adapter setup
+
+Create a `SqlAdapter` using a Kysely `Dialect` plus a matching `driverConfig`:
+
+```ts title="lib/database-adapter.ts"
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
+
+export const fragmentDbAdapter = new SqlAdapter({
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
+});
+```
+
+Dialects are re-exported from Kysely via `@fragno-dev/db/dialects`:
+
+- `SqliteDialect`
+- `PostgresDialect`
+- `MysqlDialect`
+
+For Cloudflare Durable Objects, use `DurableObjectDialect` from
+`@fragno-dev/db/dialects/durable-object` with `CloudflareDurableObjectsDriverConfig`.
+
+## Schema output workflows
+
+The runtime adapter is the same for all workflows. The difference is the **output format** you
+choose when generating migrations/schema files.
+
+### SQL migrations (default)
+
+```npm
+npx @fragno-dev/cli db generate lib/comment-fragment-server.ts -o migrations/
+```
+
+### Drizzle schema output
+
+```npm
+npx @fragno-dev/cli db generate lib/comment-fragment-server.ts --format drizzle -o schema/fragno-schema.ts
+```
+
+The output is a Drizzle schema module you can import or re-export from your main schema file.
+
+### Prisma schema output
+
+```npm
+npx @fragno-dev/cli db generate lib/comment-fragment-server.ts --format prisma -o prisma/schema/fragno.prisma
+```
+
+The output is a **models-only** Prisma schema. Keep `datasource` and `generator` blocks in your main
+schema file and run Prisma migrations against the schema folder.
+
+If you use Prisma with SQLite, set `sqliteProfile: "prisma"` on the adapter (details below).
+
+## Driver configs (what to pick)
+
+Driver configs live in `@fragno-dev/db/drivers`. They tell Fragno **which database you are using**
+and **how values are serialized** (dates, JSON, bigints, etc.). Make sure the `driverConfig`
+**matches the Dialect/driver you actually use**.
+
+### PostgreSQL
+
+- `NodePostgresDriverConfig` for `pg`
+- `PGLiteDriverConfig` for embedded PGlite
+
+### MySQL / MariaDB
+
+- `MySQL2DriverConfig` for `mysql2`
+
+### SQLite
+
+- `BetterSQLite3DriverConfig` for Node + `better-sqlite3`
+- `SQLocalDriverConfig` for `sqlocal` (browser / local-first)
+- `CloudflareDurableObjectsDriverConfig` for Durable Objects storage
+
+If you choose the wrong config, you can hit subtle issues around date or bigint conversion. Pick the
+config that matches your runtime driver.
+
+## SQLite profiles
+
+SQLite storage is configured in `SqlAdapter`:
+
+- `sqliteProfile` selects a predefined storage profile.
+- `sqliteStorageMode` lets you pass a custom mode directly.
+- You cannot pass both.
+
+Profiles are defined in `sqlite-storage.ts`:
+
+- `default`: timestamps/dates stored as epoch ms, bigints stored as blobs
+- `prisma`: timestamps/dates stored as ISO strings, bigints stored as integers
+
+Use `sqliteProfile: "prisma"` when Prisma is your schema workflow for SQLite.
+
+```ts
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { SqliteDialect } from "@fragno-dev/db/dialects";
+import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
+import Database from "better-sqlite3";
+
+const dialect = new SqliteDialect({
+  database: new Database("./app.db"),
+});
+
+export const adapter = new SqlAdapter({
+  dialect,
+  driverConfig: new BetterSQLite3DriverConfig(),
+  sqliteProfile: "prisma",
+});
+```
+
+## Next steps
+
+- [Database fragments overview](/docs/fragno/for-users/database-fragments/overview)
+- [CLI Reference](/docs/reference/cli)

@@ -35,6 +35,7 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),
+  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt),
   uniqueIndex("uidx_fragno_hooks_idx_fragno_hooks_external_id_d04b86f6").on(table.id)
 ])
 

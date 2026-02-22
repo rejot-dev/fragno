@@ -55,27 +55,18 @@ npm install --save-dev @fragno-dev/cli
 ### Choose Your Workflow
 
 Fragno uses a single runtime adapter (`SqlAdapter`) for all SQL databases. You choose the schema
-output format that matches your workflow:
+output format that matches your workflow: SQL (default), Drizzle, or Prisma.
 
-- **[SQL migrations](/docs/fragno/for-users/database-fragments/kysely)** - default `sql` output
-- **[Drizzle schema](/docs/fragno/for-users/database-fragments/drizzle)** - `drizzle` output
-- **[Prisma schema](/docs/fragno/for-users/database-fragments/prisma)** - `prisma` output
-
-Pick the format that fits your migration tooling (SQL, Drizzle, or Prisma).
+Start here: [Database Adapter](/docs/fragno/for-users/database-fragments/database-adapter)
 
 </Step>
 
 <Step>
 ### Create Database Adapter
 
-See the adapter-specific pages for detailed setup:
-
-- [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
-- [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
-- [Prisma Integration Guide](/docs/fragno/for-users/database-fragments/prisma)
-
 Adapters are configured with a **Kysely `Dialect`** plus a **Fragno `driverConfig`** (they must
-match).
+match). See [Database Adapter](/docs/fragno/for-users/database-fragments/database-adapter) for the
+full setup and driver details.
 
 ```typescript title="lib/database-adapter.ts"
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
@@ -196,7 +187,5 @@ const ratings = createRatingFragment({}, { databaseAdapter });
 
 Choose your database workflow to continue:
 
-- [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
-- [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
-- [Prisma Integration Guide](/docs/fragno/for-users/database-fragments/prisma)
+- [Database Adapter](/docs/fragno/for-users/database-fragments/database-adapter)
 - [CLI Reference](/docs/reference/cli) for migration commands

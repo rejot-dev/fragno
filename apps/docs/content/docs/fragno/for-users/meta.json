@@ -1,7 +1,5 @@
 {
   "pages": [
-    "workflows",
-    "dispatchers",
     "integrating-a-fragment",
     "client-frameworks",
     "services",

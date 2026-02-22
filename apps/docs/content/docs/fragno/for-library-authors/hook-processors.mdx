@@ -1,5 +1,5 @@
 ---
-title: Dispatchers
+title: Hook Processors
 description: Run durable hooks and background work for database-backed fragments.
 ---
 
@@ -10,15 +10,17 @@ import { Callout } from "fumadocs-ui/components/callout";
 Database-backed fragments can schedule durable hooks. Durable hooks are stored in the database as
 part of the same transaction as your mutations, then executed after the commit with retries.
 
-A dispatcher is the background process that wakes up and processes these hooks, so retries and
-scheduled work happen even when no new requests arrive.
+A hook processor is the background process that wakes up and processes these hooks, so retries and
+scheduled work happen even when no new requests arrive. In code, it combines a
+`createDurableHooksProcessor(...)` instance with a dispatcher implementation that calls
+`processor.process()` on a schedule.
 
-## When you need a dispatcher
+## When you need a hook processor
 
-You need a dispatcher when a fragment uses durable hooks (for example, the Workflows fragment).
+You need a hook processor when a fragment uses durable hooks.
 
 If a fragment does not define durable hooks, `createDurableHooksProcessor(fragment)` returns `null`,
-and you do not need a dispatcher.
+and you do not need a hook processor.
 
 ## How it works (from the code)
 
@@ -31,15 +33,16 @@ Durable hook processing is designed for at-least-once delivery and idempotent ha
 - Events stuck in `processing` too long are re-queued (default 10 minutes).
 
 Dispatchers use `getNextWakeAt()` to decide when work is due. If there is nothing scheduled, they
-sleep. If work is due, they run `processor.process()`.
+sleep. If work is due, they run `processor.process()`. The hook processor is the full loop: a
+dispatcher plus the processor it drives.
 
 <Callout type="info">
   Durable hooks are at-least-once. Your hook handlers must be idempotent.
 </Callout>
 
-## Node dispatcher (polling)
+## Node hook processor (polling)
 
-Use the Node dispatcher for long-lived servers or local development:
+Use the Node hook processor for long-lived servers or local development:
 
 ```ts
 import { createDurableHooksProcessor } from "@fragno-dev/db";
@@ -63,9 +66,9 @@ Notes:
 - Calling `dispatcher.wake()` triggers immediate processing.
 - The dispatcher serializes runs internally, so concurrent calls are queued.
 
-## Cloudflare Durable Objects dispatcher (alarms)
+## Cloudflare Durable Objects hook processor (alarms)
 
-Use the Durable Object dispatcher to schedule processing via alarms. The dispatcher should be
+Use the Durable Object dispatcher to schedule processing via alarms. The hook processor should be
 created in the same DO instance that owns the fragment:
 
 ```ts
@@ -133,7 +136,7 @@ const fragment = instantiate(fragmentDef)
 
 ## Operational guidance
 
-- Run one dispatcher per deployment process. Multiple dispatchers are safe but may add load.
+- Run one hook processor per deployment process. Multiple processors are safe but may add load.
 - Ensure your hook handlers are idempotent.
 - For serverless platforms, use a dispatcher that integrates with the platform scheduler (e.g.,
   Cloudflare Durable Objects).

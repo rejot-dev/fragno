@@ -9,6 +9,8 @@ description: >
 
 # Fragno Fragment Creation
 
+Note: All file paths referenced in this document are relative to this `SKILL.md` file.
+
 ## Overview
 
 Create or extend a Fragno fragment package with typed routes and client hooks for multiple
@@ -17,6 +19,10 @@ frameworks.
 Important: Before implementing anything, always `curl` the full docs page for the topic you're
 working on (see the "Full docs" commands below). The local guidance here is intentionally concise
 and assumes you have read the full docs first.
+
+Also important: **Rules of Fragno** are required reading for any database-backed fragment work. They
+capture the transaction/handler, hook, and ID conventions that should guide your design. See
+`references/rules-of-fragno.md` and the full docs link below.
 
 ## Workflow (Library Author)
 
@@ -29,7 +35,7 @@ pnpm create fragno@latest --non-interactive --name my-fragment
 ```
 
 This uses sensible defaults: tsdown build tool, database layer included, no agent docs, path set to
-`./<name>`.
+`<name>`.
 
 - OR: Install `@fragno-dev/core` manually. See "assets" below.
 
@@ -166,6 +172,18 @@ their existing database connection.
 - Full docs:
   `curl -L "https://fragno.dev/docs/fragno/for-library-authors/database-integration/overview" -H "accept: text/markdown"`
 
+### Rules of Fragno
+
+The Rules of Fragno are the default architectural constraints for database-backed fragments:
+
+- One `handlerTx()` per route (compose all reads/writes inside it)
+- Webhook routes are thin; durable hooks do the work
+- `idColumn()` is the app-facing ID (it can be external, but doesn't have to)
+
+- Full docs:
+  `curl -L "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno" -H "accept: text/markdown"`
+- Local reference: `references/rules-of-fragno.md`
+
 ### Defining Schemas
 
 Learn how to define type-safe database schemas with the append-only log approach.
@@ -276,7 +294,7 @@ and response parsing.
 When creating a Fragment using the `create` command with database support, the following assets will
 automatically be created.
 
-| Asset                | What it is                                                              | Source                                                  |
-| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------- |
-| `database-index.ts`  | Complete database-backed fragment: definition, services, routes, client | `packages/create/templates/optional/database/index.ts`  |
-| `database-schema.ts` | Schema definition with tables, columns, indexes, and relations          | `packages/create/templates/optional/database/schema.ts` |
+| Asset                | What it is                                                              | Source                                                           |
+| -------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `database-index.ts`  | Complete database-backed fragment: definition, services, routes, client | `../../../packages/create/templates/optional/database/index.ts`  |
+| `database-schema.ts` | Schema definition with tables, columns, indexes, and relations          | `../../../packages/create/templates/optional/database/schema.ts` |
