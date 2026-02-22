@@ -116,7 +116,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("runs multiple steps and consumes a queued event", async () => {
+  test("runs multiple steps and consumes a buffered event", async () => {
     const EventWorkflow = defineWorkflow({ name: "eventful-workflow" }, async (_event, step) => {
       const seed = await step.do("seed", () => 3);
       const ready = await step.waitForEvent<{ value: number }>("ready", { type: "ready" });
@@ -789,7 +789,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
       pauseResponse?: RouteResponse;
       resumeResponse?: RouteResponse;
       pausedStatus?: { status: string };
-      queuedStatus?: { status: string };
+      activeStatus?: { status: string };
       finalStatus?: { status: string };
       steps?: WorkflowScenarioStepRow[];
     };
@@ -826,7 +826,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
-          storeAs: "queuedStatus",
+          storeAs: "activeStatus",
         }),
         scenarioSteps.tick({
           workflow: "RESUME_REASON",
@@ -846,7 +846,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
 
           expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.queuedStatus?.status).toBe("queued");
+          expect(ctx.vars.activeStatus?.status).toBe("active");
           expect(ctx.vars.finalStatus?.status).toBe("waiting");
           expect(ctx.vars.steps?.[0]).toMatchObject({
             stepKey: "waitForEvent:ready",
@@ -875,7 +875,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
       pauseResponse?: RouteResponse;
       resumeResponse?: RouteResponse;
       pausedStatus?: { status: string };
-      queuedStatus?: { status: string };
+      activeStatus?: { status: string };
       finalStatus?: { status: string; output?: { ok: boolean } };
       eventsBefore?: WorkflowScenarioEventRow[];
       eventsAfter?: WorkflowScenarioEventRow[];
@@ -926,7 +926,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "queuedStatus",
+          storeAs: "activeStatus",
         }),
         scenarioSteps.tick({
           workflow: "PAUSE_EVENT",
@@ -945,7 +945,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assertOkResponse(ctx.vars.pauseResponse as RouteResponse);
           assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
           expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.queuedStatus?.status).toBe("queued");
+          expect(ctx.vars.activeStatus?.status).toBe("active");
           expect(ctx.vars.finalStatus?.status).toBe("complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ ok: true });
 
@@ -1074,7 +1074,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
       async (_event, step) => {
         await step.do("call", (tx) => {
           tx.serviceCalls(() => [serviceCallFragment.services.listRecords()]);
-          return "queued";
+          return "active";
         });
         return { ok: true };
       },
@@ -1216,7 +1216,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("pauses a queued instance and resumes to completion", async () => {
+  test("pauses an active instance and resumes to completion", async () => {
     let runs = 0;
     const PauseWorkflow = defineWorkflow(
       { name: "pause-management-workflow" },
@@ -1235,7 +1235,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
       pauseResponse?: RouteResponse;
       resumeResponse?: RouteResponse;
       pausedStatus?: { status: string };
-      queuedStatus?: { status: string };
+      activeStatus?: { status: string };
       finalStatus?: { status: string; output?: { value: number } };
       instance?: WorkflowScenarioInstanceRow | null;
     };
@@ -1263,7 +1263,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
-          storeAs: "queuedStatus",
+          storeAs: "activeStatus",
         }),
         scenarioSteps.runResumeUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
         scenarioSteps.read({
@@ -1278,7 +1278,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assertOkResponse(ctx.vars.pauseResponse as RouteResponse);
           assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
           expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.queuedStatus?.status).toBe("queued");
+          expect(ctx.vars.activeStatus?.status).toBe("active");
           expect(ctx.vars.finalStatus?.status).toBe("complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ value: 1 });
           expect(ctx.vars.instance).toMatchObject({
@@ -1292,7 +1292,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("terminates a queued instance and ignores pending ticks", async () => {
+  test("terminates an active instance and ignores pending ticks", async () => {
     let runs = 0;
     const TerminateWorkflow = defineWorkflow(
       { name: "terminate-management-workflow" },
@@ -1316,7 +1316,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "terminate-queued",
+      name: "terminate-active",
       workflows,
       steps: [
         scenarioSteps.create({ workflow: "TERM", id: "term-1" }),
@@ -1372,7 +1372,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     type ScenarioVars = {
       restartResponse?: RouteResponse;
       firstStatus?: { status: string; output?: { value: number } };
-      queuedStatus?: { status: string };
+      activeStatus?: { status: string };
       finalStatus?: { status: string; output?: { value: number } };
       instance?: WorkflowScenarioInstanceRow | null;
       run0Steps?: WorkflowScenarioStepRow[];
@@ -1396,7 +1396,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         scenarioSteps.read({
           read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
-          storeAs: "queuedStatus",
+          storeAs: "activeStatus",
         }),
         scenarioSteps.runCreateUntilIdle({ workflow: "RESTART", instanceId: "restart-1" }),
         scenarioSteps.read({
@@ -1419,7 +1419,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assertOkResponse(ctx.vars.restartResponse as RouteResponse);
           expect(ctx.vars.firstStatus?.status).toBe("complete");
           expect(ctx.vars.firstStatus?.output).toEqual({ value: 1 });
-          expect(ctx.vars.queuedStatus?.status).toBe("queued");
+          expect(ctx.vars.activeStatus?.status).toBe("active");
           expect(ctx.vars.finalStatus?.status).toBe("complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ value: 2 });
           expect(ctx.vars.instance?.runNumber).toBe(1);
@@ -1488,9 +1488,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
             "batch-3",
           ]);
           expect(ctx.vars.created?.map((entry) => entry.details.status)).toEqual([
-            "queued",
-            "queued",
-            "queued",
+            "active",
+            "active",
+            "active",
           ]);
 
           expect(ctx.vars.status1?.status).toBe("complete");
@@ -1593,8 +1593,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
           expect(response.instances.map((entry) => entry.id)).toEqual(["route-1", "route-2"]);
           expect(response.instances.map((entry) => entry.details.status)).toEqual([
-            "queued",
-            "queued",
+            "active",
+            "active",
           ]);
         }),
       ],

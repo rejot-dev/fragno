@@ -60,15 +60,7 @@ export interface WorkflowStep {
 
 /** Serialized instance status returned to API consumers. */
 export type InstanceStatusWithOutput<TOutput = unknown> = {
-  status:
-    | "queued"
-    | "running"
-    | "paused"
-    | "errored"
-    | "terminated"
-    | "complete"
-    | "waiting"
-    | "unknown";
+  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
   error?: { name: string; message: string };
   output?: TOutput;
 };
@@ -296,17 +288,15 @@ export const isWaitingStatus = (status: InstanceStatus["status"]) =>
 
 export const statusLabel = (status: InstanceStatus["status"]) => {
   const labels: Record<InstanceStatus["status"], string> = {
-    queued: "Queued",
-    running: "Running",
+    active: "Active",
     paused: "Paused",
     errored: "Errored",
     terminated: "Terminated",
     complete: "Complete",
     waiting: "Waiting",
-    unknown: "Unknown",
   };
 
-  return labels[status] ?? "Unknown";
+  return labels[status];
 };
 
 export const currentStepLabel = (step?: WorkflowInstanceCurrentStep | null) => {

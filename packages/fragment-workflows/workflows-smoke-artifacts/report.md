@@ -313,7 +313,7 @@ Result:
 
 - API responds quickly with:
   ```json
-  { "instances": [{ "id": "batchtest1", "details": { "status": "queued" } }] }
+  { "instances": [{ "id": "batchtest1", "details": { "status": "active" } }] }
   ```
 
 **Actual:**
@@ -967,7 +967,7 @@ eligible for cleanup)
 
 - Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
 - Script timed out waiting for `retention_ml5i3ni7` to reach terminal state.
-- Instance remains queued:
+- Instance remains active:
   ```sql
   SELECT
     "workflowName",
@@ -982,7 +982,7 @@ eligible for cleanup)
   ```
   Result:
   ```
-   demo-data-workflow | retention_ml5i3ni7 | queued | (null) | (null)
+   demo-data-workflow | retention_ml5i3ni7 | active | (null) | (null)
   ```
 - Recent completed instances still have `retentionUntil` = `NULL`:
   ```sql

@@ -60,7 +60,7 @@ export default function Home() {
             typed, cache-aware, and support invalidation so the UI stays in sync with the backend.
           </p>
           <p className="mt-4 text-sm text-slate-600">
-            Navigate to the Instances page to explore running workflows or open the Create page to
+            Navigate to the Instances page to explore active workflows or open the Create page to
             start a new run with custom parameters.
           </p>
         </div>

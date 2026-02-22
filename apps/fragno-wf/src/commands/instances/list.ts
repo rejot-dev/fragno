@@ -13,8 +13,7 @@ export const instancesListCommand = define({
     },
     status: {
       type: "string",
-      description:
-        "Filter by status (queued, running, waiting, paused, complete, terminated, errored)",
+      description: "Filter by status (active, waiting, paused, complete, terminated, errored)",
     },
     "page-size": {
       type: "number",

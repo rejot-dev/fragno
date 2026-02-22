@@ -8,18 +8,16 @@ const workflowNameSchema = z.string().min(1).max(64);
 const identifierSchema = z
   .string()
   .min(1)
-  .max(100)
+  .max(30)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
 
 const instanceStatusSchema = z.enum([
-  "queued",
-  "running",
+  "active",
   "paused",
   "errored",
   "terminated",
   "complete",
   "waiting",
-  "unknown",
 ]);
 
 const listInstancesQuerySchema = z.object({
