@@ -14,6 +14,11 @@ import type {
   WorkflowStepRecord,
   WorkflowsRunnerOptions,
 } from "./runner/types";
+import {
+  isSystemEventActor,
+  WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
+  WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
+} from "./system-events";
 import type { WorkflowEnqueuedHookPayload } from "./workflow";
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { toError } from "./runner/utils";
@@ -32,6 +37,12 @@ type RunnerTickPlan = {
 type RunnerTickContext = {
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
   workflowBindings: ReturnType<typeof createWorkflowsBindingsForRunner>;
+};
+
+type RunnerTickSelectionResult = {
+  instance: WorkflowInstanceRecord;
+  steps: WorkflowStepRecord[];
+  events: WorkflowEventRecord[];
 };
 
 /**
@@ -57,6 +68,123 @@ function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTa
  */
 function sortEventsForRunner(events: WorkflowEventRecord[]): WorkflowEventRecord[] {
   return [...events].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
+/**
+ * Locate pending system pause events for this run.
+ * Bigger picture: pause requests are stored as system events to avoid conflicting instance writes.
+ */
+function findPendingPauseEvents(events: WorkflowEventRecord[]): WorkflowEventRecord[] {
+  return events.filter(
+    (event) =>
+      isSystemEventActor(event.actor) &&
+      event.type === WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE &&
+      !event.consumedByStepKey,
+  );
+}
+
+function selectTickInput(
+  selection: RunnerTickSelection,
+  payload: WorkflowEnqueuedHookPayload,
+): RunnerTickSelectionResult | null {
+  const instance = selection.instance;
+  if (!instance) {
+    return null;
+  }
+  if (instance.runNumber !== payload.runNumber) {
+    return null;
+  }
+
+  return {
+    instance,
+    steps: selection.steps,
+    events: selection.events,
+  };
+}
+
+function planConsumePauseEvents(pauseEvents: WorkflowEventRecord[]): RunnerTickPlan {
+  if (pauseEvents.length === 0) {
+    return { processed: 0, operations: [] };
+  }
+
+  return {
+    processed: 1,
+    operations: [
+      (uow) => {
+        const schemaUow = uow.forSchema(workflowsSchema);
+        for (const event of pauseEvents) {
+          schemaUow.update("workflow_event", event.id, (b) =>
+            b
+              .set({
+                consumedByStepKey: WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
+                deliveredAt: b.now(),
+              })
+              .check(),
+          );
+        }
+      },
+    ],
+  };
+}
+
+function shouldPauseInstance(
+  instance: WorkflowInstanceRecord,
+  pauseEvents: WorkflowEventRecord[],
+): boolean {
+  return instance.status === "waitingForPause" || instance.pauseRequested || pauseEvents.length > 0;
+}
+
+function planPauseInstance(
+  instance: WorkflowInstanceRecord,
+  pauseEvents: WorkflowEventRecord[],
+): RunnerTickPlan {
+  return {
+    processed: 1,
+    operations: [
+      (uow) => {
+        const schemaUow = uow.forSchema(workflowsSchema);
+        schemaUow.update("workflow_instance", instance.id, (b) =>
+          b.set({ status: "paused", pauseRequested: true, updatedAt: b.now() }).check(),
+        );
+        for (const event of pauseEvents) {
+          schemaUow.update("workflow_event", event.id, (b) =>
+            b
+              .set({
+                consumedByStepKey: WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
+                deliveredAt: b.now(),
+              })
+              .check(),
+          );
+        }
+      },
+    ],
+  };
+}
+
+async function planRunTask(
+  selection: RunnerTickSelectionResult,
+  ctx: RunnerTickContext,
+  payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
+): Promise<RunnerTickPlan> {
+  const events = sortEventsForRunner(selection.events);
+  const state = createRunnerState(selection.instance, selection.steps, events);
+  const outcome = await runTask(
+    selection.instance,
+    coerceTaskKind(payload.reason),
+    payload.timestamp,
+    state,
+    ctx,
+  );
+
+  return {
+    processed: 1,
+    operations: [
+      (uow) => {
+        applyRunnerMutations(uow, state);
+        applyOutcome(uow, selection.instance, outcome);
+      },
+    ],
+  };
 }
 
 /**
@@ -116,48 +244,26 @@ async function buildTickPlan(
   ctx: RunnerTickContext,
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
 ): Promise<RunnerTickPlan> {
-  const operations: RunnerTickPlan["operations"] = [];
-  let processed = 0;
-
-  const instance = selection.instance;
-  if (!instance) {
-    return { processed, operations };
-  }
-  if (instance.runNumber !== payload.runNumber) {
-    return { processed, operations };
-  }
-  if (isTerminalStatus(instance.status) || instance.status === "paused") {
-    return { processed, operations };
-  }
-  if (instance.status === "waitingForPause" || instance.pauseRequested) {
-    processed = 1;
-    operations.push((uow) => {
-      uow
-        .forSchema(workflowsSchema)
-        .update("workflow_instance", instance.id, (b) =>
-          b.set({ status: "paused", updatedAt: b.now() }).check(),
-        );
-    });
-    return { processed, operations };
+  const selectionResult = selectTickInput(selection, payload);
+  if (!selectionResult) {
+    return { processed: 0, operations: [] };
   }
 
-  const events = sortEventsForRunner(selection.events);
-  const state = createRunnerState(instance, selection.steps, events);
-  const outcome = await runTask(
-    instance,
-    coerceTaskKind(payload.reason),
-    payload.timestamp,
-    state,
-    ctx,
-  );
-  processed = 1;
+  const pendingPauseEvents = findPendingPauseEvents(selectionResult.events);
 
-  operations.push((uow) => {
-    applyRunnerMutations(uow, state);
-    applyOutcome(uow, instance, outcome);
-  });
+  if (isTerminalStatus(selectionResult.instance.status)) {
+    return planConsumePauseEvents(pendingPauseEvents);
+  }
 
-  return { processed, operations };
+  if (selectionResult.instance.status === "paused") {
+    return planConsumePauseEvents(pendingPauseEvents);
+  }
+
+  if (shouldPauseInstance(selectionResult.instance, pendingPauseEvents)) {
+    return planPauseInstance(selectionResult.instance, pendingPauseEvents);
+  }
+
+  return await planRunTask(selectionResult, ctx, payload);
 }
 
 /**
