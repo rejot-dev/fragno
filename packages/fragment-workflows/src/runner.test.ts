@@ -648,6 +648,14 @@ describe("Workflows Runner", () => {
     }
     expect((pauseResponse.data as { ok: true }).ok).toBe(true);
 
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
     const pausedStatus = await harness.getStatus("RESUME_REASON", instanceId);
     expect(pausedStatus.status).toBe("paused");
 
@@ -730,6 +738,14 @@ describe("Workflows Runner", () => {
     }
     expect((pauseResponse.data as { ok: true }).ok).toBe(true);
 
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
     status = await harness.getStatus("PAUSE_EVENT", instanceId);
     expect(status.status).toBe("paused");
 
@@ -741,8 +757,9 @@ describe("Workflows Runner", () => {
     status = await harness.getStatus("PAUSE_EVENT", instanceId);
     expect(status.status).toBe("paused");
 
-    const [eventRecord] = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
-    expect(eventRecord).toMatchObject({
+    const events = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    const readyEvent = events.find((event) => event.type === "ready");
+    expect(readyEvent).toMatchObject({
       type: "ready",
       consumedByStepKey: null,
       deliveredAt: null,
@@ -776,12 +793,13 @@ describe("Workflows Runner", () => {
     expect(finalStatus.status).toBe("complete");
     expect(finalStatus.output).toEqual({ ok: true });
 
-    const [consumedEvent] = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    const consumedEvents = await harness.db.find("workflow_event", (b) => b.whereIndex("primary"));
+    const consumedEvent = consumedEvents.find((event) => event.type === "ready");
     expect(consumedEvent).toMatchObject({
       type: "ready",
       consumedByStepKey: "waitForEvent:ready",
     });
-    expect(consumedEvent.deliveredAt).toBeInstanceOf(Date);
+    expect(consumedEvent?.deliveredAt).toBeInstanceOf(Date);
   });
 
   test("applies WorkflowStepTx mutations", async () => {
@@ -1125,10 +1143,10 @@ describe("Workflows Runner", () => {
     }
     expect((pauseResponse.data as { ok: true }).ok).toBe(true);
 
+    await drainDurableHooks(harness.fragment);
+
     const pausedStatus = await harness.getStatus("PAUSE", instanceId);
     expect(pausedStatus.status).toBe("paused");
-
-    await drainDurableHooks(harness.fragment);
 
     const stillPaused = await harness.getStatus("PAUSE", instanceId);
     expect(stillPaused.status).toBe("paused");
@@ -1158,6 +1176,82 @@ describe("Workflows Runner", () => {
       status: "complete",
       pauseRequested: false,
     });
+  });
+
+  test("pausing during an in-flight tick pauses on the next tick", async () => {
+    let runs = 0;
+    const started = Promise.withResolvers<void>();
+    const blocker = Promise.withResolvers<void>();
+    const BlockingWorkflow = defineWorkflow(
+      { name: "pause-during-execution-workflow" },
+      async (_event, step) => {
+        const value = await step.do("block", async () => {
+          runs += 1;
+          started.resolve();
+          await blocker.promise;
+          return runs;
+        });
+        await step.waitForEvent("continue", { type: "continue" });
+        return { value };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PAUSE_DURING: BlockingWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("PAUSE_DURING");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    const tickPromise = harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "create",
+    });
+
+    await started.promise;
+
+    const pauseResponse = await (harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/pause",
+      {
+        pathParams: { workflowName: "pause-during-execution-workflow", instanceId },
+      },
+    );
+    expect(pauseResponse.type).toBe("json");
+    if (pauseResponse.type !== "json") {
+      throw new Error(`Unexpected response: ${pauseResponse.type}`);
+    }
+    expect((pauseResponse.data as { ok: true }).ok).toBe(true);
+
+    blocker.resolve();
+    const processed = await tickPromise;
+    expect(processed).toBe(1);
+
+    const status = await harness.getStatus("PAUSE_DURING", instanceId);
+    expect(status.status).toBe("waiting");
+    expect(runs).toBe(1);
+
+    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(2);
+
+    await harness.tick({
+      workflowName: instance!.workflowName,
+      instanceId: instance!.instanceId,
+      instanceRef: String(instance!.id),
+      runNumber: instance!.runNumber,
+      reason: "event",
+    });
+
+    const pausedStatus = await harness.getStatus("PAUSE_DURING", instanceId);
+    expect(pausedStatus.status).toBe("paused");
+    expect(runs).toBe(1);
   });
 
   test("pauses a tick when pauseRequested is set before execution", async () => {

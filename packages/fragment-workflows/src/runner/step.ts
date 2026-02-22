@@ -17,6 +17,7 @@ import type {
   WorkflowStepCreateDraft,
   WorkflowStepUpdateDraft,
 } from "./types";
+import { isSystemEventActor } from "../system-events";
 import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
 export type RunnerStepSuspendReason =
@@ -449,7 +450,10 @@ export class RunnerStep implements WorkflowStep {
   #findPendingEvent(type: string, wakeAt?: Date | null): WorkflowEventRecord | undefined {
     return this.#state.events.find(
       (event) =>
-        event.type === type && !event.consumedByStepKey && (!wakeAt || event.createdAt <= wakeAt),
+        !isSystemEventActor(event.actor) &&
+        event.type === type &&
+        !event.consumedByStepKey &&
+        (!wakeAt || event.createdAt <= wakeAt),
     );
   }
 

@@ -105,8 +105,11 @@
 - Enforce `waitForEvent` timeout deadlines when consuming events.
 - Define `NonRetryableError` semantics (no retries) and add coverage.
 - Treat mutation-phase errors as non-retryable and mark instances errored via a follow-up tick.
-- Honor `pauseRequested`/`waitingForPause` during ticks by short-circuiting to `paused`, and skip
-  scheduling wake/retry hooks when a suspended outcome is paused (pauseRequested remains sticky).
+- Move pause requests to system events (`workflow_event.actor = "system"`) to avoid OCC conflicts
+  with in-flight ticks.
+- Teach the runner to consume system pause events and pause on the next tick boundary; user
+  `waitForEvent` ignores system events, and history filters them out by default.
+- Refactor `buildTickPlan` into smaller helpers for selection, pause planning, and run planning.
 
 ## Up Next
 
