@@ -128,7 +128,6 @@ export type WorkflowScenarioInstanceRow = {
   output: unknown | null;
   errorName: string | null;
   errorMessage: string | null;
-  pauseRequested: boolean;
   runNumber: number;
 };
 

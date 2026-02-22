@@ -77,7 +77,6 @@ export type WorkflowScenarioInstanceRow = {
   output: unknown | null;
   errorName: string | null;
   errorMessage: string | null;
-  pauseRequested: boolean;
   runNumber: number;
 };
 
@@ -641,7 +640,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     output: unknown | null;
     errorName: string | null;
     errorMessage: string | null;
-    pauseRequested: boolean;
     runNumber: number;
   }): WorkflowScenarioInstanceRow => ({
     id: resolveInternalId(instance.id, "workflow instance"),
@@ -656,7 +654,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     output: instance.output ?? null,
     errorName: instance.errorName ?? null,
     errorMessage: instance.errorMessage ?? null,
-    pauseRequested: instance.pauseRequested,
     runNumber: instance.runNumber,
   });
 

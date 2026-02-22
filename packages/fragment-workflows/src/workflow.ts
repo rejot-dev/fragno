@@ -68,7 +68,6 @@ export type InstanceStatusWithOutput<TOutput = unknown> = {
     | "terminated"
     | "complete"
     | "waiting"
-    | "waitingForPause"
     | "unknown";
   error?: { name: string; message: string };
   output?: TOutput;
@@ -96,7 +95,6 @@ export type WorkflowInstanceMetadata = {
   workflowName: string;
   runNumber: number;
   params: unknown;
-  pauseRequested: boolean;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;
@@ -288,7 +286,7 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
 }
 
 const TERMINAL_STATUSES: InstanceStatus["status"][] = ["complete", "terminated", "errored"];
-const WAITING_STATUSES: InstanceStatus["status"][] = ["waiting", "waitingForPause"];
+const WAITING_STATUSES: InstanceStatus["status"][] = ["waiting"];
 
 export const isTerminalStatus = (status: InstanceStatus["status"]) =>
   TERMINAL_STATUSES.includes(status);
@@ -305,7 +303,6 @@ export const statusLabel = (status: InstanceStatus["status"]) => {
     terminated: "Terminated",
     complete: "Complete",
     waiting: "Waiting",
-    waitingForPause: "Waiting For Pause",
     unknown: "Unknown",
   };
 

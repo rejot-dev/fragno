@@ -115,7 +115,7 @@ async function main() {
         try {
           const status = await getStatus(id);
           latest.set(id, status);
-          if (!["paused", "waitingForPause"].includes(status.details.status)) {
+          if (status.details.status !== "paused") {
             remaining.delete(id);
           }
         } catch (error) {

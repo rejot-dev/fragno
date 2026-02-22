@@ -29,19 +29,15 @@ const INSTANCE_STATUSES = new Set<InstanceStatus["status"]>([
   "terminated",
   "complete",
   "waiting",
-  "waitingForPause",
   "unknown",
 ]);
 
 const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "terminated", "errored"]);
 
-const PAUSED_STATUSES = new Set<InstanceStatus["status"]>(["paused", "waitingForPause"]);
-
 type WorkflowInstanceRecord = {
   workflowName: string;
   status: string;
   params: unknown;
-  pauseRequested: boolean;
   runNumber: number;
   createdAt: Date;
   updatedAt: Date;
@@ -164,7 +160,6 @@ function buildInstanceMetadata(instance: WorkflowInstanceRecord): WorkflowInstan
     workflowName: instance.workflowName,
     runNumber: instance.runNumber,
     params: instance.params ?? {},
-    pauseRequested: instance.pauseRequested,
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     startedAt: instance.startedAt,
@@ -241,10 +236,6 @@ function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
 }
 
-function isPausedStatus(status: InstanceStatus["status"]) {
-  return PAUSED_STATUSES.has(status);
-}
-
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
   .provideHooks(({ defineHook, config }) => ({
@@ -313,7 +304,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instanceId,
               status: "queued",
               params,
-              pauseRequested: false,
               runNumber: 0,
               startedAt: null,
               completedAt: null,
@@ -381,7 +371,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 instanceId: instance.id,
                 status: "queued",
                 params: instance.params ?? {},
-                pauseRequested: false,
                 runNumber: 0,
                 startedAt: null,
                 completedAt: null,
@@ -612,7 +601,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               throw new Error("INSTANCE_TERMINAL");
             }
 
-            if (currentStatus === "paused" || currentStatus === "waitingForPause") {
+            if (currentStatus === "paused") {
               return buildInstanceStatus(instance);
             }
 
@@ -663,7 +652,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               b
                 .set({
                   status: "queued",
-                  pauseRequested: false,
                   updatedAt: b.now(),
                 })
                 .check(),
@@ -711,7 +699,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   status: "terminated",
                   completedAt: b.now(),
                   updatedAt: b.now(),
-                  pauseRequested: false,
                 })
                 .check(),
             );
@@ -745,7 +732,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               b
                 .set({
                   status: "queued",
-                  pauseRequested: false,
                   runNumber: nextRun,
                   startedAt: null,
                   completedAt: null,
@@ -823,7 +809,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             const currentRunSteps = steps.filter((step) => step.runNumber === instance.runNumber);
             const shouldWake =
               currentStatus === "waiting" &&
-              !isPausedStatus(currentStatus) &&
               currentRunSteps.some((step) => step.waitEventType === options.type);
 
             if (shouldWake) {
