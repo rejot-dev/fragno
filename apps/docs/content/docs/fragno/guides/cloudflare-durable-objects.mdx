@@ -1,0 +1,226 @@
+---
+title: Forms Fragment on Cloudflare Durable Objects
+description: Run the Forms fragment with embedded SQLite on Cloudflare Durable Objects
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+This guide shows how to run a database-enabled Fragno Fragment inside a
+[Cloudflare Durable Object](https://developers.cloudflare.com/durable-objects/), using the Forms
+fragment and [Hono](https://hono.dev/) as an example. Durable Objects give each Fragment instance
+its own embedded SQLite database with zero external dependencies.
+
+## Prerequisites
+
+- A Cloudflare Workers project (this guide uses [Hono](https://hono.dev/), but any Worker framework
+  works)
+- Basic familiarity with
+  [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/)
+- A Fragment that uses `@fragno-dev/db` (any database-enabled fragment works)
+
+## Step 1: Installation
+
+Install the fragment, the Fragno database package, and Hono:
+
+```npm
+npm install @fragno-dev/forms @fragno-dev/db hono
+npm install -D @fragno-dev/cli
+```
+
+## Step 2: Create the Database Adapter
+
+Durable Objects use an embedded SQLite database accessed through `DurableObjectState`. Create an
+adapter that wraps this with the Fragno `SqlAdapter`.
+
+Create `src/fragno/forms.ts`:
+
+```typescript title="src/fragno/forms.ts"
+import { createFormsFragment } from "@fragno-dev/forms";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+
+function createAdapter(state?: DurableObjectState) {
+  const dialect = new DurableObjectDialect({
+    ctx: state!,
+  });
+
+  return new SqlAdapter({
+    dialect,
+    driverConfig: new CloudflareDurableObjectsDriverConfig(),
+  });
+}
+```
+
+The `DurableObjectDialect` reads the `DurableObjectState` to access the DO's built-in SQLite
+storage. At runtime, `state` is always provided; it is only `undefined` for the dry-run export used
+by the CLI (see below).
+
+## Step 3: Create the Server-Side Fragment Instance
+
+In the same file, add a factory function and a top-level export for the CLI:
+
+```typescript title="src/fragno/forms.ts"
+export type FormsInit =
+  | { type: "dry-run" }
+  | { type: "live"; env: CloudflareEnv; state: DurableObjectState };
+
+export function createFormsServer(init: FormsInit) {
+  return createFormsFragment(
+    {
+      // Fragment-specific config goes here
+    },
+    {
+      databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined),
+    },
+  );
+}
+
+// Top-level "dry-run" instance so the Fragno CLI can discover the schema
+export const fragment = createFormsServer({ type: "dry-run" });
+```
+
+The `FormsInit` union lets you distinguish between two contexts:
+
+- **`"live"`** — running inside a real Durable Object with access to `env` and `state`.
+- **`"dry-run"`** — used by the Fragno CLI for schema generation. No real database is needed.
+
+## Step 4: Create the Durable Object Class
+
+Create `src/forms.do.ts`:
+
+```typescript title="src/forms.do.ts"
+import { DurableObject } from "cloudflare:workers";
+import { createFormsServer } from "./fragno/forms";
+import { migrate } from "@fragno-dev/db";
+
+export class Forms extends DurableObject<CloudflareEnv> {
+  #fragment: ReturnType<typeof createFormsServer>;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+
+    this.#fragment = createFormsServer({
+      env,
+      state,
+      type: "live",
+    });
+
+    state.blockConcurrencyWhile(async () => {
+      try {
+        await migrate(this.#fragment);
+      } catch (error) {
+        console.log("Migration failed", { error });
+      }
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return this.#fragment.handler(request);
+  }
+}
+```
+
+**Key points:**
+
+- The fragment is created once in the constructor and stored as a private field.
+- `migrate()` runs inside `blockConcurrencyWhile` so the schema is ready before the first request.
+- The `fetch` method delegates directly to the fragment's built-in HTTP handler.
+
+## Step 5: Configure Wrangler
+
+Add the Durable Object binding and SQLite migration to your `wrangler.jsonc` (or `wrangler.toml`):
+
+```jsonc title="wrangler.jsonc"
+{
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FORMS",
+        "class_name": "Forms",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Forms"],
+    },
+  ],
+}
+```
+
+The `new_sqlite_classes` entry tells Cloudflare to provision SQLite storage for the `Forms` class.
+Increment the `tag` value whenever you add new DO classes.
+
+## Step 6: Wire Up the Hono Worker
+
+Create your worker entrypoint with Hono. The DO class must be re-exported from the same file so the
+Cloudflare runtime can find it.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { Forms } from "./forms.do";
+
+// Re-export Durable Object classes
+export { Forms };
+
+type HonoAppType = { Bindings: CloudflareEnv };
+
+const app = new Hono<HonoAppType>().all("/api/forms/*", (c) => {
+  const formsId = c.env.FORMS.idFromName("default");
+  const formsStub = c.env.FORMS.get(formsId);
+  return formsStub.fetch(c.req.raw);
+});
+
+export default app;
+```
+
+The `.all()` catch-all forwards every HTTP method to the Durable Object. Inside the DO, the
+fragment's router handles the actual path matching and request processing.
+
+`idFromName("default")` gives you a single global instance. If you need per-user or per-tenant
+isolation, derive the name from a user or tenant identifier instead:
+
+```typescript
+const formsId = c.env.FORMS.idFromName(userId);
+```
+
+<Callout title="Multiple Fragments" type="info">
+  You can mount multiple fragment DOs in the same worker. Each gets its own `.all()` route and
+  Durable Object binding:
+
+```typescript
+const app = new Hono<HonoAppType>()
+  .all("/api/forms/*", (c) => {
+    const stub = c.env.FORMS.get(c.env.FORMS.idFromName("default"));
+    return stub.fetch(c.req.raw);
+  })
+  .all("/api/mailing-list/*", (c) => {
+    const stub = c.env.MAILING_LIST.get(c.env.MAILING_LIST.idFromName("default"));
+    return stub.fetch(c.req.raw);
+  });
+```
+
+</Callout>
+
+## How It Works
+
+The request flow is:
+
+1. A request hits `/api/forms/...`
+2. Hono's catch-all route gets the Durable Object stub and calls `stub.fetch(request)`
+3. Cloudflare routes the request to the Durable Object instance
+4. The DO's `fetch` method delegates to `fragment.handler(request)`
+5. The fragment reads/writes its embedded SQLite database and returns a response
+
+Migrations run automatically in the DO constructor via `blockConcurrencyWhile`, so the schema is
+always up to date before the first request is processed.
+
+## Next Steps
+
+- [Database Adapter](/docs/fragno/for-users/database-fragments/database-adapter) — all available
+  dialects and driver configs
+- [Forms Quickstart](/docs/forms/quickstart) — Forms fragment documentation
+- [Cloudflare Durable Objects docs](https://developers.cloudflare.com/durable-objects/) — Durable
+  Objects reference

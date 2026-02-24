@@ -10,8 +10,6 @@
     "---Routes---",
     "subscriptions",
     "webhooks",
-    "admin-hooks",
-    "---Guides---",
-    "...guides"
+    "admin-hooks"
   ]
 }
