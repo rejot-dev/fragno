@@ -9,6 +9,8 @@ description: >
 
 # Fragno Integration
 
+Note: All file paths referenced in this document are relative to this `SKILL.md` file.
+
 ## Overview
 
 Fragno is a framework-agnostic, type-safe full-stack TypeScript toolkit that enables building
@@ -24,6 +26,12 @@ same search endpoint to find the right page, then fetch the full Markdown docs:
 This skill will aid you to integrate a Fragment into an application. To do this we have to mount the
 Fragment's backend routes, migrate/generate the database schema, and initialize the client-side
 hooks.
+
+## Example user request
+
+### "Integrate the Forms fragment into the application."
+
+In this case you will first start by reading the Forms fragment specific reference file.
 
 ## High-level Workflow
 
@@ -201,6 +209,32 @@ Reference: `./references/first-party-fragments/upload.md`.
 
 Docs: `curl -L "https://fragno.dev/docs/upload/quickstart" -H "accept: text/markdown"`.
 
+## Integration Guides
+
+Platform-specific guides for common deployment patterns. Read the relevant guide when the user's
+stack matches.
+
+### Cloudflare Durable Objects
+
+Use when: the user deploys to Cloudflare Workers and wants embedded SQLite storage via Durable
+Objects (no external database needed).
+
+Covers: `DurableObjectDialect` + `CloudflareDurableObjectsDriverConfig`, the dry-run/live init
+pattern, DO class boilerplate with `migrate()`, wrangler config, worker re-export, and routing
+(Hono, plain Worker, React Router).
+
+Reference: `./references/integrations/cloudflare-durable-objects.md`.
+
+### Drizzle Schema Integration
+
+Use when: the user uses Drizzle ORM and wants to merge Fragno-generated schemas with their app
+schema.
+
+Covers: `--format drizzle` CLI output, spreading Fragment schemas into the app schema, dual-schema
+`drizzle.config.ts`, and the schema update workflow.
+
+Reference: `./references/integrations/drizzle-schema-integration.md`.
+
 ## Docs lookup
 
 The Fragno documentation is available online:
@@ -217,16 +251,18 @@ The Fragno documentation is available online:
 The following reference files are available in `./references/`: Note: all reference paths are
 relative to this skill file.
 
-| File                                 | Description                                                                                     |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `server-integration.md`              | Server-side integration: Framework-specific mounting patterns for server-side API routes        |
-| `client-integration.md`              | Creating client-side integration modules and using Fragment hooks/composables in UI components  |
-| `client-customization.md`            | Customizing HTTP requests made by Fragno Fragments (authentication, CORS, interceptors)         |
-| `middleware.md`                      | Intercepting and processing requests before they reach route handlers                           |
-| `services.md`                        | Running functions defined by Fragments on the server, including calling route handlers directly |
-| `dispatchers.md`                     | Durable hooks dispatchers: background processing, retries, and platform-specific setups         |
-| `first-party-fragments/auth.md`      | Auth fragment one-pager (install, routes, client, migrations)                                   |
-| `first-party-fragments/forms.md`     | Forms fragment one-pager (schemas, hooks, admin routes, migrations)                             |
-| `first-party-fragments/stripe.md`    | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
-| `first-party-fragments/workflows.md` | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
-| `first-party-fragments/upload.md`    | Upload fragment one-pager (storage adapters, helpers, routes)                                   |
+| File                                         | Description                                                                                     |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `server-integration.md`                      | Server-side integration: Framework-specific mounting patterns for server-side API routes        |
+| `client-integration.md`                      | Creating client-side integration modules and using Fragment hooks/composables in UI components  |
+| `client-customization.md`                    | Customizing HTTP requests made by Fragno Fragments (authentication, CORS, interceptors)         |
+| `middleware.md`                              | Intercepting and processing requests before they reach route handlers                           |
+| `services.md`                                | Running functions defined by Fragments on the server, including calling route handlers directly |
+| `dispatchers.md`                             | Durable hooks dispatchers: background processing, retries, and platform-specific setups         |
+| `integrations/cloudflare-durable-objects.md` | Deploy a Fragment in a Cloudflare DO: adapter, init pattern, DO class, wrangler config, routing |
+| `integrations/drizzle-schema-integration.md` | Merge Fragno-generated Drizzle schemas with app schemas and configure Drizzle Kit               |
+| `first-party-fragments/auth.md`              | Auth fragment one-pager (install, routes, client, migrations)                                   |
+| `first-party-fragments/forms.md`             | Forms fragment one-pager (schemas, hooks, admin routes, migrations)                             |
+| `first-party-fragments/stripe.md`            | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
+| `first-party-fragments/workflows.md`         | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
+| `first-party-fragments/upload.md`            | Upload fragment one-pager (storage adapters, helpers, routes)                                   |
