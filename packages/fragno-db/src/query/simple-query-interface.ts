@@ -7,6 +7,7 @@ import type {
   DeleteBuilder,
   UpdateManyBuilder,
 } from "./unit-of-work/unit-of-work";
+import type { IUnitOfWork } from "./unit-of-work/unit-of-work";
 import type { Prettify } from "../util/types";
 import type { CursorResult } from "./cursor";
 
@@ -264,4 +265,9 @@ export interface SimpleQueryInterface<TSchema extends AnySchema, TUOWConfig = vo
    * Create a Unit of Work bound to this query engine
    */
   createUnitOfWork: (name?: string, config?: TUOWConfig) => TypedUnitOfWork<TSchema, [], unknown>;
+
+  /**
+   * Create a base Unit of Work for cross-schema operations.
+   */
+  createBaseUnitOfWork: (name?: string, config?: TUOWConfig) => IUnitOfWork;
 }

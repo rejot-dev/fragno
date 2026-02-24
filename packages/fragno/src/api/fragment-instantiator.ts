@@ -1132,16 +1132,18 @@ export function instantiateFragment<
 
   const serviceContext = contexts?.serviceContext;
   const handlerContext = contexts?.handlerContext;
+
+  // 10. Bind services to serviceContext (restricted)
+  // Services get the restricted context (for database fragments, this excludes execute methods)
+  const boundServices = serviceContext ? bindServicesToContext(services, serviceContext) : services;
   const internalData =
     definition.internalDataFactory?.({
       config,
       options,
       deps,
+      services: boundServices as BoundServices<TBaseServices & TServices>,
+      serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
     }) ?? {};
-
-  // 10. Bind services to serviceContext (restricted)
-  // Services get the restricted context (for database fragments, this excludes execute methods)
-  const boundServices = serviceContext ? bindServicesToContext(services, serviceContext) : services;
 
   // 11. Resolve routes with bound services
   const context = {

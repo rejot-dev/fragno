@@ -30,62 +30,64 @@ type TestSchema = typeof testSchema;
 
 // Mock database adapter
 function createMockAdapter(): DatabaseAdapter {
-  const mockdb = {
-    createUnitOfWork: vi.fn(() => {
-      // Create a mock restricted UOW
-      const createMockRestrictedUow = () => ({
-        forSchema: vi.fn((schema) => ({
-          schema,
-          table: vi.fn(() => ({
-            findMany: vi.fn(),
-          })),
-          restrict: vi.fn(() => createMockRestrictedUow()),
-          signalReadyForRetrieval: vi.fn(),
-          signalReadyForMutation: vi.fn(),
-          retrievalPhase: Promise.resolve([]),
-          mutationPhase: Promise.resolve(),
-        })),
-        restrict: vi.fn(() => createMockRestrictedUow()),
-        getRetrievalOperations: vi.fn(() => []),
-        getMutationOperations: vi.fn(() => []),
-        table: vi.fn(() => ({
-          findMany: vi.fn(),
-        })),
-        signalReadyForRetrieval: vi.fn(),
-        signalReadyForMutation: vi.fn(),
-        retrievalPhase: Promise.resolve([]),
-        mutationPhase: Promise.resolve(),
-      });
+  const createMockRestrictedUow = () => ({
+    forSchema: vi.fn((schema) => ({
+      schema,
+      table: vi.fn(() => ({
+        findMany: vi.fn(),
+      })),
+      restrict: vi.fn(() => createMockRestrictedUow()),
+      signalReadyForRetrieval: vi.fn(),
+      signalReadyForMutation: vi.fn(),
+      retrievalPhase: Promise.resolve([]),
+      mutationPhase: Promise.resolve(),
+    })),
+    restrict: vi.fn(() => createMockRestrictedUow()),
+    getRetrievalOperations: vi.fn(() => []),
+    getMutationOperations: vi.fn(() => []),
+    table: vi.fn(() => ({
+      findMany: vi.fn(),
+    })),
+    signalReadyForRetrieval: vi.fn(),
+    signalReadyForMutation: vi.fn(),
+    retrievalPhase: Promise.resolve([]),
+    mutationPhase: Promise.resolve(),
+  });
 
-      return {
-        forSchema: vi.fn((schema) => ({
-          schema,
-          table: vi.fn(() => ({
-            findMany: vi.fn(),
-          })),
-          restrict: vi.fn(() => createMockRestrictedUow()),
-          signalReadyForRetrieval: vi.fn(),
-          signalReadyForMutation: vi.fn(),
-          retrievalPhase: Promise.resolve([]),
-          mutationPhase: Promise.resolve(),
-        })),
-        restrict: vi.fn(() => createMockRestrictedUow()),
-        executeRetrieve: vi.fn(async () => {}),
-        executeMutations: vi.fn(async () => ({ success: true })),
-        commit: vi.fn(),
-        rollback: vi.fn(),
-        registerSchema: vi.fn(),
-        reset: vi.fn(),
-        getRetrievalOperations: vi.fn(() => []),
-        getMutationOperations: vi.fn(() => []),
-        getCreatedIds: vi.fn(() => []),
-        table: vi.fn(() => ({
-          findMany: vi.fn(),
-        })),
-        idempotencyKey: "test-nonce",
-        state: "building-retrieval",
-      };
-    }),
+  const createMockUow = () => ({
+    forSchema: vi.fn((schema) => ({
+      schema,
+      table: vi.fn(() => ({
+        findMany: vi.fn(),
+      })),
+      restrict: vi.fn(() => createMockRestrictedUow()),
+      signalReadyForRetrieval: vi.fn(),
+      signalReadyForMutation: vi.fn(),
+      retrievalPhase: Promise.resolve([]),
+      mutationPhase: Promise.resolve(),
+    })),
+    restrict: vi.fn(() => createMockRestrictedUow()),
+    executeRetrieve: vi.fn(async () => {}),
+    executeMutations: vi.fn(async () => ({ success: true })),
+    commit: vi.fn(),
+    rollback: vi.fn(),
+    registerSchema: vi.fn(),
+    reset: vi.fn(),
+    getRetrievalOperations: vi.fn(() => []),
+    getMutationOperations: vi.fn(() => []),
+    getCreatedIds: vi.fn(() => []),
+    triggerHook: vi.fn(),
+    getTriggeredHooks: vi.fn(() => []),
+    table: vi.fn(() => ({
+      findMany: vi.fn(),
+    })),
+    idempotencyKey: "test-nonce",
+    state: "building-retrieval",
+  });
+
+  const mockdb = {
+    createUnitOfWork: vi.fn(() => createMockUow()),
+    createBaseUnitOfWork: vi.fn(() => createMockUow()),
     type: "mock",
   } as unknown as SimpleQueryInterface<TestSchema>;
 
@@ -360,15 +362,15 @@ describe("db-fragment-instantiator", () => {
 
   describe("UOW isolation per request", () => {
     it("should create fresh UOW for each request", async () => {
-      let createUowCallCount = 0;
+      let createBaseUowCallCount = 0;
       const mockAdapter = createMockAdapter();
       const queryEngine = mockAdapter.createQueryEngine(testSchema, "test");
 
-      // Track how many times createUnitOfWork is called
-      const originalCreateUow = queryEngine.createUnitOfWork;
-      queryEngine.createUnitOfWork = vi.fn(() => {
-        createUowCallCount++;
-        return originalCreateUow();
+      // Track how many times createBaseUnitOfWork is called
+      const originalCreateBaseUow = queryEngine.createBaseUnitOfWork;
+      queryEngine.createBaseUnitOfWork = vi.fn(() => {
+        createBaseUowCallCount++;
+        return originalCreateBaseUow();
       });
 
       const definition = defineFragment("test-db-fragment")
@@ -400,9 +402,9 @@ describe("db-fragment-instantiator", () => {
       await fragment.handler(new Request("http://localhost/api/test"));
       await fragment.handler(new Request("http://localhost/api/test"));
 
-      // Verify that createUnitOfWork was called twice (once per request)
-      expect(createUowCallCount).toBe(2);
-      expect(queryEngine.createUnitOfWork).toHaveBeenCalledTimes(2);
+      // Verify that createBaseUnitOfWork was called twice (once per request)
+      expect(createBaseUowCallCount).toBe(2);
+      expect(queryEngine.createBaseUnitOfWork).toHaveBeenCalledTimes(2);
     });
   });
 

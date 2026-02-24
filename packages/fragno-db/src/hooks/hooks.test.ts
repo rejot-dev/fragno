@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import {
   prepareHookMutations,
@@ -17,6 +17,8 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import { FragnoId } from "../schema/create";
+
+const TEST_NS = "test";
 
 type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
   databaseAdapter: SqlAdapter;
@@ -50,13 +52,13 @@ describe("Hook System", () => {
     });
 
     {
-      const migrations = adapter.prepareMigrations(internalSchema, null);
+      const migrations = adapter.prepareMigrations(internalSchema, TEST_NS);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
     const options: OptionsWithAdapter = {
       databaseAdapter: adapter,
-      databaseNamespace: null,
+      databaseNamespace: TEST_NS,
     };
 
     internalFragment = instantiateFragment(options);
@@ -67,8 +69,11 @@ describe("Hook System", () => {
   }, 12000);
 
   describe("prepareHookMutations", () => {
+    beforeEach(() => {
+      sqliteDatabase.exec("DELETE FROM fragno_hooks_test");
+    });
+
     it("should create hook records for triggered hooks", async () => {
-      const namespace = "test-namespace";
       const hooks: HooksMap = {
         onTest: vi.fn(),
       };
@@ -87,13 +92,11 @@ describe("Hook System", () => {
             uow.triggerHook("onTest", { data: "test" });
 
             // Prepare hook mutations
-            prepareHookMutations(uow, {
-              hooks,
-              namespace,
+            prepareHookMutations(
+              uow,
               internalFragment,
-              handlerTx,
-              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            });
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            );
           })
           .execute();
       });
@@ -106,7 +109,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -122,7 +125,6 @@ describe("Hook System", () => {
     });
 
     it("should set maxAttempts to 1 when retry policy does not retry", async () => {
-      const namespace = "test-no-retry";
       const hooks: HooksMap = {
         onNoRetry: vi.fn(),
       };
@@ -134,13 +136,7 @@ describe("Hook System", () => {
 
             uow.triggerHook("onNoRetry", { data: "test" });
 
-            prepareHookMutations(uow, {
-              hooks,
-              namespace,
-              internalFragment,
-              handlerTx,
-              defaultRetryPolicy: new NoRetryPolicy(),
-            });
+            prepareHookMutations(uow, internalFragment, new NoRetryPolicy());
           })
           .execute();
       });
@@ -148,7 +144,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -159,7 +155,6 @@ describe("Hook System", () => {
     });
 
     it("should use custom retry policy from trigger options", async () => {
-      const namespace = "test-custom-retry";
       const hooks: HooksMap = {
         onCustomRetry: vi.fn(),
       };
@@ -177,13 +172,11 @@ describe("Hook System", () => {
               },
             );
 
-            prepareHookMutations(uow, {
-              hooks,
-              namespace,
+            prepareHookMutations(
+              uow,
               internalFragment,
-              handlerTx,
-              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 10 }),
-            });
+              new ExponentialBackoffRetryPolicy({ maxRetries: 10 }),
+            );
           })
           .execute();
       });
@@ -191,7 +184,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -201,7 +194,6 @@ describe("Hook System", () => {
     });
 
     it("should set nextRetryAt when processAt is in the future", async () => {
-      const namespace = "test-process-at-future";
       const hooks: HooksMap = {
         onScheduled: vi.fn(),
       };
@@ -214,13 +206,11 @@ describe("Hook System", () => {
 
             uow.triggerHook("onScheduled", { data: "test" }, { processAt: futureTime });
 
-            prepareHookMutations(uow, {
-              hooks,
-              namespace,
+            prepareHookMutations(
+              uow,
               internalFragment,
-              handlerTx,
-              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            });
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            );
           })
           .execute();
       });
@@ -228,7 +218,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -240,7 +230,6 @@ describe("Hook System", () => {
     });
 
     it("should keep processAt in the past while remaining immediately eligible", async () => {
-      const namespace = "test-process-at-past";
       const hooks: HooksMap = {
         onImmediate: vi.fn(),
       };
@@ -253,13 +242,11 @@ describe("Hook System", () => {
 
             uow.triggerHook("onImmediate", { data: "test" }, { processAt: pastTime });
 
-            prepareHookMutations(uow, {
-              hooks,
-              namespace,
+            prepareHookMutations(
+              uow,
               internalFragment,
-              handlerTx,
-              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-            });
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            );
           })
           .execute();
       });
@@ -267,7 +254,7 @@ describe("Hook System", () => {
       const events = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
-            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();

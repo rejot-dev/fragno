@@ -1,4 +1,5 @@
 import type { RequestThisContext } from "./api";
+import type { BoundServices } from "./bind-services";
 import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestContextStorage } from "./request-context-storage";
 import type { AnyRouteOrFactory } from "./route";
@@ -202,6 +203,8 @@ export interface FragmentDefinition<
     config: TConfig;
     options: TOptions;
     deps: TDeps;
+    services: BoundServices<TBaseServices & TServices>;
+    serviceDeps: TServiceDependencies;
   }) => Record<string, unknown> | void;
 
   internalRoutes?: TInternalRoutes;

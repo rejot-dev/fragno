@@ -107,6 +107,7 @@ export interface TriggerHookOptions {
  * Stored in the Unit of Work before execution.
  */
 export interface TriggeredHook {
+  namespace: string;
   hookName: string;
   payload: unknown;
   options?: TriggerHookOptions;
@@ -121,7 +122,7 @@ export type HookScheduler = {
  * Configuration for hook processing.
  */
 export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
-  hooks: THooks;
+  hooks?: THooks;
   namespace: string;
   internalFragment: InternalFragmentInstance;
   handlerTx: HookHandlerTx;
@@ -200,12 +201,16 @@ function resolveStuckProcessingTimeoutMinutes(
  * Add hook events as mutation operations to the UOW.
  * This should be called before executeMutations() so hook records are created
  * in the same transaction as the user's mutations.
+ *
+ * Each triggered hook carries its own namespace (set at trigger-time), so this
+ * function works regardless of which fragment's handler is executing. When a
+ * `config` is provided its `defaultRetryPolicy` is used as fallback.
  */
-export function prepareHookMutations<THooks extends HooksMap>(
-  uow: IUnitOfWork,
-  config: HookProcessorConfig<THooks>,
+export function prepareHookMutations(
+  uow: Pick<IUnitOfWork, "getTriggeredHooks" | "forSchema" | "idempotencyKey">,
+  internalFragment: InternalFragmentInstance,
+  defaultRetryPolicy?: RetryPolicy,
 ): void {
-  const { namespace, internalFragment, defaultRetryPolicy } = config;
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
   const triggeredHooks = uow.getTriggeredHooks();
@@ -225,7 +230,7 @@ export function prepareHookMutations<THooks extends HooksMap>(
       rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
     const nextRetryAt = processAt ?? null;
     internalUow.create("fragno_hooks", {
-      namespace,
+      namespace: hook.namespace,
       hookName: hook.hookName,
       payload: hook.payload,
       status: "pending",
@@ -247,6 +252,9 @@ export async function processHooks<THooks extends HooksMap>(
   config: HookProcessorConfig<THooks>,
 ): Promise<number> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
+  if (!hooks) {
+    throw new Error("Hook processor hooks not initialized.");
+  }
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,

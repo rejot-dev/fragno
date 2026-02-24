@@ -6,7 +6,14 @@ import {
   type DatabaseContextStorage,
 } from "../adapters";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
-import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
+import type {
+  SimpleQueryInterface,
+  TableToUpdateValues,
+  SelectResult,
+  ExtractJoinOut,
+  ExtractSelect,
+  SelectClause,
+} from "../../query/simple-query-interface";
 import { dbInterval, dbNow, type DbIntervalInput, type DbInterval } from "../../query/db-now";
 import {
   resolveInMemoryAdapterOptions,
@@ -19,7 +26,11 @@ import {
   createInMemoryUowExecutor,
   InMemoryUowDecoder,
 } from "./in-memory-uow";
-import { UnitOfWork, type UnitOfWorkConfig } from "../../query/unit-of-work/unit-of-work";
+import {
+  UnitOfWork,
+  type UnitOfWorkConfig,
+  type FindBuilder,
+} from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
 import {
   createNamingResolver,
@@ -135,7 +146,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
-    const createUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
+    const createBaseUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
       new UnitOfWork(
         compiler,
         executor,
@@ -143,36 +154,115 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
         opts?.name,
         opts?.config,
         this.#schemaNamespaceMap,
-      ).forSchema(schema);
+      );
 
-    const queryEngine = {
-      now: async () => this.options.clock.now(),
-      async find(tableName, builderFn) {
-        const uow = createUow();
+    const createUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
+      createBaseUow(opts).forSchema(schema);
+
+    async function find<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+      tableName: TableName,
+      builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+    ): Promise<
+      SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      >[]
+    >;
+    async function find<TableName extends keyof T["tables"] & string>(
+      tableName: TableName,
+    ): Promise<SelectResult<T["tables"][TableName], {}, true>[]>;
+    async function find<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+      tableName: TableName,
+      builderFn?: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+    ): Promise<
+      SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      >[]
+    > {
+      const uow = createUow();
+      if (builderFn) {
         uow.find(tableName, builderFn);
-        const [result]: unknown[][] = await uow.executeRetrieve();
-        return result ?? [];
-      },
+      } else {
+        uow.find(tableName);
+      }
+      const [result]: unknown[][] = await uow.executeRetrieve();
+      return (result ?? []) as SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      >[];
+    }
 
-      async findWithCursor(tableName, builderFn) {
-        const uow = createUow().findWithCursor(tableName, builderFn);
-        const [result] = await uow.executeRetrieve();
-        return result as CursorResult<unknown>;
-      },
+    async function findWithCursor<
+      TableName extends keyof T["tables"] & string,
+      const TBuilderResult,
+    >(
+      tableName: TableName,
+      builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+    ): Promise<
+      CursorResult<
+        SelectResult<
+          T["tables"][TableName],
+          ExtractJoinOut<TBuilderResult>,
+          Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+        >
+      >
+    > {
+      const uow = createUow().findWithCursor(tableName, builderFn);
+      const [result] = await uow.executeRetrieve();
+      return result as CursorResult<
+        SelectResult<
+          T["tables"][TableName],
+          ExtractJoinOut<TBuilderResult>,
+          Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+        >
+      >;
+    }
 
-      async findFirst(tableName, builderFn) {
-        const uow = createUow();
-        if (builderFn) {
-          uow.find(tableName, (b) => {
-            builderFn(b);
-            return b.pageSize(1);
-          });
-        } else {
-          uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
-        }
-        const [result]: unknown[][] = await uow.executeRetrieve();
-        return result?.[0] ?? null;
-      },
+    async function findFirst<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+      tableName: TableName,
+      builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+    ): Promise<SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    > | null>;
+    async function findFirst<TableName extends keyof T["tables"] & string>(
+      tableName: TableName,
+    ): Promise<SelectResult<T["tables"][TableName], {}, true> | null>;
+    async function findFirst<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+      tableName: TableName,
+      builderFn?: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+    ): Promise<SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    > | null> {
+      const uow = createUow();
+      if (builderFn) {
+        uow.find(tableName, (b) => {
+          builderFn(b);
+          return b.pageSize(1);
+        });
+      } else {
+        uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
+      }
+      const [result]: unknown[][] = await uow.executeRetrieve();
+      return (result?.[0] ?? null) as SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      > | null;
+    }
+
+    const queryEngine: SimpleQueryInterface<T, InMemoryUowConfig> = {
+      now: async () => this.options.clock.now(),
+      find,
+      findWithCursor,
+      findFirst,
 
       async create(tableName, values) {
         const uow = createUow();
@@ -253,7 +343,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
         }
       },
 
-      async delete(tableName, id, builderFn) {
+      async delete(tableName, id, builderFn?) {
         const uow = createUow();
         uow.delete(tableName, id, builderFn);
         const { success } = await uow.executeMutations();
@@ -287,7 +377,11 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
       createUnitOfWork(name, config) {
         return createUow({ name, config });
       },
-    } as SimpleQueryInterface<T, InMemoryUowConfig>;
+
+      createBaseUnitOfWork(name, config) {
+        return createBaseUow({ name, config });
+      },
+    };
     return queryEngine;
   }
 }

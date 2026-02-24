@@ -1,12 +1,13 @@
 import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
-import type { DatabaseAdapter } from "./adapters/adapters";
+import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
   AnyRouteOrFactory,
   FragnoRouteConfig,
+  BoundServices,
 } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
@@ -69,6 +70,14 @@ type RegistryResolver = {
   getInternalFragment: <TUOWConfig>(
     adapter: DatabaseAdapter<TUOWConfig>,
   ) => InternalFragmentInstance;
+};
+
+type HooksFactoryContext<TConfig> = {
+  config: TConfig;
+  options: FragnoPublicConfigWithDatabase;
+  deps: unknown;
+  services: unknown;
+  serviceDeps: unknown;
 };
 
 type AnyHttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
@@ -294,7 +303,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TInternalRoutes
   >;
   #schema: TSchema;
-  #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
+  #hooksFactory?: (context: HooksFactoryContext<TConfig>) => THooks;
   #syncRegistry?: SyncCommandRegistry;
   #registryResolver?: RegistryResolver;
 
@@ -313,10 +322,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TInternalRoutes
     >,
     schema: TSchema,
-    hooksFactory?: (context: {
-      config: TConfig;
-      options: FragnoPublicConfigWithDatabase;
-    }) => THooks,
+    hooksFactory?: (context: HooksFactoryContext<TConfig>) => THooks,
     syncRegistry?: SyncCommandRegistry,
     registryResolver?: RegistryResolver,
   ) {
@@ -527,6 +533,9 @@ export class DatabaseFragmentDefinitionBuilder<
     fn: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
+      deps: TDeps;
+      services: BoundServices<TBaseServices & TServices>;
+      serviceDeps: TServiceDependencies;
       defineHook: <TPayload>(
         hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
       ) => HookFn<TPayload>;
@@ -551,13 +560,13 @@ export class DatabaseFragmentDefinitionBuilder<
     };
 
     // Store the hooks factory - it will be called in build() with config/options
-    const hooksFactory = (context: {
-      config: TConfig;
-      options: FragnoPublicConfigWithDatabase;
-    }) => {
+    const hooksFactory = (context: HooksFactoryContext<TConfig>) => {
       return fn({
         config: context.config,
         options: context.options,
+        deps: context.deps as TDeps,
+        services: context.services as BoundServices<TBaseServices & TServices>,
+        serviceDeps: context.serviceDeps as TServiceDependencies,
         defineHook,
       });
     };
@@ -791,8 +800,7 @@ export class DatabaseFragmentDefinitionBuilder<
         // Create database context - needed here to create the UOW
         const dbContextForStorage = createDatabaseContext(options, this.#schema);
 
-        // Create a new Unit of Work for this request
-        const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork();
+        const uow = dbContextForStorage.db.createBaseUnitOfWork();
 
         return { uow };
       },
@@ -805,6 +813,8 @@ export class DatabaseFragmentDefinitionBuilder<
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
       deps: TDeps;
+      services?: BoundServices<TBaseServices & TServices>;
+      serviceDeps?: TServiceDependencies;
     }) => {
       if (!this.#hooksFactory) {
         return undefined;
@@ -815,6 +825,15 @@ export class DatabaseFragmentDefinitionBuilder<
           : undefined;
       const cachedHooksConfig = depsKey ? hooksConfigCache.get(depsKey) : undefined;
       if (cachedHooksConfig) {
+        if (!cachedHooksConfig.hooks && context.services) {
+          cachedHooksConfig.hooks = this.#hooksFactory({
+            config: context.config,
+            options: context.options,
+            deps: context.deps,
+            services: context.services,
+            serviceDeps: context.serviceDeps ?? ({} as TServiceDependencies),
+          });
+        }
         return cachedHooksConfig;
       }
 
@@ -832,27 +851,44 @@ export class DatabaseFragmentDefinitionBuilder<
         throw new Error("Adapter registry resolver is missing for durable hooks.");
       }
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
+      const hookContextStorage = dbContextForHooks.databaseAdapter.contextStorage;
       const hooksConfig: HookProcessorConfig<THooks> = {
-        hooks: this.#hooksFactory(context),
+        hooks: context.services
+          ? this.#hooksFactory({
+              config: context.config,
+              options: context.options,
+              deps: context.deps,
+              services: context.services,
+              serviceDeps: context.serviceDeps ?? ({} as TServiceDependencies),
+            })
+          : undefined,
         namespace: namespaceKey,
         internalFragment: registryResolver.getInternalFragment(hookAdapter),
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
           const planMode = execOptions?.planMode ?? false;
-          return createHandlerTxBuilder<THooks>({
+          let storageRef: DatabaseContextStorage | null = null;
+          const builder = createHandlerTxBuilder<THooks>({
             ...execOptions,
             createUnitOfWork: () => {
-              const uow = dbContextForHooks.db.createUnitOfWork();
-              uow.registerSchema(
+              const baseUow = dbContextForHooks.db.createBaseUnitOfWork();
+              baseUow.registerSchema(
                 hooksConfig.internalFragment.$internal.deps.schema,
                 hooksConfig.internalFragment.$internal.deps.namespace,
               );
-              return uow;
+              if (storageRef) {
+                storageRef.uow = baseUow;
+              }
+              return baseUow;
             },
             onBeforeMutate: (uow) => {
               if (!planMode) {
-                prepareHookMutations(uow, hooksConfig);
+                prepareHookMutations(
+                  uow,
+                  hooksConfig.internalFragment,
+                  hooksConfig.defaultRetryPolicy,
+                );
               }
               if (userOnBeforeMutate) {
                 userOnBeforeMutate(uow);
@@ -869,6 +905,16 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             },
           });
+          const execute = builder.execute.bind(builder);
+          builder.execute = () =>
+            hookContextStorage.runWithInitializer(
+              () => {
+                storageRef = { uow: null as unknown as DatabaseContextStorage["uow"] };
+                return storageRef;
+              },
+              () => execute(),
+            );
+          return builder;
         },
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
@@ -937,8 +983,8 @@ export class DatabaseFragmentDefinitionBuilder<
             return currentStorage.uow;
           },
           onBeforeMutate: (uow) => {
-            if (hooksConfig && !planMode) {
-              prepareHookMutations(uow, hooksConfig);
+            if (internalFragment && !planMode) {
+              prepareHookMutations(uow, internalFragment, hooksConfig?.defaultRetryPolicy);
             }
             if (userOnBeforeMutate) {
               userOnBeforeMutate(uow);
@@ -999,11 +1045,13 @@ export class DatabaseFragmentDefinitionBuilder<
     // Build the final definition
     const finalDef = builderWithContext.build();
     if (this.#hooksFactory) {
-      finalDef.internalDataFactory = ({ config, options, deps }) => ({
+      finalDef.internalDataFactory = ({ config, options, deps, services, serviceDeps }) => ({
         durableHooks: createHooksConfig({
           config: config as TConfig,
           options: options as FragnoPublicConfigWithDatabase,
           deps: deps as TDeps,
+          services: services as BoundServices<TBaseServices & TServices>,
+          serviceDeps: serviceDeps as TServiceDependencies,
         }),
       });
     }

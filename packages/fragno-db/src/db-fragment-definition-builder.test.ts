@@ -12,7 +12,8 @@ import {
 import { withDatabase } from "./with-database";
 import { schema, column, idColumn } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
-import type { DatabaseAdapter } from "./adapters/adapters";
+import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
+import type { HookFn } from "./hooks/hooks";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
@@ -37,14 +38,17 @@ type TestSchema = typeof testSchema;
 
 // Mock database adapter
 function createMockAdapter(): DatabaseAdapter {
+  const createMockUow = () => ({
+    forSchema: vi.fn(),
+    executeRetrieve: vi.fn(),
+    executeMutations: vi.fn(),
+    registerSchema: vi.fn(),
+    reset: vi.fn(),
+  });
+
   const mockdb = {
-    createUnitOfWork: vi.fn(() => ({
-      forSchema: vi.fn(),
-      executeRetrieve: vi.fn(),
-      executeMutations: vi.fn(),
-      registerSchema: vi.fn(),
-      reset: vi.fn(),
-    })),
+    createUnitOfWork: vi.fn(() => createMockUow()),
+    createBaseUnitOfWork: vi.fn(() => createMockUow()),
   } as unknown as SimpleQueryInterface<TestSchema>;
 
   return {
@@ -934,19 +938,29 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
         }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
+      } as unknown as RequestContextStorage<DatabaseContextStorage>;
 
       // Spy on createServiceTxBuilder
       const createServiceTxBuilderSpy = vi.spyOn(executeUnitOfWork, "createServiceTxBuilder");
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const deps = {} as any;
 
       // Get the contexts which includes serviceTx
       const contexts = definition.createThisContext!({
         config: {},
         options: { databaseAdapter: mockAdapter },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        deps: {} as any,
+        deps,
         storage: mockStorage,
+      });
+
+      // Initialize hooks with services so serviceTx receives the hooks map.
+      definition.internalDataFactory?.({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        services: {} as Record<string, never>,
+        serviceDeps: {} as Record<string, never>,
       });
 
       // Call serviceTx - this should pass hooks to createServiceTxBuilder
@@ -962,6 +976,49 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(callArgs[2]).toHaveProperty("onUserCreated");
 
       createServiceTxBuilderSpy.mockRestore();
+    });
+  });
+
+  describe("provideHooks services access", () => {
+    it("should provide bound services to hooks factory", () => {
+      const mockAdapter = createMockAdapter();
+      let observed: string | null = null;
+
+      type TestHooks = {
+        onPing: HookFn;
+      };
+
+      const definition = defineFragment("db-frag-hooks-services")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(() => ({
+          ping: () => "pong",
+        }))
+        .provideHooks<TestHooks>(({ defineHook, services }) => {
+          observed = services.ping();
+          return {
+            onPing: defineHook(async function () {
+              // no-op
+            }),
+          };
+        })
+        .build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const internalData = definition.internalDataFactory?.({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        services: { ping: () => "pong" },
+        serviceDeps: {},
+      }) as { durableHooks?: { hooks?: Record<string, unknown> } } | undefined;
+
+      expect(observed).toBe("pong");
+      expect(internalData?.durableHooks?.hooks).toBeDefined();
+      expect(internalData?.durableHooks?.hooks).toHaveProperty("onPing");
     });
   });
 
