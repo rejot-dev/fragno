@@ -1,13 +1,22 @@
-import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
+import type {
+  SimpleQueryInterface,
+  TableToUpdateValues,
+  SelectResult,
+  ExtractJoinOut,
+  ExtractSelect,
+  SelectClause,
+} from "../../query/simple-query-interface";
 import { dbInterval, dbNow, type DbInterval, type DbIntervalInput } from "../../query/db-now";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
+  FindBuilder,
   UOWCompiler,
   UOWDecoder,
   UOWExecutor,
   UOWInstrumentation,
   ValidIndexName,
+  UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
@@ -143,59 +152,140 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
 ): SimpleQueryInterface<T, UnitOfWorkConfig> {
   const { compiler, executor, decoder, uowConfig, schemaNamespaceMap } = factory;
 
-  function createUOW(opts: { name?: string; config?: UnitOfWorkConfig }) {
-    const { onQuery, ...restUowConfig } = opts.config ?? {};
+  function normalizeUowConfig(config?: UnitOfWorkConfig): BaseUnitOfWorkConfig | undefined {
+    if (!config) {
+      return undefined;
+    }
+    const { onQuery, ...restUowConfig } = config;
+    return {
+      ...restUowConfig,
+      onQuery: onQuery
+        ? (query) => {
+            // Extract the actual query from CompiledMutation if needed
+            const actualQuery = isCompiledMutation(query) ? query.query : (query as CompiledQuery);
+            onQuery(actualQuery);
+          }
+        : undefined,
+    };
+  }
 
+  function createBaseUow(opts: { name?: string; config?: UnitOfWorkConfig }) {
     return new UnitOfWork(
       compiler,
       executor,
       decoder,
       opts.name,
-      {
-        ...restUowConfig,
-        onQuery: onQuery
-          ? (query) => {
-              // Extract the actual query from CompiledMutation if needed
-              const actualQuery = isCompiledMutation(query)
-                ? query.query
-                : (query as CompiledQuery);
-              onQuery(actualQuery);
-            }
-          : undefined,
-      },
+      normalizeUowConfig(opts.config),
       schemaNamespaceMap,
-    ).forSchema(schema);
+    );
   }
 
-  return {
-    async find(tableName, builderFn) {
-      const uow = createUOW({ config: uowConfig });
+  function createUOW(opts: { name?: string; config?: UnitOfWorkConfig }) {
+    return createBaseUow(opts).forSchema(schema);
+  }
+
+  async function find<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+    tableName: TableName,
+    builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+  ): Promise<
+    SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    >[]
+  >;
+  async function find<TableName extends keyof T["tables"] & string>(
+    tableName: TableName,
+  ): Promise<SelectResult<T["tables"][TableName], {}, true>[]>;
+  async function find<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+    tableName: TableName,
+    builderFn?: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+  ): Promise<
+    SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    >[]
+  > {
+    const uow = createUOW({ config: uowConfig });
+    if (builderFn) {
       uow.find(tableName, builderFn);
-      const [result]: unknown[][] = await uow.executeRetrieve();
-      return result ?? [];
-    },
+    } else {
+      uow.find(tableName);
+    }
+    const [result]: unknown[][] = await uow.executeRetrieve();
+    return (result ?? []) as SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    >[];
+  }
 
-    async findWithCursor(tableName, builderFn) {
-      const uow = createUOW({ config: uowConfig }).findWithCursor(tableName, builderFn);
-      const [result] = await uow.executeRetrieve();
-      // Result from findWithCursor is always a CursorResult - the UOW decoder handles the conversion
-      return result as CursorResult<unknown>;
-    },
+  async function findWithCursor<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+    tableName: TableName,
+    builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+  ): Promise<
+    CursorResult<
+      SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      >
+    >
+  > {
+    const uow = createUOW({ config: uowConfig }).findWithCursor(tableName, builderFn);
+    const [result] = await uow.executeRetrieve();
+    // Result from findWithCursor is always a CursorResult - the UOW decoder handles the conversion
+    return result as CursorResult<
+      SelectResult<
+        T["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+      >
+    >;
+  }
 
-    async findFirst(tableName, builderFn) {
-      const uow = createUOW({ config: uowConfig });
-      if (builderFn) {
-        uow.find(tableName, (b) => {
-          builderFn(b);
-          return b.pageSize(1);
-        });
-      } else {
-        uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
-      }
-      // executeRetrieve runs an array of `find` operation results, which each return an array of rows
-      const [result]: unknown[][] = await uow.executeRetrieve();
-      return result?.[0] ?? null;
-    },
+  async function findFirst<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+    tableName: TableName,
+    builderFn: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+  ): Promise<SelectResult<
+    T["tables"][TableName],
+    ExtractJoinOut<TBuilderResult>,
+    Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+  > | null>;
+  async function findFirst<TableName extends keyof T["tables"] & string>(
+    tableName: TableName,
+  ): Promise<SelectResult<T["tables"][TableName], {}, true> | null>;
+  async function findFirst<TableName extends keyof T["tables"] & string, const TBuilderResult>(
+    tableName: TableName,
+    builderFn?: (builder: Omit<FindBuilder<T["tables"][TableName]>, "build">) => TBuilderResult,
+  ): Promise<SelectResult<
+    T["tables"][TableName],
+    ExtractJoinOut<TBuilderResult>,
+    Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+  > | null> {
+    const uow = createUOW({ config: uowConfig });
+    if (builderFn) {
+      uow.find(tableName, (b) => {
+        builderFn(b);
+        return b.pageSize(1);
+      });
+    } else {
+      uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
+    }
+    // executeRetrieve runs an array of `find` operation results, which each return an array of rows
+    const [result]: unknown[][] = await uow.executeRetrieve();
+    return (result?.[0] ?? null) as SelectResult<
+      T["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
+    > | null;
+  }
+
+  const queryEngine: SimpleQueryInterface<T, UnitOfWorkConfig> = {
+    find,
+    findWithCursor,
+    findFirst,
 
     async create(tableName, values) {
       const uow = createUOW({ config: uowConfig });
@@ -282,7 +372,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
       }
     },
 
-    async delete(tableName, id, builderFn) {
+    async delete(tableName, id, builderFn?) {
       const uow = createUOW({ config: uowConfig });
       uow.delete(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
@@ -322,5 +412,16 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
         },
       });
     },
-  } as SimpleQueryInterface<T, UnitOfWorkConfig>;
+
+    createBaseUnitOfWork(name, nestedUowConfig) {
+      return createBaseUow({
+        name,
+        config: {
+          ...uowConfig,
+          ...nestedUowConfig,
+        },
+      });
+    },
+  };
+  return queryEngine;
 }

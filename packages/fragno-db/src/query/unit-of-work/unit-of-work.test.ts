@@ -1909,3 +1909,28 @@ describe("findFirst convenience method", () => {
     expect(ops[0]?.indexName).toBe("_primary");
   });
 });
+
+describe("triggerHook namespace resolution", () => {
+  it("should fall back to schema name when namespace is null", () => {
+    const hooksSchema = schema("hooks_test", (s) =>
+      s.addTable("events", (t) => t.addColumn("id", idColumn())),
+    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    uow.registerSchema(hooksSchema, null);
+
+    const hooks = {
+      onTest: (_payload: { value: string }) => {},
+    };
+
+    const typedUow = uow.forSchema(hooksSchema, hooks);
+    typedUow.triggerHook("onTest", { value: "ok" });
+
+    const triggeredHooks = uow.getTriggeredHooks();
+    expect(triggeredHooks).toHaveLength(1);
+    expect(triggeredHooks[0]).toMatchObject({
+      namespace: hooksSchema.name,
+      hookName: "onTest",
+      payload: { value: "ok" },
+    });
+  });
+});

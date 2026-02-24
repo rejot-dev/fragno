@@ -958,8 +958,14 @@ export interface IUnitOfWork {
   // Schema registration (for cross-fragment operations like hooks)
   registerSchema(schema: AnySchema, namespace: string | null): void;
 
-  // Hook triggering (schema-agnostic, string-based hook names)
-  triggerHook(hookName: string, payload: unknown, options?: TriggerHookOptions): void;
+  // Hook triggering (schema-agnostic, string-based hook names).
+  // Namespace identifies which fragment/dispatcher owns this hook.
+  triggerHook(
+    namespace: string,
+    hookName: string,
+    payload: unknown,
+    options?: TriggerHookOptions,
+  ): void;
 
   getTriggeredHooks(): readonly TriggeredHook[];
 }
@@ -1498,8 +1504,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   /**
    * Trigger a hook to be executed after the transaction commits.
    */
-  triggerHook(hookName: string, payload: unknown, options?: TriggerHookOptions): void {
+  triggerHook(
+    namespace: string,
+    hookName: string,
+    payload: unknown,
+    options?: TriggerHookOptions,
+  ): void {
     this.#triggeredHooks.push({
+      namespace,
       hookName,
       payload,
       options,
@@ -1856,8 +1868,7 @@ export class TypedUnitOfWork<
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
   const THooks extends HooksMap = {},
-> implements IUnitOfWork
-{
+> {
   #schema: TSchema;
   #namespace?: string | null;
   #uow: UnitOfWork<TRawInput>;
@@ -1870,6 +1881,9 @@ export class TypedUnitOfWork<
     this.#uow = uow;
   }
 
+  /**
+   * Type-only access to retrieval results for this typed UOW.
+   */
   get $results(): Prettify<TRetrievalResults> {
     throw new Error("type only");
   }
@@ -2333,15 +2347,27 @@ export class TypedUnitOfWork<
     throw new Error("type only");
   }
 
+  get namespace(): string | null | undefined {
+    return this.#namespace;
+  }
+
   /**
    * Trigger a hook to be executed after the transaction commits.
+   * The namespace is automatically injected from this typed view's schema registration.
    */
   triggerHook<K extends keyof THooks & string>(
     hookName: K,
     payload: HookPayload<THooks[K]>,
     options?: TriggerHookOptions,
   ): void {
-    this.#uow.triggerHook(hookName, payload, options);
+    if (this.#namespace === undefined) {
+      throw new Error(
+        "Cannot trigger hook: schema has no registered namespace. " +
+          "Ensure the schema is registered with a namespace via registerSchema().",
+      );
+    }
+    const hookNamespace = this.#namespace ?? this.#schema.name;
+    this.#uow.triggerHook(hookNamespace, hookName, payload, options);
   }
 
   getTriggeredHooks(): ReadonlyArray<TriggeredHook> {

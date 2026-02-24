@@ -13,6 +13,10 @@ import {
   isTxResult,
   ConcurrencyConflictError,
 } from "./execute-unit-of-work";
+import { prepareHookMutations } from "../../hooks/hooks";
+import { InMemoryAdapter } from "../../adapters/in-memory/in-memory-adapter";
+import { internalSchema } from "../../fragments/internal-fragment.schema";
+import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
 import {
   ExponentialBackoffRetryPolicy,
   LinearBackoffRetryPolicy,
@@ -30,6 +34,42 @@ const testSchema = schema("test", (s) =>
       .createIndex("idx_email", ["email"], { unique: true }),
   ),
 );
+
+function setupCrossSchemaHookTest() {
+  const adapter = new InMemoryAdapter();
+  const schemaA = schema("alpha", (s) =>
+    s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("label", "string")),
+  );
+  const schemaB = schema("beta", (s) =>
+    s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("label", "string")),
+  );
+  const namespaceA = "alpha";
+  const namespaceB = "beta";
+
+  const queryA = adapter.createQueryEngine(schemaA, namespaceA);
+  const queryB = adapter.createQueryEngine(schemaB, namespaceB);
+  const internalQuery = adapter.createQueryEngine(internalSchema, null);
+
+  const internalFragment = {
+    $internal: {
+      deps: {
+        schema: internalSchema,
+        namespace: null,
+      },
+    },
+  } as InternalFragmentInstance;
+
+  return {
+    schemaA,
+    schemaB,
+    namespaceA,
+    namespaceB,
+    queryA,
+    queryB,
+    internalQuery,
+    internalFragment,
+  };
+}
 
 describe("AwaitedPromisesInObject type tests", () => {
   it("should unwrap promises in objects", () => {
@@ -941,6 +981,88 @@ describe("Unified Tx API", () => {
       ).rejects.toThrow("Transaction execution aborted");
     });
 
+    it("should propagate error when mutate callback rejects a duplicate via retrieve guard", async () => {
+      const compiler = createMockCompiler();
+      const existingUser = {
+        id: FragnoId.fromExternal("existing-1", 1),
+        email: "alice@example.com",
+        name: "Alice",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[existingUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+
+      const createIfNotExists = (email: string) => {
+        return createServiceTxBuilder(testSchema, currentUow!)
+          .retrieve((uow) =>
+            uow.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
+          )
+          .mutate(({ uow, retrieveResult: [users] }) => {
+            if (users.length > 0) {
+              throw new Error("ALREADY_EXISTS");
+            }
+            const id = uow.create("users", { email, name: "New", balance: 0 });
+            return { id };
+          })
+          .build();
+      };
+
+      await expect(
+        createHandlerTxBuilder({
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+        })
+          .withServiceCalls(() => [createIfNotExists("alice@example.com")])
+          .transform(({ serviceResult: [result] }) => result)
+          .execute(),
+      ).rejects.toThrow("ALREADY_EXISTS");
+    });
+
+    it("should succeed when retrieve guard finds no existing record", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+
+      const createIfNotExists = (email: string) => {
+        return createServiceTxBuilder(testSchema, currentUow!)
+          .retrieve((uow) =>
+            uow.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
+          )
+          .mutate(({ uow, retrieveResult: [users] }) => {
+            if (users.length > 0) {
+              throw new Error("ALREADY_EXISTS");
+            }
+            const id = uow.create("users", { email, name: "New", balance: 0 });
+            return { id };
+          })
+          .build();
+      };
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .withServiceCalls(() => [createIfNotExists("new@example.com")])
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+
+      expect(result.id).toBeInstanceOf(FragnoId);
+    });
+
     it("should pass serviceResult to transform callback with final results", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
@@ -1577,6 +1699,7 @@ describe("Unified Tx API", () => {
       await createHandlerTxBuilder({
         createUnitOfWork: () => {
           currentUow = createUnitOfWork(compiler, executor, decoder);
+          currentUow.registerSchema(testSchema, "test");
           return currentUow;
         },
       })
@@ -1646,6 +1769,7 @@ describe("Unified Tx API", () => {
       await createHandlerTxBuilder({
         createUnitOfWork: () => {
           currentUow = createUnitOfWork(compiler, executor, decoder);
+          currentUow.registerSchema(testSchema, "test");
           return currentUow;
         },
       })
@@ -1660,6 +1784,122 @@ describe("Unified Tx API", () => {
         hookName: "onUserUpdated",
         payload: { userId: expect.any(String) },
       });
+    });
+
+    it("should create hook records when handler uses schema A and service uses schema B", async () => {
+      const { schemaA, schemaB, namespaceA, namespaceB, queryA, internalQuery, internalFragment } =
+        setupCrossSchemaHookTest();
+
+      type HooksA = {
+        onAlpha: (payload: { value: string }) => void;
+      };
+      type HooksB = {
+        onBeta: (payload: { value: string }) => void;
+      };
+
+      const hooksA: HooksA = {
+        onAlpha: (_payload) => {},
+      };
+      const hooksB: HooksB = {
+        onBeta: (_payload) => {},
+      };
+
+      let currentUow: IUnitOfWork | null = null;
+
+      const serviceInSchemaB = (value: string) =>
+        createServiceTxBuilder(schemaB, currentUow!, hooksB)
+          .mutate(({ uow }) => {
+            uow.create("items", { label: value });
+            uow.triggerHook("onBeta", { value });
+          })
+          .build();
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = queryA.createBaseUnitOfWork();
+          currentUow.registerSchema(schemaA, namespaceA);
+          currentUow.registerSchema(schemaB, namespaceB);
+          currentUow.registerSchema(internalSchema, null);
+          return currentUow;
+        },
+        onBeforeMutate: (uow) => {
+          prepareHookMutations(uow, internalFragment);
+        },
+      })
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(schemaA, hooksA);
+          uow.create("items", { label: "alpha" });
+          uow.triggerHook("onAlpha", { value: "alpha" });
+        })
+        .withServiceCalls(() => [serviceInSchemaB("beta")] as const)
+        .execute();
+
+      const hooks = await internalQuery.find("fragno_hooks");
+      expect(hooks).toHaveLength(2);
+      expect(hooks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ hookName: "onAlpha", namespace: namespaceA }),
+          expect.objectContaining({ hookName: "onBeta", namespace: namespaceB }),
+        ]),
+      );
+    });
+
+    it("should create hook records when handler uses schema B and service uses schema A", async () => {
+      const { schemaA, schemaB, namespaceA, namespaceB, queryB, internalQuery, internalFragment } =
+        setupCrossSchemaHookTest();
+
+      type HooksA = {
+        onAlpha: (payload: { value: string }) => void;
+      };
+      type HooksB = {
+        onBeta: (payload: { value: string }) => void;
+      };
+
+      const hooksA: HooksA = {
+        onAlpha: (_payload) => {},
+      };
+      const hooksB: HooksB = {
+        onBeta: (_payload) => {},
+      };
+
+      let currentUow: IUnitOfWork | null = null;
+
+      const serviceInSchemaA = (value: string) =>
+        createServiceTxBuilder(schemaA, currentUow!, hooksA)
+          .mutate(({ uow }) => {
+            uow.create("items", { label: value });
+            uow.triggerHook("onAlpha", { value });
+          })
+          .build();
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = queryB.createBaseUnitOfWork();
+          currentUow.registerSchema(schemaA, namespaceA);
+          currentUow.registerSchema(schemaB, namespaceB);
+          currentUow.registerSchema(internalSchema, null);
+          return currentUow;
+        },
+        onBeforeMutate: (uow) => {
+          prepareHookMutations(uow, internalFragment);
+        },
+      })
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(schemaB, hooksB);
+          uow.create("items", { label: "beta" });
+          uow.triggerHook("onBeta", { value: "beta" });
+        })
+        .withServiceCalls(() => [serviceInSchemaA("alpha")] as const)
+        .execute();
+
+      const hooks = await internalQuery.find("fragno_hooks");
+      expect(hooks).toHaveLength(2);
+      expect(hooks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ hookName: "onAlpha", namespace: namespaceA }),
+          expect.objectContaining({ hookName: "onBeta", namespace: namespaceB }),
+        ]),
+      );
     });
   });
 
