@@ -295,7 +295,9 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test-db"."users" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "test-db"."users" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+
+      create index "idx_users_shard" on "test-db"."users" ("_shard");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);

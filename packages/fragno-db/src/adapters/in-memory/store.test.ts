@@ -35,8 +35,8 @@ describe("in-memory store", () => {
     expect(postsTable?.rows.size).toBe(0);
     expect(usersTable?.nextInternalId).toBe(1n);
     expect(postsTable?.nextInternalId).toBe(1n);
-    expect(usersTable?.indexes.size).toBe(2);
-    expect(postsTable?.indexes.size).toBe(2);
+    expect(usersTable?.indexes.size).toBe(3);
+    expect(postsTable?.indexes.size).toBe(3);
     expect(usersTable?.indexes.has("_primary")).toBe(true);
     expect(postsTable?.indexes.has("_primary")).toBe(true);
 

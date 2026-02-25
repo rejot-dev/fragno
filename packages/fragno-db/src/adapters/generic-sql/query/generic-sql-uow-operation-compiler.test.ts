@@ -230,7 +230,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.sql).toMatchInlineSnapshot(
-      `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+      `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
     );
   });
 
@@ -251,7 +251,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.query.sql).toMatchInlineSnapshot(
-      `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+      `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard""`,
     );
     expect(result!.expectedAffectedRows).toBeNull();
   });
@@ -348,7 +348,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard""`,
       );
     });
 
@@ -368,7 +368,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email") values (?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email") values (?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard""`,
       );
     });
   });
@@ -391,7 +391,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, (select "_internalId" from "users" where "id" = ? limit ?)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, (select "_internalId" from "users" where "id" = ? limit ?)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard""`,
       );
     });
 
@@ -414,7 +414,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       // Should not have nested SELECT for the userId value
       expect(result!.query.sql).not.toMatch(/\(select.*from.*users/i);
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, ?) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, ?) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard""`,
       );
     });
   });
@@ -523,7 +523,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -545,7 +545,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."age" > ? limit ?"`,
       );
     });
 
@@ -567,7 +567,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."age" >= ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and "users"."age" >= ?) limit ?"`,
       );
     });
   });
@@ -589,7 +589,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "products" ("productId", "name", "price") values (?, ?, ?) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`,
+        `"insert into "products" ("productId", "name", "price") values (?, ?, ?) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version", "products"."_shard" as "_shard""`,
       );
     });
 
@@ -610,7 +610,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" limit ?"`,
+        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version", "products"."_shard" as "_shard" from "products" limit ?"`,
       );
     });
 
@@ -632,7 +632,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" where "products"."productId" = ? limit ?"`,
+        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version", "products"."_shard" as "_shard" from "products" where "products"."productId" = ? limit ?"`,
       );
     });
 
@@ -674,7 +674,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version" from "orders" where "orders"."orderId" = ? limit ?"`,
+        `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version", "orders"."_shard" as "_shard" from "orders" where "orders"."orderId" = ? limit ?"`,
       );
     });
   });
@@ -697,7 +697,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -718,7 +718,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
   });
@@ -741,7 +741,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -763,7 +763,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."id" = ? limit ?"`,
       );
     });
   });
@@ -786,7 +786,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" desc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" order by "users"."id" desc"`,
       );
     });
 
@@ -807,7 +807,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" order by "users"."name" asc"`,
       );
     });
 
@@ -830,7 +830,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? order by "users"."age" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."age" > ? order by "users"."age" desc limit ?"`,
       );
     });
   });
@@ -861,7 +861,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" > ? order by "users"."name" asc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Alice", 10]);
     });
@@ -891,7 +891,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" > ? order by "users"."name" desc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Bob", 10]);
     });
@@ -922,7 +922,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", 5]);
     });
@@ -953,7 +953,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" < ? or ("users"."name" = ? and "users"."createdAt" < ?) or ("users"."name" = ? and "users"."createdAt" = ? and "users"."id" < ?)) order by "users"."name" desc, "users"."createdAt" desc, "users"."id" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."name" < ? or ("users"."name" = ? and "users"."createdAt" < ?) or ("users"."name" = ? and "users"."createdAt" = ? and "users"."id" < ?)) order by "users"."name" desc, "users"."createdAt" desc, "users"."id" desc limit ?"`,
       );
       expect(result!.parameters).toEqual([
         "Alice",
@@ -986,7 +986,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."age" > ? and "users"."isActive" = ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."age" > ? and "users"."isActive" = ?) limit ?"`,
       );
     });
 
@@ -1008,7 +1008,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" = ? or "users"."name" = ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."name" = ? or "users"."name" = ?) limit ?"`,
       );
       expect(result!.parameters).toEqual(["Alice", "Bob", 10]);
     });
@@ -1035,7 +1035,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and ("users"."name" = ? or "users"."name" = ?)) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and ("users"."name" = ? or "users"."name" = ?)) limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", "Bob", 10]);
     });
@@ -1079,7 +1079,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -1120,7 +1120,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" like ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."email" like ? limit ?"`,
       );
       expect(result!.parameters).toEqual(["%@example.com%", 10]);
     });
@@ -1143,7 +1143,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" like ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" like ? limit ?"`,
       );
       expect(result!.parameters).toEqual(["John%", 10]);
     });
@@ -1174,7 +1174,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."email" as "author:email", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+        `"select "author"."name" as "author:name", "author"."email" as "author:email", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
@@ -1202,7 +1202,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "invitedUser"."email" as "invitedUser:email", "invitedUser"."_internalId" as "invitedUser:_internalId", "invitedUser"."_version" as "invitedUser:_version", "invitations"."id" as "id", "invitations"."_internalId" as "_internalId", "invitations"."_version" as "_version" from "invitations" left join "users" as "invitedUser" on "invitations"."email" = "invitedUser"."email""`,
+        `"select "invitedUser"."email" as "invitedUser:email", "invitedUser"."_internalId" as "invitedUser:_internalId", "invitedUser"."_version" as "invitedUser:_version", "invitedUser"."_shard" as "invitedUser:_shard", "invitations"."id" as "id", "invitations"."_internalId" as "_internalId", "invitations"."_version" as "_version", "invitations"."_shard" as "_shard" from "invitations" left join "users" as "invitedUser" on "invitations"."email" = "invitedUser"."email""`,
       );
     });
 
@@ -1230,7 +1230,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "memberships"."id" as "memberships:id", "memberships"."_internalId" as "memberships:_internalId", "memberships"."_version" as "memberships:_version", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" left join "memberships" as "memberships" on "users"."_internalId" = "memberships"."userId""`,
+        `"select "memberships"."id" as "memberships:id", "memberships"."_internalId" as "memberships:_internalId", "memberships"."_version" as "memberships:_version", "memberships"."_shard" as "memberships:_shard", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" left join "memberships" as "memberships" on "users"."_internalId" = "memberships"."userId""`,
       );
     });
 
@@ -1258,7 +1258,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."email" as "author:email", "author"."age" as "author:age", "author"."isActive" as "author:isActive", "author"."createdAt" as "author:createdAt", "author"."invitedBy" as "author:invitedBy", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."userId" as "userId", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."email" as "author:email", "author"."age" as "author:age", "author"."isActive" as "author:isActive", "author"."createdAt" as "author:createdAt", "author"."invitedBy" as "author:invitedBy", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."userId" as "userId", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
@@ -1292,7 +1292,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
+        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post"."_shard" as "post:_shard", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version", "comments"."_shard" as "_shard" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
       );
     });
 
@@ -1320,7 +1320,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "inviter"."name" as "inviter:name", "inviter"."email" as "inviter:email", "inviter"."_internalId" as "inviter:_internalId", "inviter"."_version" as "inviter:_version", "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" left join "users" as "inviter" on "users"."invitedBy" = "inviter"."_internalId""`,
+        `"select "inviter"."name" as "inviter:name", "inviter"."email" as "inviter:email", "inviter"."_internalId" as "inviter:_internalId", "inviter"."_version" as "inviter:_version", "inviter"."_shard" as "inviter:_shard", "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" left join "users" as "inviter" on "users"."invitedBy" = "inviter"."_internalId""`,
       );
     });
 
@@ -1355,7 +1355,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."name" like ?)"`,
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."name" like ?)"`,
       );
       expect(result!.parameters).toEqual(["%john%"]);
     });
@@ -1402,7 +1402,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and ("author"."name" like ? and "author"."isActive" = ?))"`,
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and ("author"."name" like ? and "author"."isActive" = ?))"`,
       );
     });
 
@@ -1430,7 +1430,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
@@ -1458,7 +1458,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."email" as "author:email", "author"."age" as "author:age", "author"."isActive" as "author:isActive", "author"."createdAt" as "author:createdAt", "author"."invitedBy" as "author:invitedBy", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."email" as "author:email", "author"."age" as "author:age", "author"."isActive" as "author:isActive", "author"."createdAt" as "author:createdAt", "author"."invitedBy" as "author:invitedBy", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
@@ -1493,7 +1493,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."id" = ?)"`,
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version", "posts"."_shard" as "_shard" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."id" = ?)"`,
       );
       expect(result!.parameters).toEqual(["user-123"]);
     });
@@ -1528,7 +1528,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
+        `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post"."_shard" as "post:_shard", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author"."_shard" as "author:_shard", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version", "comments"."_shard" as "_shard" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
       );
     });
 
@@ -1562,7 +1562,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "tag"."name" as "tag:name", "tag"."_internalId" as "tag:_internalId", "tag"."_version" as "tag:_version", "post_tags"."id" as "id", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "tags" as "tag" on "post_tags"."tagId" = "tag"."_internalId""`,
+        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post"."_shard" as "post:_shard", "tag"."name" as "tag:name", "tag"."_internalId" as "tag:_internalId", "tag"."_version" as "tag:_version", "tag"."_shard" as "tag:_shard", "post_tags"."id" as "id", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version", "post_tags"."_shard" as "_shard" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "tags" as "tag" on "post_tags"."tagId" = "tag"."_internalId""`,
       );
     });
   });
@@ -1655,7 +1655,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
+        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\`, \`users\`.\`_shard\` as \`_shard\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
       );
     });
 
@@ -1689,7 +1689,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select \`post\`.\`id\` as \`post:id\`, \`post\`.\`title\` as \`post:title\`, \`post\`.\`_internalId\` as \`post:_internalId\`, \`post\`.\`_version\` as \`post:_version\`, \`author\`.\`id\` as \`author:id\`, \`author\`.\`name\` as \`author:name\`, \`author\`.\`_internalId\` as \`author:_internalId\`, \`author\`.\`_version\` as \`author:_version\`, \`comments\`.\`id\` as \`id\`, \`comments\`.\`content\` as \`content\`, \`comments\`.\`_internalId\` as \`_internalId\`, \`comments\`.\`_version\` as \`_version\` from \`comments\` left join \`posts\` as \`post\` on \`comments\`.\`postId\` = \`post\`.\`_internalId\` left join \`users\` as \`author\` on \`comments\`.\`authorId\` = \`author\`.\`_internalId\`"`,
+        `"select \`post\`.\`id\` as \`post:id\`, \`post\`.\`title\` as \`post:title\`, \`post\`.\`_internalId\` as \`post:_internalId\`, \`post\`.\`_version\` as \`post:_version\`, \`post\`.\`_shard\` as \`post:_shard\`, \`author\`.\`id\` as \`author:id\`, \`author\`.\`name\` as \`author:name\`, \`author\`.\`_internalId\` as \`author:_internalId\`, \`author\`.\`_version\` as \`author:_version\`, \`author\`.\`_shard\` as \`author:_shard\`, \`comments\`.\`id\` as \`id\`, \`comments\`.\`content\` as \`content\`, \`comments\`.\`_internalId\` as \`_internalId\`, \`comments\`.\`_version\` as \`_version\`, \`comments\`.\`_shard\` as \`_shard\` from \`comments\` left join \`posts\` as \`post\` on \`comments\`.\`postId\` = \`post\`.\`_internalId\` left join \`users\` as \`author\` on \`comments\`.\`authorId\` = \`author\`.\`_internalId\`"`,
       );
     });
 
@@ -1742,7 +1742,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "category"."categoryId" as "category:categoryId", "category"."categoryName" as "category:categoryName", "category"."_internalId" as "category:_internalId", "category"."_version" as "category:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId" left join "categories" as "category" on "product_categories"."catRef" = "category"."_internalId""`,
+        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product"."_shard" as "product:_shard", "category"."categoryId" as "category:categoryId", "category"."categoryName" as "category:categoryName", "category"."_internalId" as "category:_internalId", "category"."_version" as "category:_version", "category"."_shard" as "category:_shard", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version", "product_categories"."_shard" as "_shard" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId" left join "categories" as "category" on "product_categories"."catRef" = "category"."_internalId""`,
       );
     });
 
@@ -1777,7 +1777,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on ("product_categories"."prodRef" = "product"."_internalId" and "product"."productId" = ?)"`,
+        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product"."_shard" as "product:_shard", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version", "product_categories"."_shard" as "_shard" from "product_categories" left join "products" as "product" on ("product_categories"."prodRef" = "product"."_internalId" and "product"."productId" = ?)"`,
       );
       expect(result!.parameters).toEqual(["prod-456"]);
     });
@@ -1806,7 +1806,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."price" as "product:price", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId""`,
+        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."price" as "product:price", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product"."_shard" as "product:_shard", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version", "product_categories"."_shard" as "_shard" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId""`,
       );
     });
 
@@ -1840,7 +1840,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "product"."productId" as "product:productId", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "category"."categoryId" as "category:categoryId", "category"."_internalId" as "category:_internalId", "category"."_version" as "category:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId" left join "categories" as "category" on "product_categories"."catRef" = "category"."_internalId""`,
+        `"select "product"."productId" as "product:productId", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product"."_shard" as "product:_shard", "category"."categoryId" as "category:categoryId", "category"."_internalId" as "category:_internalId", "category"."_version" as "category:_version", "category"."_shard" as "category:_shard", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version", "product_categories"."_shard" as "_shard" from "product_categories" left join "products" as "product" on "product_categories"."prodRef" = "product"."_internalId" left join "categories" as "category" on "product_categories"."catRef" = "category"."_internalId""`,
       );
     });
   });

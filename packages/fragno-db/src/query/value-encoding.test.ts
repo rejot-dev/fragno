@@ -178,6 +178,7 @@ describe("encodeValues", () => {
         id: "post_1",
         title: "Hello",
         _version: 0,
+        _shard: "__fragno_global__",
         status: "draft",
         createdAt: testDate,
       });
@@ -204,6 +205,7 @@ describe("encodeValues", () => {
         id: "post_2",
         title: "Hello",
         _version: 0,
+        _shard: "__fragno_global__",
         status: "published",
       });
     });
