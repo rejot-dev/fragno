@@ -34,11 +34,14 @@ import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operatio
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import { UnitOfWorkDecoder } from "./uow-decoder";
-
+import type { ShardScope, ShardingStrategy } from "../../sharding";
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
+  shardingStrategy?: ShardingStrategy;
+  getShard?: () => string | null;
+  getShardScope?: () => ShardScope;
 }
 
 export interface SqlAdapterOptions {
@@ -236,6 +239,8 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         dryRun: false,
         outbox: getOutboxConfigForAdapter(this),
         namingStrategy: this.namingStrategy,
+        getShard: () =>
+          this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
       },
     );
     const decoder = new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode);
