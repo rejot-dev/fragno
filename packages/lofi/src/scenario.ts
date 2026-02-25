@@ -15,6 +15,7 @@ import type {
   LofiSubmitResponse,
   LofiSyncResult,
 } from "./types";
+import { createScopedQueryInterface, type LofiQueryScope } from "./query/scoped-query";
 import { IndexedDbAdapter } from "./indexeddb/adapter";
 import { InMemoryLofiAdapter } from "./adapters/in-memory/adapter";
 import { StackedLofiAdapter } from "./adapters/stacked/adapter";
@@ -124,6 +125,7 @@ export type ScenarioDefinition<
   clients: Record<string, ScenarioClientConfig>;
   steps: ScenarioStep<NoInfer<TSchema>, NoInfer<TCommandContext>, NoInfer<TVars>>[];
   createClientContext?: (clientName: string) => TCommandContext;
+  queryScope?: LofiQueryScope<TSchema, TCommandContext>;
 };
 
 export type RunScenarioOptions = {
@@ -774,6 +776,19 @@ export const runScenario = async <
       });
 
       const queryAdapter = adapters.stackedAdapter ?? adapters.baseAdapter;
+      const queryContext = scenario.queryScope
+        ? scenario.createClientContext
+          ? scenario.createClientContext(name)
+          : ({} as TCommandContext)
+        : ({} as TCommandContext);
+      const queryEngine = queryAdapter.createQueryEngine(schema);
+      const scopedQuery = scenario.queryScope
+        ? createScopedQueryInterface({
+            query: queryEngine,
+            context: queryContext,
+            scope: scenario.queryScope,
+          })
+        : queryEngine;
 
       context.clients[name] = {
         name,
@@ -781,7 +796,7 @@ export const runScenario = async <
         adapter: adapters.adapter,
         submit,
         sync,
-        query: queryAdapter.createQueryEngine(schema),
+        query: scopedQuery,
         baseQuery: adapters.baseAdapter.createQueryEngine(schema),
         overlayQuery: adapters.overlayAdapter
           ? adapters.overlayAdapter.createQueryEngine(schema)

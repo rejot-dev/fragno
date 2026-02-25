@@ -46,12 +46,49 @@ const appSchema = schema("app", (s) =>
     }),
 );
 
+const teamSchema = schema("team", (s) =>
+  s
+    .addTable("teams", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .createIndex("idx_name", ["name"]),
+    )
+    .addTable("team_memberships", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("teamId", referenceColumn())
+        .addColumn("userId", column("string"))
+        .createIndex("idx_membership_team", ["teamId"])
+        .createIndex("idx_membership_user", ["userId"]),
+    )
+    .addTable("issues", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("teamId", referenceColumn())
+        .addColumn("title", column("string"))
+        .createIndex("idx_issue_team", ["teamId"]),
+    )
+    .addReference("issue_team", {
+      type: "one",
+      from: { table: "issues", column: "teamId" },
+      to: { table: "teams", column: "id" },
+    })
+    .addReference("membership_team", {
+      type: "one",
+      from: { table: "team_memberships", column: "teamId" },
+      to: { table: "teams", column: "id" },
+    }),
+);
+
 type CommandArgs = { input: unknown; tx: LofiSyncCommandTxFactory; ctx: unknown };
 type AuthContext = { userId: string };
 type ClientContext = { mode: "client" };
+type TeamContext = { userId: string; teamIds: string[] };
 type UserRow = { id: FragnoId; name: string };
 type PostWithAuthor = { title: string; author?: { name: string } | null };
 type PostRow = { id: FragnoId; title: string; authorId: FragnoReference };
+type IssueRow = { id: FragnoId; title: string; teamId: FragnoReference };
 type ScenarioVars = {
   userA?: UserRow | null;
   userB?: UserRow | null;
@@ -75,10 +112,15 @@ type ScenarioVars = {
   overlayPost?: PostRow | null;
   basePostBefore?: PostRow | null;
   basePostAfter?: PostRow | null;
+  teamIssuesA?: IssueRow[];
+  teamIssuesB?: IssueRow[];
+  teamIssuesC?: IssueRow[];
+  baseIssues?: IssueRow[];
 };
 const steps = createScenarioSteps<typeof appSchema, unknown, ScenarioVars>();
 const authSteps = createScenarioSteps<typeof appSchema, AuthContext, ScenarioVars>();
 const clientSteps = createScenarioSteps<typeof appSchema, ClientContext, ScenarioVars>();
+const teamSteps = createScenarioSteps<typeof teamSchema, TeamContext, ScenarioVars>();
 const clientModeContext = () => ({ mode: "client" as const });
 
 const createIndexedDbGlobals = () => ({
@@ -328,6 +370,44 @@ const updateUserAndPostConflictHandler = async ({ input, tx, ctx }: CommandArgs)
     .execute();
 };
 
+type CreateTeamInput = { id: string; name: string };
+const createTeamHandler = async ({ input, tx }: CommandArgs) => {
+  const payload = input as CreateTeamInput;
+  await tx()
+    .mutate((ctx) => {
+      ctx.forSchema(teamSchema).create("teams", { id: payload.id, name: payload.name });
+    })
+    .execute();
+};
+
+type AddTeamMemberInput = { id: string; teamId: string; userId: string };
+const addTeamMemberHandler = async ({ input, tx }: CommandArgs) => {
+  const payload = input as AddTeamMemberInput;
+  await tx()
+    .mutate((ctx) => {
+      ctx.forSchema(teamSchema).create("team_memberships", {
+        id: payload.id,
+        teamId: payload.teamId,
+        userId: payload.userId,
+      });
+    })
+    .execute();
+};
+
+type CreateIssueInput = { id: string; teamId: string; title: string };
+const createIssueHandler = async ({ input, tx }: CommandArgs) => {
+  const payload = input as CreateIssueInput;
+  await tx()
+    .mutate((ctx) => {
+      ctx.forSchema(teamSchema).create("issues", {
+        id: payload.id,
+        teamId: payload.teamId,
+        title: payload.title,
+      });
+    })
+    .execute();
+};
+
 const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineCommand }) => [
   defineCommand({ name: "createUser", handler: createUserHandler }),
   defineCommand({ name: "updateUser", handler: updateUserHandler }),
@@ -344,6 +424,12 @@ const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineC
   defineCommand({ name: "deleteUserConflict", handler: deleteUserConflictHandler }),
   defineCommand({ name: "updateUserAndPost", handler: updateUserAndPostHandler }),
   defineCommand({ name: "updateUserAndPostConflict", handler: updateUserAndPostConflictHandler }),
+]);
+
+const teamSyncCommands = defineSyncCommands({ schema: teamSchema }).create(({ defineCommand }) => [
+  defineCommand({ name: "createTeam", handler: createTeamHandler }),
+  defineCommand({ name: "addTeamMember", handler: addTeamMemberHandler }),
+  defineCommand({ name: "createIssue", handler: createIssueHandler }),
 ]);
 
 const clientCommands: LofiSubmitCommandDefinition[] = [
@@ -406,6 +492,24 @@ const clientCommands: LofiSubmitCommandDefinition[] = [
     name: "updateUserAndPostConflict",
     target: { fragment: "lofi-test", schema: appSchema.name },
     handler: updateUserAndPostConflictHandler,
+  },
+];
+
+const teamClientCommands: LofiSubmitCommandDefinition[] = [
+  {
+    name: "createTeam",
+    target: { fragment: "lofi-team-test", schema: teamSchema.name },
+    handler: createTeamHandler,
+  },
+  {
+    name: "addTeamMember",
+    target: { fragment: "lofi-team-test", schema: teamSchema.name },
+    handler: addTeamMemberHandler,
+  },
+  {
+    name: "createIssue",
+    target: { fragment: "lofi-team-test", schema: teamSchema.name },
+    handler: createIssueHandler,
   },
 ];
 
@@ -758,6 +862,102 @@ describe("Lofi scenario DSL", () => {
           expect(after?.[0]?.title).toBe("Hello");
           expect(after?.[0]?.author?.name).toBe("Ada");
           expect(ctx.vars.basePostAfter?.title).toBe("Hello");
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("scopes issue queries by team context", async () => {
+    const scenario = defineScenario<typeof teamSchema, TeamContext>({
+      name: "team-issue-scope",
+      server: {
+        fragmentName: "lofi-team-test",
+        schema: teamSchema,
+        syncCommands: teamSyncCommands,
+      },
+      clientCommands: teamClientCommands,
+      clients: {
+        a: { endpointName: "client-a" },
+        b: { endpointName: "client-b" },
+        c: { endpointName: "client-c" },
+      },
+      createClientContext: (clientName) => {
+        if (clientName === "a") {
+          return { userId: "user-a", teamIds: ["team-1"] };
+        }
+        if (clientName === "b") {
+          return { userId: "user-b", teamIds: ["team-2"] };
+        }
+        return { userId: "user-c", teamIds: [] };
+      },
+      queryScope: ({ tableName, context }) => {
+        if (tableName !== "issues") {
+          return undefined;
+        }
+        return {
+          indexName: "idx_issue_team",
+          where: (eb) => eb("teamId", "in", context.teamIds),
+        };
+      },
+      steps: [
+        teamSteps.command(
+          "a",
+          "createTeam",
+          { id: "team-1", name: "Alpha" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "createTeam",
+          { id: "team-2", name: "Beta" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "addTeamMember",
+          { id: "member-1", teamId: "team-1", userId: "user-a" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "addTeamMember",
+          { id: "member-2", teamId: "team-2", userId: "user-b" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "createIssue",
+          { id: "issue-1", teamId: "team-1", title: "A-1" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "createIssue",
+          { id: "issue-2", teamId: "team-1", title: "A-2" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.command(
+          "a",
+          "createIssue",
+          { id: "issue-3", teamId: "team-2", title: "B-1" },
+          { optimistic: true, submit: true },
+        ),
+        teamSteps.sync("b"),
+        teamSteps.sync("c"),
+        teamSteps.read("a", (_ctx, client) => client.query.find("issues"), "teamIssuesA"),
+        teamSteps.read("b", (_ctx, client) => client.query.find("issues"), "teamIssuesB"),
+        teamSteps.read("c", (_ctx, client) => client.query.find("issues"), "teamIssuesC"),
+        teamSteps.assert((ctx) => {
+          const issuesA = (ctx.vars.teamIssuesA ?? []).map((issue) => issue.title).sort();
+          const issuesB = (ctx.vars.teamIssuesB ?? []).map((issue) => issue.title).sort();
+          const issuesC = (ctx.vars.teamIssuesC ?? []).map((issue) => issue.title).sort();
+
+          expect(issuesA).toEqual(["A-1", "A-2"]);
+          expect(issuesB).toEqual(["B-1"]);
+          expect(issuesC).toEqual([]);
         }),
       ],
     });

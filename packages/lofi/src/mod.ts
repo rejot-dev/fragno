@@ -20,3 +20,8 @@ export { LofiOverlayManager } from "./optimistic/overlay-manager";
 export { LofiSubmitClient } from "./submit/client";
 export { applyOutboxEntries, rebaseSubmitQueue } from "./submit/rebase";
 export { createLocalHandlerTx, runLocalHandlerCommand } from "./submit/local-handler-tx";
+export {
+  createScopedQueryInterface,
+  type LofiQueryScope,
+  type LofiQueryScopeResult,
+} from "./query/scoped-query";
