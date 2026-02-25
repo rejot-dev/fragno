@@ -30,6 +30,13 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
   return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
 }
 
+function hasDurableHooksConfigured(
+  fragment: AnyFragnoInstantiatedDatabaseFragment,
+): fragment is AnyFragnoInstantiatedDatabaseFragment {
+  const internal = fragment.$internal as DurableHooksInternal | undefined;
+  return Boolean(internal?.durableHooksToken);
+}
+
 export function createDurableHooksProcessor<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
 ): DurableHooksProcessor {
@@ -79,10 +86,11 @@ export function createDurableHooksProcessorGroup(
   fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
   options: DurableHooksProcessorGroupOptions = {},
 ): DurableHooksProcessor {
-  if (fragments.length === 0) {
+  const configuredFragments = fragments.filter(hasDurableHooksConfigured);
+  if (configuredFragments.length === 0) {
     throw new Error("[fragno-db] No fragments provided for durable hooks processing.");
   }
-  const processors = fragments.map((fragment) => createDurableHooksProcessor(fragment));
+  const processors = configuredFragments.map((fragment) => createDurableHooksProcessor(fragment));
 
   return createDurableHooksProcessorGroupFromProcessors(processors, options);
 }

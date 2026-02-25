@@ -10,6 +10,7 @@ import { internalSchema } from "../fragments/internal-fragment";
 import { getInternalFragment } from "../internal/adapter-registry";
 import {
   createDurableHooksProcessor,
+  createDurableHooksProcessorGroup,
   createDurableHooksProcessorGroupFromProcessors,
 } from "./durable-hooks-processor";
 
@@ -22,6 +23,10 @@ const testFragmentDefinition = defineFragment("test")
   .provideHooks(({ defineHook }) => ({
     onTest: defineHook(async function () {}),
   }))
+  .build();
+
+const noHooksFragmentDefinition = defineFragment("no-hooks")
+  .extend(withDatabase(testSchema))
   .build();
 
 describe("createDurableHooksProcessor", () => {
@@ -116,6 +121,28 @@ describe("createDurableHooksProcessor", () => {
     const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("throws when fragment has no hooks configured", () => {
+    const noHooksFragment = instantiate(noHooksFragmentDefinition)
+      .withConfig({})
+      .withOptions({ databaseAdapter: adapter })
+      .build();
+
+    expect(() => createDurableHooksProcessor(noHooksFragment)).toThrow(
+      '[fragno-db] Durable hooks not configured for fragment "no-hooks".',
+    );
+  });
+
+  it("skips fragments without hooks when creating a group", () => {
+    const noHooksFragment = instantiate(noHooksFragmentDefinition)
+      .withConfig({})
+      .withOptions({ databaseAdapter: adapter })
+      .build();
+
+    const processor = createDurableHooksProcessorGroup([noHooksFragment, fragment]);
+    expect(processor).not.toBeNull();
+    expect(processor.namespace).toBe("test");
   });
 });
 
