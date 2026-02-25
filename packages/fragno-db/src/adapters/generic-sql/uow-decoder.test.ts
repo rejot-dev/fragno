@@ -29,10 +29,17 @@ describe("UnitOfWorkDecoder", () => {
   });
 
   const decoder = new UnitOfWorkDecoder(driverConfig);
+  const shardDefaults = {
+    shard: null,
+    shardScope: "scoped",
+    shardingStrategy: undefined,
+    shardFilterExempt: false,
+  } as const;
 
   describe("decode", () => {
     it("should decode regular find operations", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -60,6 +67,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should decode count operations", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "count",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -79,6 +87,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should decode cursor-paginated operations", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -123,6 +132,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should decode cursor-paginated operations without hasNextPage when exactly pageSize rows", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -161,6 +171,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should decode multiple operations", () => {
       const findOperation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -171,6 +182,7 @@ describe("UnitOfWorkDecoder", () => {
       };
 
       const countOperation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "count",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -196,6 +208,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should throw error when rawResults and operations lengths don't match", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -214,6 +227,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should handle empty results for regular find", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -233,6 +247,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should handle count result with no rows", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "count",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -252,6 +267,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should generate cursor for custom index", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -290,6 +306,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should handle cursor pagination without orderByIndex", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -325,6 +342,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should throw error for invalid count value", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "count",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -343,6 +361,7 @@ describe("UnitOfWorkDecoder", () => {
 
     it("should handle cursor pagination with FragnoId in cursor", () => {
       const operation: RetrievalOperation<AnySchema> = {
+        ...shardDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
