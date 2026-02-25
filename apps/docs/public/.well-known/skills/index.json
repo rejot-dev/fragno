@@ -1,0 +1,29 @@
+{
+  "skills": [
+    {
+      "name": "fragno",
+      "description": "Integrate existing Fragno fragments into applications: install fragment packages, configure server instances (and database adapters if required), mount server handlers for each framework, create client-side integrations, and use hooks/composables. Use when asked to wire a fragment into the user's application.",
+      "files": [
+        "SKILL.md",
+        "references/client-customization.md",
+        "references/client-integration.md",
+        "references/dispatchers.md",
+        "references/first-party-fragments/auth.md",
+        "references/first-party-fragments/forms.md",
+        "references/first-party-fragments/stripe.md",
+        "references/first-party-fragments/upload.md",
+        "references/first-party-fragments/workflows.md",
+        "references/integrations/cloudflare-durable-objects.md",
+        "references/integrations/drizzle-schema-integration.md",
+        "references/middleware.md",
+        "references/server-integration.md",
+        "references/services.md"
+      ]
+    },
+    {
+      "name": "fragno-author",
+      "description": "Create or modify Fragno fragments (library-author workflow): scaffold a fragment package, define fragment config/schema, add dependencies/services, declare routes, build server instantiation, and export client builders plus per-framework client entrypoints. Use when asked to build a new fragment, add routes/hooks, or set up fragment packaging/code-splitting for authors.",
+      "files": ["SKILL.md", "references/rules-of-fragno.md"]
+    }
+  ]
+}

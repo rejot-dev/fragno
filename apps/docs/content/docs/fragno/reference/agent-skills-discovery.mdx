@@ -1,0 +1,19 @@
+---
+title: Agent Skills Discovery
+description: Machine-readable skill index for Fragno agent skills.
+---
+
+Fragno publishes an Agent Skills Discovery Protocol (ASDP) index at
+`/.well-known/skills/index.json`. It lists the available skills and the files that make up each
+skill.
+
+Skills published by this site:
+
+- `fragno`
+- `fragno-author`
+
+To fetch a skill, read `/.well-known/skills/<skill>/SKILL.md` and any additional files listed in the
+index for that skill.
+
+For the protocol format, see the RFC:
+https://github.com/cloudflare/agent-skills-discovery-rfc/blob/main/README.md

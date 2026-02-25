@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm run generate:og && react-router build",
+    "build": "pnpm run generate:skills && pnpm run generate:og && react-router build",
+    "generate:skills": "tsx scripts/sync-agent-skills.ts",
     "generate:og": "tsx scripts/generate-og-images.tsx",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
