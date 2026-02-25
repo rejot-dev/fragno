@@ -39,6 +39,19 @@ export interface ColumnInfo {
   default?: { value: unknown } | { dbSpecial: "now" } | { runtime: "cuid" | "now" };
 }
 
+export interface SqliteRecreateTableInfo {
+  columns: ColumnInfo[];
+  copyColumns: SqliteCopyColumn[];
+  indexes: { name: string; columns: string[]; unique: boolean }[];
+  foreignKeys: ForeignKeyInfo[];
+}
+
+export type SqliteCopyColumn = string | { from: string; to: string };
+
+export interface SqliteAlterTableMetadata extends MigrationOperationMetadata {
+  recreateTable?: SqliteRecreateTableInfo;
+}
+
 export type MigrationOperation<
   TMeta extends MigrationOperationMetadata = MigrationOperationMetadata,
 > =

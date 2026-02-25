@@ -32,6 +32,26 @@ describe("generateDrizzleSchema", () => {
       });
   });
 
+  it("should reflect alterColumn nullable changes", () => {
+    const alteredSchema = schema("altered", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.alterColumn("name").nullable();
+        });
+    });
+
+    const generated = generateDrizzleSchema(
+      [{ namespace: "altered", schema: alteredSchema }],
+      "postgresql",
+    );
+
+    expect(generated).toContain(`name: text("name")`);
+    expect(generated).not.toContain(`name: text("name").notNull()`);
+  });
+
   describe("postgresql", () => {
     it("should generate PostgreSQL schema", () => {
       const generated = generateDrizzleSchema(

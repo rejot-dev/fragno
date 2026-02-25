@@ -36,7 +36,18 @@ const testSchema = schema("test", (s) => {
     });
 });
 
+const nullableSchema = schema("nullable", (s) => {
+  return s
+    .addTable("users", (t) => {
+      return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+    })
+    .alterTable("users", (t) => {
+      return t.alterColumn("name").nullable();
+    });
+});
+
 const resolver = createNamingResolver(testSchema, "test", suffixNamingStrategy);
+const nullableResolver = createNamingResolver(nullableSchema, "nullable", suffixNamingStrategy);
 
 describe("PreparedMigrations - PostgreSQL", () => {
   const coldKysely = createColdKysely("postgresql");
@@ -715,6 +726,64 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       SET FOREIGN_KEY_CHECKS = 1;
 
       insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+    `);
+  });
+
+  test("PostgreSQL: migration 1 -> 2 (make column nullable)", () => {
+    const prepared = createPreparedMigrations({
+      schema: nullableSchema,
+      namespace: "nullable",
+      database: "postgresql",
+      resolver: nullableResolver,
+    });
+
+    const sql = prepared.getSQL(1, 2, { updateVersionInMigration: false });
+    expect(sql).toMatchInlineSnapshot(
+      `"alter table "users_nullable" alter column "name" drop not null;"`,
+    );
+  });
+
+  test("MySQL: migration 1 -> 2 (make column nullable)", () => {
+    const prepared = createPreparedMigrations({
+      schema: nullableSchema,
+      namespace: "nullable",
+      database: "mysql",
+      resolver: nullableResolver,
+    });
+
+    const sql = prepared.getSQL(1, 2, { updateVersionInMigration: false });
+    expect(sql).toMatchInlineSnapshot(`
+      "SET FOREIGN_KEY_CHECKS = 0;
+
+      alter table \`users_nullable\` modify column \`name\` text;
+
+      SET FOREIGN_KEY_CHECKS = 1;"
+    `);
+  });
+
+  test("SQLite: migration 1 -> 2 (make column nullable)", () => {
+    const prepared = createPreparedMigrations({
+      schema: nullableSchema,
+      namespace: "nullable",
+      database: "sqlite",
+      resolver: nullableResolver,
+    });
+
+    const sql = prepared.getSQL(1, 2, { updateVersionInMigration: false });
+    expect(sql).toMatchInlineSnapshot(`
+      "PRAGMA defer_foreign_keys = ON;
+
+      PRAGMA foreign_keys = OFF;
+
+      alter table "users_nullable" rename to "users_nullable__fragno_tmp_414fdd";
+
+      create table "users_nullable" ("id" text not null unique, "name" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
+
+      insert into "users_nullable" ("id", "name", "_internalId", "_version") select "id", "name", "_internalId", "_version" from "users_nullable__fragno_tmp_414fdd";
+
+      drop table "users_nullable__fragno_tmp_414fdd";
+
+      PRAGMA foreign_keys = ON;"
     `);
   });
 

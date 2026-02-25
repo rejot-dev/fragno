@@ -357,6 +357,172 @@ describe("SQLiteSQLGenerator", () => {
   });
 
   describe("alter-table - update-column", () => {
+    it("should recreate table when updating nullable constraint", () => {
+      const operation: MigrationOperation = {
+        type: "alter-table",
+        name: "test_table",
+        value: [
+          {
+            type: "update-column",
+            name: "test_col",
+            value: {
+              name: "test_col",
+              type: "string",
+              isNullable: true,
+              role: "regular",
+            },
+            updateDataType: false,
+            updateNullable: true,
+            updateDefault: false,
+          },
+        ],
+        metadata: {
+          recreateTable: {
+            columns: [
+              {
+                name: "id",
+                type: "string",
+                isNullable: false,
+                role: "external-id",
+              },
+              {
+                name: "test_col",
+                type: "string",
+                isNullable: true,
+                role: "regular",
+              },
+              {
+                name: "_internalId",
+                type: "bigint",
+                isNullable: false,
+                role: "internal-id",
+              },
+              {
+                name: "_version",
+                type: "integer",
+                isNullable: false,
+                role: "version",
+                default: { value: 0 },
+              },
+            ],
+            copyColumns: ["id", "test_col", "_internalId", "_version"],
+            indexes: [
+              {
+                name: "idx_test_col",
+                columns: ["test_col"],
+                unique: false,
+              },
+            ],
+            foreignKeys: [],
+          },
+        },
+      };
+
+      const sql = compileMany(operation).join("\n");
+      expect(sql).toMatchInlineSnapshot(`
+        "PRAGMA foreign_keys = OFF
+        alter table "test_table" rename to "test_table__fragno_tmp_e1aa88"
+        create table "test_table" ("id" text not null unique, "test_col" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null)
+        insert into "test_table" ("id", "test_col", "_internalId", "_version") select "id", "test_col", "_internalId", "_version" from "test_table__fragno_tmp_e1aa88"
+        drop table "test_table__fragno_tmp_e1aa88"
+        create index "idx_test_col" on "test_table" ("test_col")
+        PRAGMA foreign_keys = ON"
+      `);
+    });
+
+    it("should preserve rename and drop operations during recreation", () => {
+      const operation: MigrationOperation = {
+        type: "alter-table",
+        name: "test_table",
+        value: [
+          {
+            type: "update-column",
+            name: "title",
+            value: {
+              name: "title",
+              type: "string",
+              isNullable: true,
+              role: "regular",
+            },
+            updateDataType: false,
+            updateNullable: true,
+            updateDefault: false,
+          },
+          {
+            type: "rename-column",
+            from: "title",
+            to: "headline",
+          },
+          {
+            type: "drop-column",
+            name: "old_field",
+          },
+        ],
+        metadata: {
+          recreateTable: {
+            columns: [
+              {
+                name: "id",
+                type: "string",
+                isNullable: false,
+                role: "external-id",
+              },
+              {
+                name: "title",
+                type: "string",
+                isNullable: true,
+                role: "regular",
+              },
+              {
+                name: "old_field",
+                type: "string",
+                isNullable: true,
+                role: "regular",
+              },
+              {
+                name: "_internalId",
+                type: "bigint",
+                isNullable: false,
+                role: "internal-id",
+              },
+              {
+                name: "_version",
+                type: "integer",
+                isNullable: false,
+                role: "version",
+                default: { value: 0 },
+              },
+            ],
+            copyColumns: ["id", "title", "old_field", "_internalId", "_version"],
+            indexes: [
+              {
+                name: "idx_title",
+                columns: ["title"],
+                unique: false,
+              },
+              {
+                name: "idx_old_field",
+                columns: ["old_field"],
+                unique: false,
+              },
+            ],
+            foreignKeys: [],
+          },
+        },
+      };
+
+      const sql = compileMany(operation).join("\n");
+      expect(sql).toMatchInlineSnapshot(`
+        "PRAGMA foreign_keys = OFF
+        alter table "test_table" rename to "test_table__fragno_tmp_e1aa88"
+        create table "test_table" ("id" text not null unique, "headline" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null)
+        insert into "test_table" ("id", "headline", "_internalId", "_version") select "id", "title", "_internalId", "_version" from "test_table__fragno_tmp_e1aa88"
+        drop table "test_table__fragno_tmp_e1aa88"
+        create index "idx_title" on "test_table" ("headline")
+        PRAGMA foreign_keys = ON"
+      `);
+    });
+
     it("should throw error when trying to update column (SQLite limitation)", () => {
       const operation: MigrationOperation = {
         type: "alter-table",

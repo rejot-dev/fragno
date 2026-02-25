@@ -140,6 +140,67 @@ describe("generateMigrationFromSchema", () => {
     });
   });
 
+  it("should generate update-column operation when column becomes nullable", () => {
+    const mySchema = schema("my", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.alterColumn("name").nullable();
+        });
+    });
+
+    const operations = generateMigrationFromSchema(mySchema, 1, 2);
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0].type).toBe("alter-table");
+
+    const op = operations[0] as Extract<(typeof operations)[number], { type: "alter-table" }>;
+    expect(op.value).toHaveLength(1);
+    expect(op.value[0]).toMatchObject({
+      type: "update-column",
+      name: "name",
+      updateNullable: true,
+      updateDefault: false,
+      updateDataType: false,
+      value: expect.objectContaining({ isNullable: true }),
+    });
+  });
+
+  it("should not mutate historical operations when altering nullable", () => {
+    const mySchema = schema("my", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.alterColumn("name").nullable();
+        });
+    });
+
+    const operationsV1 = generateMigrationFromSchema(mySchema, 0, 1);
+    expect(operationsV1).toHaveLength(1);
+    expect(operationsV1[0].type).toBe("create-table");
+    const createOp = operationsV1[0] as Extract<
+      (typeof operationsV1)[number],
+      { type: "create-table" }
+    >;
+    const nameColumn = createOp.columns.find((col) => col.name === "name");
+    expect(nameColumn).toBeDefined();
+    expect(nameColumn?.isNullable).toBe(false);
+
+    const operationsV2 = generateMigrationFromSchema(mySchema, 0, 2);
+    expect(operationsV2).toHaveLength(2);
+    const createOpV2 = operationsV2[0] as Extract<
+      (typeof operationsV2)[number],
+      { type: "create-table" }
+    >;
+    const nameColumnV2 = createOpV2.columns.find((col) => col.name === "name");
+    expect(nameColumnV2).toBeDefined();
+    expect(nameColumnV2?.isNullable).toBe(false);
+  });
+
   it("should generate mixed operations for tables and foreign keys", () => {
     const mySchema = schema("my", (s) => {
       return s

@@ -25,6 +25,16 @@ export type AnyColumn =
 export type TableSubOperation =
   | { type: "add-column"; columnName: string; column: AnyColumn }
   | { type: "add-index"; name: string; columns: string[]; unique: boolean }
+  | { type: "rename-column"; from: string; to: string }
+  | { type: "drop-column"; name: string }
+  | {
+      type: "update-column";
+      columnName: string;
+      column: AnyColumn;
+      updateNullable: boolean;
+      updateDefault: boolean;
+      updateDataType: boolean;
+    }
   | {
       type: "add-foreign-key";
       name: string;
@@ -464,6 +474,29 @@ export class VersionColumn<TIn = unknown, TOut = unknown> extends Column<"intege
   }
 }
 
+function cloneColumn<TColumn extends AnyColumn>(col: TColumn): TColumn {
+  let clonedCol: AnyColumn;
+
+  if (col instanceof InternalIdColumn) {
+    clonedCol = new InternalIdColumn();
+  } else if (col instanceof VersionColumn) {
+    clonedCol = new VersionColumn();
+  } else if (col instanceof IdColumn) {
+    clonedCol = new IdColumn(col.type);
+  } else {
+    clonedCol = new Column(col.type);
+  }
+
+  clonedCol.name = col.name;
+  clonedCol.isNullable = col.isNullable;
+  clonedCol.role = col.role;
+  clonedCol.isHidden = col.isHidden;
+  clonedCol.default = col.default;
+  clonedCol.tableName = col.tableName;
+
+  return clonedCol as TColumn;
+}
+
 type ColumnInput<TType extends keyof TypeMap> =
   | TypeMap[TType]
   | (TType extends "timestamp" | "date" ? DbNow : never);
@@ -712,6 +745,32 @@ export class TableBuilder<
   }
 
   /**
+   * Alter an existing column.
+   */
+  alterColumn<TColumnName extends NonIdColumnName<TColumns>>(
+    name: TColumnName,
+  ): ColumnAlterer<TColumns, TRelations, TIndexes, TColumnName> {
+    return {
+      nullable: <TNullable extends boolean = true>(nullable?: TNullable) => {
+        const column = this.#columns[name];
+        if (!column) {
+          throw new Error(`Unknown column name ${String(name)}`);
+        }
+
+        const cloned = cloneColumn(column) as Column<keyof TypeMap>;
+        const updated = cloned.nullable(nullable ?? true);
+        this.#columns[name] = updated as unknown as TColumns[TColumnName];
+
+        return this as unknown as TableBuilder<
+          UpdateColumn<TColumns, TColumnName, NullableColumn<TColumns[TColumnName], TNullable>>,
+          TRelations,
+          TIndexes
+        >;
+      },
+    };
+  }
+
+  /**
    * Create an index on the specified columns.
    */
   createIndex<
@@ -898,6 +957,45 @@ type ColumnsToTuple<
     : never;
 } & AnyColumn[];
 
+type UpdateColumn<
+  TColumns extends Record<string, AnyColumn>,
+  TColumnName extends keyof TColumns,
+  TUpdatedColumn extends AnyColumn,
+> = Prettify<Omit<TColumns, TColumnName> & Record<TColumnName, TUpdatedColumn>>;
+
+type NonIdColumnName<TColumns extends Record<string, AnyColumn>> = {
+  [K in keyof TColumns]: TColumns[K] extends
+    | IdColumn<IdColumnType, unknown, unknown>
+    | InternalIdColumn<unknown, unknown>
+    | VersionColumn<unknown, unknown>
+    ? never
+    : K;
+}[keyof TColumns];
+
+type NullableColumn<TColumn extends AnyColumn, TNullable extends boolean> =
+  TColumn extends Column<infer TType, infer TIn, infer TOut>
+    ? Column<
+        TType,
+        TNullable extends true ? TIn | null : Exclude<TIn, null>,
+        TNullable extends true ? TOut | null : Exclude<TOut, null>
+      >
+    : TColumn;
+
+type ColumnAlterer<
+  TColumns extends Record<string, AnyColumn>,
+  TRelations extends Record<string, AnyRelation>,
+  TIndexes extends Record<string, Index>,
+  TColumnName extends keyof TColumns,
+> = {
+  nullable<TNullable extends boolean = true>(
+    nullable?: TNullable,
+  ): TableBuilder<
+    UpdateColumn<TColumns, TColumnName, NullableColumn<TColumns[TColumnName], TNullable>>,
+    TRelations,
+    TIndexes
+  >;
+};
+
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   #name: string;
   #tables: TTables;
@@ -1031,7 +1129,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       subOperations.push({
         type: "add-column",
         columnName: colName,
-        column: col,
+        column: cloneColumn(col),
       });
     }
 
@@ -1040,14 +1138,14 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       subOperations.push({
         type: "add-column",
         columnName: "_internalId",
-        column: builtTable.columns["_internalId"],
+        column: cloneColumn(builtTable.columns["_internalId"]),
       });
     }
     if (builtTable.columns["_version"]) {
       subOperations.push({
         type: "add-column",
         columnName: "_version",
-        column: builtTable.columns["_version"],
+        column: cloneColumn(builtTable.columns["_version"]),
       });
     }
 
@@ -1210,8 +1308,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   }
 
   /**
-   * Alter an existing table by adding columns or indexes.
-   * This is used for append-only schema modifications.
+   * Alter an existing table by adding columns, altering columns, or adding indexes.
+   * This is used for forward-only schema modifications.
    *
    * @param tableName - The name of the table to modify
    * @param callback - A callback that receives a table builder for adding columns/indexes
@@ -1224,6 +1322,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    *     .addColumn("id", idColumn())
    *     .addColumn("name", column("string")))
    *   .alterTable("users", t => t
+   *     .alterColumn("name").nullable()
    *     .addColumn("email", column("string"))
    *     .addColumn("age", column("integer").nullable())
    *     .createIndex("idx_email", ["email"]))
@@ -1260,6 +1359,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Track existing columns and indexes
     const existingColumns = new Set(Object.keys(table.columns));
     const existingIndexes = new Set(Object.keys(table.indexes));
+    const existingColumnState = new Map<string, { isNullable: boolean }>();
+    for (const [colName, col] of Object.entries(table.columns)) {
+      existingColumnState.set(colName, { isNullable: col.isNullable });
+    }
 
     // Apply modifications
     const resultBuilder = callback(
@@ -1281,7 +1384,25 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         subOperations.push({
           type: "add-column",
           columnName: colName,
-          column: newTable.columns[colName],
+          column: cloneColumn(newTable.columns[colName]),
+        });
+      }
+    }
+
+    // Track updates to existing columns
+    for (const [colName, previousState] of existingColumnState.entries()) {
+      const updatedColumn = newTable.columns[colName];
+      if (!updatedColumn) {
+        continue;
+      }
+      if (previousState.isNullable !== updatedColumn.isNullable) {
+        subOperations.push({
+          type: "update-column",
+          columnName: colName,
+          column: cloneColumn(updatedColumn),
+          updateNullable: true,
+          updateDefault: false,
+          updateDataType: false,
         });
       }
     }
