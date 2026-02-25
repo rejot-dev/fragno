@@ -288,10 +288,9 @@ describe("createMigrator", () => {
 
       const result = await migrator.prepareMigrationTo(1, { updateSettings: false });
 
-      // When updateSettings is false, we shouldn't have the settings update operation
-      // Check that we only have create-table operations
-      const nonTableOps = result.operations.filter((op) => op.type !== "create-table");
-      expect(nonTableOps).toHaveLength(0);
+      // When updateSettings is false, we shouldn't have the settings update operation.
+      // The automatic shard index may still be emitted as an add-index operation.
+      expect(result.operations.some((op) => op.type === "custom")).toBe(false);
     });
   });
 
