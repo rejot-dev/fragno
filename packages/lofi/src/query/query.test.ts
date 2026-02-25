@@ -15,6 +15,17 @@ import { IndexedDbAdapter } from "../mod";
 
 const createDbName = () => `lofi-query-${Math.random().toString(16).slice(2)}`;
 
+const createShardSchema = () =>
+  schema("app", (s) =>
+    s.addTable("users", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .addColumn("_shard", column("string").hidden())
+        .createIndex("idx_name", ["name"]),
+    ),
+  );
+
 describe("IndexedDbAdapter query engine", () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory();
@@ -334,5 +345,41 @@ describe("IndexedDbAdapter query engine", () => {
 
     expect(match).toHaveLength(1);
     expect(match[0]?.id.externalId).toBe("file-2");
+  });
+
+  it("ignores _shard in select lists", async () => {
+    const appSchema = createShardSchema();
+
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada", _shard: "shard-a" },
+        },
+      ],
+    });
+
+    const query = adapter.createQueryEngine(appSchema);
+    const selected = await query.find("users", (b) =>
+      b.whereIndex("idx_name").select(["id", "name", "_shard"]),
+    );
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toHaveProperty("id");
+    expect(selected[0]).toHaveProperty("name");
+    expect(selected[0]).not.toHaveProperty("_shard");
   });
 });

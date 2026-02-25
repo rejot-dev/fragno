@@ -1,6 +1,7 @@
 import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import type { LofiClientOptions, LofiMutation, LofiSyncResult } from "../types";
+import { stripShardField } from "../system-columns";
 
 type LofiSyncOptions = { signal?: AbortSignal };
 
@@ -250,7 +251,7 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
       schema: mutation.schema,
       table: mutation.table,
       externalId: mutation.externalId,
-      values: mutation.values,
+      values: stripShardField(mutation.values) ?? mutation.values,
       versionstamp: mutation.versionstamp,
     };
   }
@@ -261,7 +262,7 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
       schema: mutation.schema,
       table: mutation.table,
       externalId: mutation.externalId,
-      set: mutation.set,
+      set: stripShardField(mutation.set) ?? mutation.set,
       versionstamp: mutation.versionstamp,
     };
   }
