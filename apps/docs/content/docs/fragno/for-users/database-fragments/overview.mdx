@@ -154,6 +154,93 @@ The SqlAdapter supports:
 
 The adapter automatically handles database-specific SQL generation.
 
+## Server-Only Sharding
+
+Database fragments support **server-only sharding** through `shardingStrategy`. If you do not set a
+strategy, no sharding is applied.
+
+```typescript title="lib/comment-fragment-server.ts"
+import { createCommentFragment } from "@fragno-dev/comment-fragment";
+
+export function createCommentFragmentInstance() {
+  return createCommentFragment(
+    {
+      shardingStrategy: { mode: "row" },
+    },
+    { databaseAdapter },
+  );
+}
+```
+
+`shardingStrategy` modes:
+
+- `mode: "row"` injects `_shard` filters into reads and writes.
+- `mode: "adapter"` disables row-level filtering but still records `_shard` for traceability. In
+  adapter mode, you must set a non-null shard per request.
+
+### Durable Hooks Processor Scope
+
+When sharding is enabled, you can run durable hook processing **per shard** or **globally** by
+passing a scope to `createDurableHooksProcessor`:
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+
+const perShard = createDurableHooksProcessor(fragment, {
+  scope: { mode: "shard", shard: "tenant-a" },
+});
+
+const global = createDurableHooksProcessor(fragment, {
+  scope: { mode: "global" },
+});
+```
+
+- `mode: "shard"` sets the shard context and runs with shard filtering enabled.
+- `mode: "global"` disables row-level shard filters so one processor can drain hooks across all
+  shards. Use this only for trusted, centralized maintenance or background workers.
+
+### Setting the Shard in Middleware
+
+Shards are resolved by integrator middleware. This must run for **all** fragment routes, including
+internal outbox/sync routes.
+
+```typescript title="lib/comment-fragment-server.ts"
+import { getInternalFragment } from "@fragno-dev/db";
+
+const shardMiddleware = async (input, output) => {
+  const shard = input.headers.get("x-fragno-shard");
+  output.deps.shardContext.set(shard ?? null);
+};
+
+const fragment = createCommentFragment(
+  { shardingStrategy: { mode: "row" } },
+  { databaseAdapter },
+).withMiddleware(shardMiddleware);
+
+getInternalFragment(databaseAdapter).withMiddleware(shardMiddleware);
+```
+
+Shards must be **non-empty** and **`<= 64` characters** when set. Use `null` when no shard is
+available.
+
+### Lofi + Outbox Sharding
+
+Lofi is **shard-agnostic**. Shard filtering happens on the server, and Lofi only receives
+shard-filtered data from `/_internal/outbox` and `/_internal/sync`.
+
+Outbox mutation payloads may include `_shard` (a system column). Clients must ignore `_shard` in
+payloads and never attempt to read or write it.
+
+<Callout title="Direct Query Engine Access" type="warning">
+  Database fragments do not expose a direct query engine. Use `handlerTx` or `serviceTx` so shard
+  filtering and UOW semantics are always enforced.
+</Callout>
+
+### Join Limitations
+
+Cross-shard joins are disallowed. In row mode, every table in a join must be filtered by the same
+shard. If your adapter cannot enforce this, the query will throw.
+
 ## FAQ
 
 **Q: Do I need to learn a new ORM?**
