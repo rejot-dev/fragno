@@ -290,5 +290,5 @@ Each concrete driver config chooses the most logical strategy for its database t
 ## 8. Migration + Backwards Compatibility
 
 - Internal schema version increments to add `fragno_db_outbox`.
-- Existing databases must apply the internal migration before enabling outbox.
+- Existing databases must apply the system migration before enabling outbox.
 - Outbox is optional; existing users are unaffected unless they opt in.

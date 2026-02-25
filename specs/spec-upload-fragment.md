@@ -160,7 +160,7 @@ All database interactions must be atomic and use Fragno's transaction builders:
 
 - Route handlers must use `this.handlerTx()` to execute transactions.
 - Services must use `this.serviceTx(schema)` and return `TxResult` for handlers to execute.
-- No direct `deps.db` usage is allowed in this fragment.
+- No direct query engine access is allowed in this fragment.
 - A function must never perform multiple separate DB operations; all DB work must be part of a
   single transaction.
 - When DB work is required outside a handler (e.g. background job), use
