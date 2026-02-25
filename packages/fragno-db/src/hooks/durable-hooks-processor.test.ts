@@ -13,6 +13,7 @@ import {
   createDurableHooksProcessorGroup,
   createDurableHooksProcessorGroupFromProcessors,
 } from "./durable-hooks-processor";
+import type { ShardingStrategy } from "../sharding";
 
 const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
@@ -33,7 +34,10 @@ describe("createDurableHooksProcessor", () => {
   let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
-  function instantiateFragment(options: { databaseAdapter: SqlAdapter }) {
+  function instantiateFragment(options: {
+    databaseAdapter: SqlAdapter;
+    shardingStrategy?: ShardingStrategy;
+  }) {
     return instantiate(testFragmentDefinition).withConfig({}).withOptions(options).build();
   }
 
@@ -46,8 +50,8 @@ describe("createDurableHooksProcessor", () => {
       driverConfig: new BetterSQLite3DriverConfig(),
     });
 
-    const internalMigrations = adapter.prepareMigrations(internalSchema, null);
-    await internalMigrations.executeWithDriver(adapter.driver, 0);
+    const systemMigrations = adapter.prepareMigrations(internalSchema, null);
+    await systemMigrations.executeWithDriver(adapter.driver, 0);
 
     const testMigrations = adapter.prepareMigrations(testSchema, "test");
     await testMigrations.executeWithDriver(adapter.driver, 0);
@@ -62,6 +66,9 @@ describe("createDurableHooksProcessor", () => {
   it("should process pending hooks and return counts", async () => {
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
+    if (!processor) {
+      throw new Error("Durable hooks not configured for test fragment.");
+    }
 
     const internalFragment = getInternalFragment(adapter);
     await internalFragment.inContext(async function () {
@@ -94,6 +101,9 @@ describe("createDurableHooksProcessor", () => {
   it("should wake for stale processing hooks", async () => {
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
+    if (!processor) {
+      throw new Error("Durable hooks not configured for test fragment.");
+    }
 
     const internalFragment = getInternalFragment(adapter);
     const baseNow = new Date();
@@ -123,15 +133,13 @@ describe("createDurableHooksProcessor", () => {
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
-  it("throws when fragment has no hooks configured", () => {
+  it("returns null when fragment has no hooks configured", () => {
     const noHooksFragment = instantiate(noHooksFragmentDefinition)
       .withConfig({})
       .withOptions({ databaseAdapter: adapter })
       .build();
 
-    expect(() => createDurableHooksProcessor(noHooksFragment)).toThrow(
-      '[fragno-db] Durable hooks not configured for fragment "no-hooks".',
-    );
+    expect(createDurableHooksProcessor(noHooksFragment)).toBeNull();
   });
 
   it("skips fragments without hooks when creating a group", () => {
@@ -143,6 +151,120 @@ describe("createDurableHooksProcessor", () => {
     const processor = createDurableHooksProcessorGroup([noHooksFragment, fragment]);
     expect(processor).not.toBeNull();
     expect(processor.namespace).toBe("test");
+  });
+
+  it("should scope processing to a shard and allow global processing", async () => {
+    const sqliteDatabase = new SQLite(":memory:");
+    const dialect = new SqliteDialect({ database: sqliteDatabase });
+    const shardedAdapter = new SqlAdapter({
+      dialect,
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+
+    const systemMigrations = shardedAdapter.prepareMigrations(internalSchema, null);
+    await systemMigrations.executeWithDriver(shardedAdapter.driver, 0);
+
+    const testMigrations = shardedAdapter.prepareMigrations(testSchema, "test");
+    await testMigrations.executeWithDriver(shardedAdapter.driver, 0);
+
+    const shardedFragment = instantiateFragment({
+      databaseAdapter: shardedAdapter,
+      shardingStrategy: { mode: "row" },
+    });
+
+    const internalFragment = getInternalFragment(shardedAdapter);
+
+    await internalFragment.inContext(async function () {
+      this.setShard("alpha");
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace: "test",
+            hookName: "onTest",
+            payload: { ok: true },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 1,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-alpha",
+          });
+        })
+        .execute();
+    });
+
+    await internalFragment.inContext(async function () {
+      this.setShard("beta");
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace: "test",
+            hookName: "onTest",
+            payload: { ok: true },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 1,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-beta",
+          });
+        })
+        .execute();
+    });
+
+    const shardProcessor = createDurableHooksProcessor(shardedFragment, {
+      scope: { mode: "shard", shard: "alpha" },
+    });
+    const processedAlpha = await shardProcessor!.process();
+    expect(processedAlpha).toBe(1);
+
+    const alphaEvents = await internalFragment.inContext(async function () {
+      this.setShard("alpha");
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("test")] as const,
+        )
+        .transform(({ serviceResult: [events] }) => events)
+        .execute();
+    });
+    expect(alphaEvents).toHaveLength(1);
+    expect(alphaEvents[0].status).toBe("completed");
+
+    const betaEvents = await internalFragment.inContext(async function () {
+      this.setShard("beta");
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("test")] as const,
+        )
+        .transform(({ serviceResult: [events] }) => events)
+        .execute();
+    });
+    expect(betaEvents).toHaveLength(1);
+    expect(betaEvents[0].status).toBe("pending");
+
+    const globalProcessor = createDurableHooksProcessor(shardedFragment, {
+      scope: { mode: "global" },
+    });
+    const processedGlobal = await globalProcessor!.process();
+    expect(processedGlobal).toBe(1);
+
+    const betaEventsAfter = await internalFragment.inContext(async function () {
+      this.setShard("beta");
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("test")] as const,
+        )
+        .transform(({ serviceResult: [events] }) => events)
+        .execute();
+    });
+    expect(betaEventsAfter).toHaveLength(1);
+    expect(betaEventsAfter[0].status).toBe("completed");
+
+    await shardedAdapter.close();
   });
 });
 
