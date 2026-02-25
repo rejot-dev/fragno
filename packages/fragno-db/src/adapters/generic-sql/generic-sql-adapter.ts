@@ -29,12 +29,18 @@ import {
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
 import type { DriverConfig } from "./driver-config";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
+import {
+  createPreparedMigrations,
+  type PrepareMigrationsOptions,
+  type PreparedMigrations,
+} from "./migration/prepared-migrations";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import { UnitOfWorkDecoder } from "./uow-decoder";
 import type { ShardScope, ShardingStrategy } from "../../sharding";
+import type { SystemMigration } from "../../migration-engine/system-migrations";
+
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
@@ -51,6 +57,7 @@ export interface SqlAdapterOptions {
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
+  systemMigrations?: SystemMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -75,6 +82,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
+  readonly systemMigrations?: SystemMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -88,6 +96,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
+    systemMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
@@ -116,6 +125,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
+    this.systemMigrations = systemMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -144,7 +154,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+  prepareMigrations<T extends AnySchema>(
+    schema: T,
+    namespace: string | null,
+    options?: PrepareMigrationsOptions,
+  ): PreparedMigrations {
     const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
@@ -154,6 +168,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
+      systemMigrations: options?.systemMigrations ?? this.systemMigrations,
     });
   }
 

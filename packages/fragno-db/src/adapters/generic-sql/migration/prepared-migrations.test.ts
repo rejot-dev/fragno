@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import type { SystemMigration } from "../../../migration-engine/system-migrations";
 import {
   createNamingResolver,
   schemaNamingStrategy,
@@ -12,7 +13,6 @@ import { MySQLSQLGenerator } from "./dialect/mysql";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { createPreparedMigrations } from "./prepared-migrations";
-
 const testSchema = schema("test", (s) => {
   return s
     .addTable("users", (t) => {
@@ -140,7 +140,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
     const sql = generator.generateVersionUpdateSQL("test_namespace", 0, 1);
 
     expect(sql.sql).toMatchInlineSnapshot(
-      `"insert into "fragno_db_settings" ("id", "key", "value") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '1')"`,
+      `"insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '1', '__fragno_global__')"`,
     );
   });
 
@@ -472,10 +472,14 @@ describe("PreparedMigrations - Integration", () => {
 
     expect(transactionStarted).toBe(true);
     expect(executedStatements.length).toBe(3);
-    expect(executedStatements[0]).toContain('create table "users_test"');
-    expect(executedStatements[1]).toContain('create index "idx_users_idx_users_shard_test_c68b3b3c"');
+    expect(executedStatements[0]).toMatchInlineSnapshot(
+      `"create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null)"`,
+    );
+    expect(executedStatements[1]).toMatchInlineSnapshot(
+      `"create index "idx_users_idx_users_shard_test_c68b3b3c" on "users_test" ("_shard")"`,
+    );
     expect(executedStatements[2]).toMatchInlineSnapshot(
-      `"insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1')"`,
+      `"insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1', '__fragno_global__')"`,
     );
   });
 
@@ -516,7 +520,9 @@ describe("PreparedMigrations - Integration", () => {
     // Should only have the create table and shard index statements, no version update
     expect(executedStatements.length).toBe(2);
     expect(executedStatements[0]).toContain('create table "users_test"');
-    expect(executedStatements[1]).toContain('create index "idx_users_idx_users_shard_test_c68b3b3c"');
+    expect(executedStatements[1]).toContain(
+      'create index "idx_users_idx_users_shard_test_c68b3b3c"',
+    );
   });
 
   test("throws error for backward migration", async () => {
@@ -627,7 +633,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 2, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+      "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
 
       create index "idx_users_idx_users_shard_test_c68b3b3c" on "users_test" ("_shard");
 
@@ -637,7 +643,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '2');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '2', '__fragno_global__');"
     `);
   });
 
@@ -651,7 +657,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+      "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
 
       create index "idx_users_idx_users_shard_test_c68b3b3c" on "users_test" ("_shard");
 
@@ -661,13 +667,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
-      create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+      create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
 
       create index "idx_posts_idx_posts_shard_test_c269e304" on "posts_test" ("_shard");
 
       alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3', '__fragno_global__');"
     `);
   });
 
@@ -701,7 +707,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(2, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+      "create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
 
       create index "idx_posts_idx_posts_shard_test_c269e304" on "posts_test" ("_shard");
 
@@ -734,10 +740,11 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
       create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, "_shard" text default '__fragno_global__' not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
+>>>>>>> eb16a906 (feat(fragno-db): add shard system migrations)
 
       create index "idx_posts_idx_posts_shard_test_c269e304" on "posts_test" ("_shard");
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3', '__fragno_global__');"
     `);
   });
 
@@ -767,7 +774,10 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
+<<<<<<< HEAD
       create table \`users_test\` (\`id\` varchar(128) not null unique, \`name\` varchar(191) not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(128) default '__fragno_global__' not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
+=======
+      create table \`users_test\` (\`id\` varchar(128) not null unique, \`name\` text not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(128) default '__fragno_global__' not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
 
       create index \`idx_users_idx_users_shard_test_c68b3b3c\` on \`users_test\` (\`_shard\`);
 
@@ -777,7 +787,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index \`idx_users_age_idx_test_1c69311d\` on \`users_test\` (\`age\`);
 
-      create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` varchar(191) not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(128) default '__fragno_global__' not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
+      create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(128) default '__fragno_global__' not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
       create index \`idx_posts_idx_posts_shard_test_c269e304\` on \`posts_test\` (\`_shard\`);
 
@@ -785,7 +795,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       SET FOREIGN_KEY_CHECKS = 1;
 
-      insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
+      insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`, \`_shard\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3', '__fragno_global__');"
     `);
   });
 
@@ -860,7 +870,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     const compiled = prepared.compile(0, 2, { updateVersionInMigration: true });
     expect(compiled.statements).toBeDefined();
     expect(compiled.statements.length).toBeGreaterThan(0);
-    // Should have: create table, add column, 2 user indexes, shard index, version insert
+    // Should have: create table, shard index, add column, 2 indexes, version insert
     expect(compiled.statements.length).toBe(6);
   });
 
@@ -876,10 +886,276 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).not.toContain("fragno_db_settings");
     expect(sql).toMatchInlineSnapshot(
       `
-      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
+      "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(128) default '__fragno_global__' not null);
 
       create index "idx_users_idx_users_shard_test_c68b3b3c" on "users_test" ("_shard");"
     `,
     );
+  });
+
+  test("includes system migrations after schema operations", () => {
+    const systemMigrations: SystemMigration[] = [
+      ({ schema, resolver }) => {
+        const statements: string[] = [];
+        for (const table of Object.values(schema.tables)) {
+          const versionColumn = table.getVersionColumn();
+          const tableName = resolver ? resolver.getTableName(table.name) : table.name;
+          const columnName = resolver
+            ? resolver.getColumnName(table.name, versionColumn.name)
+            : versionColumn.name;
+          const schemaName = resolver?.getSchemaName();
+          const qualifiedTable = schemaName ? `"${schemaName}"."${tableName}"` : `"${tableName}"`;
+
+          statements.push(
+            `alter table ${qualifiedTable} alter column "${columnName}" type text using ("${columnName}"::text)`,
+          );
+        }
+        return statements;
+      },
+    ];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(1, testSchema.version, { systemFromVersion: 0 });
+
+    expect(sql).toContain(
+      `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
+    );
+    expect(sql).toContain("test.system_migration_version");
+
+    const alterIndex = sql.indexOf(
+      `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
+    );
+    const schemaVersionIndex = sql.indexOf("test.schema_version");
+    const systemVersionIndex = sql.indexOf("test.system_migration_version");
+
+    expect(alterIndex).toBeGreaterThan(-1);
+    expect(schemaVersionIndex).toBeGreaterThan(alterIndex);
+    expect(systemVersionIndex).toBeGreaterThan(schemaVersionIndex);
+  });
+
+  test("skips system migrations on fresh databases but updates system version", () => {
+    const systemMigrations: SystemMigration[] = [() => "select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(0, testSchema.version, { systemFromVersion: 0 });
+
+    expect(sql).not.toContain("select 1");
+    expect(sql).toContain("test.system_migration_version");
+  });
+
+  test("respects systemToVersion override", () => {
+    const systemMigrations: SystemMigration[] = [
+      () => "/* system-migration-1 */ select 1",
+      () => "/* system-migration-2 */ select 2",
+    ];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(1, testSchema.version, {
+      systemFromVersion: 0,
+      systemToVersion: 1,
+    });
+
+    expect(sql).toContain("system-migration-1");
+    expect(sql).not.toContain("system-migration-2");
+    expect(sql).toContain("test.system_migration_version");
+  });
+
+  test("skips system migrations when systemFromVersion is undefined", () => {
+    const systemMigrations: SystemMigration[] = [() => "/* system-migration-1 */ select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(1, testSchema.version);
+
+    expect(sql).not.toContain("system-migration-1");
+    expect(sql).not.toContain("test.system_migration_version");
+  });
+
+  test("runs system migrations when schema already at target version", () => {
+    const systemMigrations: SystemMigration[] = [() => "/* system-migration-1 */ select 1"];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      systemMigrations,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+    });
+
+    expect(sql).toContain("system-migration-1");
+    expect(sql).toContain("test.system_migration_version");
+  });
+});
+
+describe("PreparedMigrations - default system migrations", () => {
+  const shardIndexName = resolver.getIndexName("idx_users_shard", "users");
+  const tableName = resolver.getTableName("users");
+  const shardColumnName = resolver.getColumnName("users", "_shard");
+
+  test("postgres includes shard backfill statements", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+      updateVersionInMigration: false,
+    });
+
+    expect(sql).toContain(
+      `alter table "${tableName}" add column if not exists "${shardColumnName}" varchar(128) default '__fragno_global__'`,
+    );
+    expect(sql).toContain(
+      `create index if not exists "${shardIndexName}" on "${tableName}" ("${shardColumnName}")`,
+    );
+    expect(sql).toContain(
+      `update "${tableName}" set "${shardColumnName}" = '__fragno_global__' where "${shardColumnName}" is null`,
+    );
+    expect(sql).toContain(
+      `alter table "${tableName}" alter column "${shardColumnName}" set default '__fragno_global__'`,
+    );
+    expect(sql).toContain(
+      `alter table "${tableName}" alter column "${shardColumnName}" set not null`,
+    );
+  });
+
+  test("sqlite includes shard backfill statements", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "sqlite",
+      resolver,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+      updateVersionInMigration: false,
+    });
+
+    expect(sql).toContain(
+      `alter table "${tableName}" add column "${shardColumnName}" varchar(128)`,
+    );
+    expect(sql).toContain(
+      `create index if not exists "${shardIndexName}" on "${tableName}" ("${shardColumnName}")`,
+    );
+    expect(sql).toContain(`drop index if exists "${shardIndexName}"`);
+    expect(sql).toContain(
+      `alter table "${tableName}" rename column "${shardColumnName}" to "${shardColumnName}_legacy"`,
+    );
+    expect(sql).toContain(
+      `alter table "${tableName}" add column "${shardColumnName}" varchar(128) not null default '__fragno_global__'`,
+    );
+    expect(sql).toContain(
+      `update "${tableName}" set "${shardColumnName}" = coalesce("${shardColumnName}_legacy", '__fragno_global__')`,
+    );
+    expect(sql).toContain(`alter table "${tableName}" drop column "${shardColumnName}_legacy"`);
+  });
+
+  test("mysql includes shard backfill statements", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "mysql",
+      resolver,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+      updateVersionInMigration: false,
+    });
+
+    expect(sql).toContain(
+      `alter table \`${tableName}\` add column \`${shardColumnName}\` varchar(128) default '__fragno_global__'`,
+    );
+    expect(sql).toContain(
+      `create index \`${shardIndexName}\` on \`${tableName}\` (\`${shardColumnName}\`)`,
+    );
+    expect(sql).toContain(
+      `update \`${tableName}\` set \`${shardColumnName}\` = '__fragno_global__' where \`${shardColumnName}\` is null`,
+    );
+    expect(sql).toContain(
+      `alter table \`${tableName}\` modify column \`${shardColumnName}\` varchar(128) not null default '__fragno_global__'`,
+    );
+  });
+
+  test("system migrations only target tables present at fromVersion (sqlite)", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "sqlite",
+      resolver,
+    });
+
+    const usersTableName = resolver.getTableName("users");
+    const postsTableName = resolver.getTableName("posts");
+    const usersShardColumnName = resolver.getColumnName("users", "_shard");
+    const postsShardColumnName = resolver.getColumnName("posts", "_shard");
+    const postsShardIndexName = resolver.getIndexName("idx_posts_shard", "posts");
+
+    const sql = prepared.getSQL(1, testSchema.version, {
+      systemFromVersion: 0,
+      updateVersionInMigration: false,
+    });
+
+    expect(sql).toContain(
+      `alter table "${usersTableName}" add column "${usersShardColumnName}" varchar(128)`,
+    );
+    expect(sql).not.toContain(
+      `alter table "${postsTableName}" add column "${postsShardColumnName}" varchar(128)`,
+    );
+    expect(sql).not.toContain(
+      `create index if not exists "${postsShardIndexName}" on "${postsTableName}" ("${postsShardColumnName}")`,
+    );
+  });
+
+  test("mysql system migrations do not use information_schema checks", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "mysql",
+      resolver,
+    });
+
+    const sql = prepared.getSQL(testSchema.version, testSchema.version, {
+      systemFromVersion: 0,
+      updateVersionInMigration: false,
+    });
+
+    expect(sql).not.toContain("information_schema");
+    expect(sql).not.toContain("fragno_shard_stmt");
   });
 });

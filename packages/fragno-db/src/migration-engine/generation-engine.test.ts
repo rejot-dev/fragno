@@ -2,12 +2,18 @@ import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from "vite
 
 import { DummyDriver, MysqlAdapter, PostgresAdapter, SqliteAdapter } from "kysely";
 
+import { version as FRAGNO_DB_PACKAGE_VERSION } from "../../package.json";
 import {
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
   SQLocalDriverConfig,
 } from "../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import {
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  internalSchema,
+} from "../fragments/internal-fragment.schema";
 import { FragnoDatabase } from "../mod";
 import { column, idColumn, schema, type AnySchema } from "../schema/create";
 import {
@@ -87,7 +93,9 @@ describe("generateSchemaArtifacts - sql", () => {
 
     expect(results).toHaveLength(2); // Settings + test-db
     expect(results[0].namespace).toBeNull();
-    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
+    expect(results[0].path).toBe(
+      `20251024_001_f000_t${internalSchema.version.toString().padStart(3, "0")}_fragno_db_settings.sql`,
+    );
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
 
@@ -138,7 +146,9 @@ describe("generateSchemaArtifacts - sql", () => {
 
     expect(results).toHaveLength(4); // Settings + 3 databases
     expect(results[0].namespace).toBeNull();
-    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
+    expect(results[0].path).toBe(
+      `20251024_001_f000_t${internalSchema.version.toString().padStart(3, "0")}_fragno_db_settings.sql`,
+    );
 
     expect(results[1].namespace).toBe("apple-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");
@@ -257,6 +267,8 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[0].schema).toContain("fragno_db_settings");
     expect(results[0].schema).toContain("key");
     expect(results[0].schema).toContain("value");
+    expect(results[0].schema).toContain(`${SETTINGS_NAMESPACE}.${FRAGNO_DB_PACKAGE_VERSION_KEY}`);
+    expect(results[0].schema).toContain(`'${FRAGNO_DB_PACKAGE_VERSION}'`);
 
     // Check fragment migration includes version tracking
     expect(results[1].schema).toContain("test-db.schema_version");
@@ -299,7 +311,9 @@ describe("generateSchemaArtifacts - sql", () => {
 
       create index "idx_users_shard" on "test-db"."users" ("_shard");
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1', '__fragno_global__');
+
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1', '__fragno_global__');"
     `);
 
     // Second migration: 1 -> 2 (should use UPDATE)
@@ -320,7 +334,19 @@ describe("generateSchemaArtifacts - sql", () => {
 
       alter table "test-db"."users" add column "email" varchar(191);
 
-      update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';"
+      alter table "test-db"."users" add column if not exists "_shard" varchar(128) default '__fragno_global__';
+
+      create index if not exists "idx_users_shard" on "test-db"."users" ("_shard");
+
+      update "test-db"."users" set "_shard" = '__fragno_global__' where "_shard" is null;
+
+      alter table "test-db"."users" alter column "_shard" set default '__fragno_global__';
+
+      alter table "test-db"."users" alter column "_shard" set not null;
+
+      update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';
+
+      insert into "fragno_db_settings" ("id", "key", "value", "_shard") values ('7gt_nWQISekcPC1Ds9LQPg', 'test-db.system_migration_version', '1', '__fragno_global__');"
     `);
   });
 

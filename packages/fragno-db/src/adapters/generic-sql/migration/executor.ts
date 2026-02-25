@@ -18,6 +18,26 @@ export interface CompiledMigration {
  * @param driver - The SQL driver adapter to execute queries
  * @param migration - The compiled migration containing SQL statements
  */
+
+const isDeallocatePrepare = (statement: CompiledQuery) =>
+  /^\s*deallocate\s+prepare\s+[a-z_][a-z0-9_]*\s*;?\s*$/i.test(statement.sql.trim());
+
+async function cleanupPendingPreparedStatements(
+  executor: Pick<SqlDriverAdapter, "executeQuery">,
+  statements: CompiledQuery[],
+): Promise<void> {
+  for (const statement of statements) {
+    if (!isDeallocatePrepare(statement)) {
+      continue;
+    }
+    try {
+      await executor.executeQuery(statement);
+    } catch {
+      // Preserve the original migration error; this is best-effort session cleanup.
+    }
+  }
+}
+
 export async function executeMigration(
   driver: SqlDriverAdapter,
   migration: CompiledMigration,
@@ -26,10 +46,20 @@ export async function executeMigration(
     return;
   }
 
-  const isForeignKeysOff = (statement: CompiledQuery) =>
-    /^\s*pragma\s+foreign_keys\s*=\s*off\s*;?\s*$/i.test(statement.sql.trim());
-  const isForeignKeysOn = (statement: CompiledQuery) =>
-    /^\s*pragma\s+foreign_keys\s*=\s*on\s*;?\s*$/i.test(statement.sql.trim());
+  const isForeignKeysOff = (statement: CompiledQuery) => {
+    const sql = statement.sql.trim();
+    return (
+      /^\s*pragma\s+foreign_keys\s*=\s*off\s*;?\s*$/i.test(sql) ||
+      /^\s*set\s+foreign_key_checks\s*=\s*0\s*;?\s*$/i.test(sql)
+    );
+  };
+  const isForeignKeysOn = (statement: CompiledQuery) => {
+    const sql = statement.sql.trim();
+    return (
+      /^\s*pragma\s+foreign_keys\s*=\s*on\s*;?\s*$/i.test(sql) ||
+      /^\s*set\s+foreign_key_checks\s*=\s*1\s*;?\s*$/i.test(sql)
+    );
+  };
 
   const preStatements: CompiledQuery[] = [];
   const postStatements: CompiledQuery[] = [];
@@ -63,8 +93,14 @@ export async function executeMigration(
   try {
     if (transactionalStatements.length > 0) {
       await driver.transaction(async (tx) => {
-        for (const statement of transactionalStatements) {
-          await tx.executeQuery(statement);
+        for (let index = 0; index < transactionalStatements.length; index += 1) {
+          const statement = transactionalStatements[index]!;
+          try {
+            await tx.executeQuery(statement);
+          } catch (error) {
+            await cleanupPendingPreparedStatements(tx, transactionalStatements.slice(index + 1));
+            throw error;
+          }
         }
       });
     }
