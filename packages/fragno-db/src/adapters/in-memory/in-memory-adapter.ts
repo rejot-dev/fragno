@@ -143,6 +143,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
       this.options,
       resolverFactory,
       this.#schemaByNamespace,
+      () => (this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null),
     );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
