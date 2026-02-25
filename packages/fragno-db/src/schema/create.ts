@@ -496,8 +496,8 @@ export function referenceColumn(): Column<
  * This is a CUID string that can be auto-generated or user-provided.
  * Input accepts string | FragnoId | null, output returns FragnoId.
  */
-export function idColumn(): IdColumn<"varchar(30)", string | FragnoId | null, FragnoId> {
-  const col = new IdColumn<"varchar(30)", string | FragnoId | null, FragnoId>("varchar(30)");
+export function idColumn(): IdColumn<"varchar(128)", string | FragnoId | null, FragnoId> {
+  const col = new IdColumn<"varchar(128)", string | FragnoId | null, FragnoId>("varchar(128)");
   col.role = "external-id";
   col.defaultTo$((b) => b.cuid());
   return col;

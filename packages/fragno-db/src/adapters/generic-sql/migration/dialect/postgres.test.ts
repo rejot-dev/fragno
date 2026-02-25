@@ -68,7 +68,7 @@ describe("PostgresSQLGenerator", () => {
         columns: [
           {
             name: "id",
-            type: "varchar(30)",
+            type: "varchar(128)",
             isNullable: false,
             role: "external-id",
             default: { runtime: "cuid" },
@@ -78,7 +78,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" varchar(30) not null unique)"`,
+        `"create table "users" ("id" varchar(128) not null unique)"`,
       );
     });
 

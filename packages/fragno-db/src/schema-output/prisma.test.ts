@@ -440,7 +440,7 @@ describe("generatePrismaSchema", () => {
       // Namespaces: blog
 
       model FragnoDbOutbox {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         versionstamp String
         uowId String
         payload Json @db.Json
@@ -454,7 +454,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model FragnoDbOutboxMutations {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         entryVersionstamp String
         mutationVersionstamp String
         uowId String
@@ -472,7 +472,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model FragnoDbSettings {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         key String
         value String
         _internalId BigInt @id @default(autoincrement())
@@ -482,7 +482,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model FragnoDbSyncRequests {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         requestId String
         status String
         confirmedCommandIds Json @db.Json
@@ -497,7 +497,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model FragnoHooks {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         namespace String
         hookName String
         payload Json @db.Json
@@ -518,7 +518,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model Posts_blog {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         title String
         authorId BigInt
         editorId BigInt?
@@ -532,7 +532,7 @@ describe("generatePrismaSchema", () => {
       }
 
       model Users_blog {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         email String
         createdAt DateTime @default(now())
         birthDate DateTime? @db.Date
@@ -588,7 +588,7 @@ describe("generatePrismaSchema", () => {
       // Namespaces: my-app
 
       model UserProfiles_my_app {
-        id String @unique @default(cuid()) @db.VarChar(30)
+        id String @unique @default(cuid()) @db.VarChar(128)
         user_id String @map("user-id")
         display_name String? @map("display name")
         _internalId BigInt @id @default(autoincrement())
