@@ -3,9 +3,9 @@ import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 
 import {
   DatabaseFragmentDefinitionBuilder,
-  type DatabaseHandlerContext,
   type DatabaseRequestStorage,
-  type DatabaseServiceContext,
+  type DatabaseHandlerContextWithShard,
+  type DatabaseServiceContextWithShard,
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
@@ -14,12 +14,14 @@ import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { FragnoId } from "../schema/create";
+import type { ShardingStrategy } from "../sharding";
 import {
   internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
-
 type AdapterRegistry = {
   listSchemas: () => Array<{
     name: string;
@@ -34,6 +36,7 @@ type AdapterRegistry = {
     schemaName: string,
     commandName: string,
   ) => { command: unknown; namespace: string | null } | undefined;
+  shardingStrategy?: ShardingStrategy;
 };
 
 export class SchemaRegistryCollisionError extends Error {
@@ -65,7 +68,13 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export {
+  internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+};
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
@@ -103,11 +112,15 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     {},
     {},
     {},
-    DatabaseServiceContext<{}>,
-    DatabaseHandlerContext,
+    DatabaseServiceContextWithShard<{}>,
+    DatabaseHandlerContextWithShard,
     DatabaseRequestStorage
   >("$fragno-internal-fragment"),
   internalSchema,
+  undefined,
+  undefined,
+  undefined,
+  { exposeShardContext: true },
 )
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
@@ -347,7 +360,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           })
           .build();
       },
-
       /**
        * Get the earliest pending hook wake time for a namespace.
        * Optionally considers processing hooks becoming stale when timeoutMinutes is provided.
@@ -361,7 +373,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         // Sentinel to keep query shape stable when processing checks are disabled.
         const processingStatus = includeProcessing ? "processing" : "__disabled__";
         const staleBefore = now.plus({ minutes: -timeoutMinutesValue });
-
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow
@@ -579,21 +590,35 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
+        const shardScope = this.getShardScope();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              let builder = afterValue
-                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterValue),
-                  )
-                : b.whereIndex("idx_outbox_versionstamp");
+              const builder =
+                shardScope === "scoped"
+                  ? afterValue
+                    ? b.whereIndex("idx_outbox_shard_versionstamp", (eb) =>
+                        eb("versionstamp", ">", afterValue),
+                      )
+                    : b.whereIndex("idx_outbox_shard_versionstamp")
+                  : afterValue
+                    ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
+                        eb("versionstamp", ">", afterValue),
+                      )
+                    : b.whereIndex("idx_outbox_versionstamp");
 
-              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+              const orderedBuilder = builder.orderByIndex(
+                shardScope === "scoped"
+                  ? "idx_outbox_shard_versionstamp"
+                  : "idx_outbox_versionstamp",
+                "asc",
+              );
+
               if (limit !== undefined) {
-                builder = builder.pageSize(limit);
+                return orderedBuilder.pageSize(limit);
               }
-              return builder;
+              return orderedBuilder;
             }),
           )
           .transformRetrieve(([entries]) =>
@@ -620,29 +645,89 @@ export type InternalFragmentInstance = InstantiatedFragmentFromDefinition<
   typeof internalFragmentDef
 >;
 
+const SCHEMA_VERSION_KEY = "schema_version";
+
+function getErrorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  let current = error;
+
+  while (current && typeof current === "object" && !chain.includes(current)) {
+    chain.push(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+
+  return chain;
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return getErrorChain(error).some((entry) => {
+    const record = entry as Record<string, unknown>;
+    return record["code"] === code || record["errno"] === code || record["resultCode"] === code;
+  });
+}
+
+function hasErrorNumber(error: unknown, value: number): boolean {
+  return getErrorChain(error).some((entry) => {
+    const record = entry as Record<string, unknown>;
+    return record["errno"] === value || record["resultCode"] === value;
+  });
+}
+
+function hasSqliteMissingTableError(error: unknown): boolean {
+  return getErrorChain(error).some((entry) => {
+    const record = entry as Record<string, unknown>;
+    const message = entry instanceof Error ? entry.message : undefined;
+    return (
+      record["code"] === "SQLITE_ERROR" &&
+      typeof message === "string" &&
+      message.includes("no such table") &&
+      message.includes(SETTINGS_TABLE_NAME)
+    );
+  });
+}
+
+function isMissingSettingsTableError(error: unknown): boolean {
+  return (
+    hasErrorCode(error, "42P01") ||
+    hasErrorCode(error, "ER_NO_SUCH_TABLE") ||
+    hasErrorNumber(error, 1146) ||
+    hasSqliteMissingTableError(error)
+  );
+}
+
+async function readNumericSetting(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+  key: string,
+): Promise<number | undefined> {
+  const setting = await fragment.inContext(async function () {
+    return await this.withShardScope("global", () =>
+      this.withShard(null, () =>
+        this.handlerTx()
+          .withServiceCalls(() => [fragment.services.settingsService.get(namespace, key)] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute(),
+      ),
+    );
+  });
+
+  if (!setting) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(setting.value, 10);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`Invalid numeric setting ${namespace}.${key}: ${setting.value}`);
+  }
+  return parsed;
+}
+
 export async function getSchemaVersionFromDatabase(
   fragment: InternalFragmentInstance,
   namespace: string,
 ): Promise<number> {
   try {
-    const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
-      const setting = await fragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () =>
-              [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-      if (!setting) {
-        return undefined;
-      }
-      const parsed = parseInt(setting.value, 10);
-      return Number.isNaN(parsed) ? undefined : parsed;
-    };
-
-    const primary = await readSchemaVersion(namespace);
+    const primary = await readNumericSetting(fragment, namespace, SCHEMA_VERSION_KEY);
     if (primary !== undefined) {
       return primary;
     }
@@ -652,14 +737,32 @@ export async function getSchemaVersionFromDatabase(
     const legacyNamespace =
       namespace === "" ? internalSchema.name : namespace === internalSchema.name ? "" : null;
     if (legacyNamespace !== null) {
-      const legacy = await readSchemaVersion(legacyNamespace);
+      const legacy = await readNumericSetting(fragment, legacyNamespace, SCHEMA_VERSION_KEY);
       if (legacy !== undefined) {
         return legacy;
       }
     }
 
     return 0;
-  } catch {
-    return 0;
+  } catch (error) {
+    if (isMissingSettingsTableError(error)) {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+export async function getSystemMigrationVersionFromDatabase(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+): Promise<number> {
+  try {
+    const primary = await readNumericSetting(fragment, namespace, SYSTEM_MIGRATION_VERSION_KEY);
+    return primary ?? 0;
+  } catch (error) {
+    if (isMissingSettingsTableError(error)) {
+      return 0;
+    }
+    throw error;
   }
 }

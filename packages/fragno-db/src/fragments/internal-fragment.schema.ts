@@ -4,6 +4,8 @@ import { schema, idColumn, column } from "../schema/create";
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 // FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
+export const SYSTEM_MIGRATION_VERSION_KEY = "system_migration_version" as const;
+export const FRAGNO_DB_PACKAGE_VERSION_KEY = "fragno_db_package_version" as const;
 
 export const internalSchema = schema("fragno_internal", (s) => {
   return s
@@ -91,5 +93,17 @@ export const internalSchema = schema("fragno_internal", (s) => {
     )
     .alterTable("fragno_hooks", (t) =>
       t.createIndex("idx_namespace_created_at", ["namespace", "createdAt", "id"]),
+    )
+    .alterTable("fragno_hooks", (t) =>
+      t.createIndex("idx_hooks_shard_status_retry", ["_shard", "status", "nextRetryAt"]),
+    )
+    .alterTable("fragno_db_outbox", (t) =>
+      t.createIndex("idx_outbox_shard_versionstamp", ["_shard", "versionstamp"]),
+    )
+    .alterTable("fragno_db_outbox_mutations", (t) =>
+      t.createIndex("idx_outbox_mutations_shard_entry", ["_shard", "entryVersionstamp"]),
+    )
+    .alterTable("fragno_db_sync_requests", (t) =>
+      t.createIndex("idx_sync_requests_shard_request", ["_shard", "requestId"]),
     );
 });

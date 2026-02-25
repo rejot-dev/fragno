@@ -12,7 +12,6 @@ import {
   internalSchema,
   type InternalFragmentInstance,
 } from "./internal-fragment";
-
 type InternalDescribeResponse = {
   adapterIdentity: string;
   fragments: Array<{ name: string; mountRoute: string }>;
@@ -210,7 +209,7 @@ type InternalSyncError = {
 };
 
 export const createInternalFragmentSyncRoutes = () =>
-  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config }) => [
+  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config, deps }) => [
     defineRoute({
       method: "POST",
       path: "/sync",
@@ -237,6 +236,10 @@ export const createInternalFragmentSyncRoutes = () =>
           return json(adapterIdentityResult.error, { status: 500 });
         }
 
+        const shardScope = deps.shardContext.getScope();
+        const shouldUseShardIndex =
+          registry.shardingStrategy?.mode === "row" && shardScope === "scoped";
+
         const body = (await input.input?.valid()) as SubmitRequest | undefined;
 
         const result = await submitSyncRequest(body, {
@@ -252,18 +255,21 @@ export const createInternalFragmentSyncRoutes = () =>
           countOutboxMutations: async (afterVersionstamp) => {
             const count = await this.handlerTx()
               .retrieve(({ forSchema }) => {
-                const builder = afterVersionstamp
-                  ? forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-                      b
-                        .whereIndex("idx_outbox_mutations_entry", (eb) =>
-                          eb("entryVersionstamp", ">", afterVersionstamp),
-                        )
-                        .selectCount(),
-                    )
-                  : forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-                      b.whereIndex("idx_outbox_mutations_entry").selectCount(),
-                    );
-                return builder;
+                return forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) => {
+                  const indexName = shouldUseShardIndex
+                    ? "idx_outbox_mutations_shard_entry"
+                    : "idx_outbox_mutations_entry";
+
+                  if (afterVersionstamp) {
+                    return b
+                      .whereIndex(indexName, (eb) =>
+                        eb("entryVersionstamp", ">", afterVersionstamp),
+                      )
+                      .selectCount();
+                  }
+
+                  return b.whereIndex(indexName).selectCount();
+                });
               })
               .transformRetrieve(([result]) => (typeof result === "number" ? result : 0))
               .execute();
