@@ -297,6 +297,26 @@ describe("generatePrismaSchema", () => {
     `);
   });
 
+  it("should reflect alterColumn nullable changes", () => {
+    const alteredSchema = schema("altered", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.alterColumn("name").nullable();
+        });
+    });
+
+    const generated = generatePrismaSchema(
+      [{ namespace: "altered", schema: alteredSchema }],
+      "sqlite",
+      { sqliteStorageMode: sqliteStoragePrisma },
+    );
+
+    expect(generated).toContain("name String?");
+  });
+
   it("should generate SQLite Prisma schema for default storage mode", () => {
     const generated = generatePrismaSchema(
       [
