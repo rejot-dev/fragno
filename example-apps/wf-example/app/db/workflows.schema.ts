@@ -5,9 +5,9 @@ import {
   bigserial,
   integer,
   uniqueIndex,
+  index,
   json,
   timestamp,
-  index,
   pgSchema,
   bigint,
   foreignKey,
@@ -30,8 +30,12 @@ export const fragno_db_settings = pgTable(
     value: text("value").notNull(),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   },
-  (table) => [uniqueIndex("unique_key").on(table.key)],
+  (table) => [
+    uniqueIndex("unique_key").on(table.key),
+    index("idx_fragno_db_settings_shard").on(table._shard),
+  ],
 );
 
 export const fragno_hooks = pgTable(
@@ -52,12 +56,15 @@ export const fragno_hooks = pgTable(
     error: text("error"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     nonce: text("nonce").notNull(),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
   },
   (table) => [
     index("idx_namespace_status_retry").on(table.namespace, table.status, table.nextRetryAt),
+    index("idx_hooks_shard_status_retry").on(table._shard, table.status, table.nextRetryAt),
     index("idx_nonce").on(table.nonce),
+    index("idx_fragno_hooks_shard").on(table._shard),
     index("idx_namespace_status_last_attempt").on(
       table.namespace,
       table.status,
@@ -78,12 +85,15 @@ export const fragno_db_outbox = pgTable(
     payload: json("payload").notNull(),
     refMap: json("refMap"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
   },
   (table) => [
     uniqueIndex("idx_outbox_versionstamp").on(table.versionstamp),
+    index("idx_outbox_shard_versionstamp").on(table._shard, table.versionstamp),
     index("idx_outbox_uow").on(table.uowId),
+    index("idx_fragno_db_outbox_shard").on(table._shard),
   ],
 );
 
@@ -102,11 +112,13 @@ export const fragno_db_outbox_mutations = pgTable(
     externalId: text("externalId").notNull(),
     op: text("op").notNull(),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
   },
   (table) => [
     index("idx_outbox_mutations_entry").on(table.entryVersionstamp),
+    index("idx_outbox_mutations_shard_entry").on(table._shard, table.entryVersionstamp),
     index("idx_outbox_mutations_key").on(
       table.schema,
       table.table,
@@ -114,6 +126,7 @@ export const fragno_db_outbox_mutations = pgTable(
       table.entryVersionstamp,
     ),
     index("idx_outbox_mutations_uow").on(table.uowId),
+    index("idx_fragno_db_outbox_mutations_shard").on(table._shard),
   ],
 );
 
@@ -131,10 +144,15 @@ export const fragno_db_sync_requests = pgTable(
     baseVersionstamp: text("baseVersionstamp"),
     lastVersionstamp: text("lastVersionstamp"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
   },
-  (table) => [uniqueIndex("idx_sync_request_id").on(table.requestId)],
+  (table) => [
+    uniqueIndex("idx_sync_request_id").on(table.requestId),
+    index("idx_sync_requests_shard_request").on(table._shard, table.requestId),
+    index("idx_fragno_db_sync_requests_shard").on(table._shard),
+  ],
 );
 
 // ============================================================================
@@ -163,6 +181,7 @@ export const workflow_instance_workflows = schema_workflows.table(
     runNumber: integer("runNumber").notNull().default(0),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   },
   (table) => [
     uniqueIndex("idx_workflow_instance_workflowName_id").on(table.workflowName, table.id),
@@ -171,6 +190,7 @@ export const workflow_instance_workflows = schema_workflows.table(
       table.status,
       table.updatedAt,
     ),
+    index("idx_workflow_instance_shard").on(table._shard),
   ],
 );
 
@@ -200,6 +220,7 @@ export const workflow_step_workflows = schema_workflows.table(
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   },
   (table) => [
     foreignKey({
@@ -222,6 +243,7 @@ export const workflow_step_workflows = schema_workflows.table(
       table.status,
       table.wakeAt,
     ),
+    index("idx_workflow_step_shard").on(table._shard),
   ],
 );
 
@@ -242,6 +264,7 @@ export const workflow_event_workflows = schema_workflows.table(
     consumedByStepKey: text("consumedByStepKey"),
     _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
     _version: integer("_version").notNull().default(0),
+    _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   },
   (table) => [
     foreignKey({
@@ -254,6 +277,7 @@ export const workflow_event_workflows = schema_workflows.table(
       table.runNumber,
       table.createdAt,
     ),
+    index("idx_workflow_event_shard").on(table._shard),
   ],
 );
 
