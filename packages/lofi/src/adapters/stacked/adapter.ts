@@ -1,5 +1,6 @@
 import type { AnySchema, AnyTable } from "@fragno-dev/db/schema";
 
+import { shouldIgnoreSystemColumn, stripShardField } from "../../system-columns";
 import type {
   LofiAdapter,
   LofiMutation,
@@ -22,6 +23,9 @@ const extractRowValues = (
 ): Record<string, unknown> => {
   const values: Record<string, unknown> = {};
   for (const columnName of Object.keys(table.columns)) {
+    if (shouldIgnoreSystemColumn(columnName)) {
+      continue;
+    }
     if (columnName in row) {
       values[columnName] = row[columnName];
     }
@@ -110,12 +114,13 @@ export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
         continue;
       }
 
+      const mergedSet = stripShardField(mutation.set) ?? mutation.set;
       materialized.push({
         op: "create",
         schema: mutation.schema,
         table: mutation.table,
         externalId: mutation.externalId,
-        values: { ...values, ...mutation.set },
+        values: { ...values, ...mergedSet },
         versionstamp: mutation.versionstamp,
       });
     }
