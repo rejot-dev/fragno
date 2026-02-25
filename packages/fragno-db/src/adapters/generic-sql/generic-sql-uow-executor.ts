@@ -19,18 +19,19 @@ import type {
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
+import { resolveShardValue } from "../../sharding";
 import { sql } from "../../sql-driver/sql";
 import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DriverConfig } from "./driver-config";
 import { createColdKysely } from "./migration/cold-kysely";
 import { ResultInterpreter } from "./result-interpreter";
-
 export interface ExecutorOptions {
   dryRun?: boolean;
   dialect: Dialect;
   outbox?: OutboxConfig;
   namingStrategy?: SqlNamingStrategy;
+  getShard?: () => string | null;
 }
 
 class SqlVersionConflictError extends Error {
@@ -91,6 +92,7 @@ export async function executeMutation(
 
   const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
   const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
+  const outboxShard = resolveOutboxShard(options.getShard);
 
   try {
     await adapter.transaction(async (tx) => {
@@ -165,6 +167,7 @@ export async function executeMutation(
           entryVersionstamp: versionstamp,
           uowId,
           mutations: payload.mutations,
+          shard: outboxShard,
         });
         await insertOutboxRow(tx, driverConfig, {
           id: createId(),
@@ -172,6 +175,7 @@ export async function executeMutation(
           uowId,
           payload: payloadSerialized,
           refMap,
+          shard: outboxShard,
         });
       }
     });
@@ -229,23 +233,25 @@ async function reserveOutboxVersion(
   driverConfig: DriverConfig,
   dialect: Dialect,
 ): Promise<bigint> {
+  // TODO(db-sharding): keep outbox versioning global for now; revisit per-shard versions (specs/spec-db-sharding.md §9.3).
   const key = `${SETTINGS_NAMESPACE}.outbox_version`;
   const id = createId();
+  const shardValue = resolveShardValue(null);
 
   switch (driverConfig.outboxVersionstampStrategy) {
     case "insert-on-conflict-returning": {
       const query =
         driverConfig.databaseType === "postgresql"
           ? sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
+              insert into fragno_db_settings (id, key, value, _shard)
+              values (${id}, ${key}, '0', ${shardValue})
               on conflict (key) do update
                 set value = (fragno_db_settings.value::bigint + 1)::text
               returning value;
             `
           : sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
+              insert into fragno_db_settings (id, key, value, _shard)
+              values (${id}, ${key}, '0', ${shardValue})
               on conflict (key) do update
                 set value = cast(fragno_db_settings.value as integer) + 1
               returning value;
@@ -280,8 +286,8 @@ async function reserveOutboxVersion(
     }
     case "insert-on-duplicate-last-insert-id": {
       const insertQuery = sql`
-        insert into fragno_db_settings (id, key, value)
-        values (${id}, ${key}, LAST_INSERT_ID(0))
+        insert into fragno_db_settings (id, key, value, _shard)
+        values (${id}, ${key}, LAST_INSERT_ID(0), ${shardValue})
         on duplicate key update value = LAST_INSERT_ID(cast(value as unsigned) + 1);
       `;
 
@@ -354,13 +360,21 @@ async function insertOutboxRow(
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
+    shard: string | null;
   },
 ): Promise<void> {
-  const { id, versionstamp, uowId, payload, refMap } = options;
+  const { id, versionstamp, uowId, payload, refMap, shard } = options;
   const refMapValue = refMap ?? null;
   const serializer = createSQLSerializer(driverConfig);
   const outboxTable = internalSchema.tables.fragno_db_outbox;
-  const values = { id, versionstamp, uowId, payload, refMap: refMapValue };
+  const values = {
+    id,
+    versionstamp,
+    uowId,
+    payload,
+    refMap: refMapValue,
+    _shard: resolveShardValue(shard),
+  };
   const serializedValues: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     const col = outboxTable.getColumnByName(key);
@@ -390,6 +404,7 @@ async function insertOutboxMutationRows(
       externalId: string;
       op: string;
     }[];
+    shard: string | null;
   },
 ): Promise<void> {
   if (options.mutations.length === 0) {
@@ -410,6 +425,7 @@ async function insertOutboxMutationRows(
       table: mutation.table,
       externalId: mutation.externalId,
       op: mutation.op,
+      _shard: resolveShardValue(options.shard),
     };
     const serializedValues: Record<string, unknown> = {};
 
@@ -424,5 +440,17 @@ async function insertOutboxMutationRows(
 
     const query = db.insertInto("fragno_db_outbox_mutations").values(serializedValues).compile();
     await tx.executeQuery(query);
+  }
+}
+
+function resolveOutboxShard(getShard?: () => string | null): string {
+  if (!getShard) {
+    return resolveShardValue(null);
+  }
+
+  try {
+    return resolveShardValue(getShard() ?? null);
+  } catch {
+    return resolveShardValue(null);
   }
 }
