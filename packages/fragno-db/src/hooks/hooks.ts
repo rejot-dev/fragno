@@ -9,8 +9,8 @@ import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { FragnoId } from "../schema/create";
+import type { ShardScope } from "../sharding";
 import { DurableHooksLogger, type DurableHooksLoggerConfig } from "./durable-hooks-logger";
-
 /**
  * Context available in hook functions via `this`.
  * Contains the idempotency key for idempotency and database access.
@@ -148,6 +148,16 @@ export type HookScheduler = {
   drain: () => Promise<void>;
 };
 
+export type DurableHooksProcessorScope =
+  | { mode: "shard"; shard: string | null }
+  | { mode: "global" };
+
+type HookProcessorShardContext = {
+  hasStore: () => boolean;
+  get: () => string | null;
+  getScope: () => ShardScope;
+};
+
 /**
  * Configuration for hook processing.
  */
@@ -173,6 +183,7 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    * @deprecated Use `runner`.
    */
   scheduler?: HookScheduler;
+  shardContext?: HookProcessorShardContext;
   defaultRetryPolicy?: RetryPolicy;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
@@ -248,6 +259,54 @@ function resolveStuckProcessingTimeoutMinutes(
     return value > 0 ? value : false;
   }
   return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
+}
+
+type HookProcessorScopeContext = {
+  shard: string | null;
+  shardScope: ShardScope;
+};
+
+function resolveHookProcessorScope(
+  config: HookProcessorConfig,
+  processorScope?: DurableHooksProcessorScope,
+): HookProcessorScopeContext | null {
+  if (processorScope) {
+    if (processorScope.mode === "global") {
+      return { shard: null, shardScope: "global" };
+    }
+    return { shard: processorScope.shard, shardScope: "scoped" };
+  }
+
+  const shardContext = config.shardContext;
+  if (!shardContext || !shardContext.hasStore()) {
+    return null;
+  }
+
+  return {
+    shard: shardContext.get(),
+    shardScope: shardContext.getScope(),
+  };
+}
+
+type HookProcessorContext = {
+  handlerTx: HookHandlerTx;
+  setShard: (shard: string | null) => void;
+  setShardScope: (scope: ShardScope) => void;
+};
+
+async function runWithHookProcessorScope<T>(
+  config: HookProcessorConfig,
+  processorScope: DurableHooksProcessorScope | undefined,
+  fn: (this: HookProcessorContext) => Promise<T>,
+): Promise<T> {
+  const scope = resolveHookProcessorScope(config, processorScope);
+  return config.internalFragment.inContext(async function () {
+    if (scope) {
+      this.setShardScope(scope.shardScope);
+      this.setShard(scope.shard);
+    }
+    return await fn.call(this);
+  });
 }
 
 /**
@@ -331,6 +390,7 @@ export function prepareHookMutations(
  */
 export async function processHooks<THooks extends HooksMap>(
   config: HookProcessorConfig<THooks>,
+  processorScope?: DurableHooksProcessorScope,
 ): Promise<number> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
   if (!hooks) {
@@ -358,7 +418,7 @@ export async function processHooks<THooks extends HooksMap>(
   }> = [];
   let stuckEvents: StuckHookProcessingEvent[] = [];
 
-  const result = await internalFragment.inContext(async function () {
+  const result = await runWithHookProcessorScope(config, processorScope, async function () {
     return await this.handlerTx()
       .withServiceCalls(() => {
         const pending = internalFragment.services.hookService.claimPendingHookEvents(namespace);
@@ -511,7 +571,7 @@ export async function processHooks<THooks extends HooksMap>(
   );
 
   // Mark events as completed/failed
-  await internalFragment.inContext(async function () {
+  await runWithHookProcessorScope(config, processorScope, async function () {
     await this.handlerTx()
       .mutate(({ forSchema }) => {
         const uow = forSchema(internalSchema);
@@ -602,7 +662,10 @@ export async function processHooks<THooks extends HooksMap>(
   return processedCount;
 }
 
-export function createDurableHooksRunner(config: HookProcessorConfig): DurableHooksRunner {
+export function createDurableHooksRunner(
+  config: HookProcessorConfig,
+  options: { processorScope?: DurableHooksProcessorScope } = {},
+): DurableHooksRunner {
   let processing = false;
   let queued = false;
   let currentPromise: Promise<number> | null = null;
@@ -619,7 +682,7 @@ export function createDurableHooksRunner(config: HookProcessorConfig): DurableHo
       try {
         do {
           queued = false;
-          totalProcessed += await processHooks(config);
+          totalProcessed += await processHooks(config, options.processorScope);
         } while (queued);
         return totalProcessed;
       } finally {
@@ -647,8 +710,11 @@ export function createDurableHooksRunner(config: HookProcessorConfig): DurableHo
 /**
  * @deprecated Use createDurableHooksRunner.
  */
-export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
-  const runner = createDurableHooksRunner(config);
+export function createHookScheduler(
+  config: HookProcessorConfig,
+  options: { processorScope?: DurableHooksProcessorScope } = {},
+): HookScheduler {
+  const runner = createDurableHooksRunner(config, options);
   return {
     schedule: () => runner.processDue(),
     drain: () => runner.drain(),
