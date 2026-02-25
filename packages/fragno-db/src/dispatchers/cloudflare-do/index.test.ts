@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDurableHooksDispatcherDurableObject } from "./index";
+import { createDurableHooksDispatcherDurableObject } from "./dispatcher";
 
 describe("createDurableHooksDispatcherDurableObject", () => {
   it("should schedule an initial alarm on creation", async () => {

@@ -105,15 +105,12 @@ retries and scheduled hooks fire even when no new requests arrive.
 ### Node (polling)
 
 ```ts
-import { createDurableHooksProcessor } from "@fragno-dev/db";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 
-const processor = createDurableHooksProcessor(fragment);
-if (processor) {
-  const dispatcher = createDurableHooksDispatcher({
-    processor,
-    pollIntervalMs: 2000,
-  });
+const dispatcher = createDurableHooksProcessor([fragment], {
+  pollIntervalMs: 2000,
+});
+if (dispatcher) {
   dispatcher.startPolling();
 }
 ```
@@ -121,20 +118,14 @@ if (processor) {
 ### Cloudflare Durable Objects (alarms)
 
 ```ts
-import { createDurableHooksProcessor } from "@fragno-dev/db";
-import { createDurableHooksDispatcherDurableObject } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 
 export class DurableHooksDispatcher {
-  handler: ReturnType<ReturnType<typeof createDurableHooksDispatcherDurableObject>>;
+  handler: ReturnType<ReturnType<NonNullable<typeof createDurableHooksProcessor>>>;
 
   constructor(state: DurableObjectState, env: Env) {
-    const processor = createDurableHooksProcessor(env.fragment);
-    if (!processor) {
-      throw new Error("Fragment has no durable hooks configured.");
-    }
-    this.handler = createDurableHooksDispatcherDurableObject({
-      createProcessor: () => processor,
-    })(state, env);
+    const dispatcher = createDurableHooksProcessor([env.fragment]);
+    this.handler = dispatcher(state, env);
   }
 
   alarm() {

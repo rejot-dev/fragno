@@ -193,12 +193,9 @@ triggered a hook). Here's how the
 wires it up:
 
 ```typescript
-import { createDurableHooksProcessor } from "@fragno-dev/db";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 
-const processor = createDurableHooksProcessor(fragment);
-const dispatcher = createDurableHooksDispatcher({
-  processor,
+const dispatcher = createDurableHooksProcessor([fragment], {
   pollIntervalMs: 2000,
   onError: (error) => console.error("Hook processing failed", error),
 });

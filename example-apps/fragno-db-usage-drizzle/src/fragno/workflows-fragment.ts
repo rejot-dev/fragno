@@ -1,6 +1,6 @@
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { createDurableHooksProcessor, type DatabaseAdapter } from "@fragno-dev/db";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+import { type DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
@@ -72,14 +72,7 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
 
   runner = createWorkflowsRunner({ fragment, workflows, runtime });
   config.runner = runner;
-
-  const processor = createDurableHooksProcessor(fragment);
-  if (!processor) {
-    throw new Error("Durable hooks not configured for workflows fragment.");
-  }
-
-  const dispatcher = createDurableHooksDispatcher({
-    processor,
+  const dispatcher = createDurableHooksProcessor([fragment], {
     pollIntervalMs: 2000,
     onError: (error) => {
       console.error("Workflows durable hooks dispatcher failed", error);

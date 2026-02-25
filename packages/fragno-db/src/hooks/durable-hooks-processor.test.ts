@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "../with-database";
 import { schema, column, idColumn } from "../schema/create";
@@ -8,7 +8,10 @@ import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { internalSchema } from "../fragments/internal-fragment";
 import { getInternalFragment } from "../internal/adapter-registry";
-import { createDurableHooksProcessor } from "./durable-hooks-processor";
+import {
+  createDurableHooksProcessor,
+  createDurableHooksProcessorGroupFromProcessors,
+} from "./durable-hooks-processor";
 
 const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
@@ -76,10 +79,10 @@ describe("createDurableHooksProcessor", () => {
         .execute();
     });
 
-    const wakeAt = await processor!.getNextWakeAt();
+    const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
 
-    const processed = await processor!.process();
+    const processed = await processor.process();
     expect(processed).toBe(1);
   });
 
@@ -110,8 +113,92 @@ describe("createDurableHooksProcessor", () => {
         .execute();
     });
 
-    const wakeAt = await processor!.getNextWakeAt();
+    const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe("createDurableHooksProcessorGroupFromProcessors", () => {
+  const makeProcessor = (overrides: Partial<ReturnType<typeof createProcessorStub>> = {}) => ({
+    ...createProcessorStub(),
+    ...overrides,
+  });
+
+  function createProcessorStub() {
+    return {
+      namespace: "test",
+      process: vi.fn().mockResolvedValue(0),
+      getNextWakeAt: vi.fn().mockResolvedValue(null),
+      drain: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("returns null when there are no processors", () => {
+    expect(() => createDurableHooksProcessorGroupFromProcessors([])).toThrow(
+      "No processors provided for durable hooks processing.",
+    );
+  });
+
+  it("returns the same processor when only one is provided", () => {
+    const processor = makeProcessor({ namespace: "solo" });
+    const group = createDurableHooksProcessorGroupFromProcessors([processor]);
+    expect(group).toBe(processor);
+  });
+
+  it("aggregates processing results and reports errors", async () => {
+    const error = new Error("processor failed");
+    const onError = vi.fn();
+    const processorA = makeProcessor({
+      namespace: "a",
+      process: vi.fn().mockResolvedValue(2),
+      drain: vi.fn().mockResolvedValue(undefined),
+    });
+    const processorB = makeProcessor({
+      namespace: "b",
+      process: vi.fn().mockRejectedValue(error),
+      drain: vi.fn().mockRejectedValue(error),
+    });
+
+    const group = createDurableHooksProcessorGroupFromProcessors([processorA, processorB], {
+      onError,
+    });
+    expect(group).not.toBeNull();
+
+    const processed = await group.process();
+    expect(processed).toBe(2);
+    expect(onError).toHaveBeenCalledWith(error);
+
+    await group.drain();
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the earliest wake time and ignores failures", async () => {
+    const error = new Error("wake failed");
+    const onError = vi.fn();
+    const early = new Date("2024-01-01T00:00:00Z");
+    const late = new Date("2024-01-01T00:00:10Z");
+
+    const processorA = makeProcessor({
+      namespace: "a",
+      getNextWakeAt: vi.fn().mockResolvedValue(late),
+    });
+    const processorB = makeProcessor({
+      namespace: "b",
+      getNextWakeAt: vi.fn().mockResolvedValue(early),
+    });
+    const processorC = makeProcessor({
+      namespace: "c",
+      getNextWakeAt: vi.fn().mockRejectedValue(error),
+    });
+
+    const group = createDurableHooksProcessorGroupFromProcessors(
+      [processorA, processorB, processorC],
+      { onError },
+    );
+
+    const wakeAt = await group.getNextWakeAt();
+    expect(wakeAt).toEqual(early);
+    expect(onError).toHaveBeenCalledWith(error);
   });
 });

@@ -1,6 +1,6 @@
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
-import { createDurableHooksProcessor, migrate } from "@fragno-dev/db";
+import { migrate } from "@fragno-dev/db";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
@@ -53,14 +53,7 @@ const fragment = instantiate(workflowsFragmentDefinition)
 
 const runner = createWorkflowsRunner({ fragment, workflows, runtime });
 config.runner = runner;
-
-const processor = createDurableHooksProcessor(fragment);
-if (!processor) {
-  throw new Error("Durable hooks not configured for workflows fragment.");
-}
-
-const dispatcher = createDurableHooksDispatcher({
-  processor,
+const dispatcher = createDurableHooksProcessor([fragment], {
   pollIntervalMs: 2000,
   onError: (error) => {
     console.error("Workflows durable hooks dispatcher failed", error);

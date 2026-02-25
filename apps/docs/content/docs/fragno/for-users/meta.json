@@ -5,6 +5,7 @@
     "services",
     "middleware",
     "client-customization",
-    "database-fragments"
+    "database-fragments",
+    "hook-processors"
   ]
 }

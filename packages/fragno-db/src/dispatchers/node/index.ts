@@ -1,87 +1,24 @@
-import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
+import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
+import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
+import { createDurableHooksDispatcher, type DurableHooksDispatcher } from "./dispatcher";
 
-export type DurableHooksDispatcher = {
-  wake: () => Promise<void>;
-  startPolling: () => void;
-  stopPolling: () => void;
-};
-
-export type DurableHooksDispatcherOptions = {
-  processor: DurableHooksProcessor;
+export type DurableHooksProcessorOptions = {
   pollIntervalMs?: number;
   onError?: (error: unknown) => void;
 };
 
-export function createDurableHooksDispatcher(
-  options: DurableHooksDispatcherOptions,
+export type { DurableHooksDispatcher };
+
+export function createDurableHooksProcessor(
+  fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
+  options: DurableHooksProcessorOptions = {},
 ): DurableHooksDispatcher {
-  const pollIntervalMs = options.pollIntervalMs ?? 5000;
-  const onError =
-    options.onError ??
-    ((error: unknown) => {
-      console.error("Durable hooks dispatcher error", error);
-    });
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let processing = false;
-  let queued = false;
-  let currentPromise: Promise<void> | undefined;
-
-  const runProcess = () => {
-    if (processing) {
-      queued = true;
-      return currentPromise ?? Promise.resolve();
-    }
-
-    processing = true;
-    currentPromise = (async () => {
-      do {
-        queued = false;
-        try {
-          await options.processor.process();
-        } catch (error) {
-          onError(error);
-        }
-      } while (queued);
-      processing = false;
-    })();
-
-    return currentPromise;
-  };
-
-  const poll = async () => {
-    try {
-      const nextWakeAt = await options.processor.getNextWakeAt();
-      if (!nextWakeAt) {
-        return;
-      }
-      if (Date.now() >= nextWakeAt.getTime()) {
-        await runProcess();
-      }
-    } catch (error) {
-      onError(error);
-    }
-  };
-
-  return {
-    wake: async () => {
-      await runProcess();
-    },
-    startPolling: () => {
-      if (timer) {
-        return;
-      }
-
-      timer = setInterval(() => {
-        void poll();
-      }, pollIntervalMs);
-    },
-    stopPolling: () => {
-      if (!timer) {
-        return;
-      }
-
-      clearInterval(timer);
-      timer = undefined;
-    },
-  };
+  const processor = createDurableHooksProcessorGroup(fragments, {
+    onError: options.onError,
+  });
+  return createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: options.pollIntervalMs,
+    onError: options.onError,
+  });
 }

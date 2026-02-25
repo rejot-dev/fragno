@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDurableHooksDispatcher } from "./index";
+import { createDurableHooksDispatcher } from "./dispatcher";
 
 describe("createDurableHooksDispatcher", () => {
   it("should wake and process hooks", async () => {
