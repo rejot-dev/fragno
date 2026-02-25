@@ -156,6 +156,7 @@ describe("generateSchema and migrate", () => {
       	"value" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "fragno_db_settings_id_unique" UNIQUE("id")
       );
 
@@ -172,6 +173,7 @@ describe("generateSchema and migrate", () => {
       	"error" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"nonce" text NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
@@ -184,6 +186,7 @@ describe("generateSchema and migrate", () => {
       	"payload" json NOT NULL,
       	"refMap" json,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_outbox_id_unique" UNIQUE("id")
@@ -199,6 +202,7 @@ describe("generateSchema and migrate", () => {
       	"externalId" text NOT NULL,
       	"op" text NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_outbox_mutations_id_unique" UNIQUE("id")
@@ -213,6 +217,7 @@ describe("generateSchema and migrate", () => {
       	"baseVersionstamp" text,
       	"lastVersionstamp" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_sync_requests_id_unique" UNIQUE("id")
@@ -229,6 +234,7 @@ describe("generateSchema and migrate", () => {
       	"updatedAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "users_id_unique" UNIQUE("id")
       );
 
@@ -249,6 +255,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "posts_id_unique" UNIQUE("id")
       );
 
@@ -263,6 +270,7 @@ describe("generateSchema and migrate", () => {
       	"isDeleted" boolean DEFAULT false NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "comments_id_unique" UNIQUE("id")
       );
 
@@ -275,6 +283,7 @@ describe("generateSchema and migrate", () => {
       	"usageCount" bigint DEFAULT 0 NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "tags_id_unique" UNIQUE("id")
       );
 
@@ -286,6 +295,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      	"_shard" varchar(128) DEFAULT '__fragno_global__' NOT NULL,
       	CONSTRAINT "postTags_id_unique" UNIQUE("id")
       );
 
@@ -296,29 +306,43 @@ describe("generateSchema and migrate", () => {
       ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_posts_post" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
       ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_tags_tag" FOREIGN KEY ("tagId") REFERENCES "test"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
+      CREATE INDEX "idx_fragno_db_settings_shard" ON "fragno_db_settings" USING btree ("_shard");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
+      CREATE INDEX "idx_hooks_shard_status_retry" ON "fragno_hooks" USING btree ("_shard","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
+      CREATE INDEX "idx_fragno_hooks_shard" ON "fragno_hooks" USING btree ("_shard");
       CREATE INDEX "idx_namespace_status_last_attempt" ON "fragno_hooks" USING btree ("namespace","status","lastAttemptAt");
       CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
+      CREATE INDEX "idx_outbox_shard_versionstamp" ON "fragno_db_outbox" USING btree ("_shard","versionstamp");
       CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
+      CREATE INDEX "idx_fragno_db_outbox_shard" ON "fragno_db_outbox" USING btree ("_shard");
       CREATE INDEX "idx_outbox_mutations_entry" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp");
+      CREATE INDEX "idx_outbox_mutations_shard_entry" ON "fragno_db_outbox_mutations" USING btree ("_shard","entryVersionstamp");
       CREATE INDEX "idx_outbox_mutations_key" ON "fragno_db_outbox_mutations" USING btree ("schema","table","externalId","entryVersionstamp");
       CREATE INDEX "idx_outbox_mutations_uow" ON "fragno_db_outbox_mutations" USING btree ("uowId");
+      CREATE INDEX "idx_fragno_db_outbox_mutations_shard" ON "fragno_db_outbox_mutations" USING btree ("_shard");
       CREATE UNIQUE INDEX "idx_sync_request_id" ON "fragno_db_sync_requests" USING btree ("requestId");
+      CREATE INDEX "idx_sync_requests_shard_request" ON "fragno_db_sync_requests" USING btree ("_shard","requestId");
+      CREATE INDEX "idx_fragno_db_sync_requests_shard" ON "fragno_db_sync_requests" USING btree ("_shard");
       CREATE UNIQUE INDEX "idx_users_email" ON "test"."users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "test"."users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "test"."users" USING btree ("isActive");
+      CREATE INDEX "idx_users_shard" ON "test"."users" USING btree ("_shard");
       CREATE INDEX "idx_posts_user" ON "test"."posts" USING btree ("userId");
       CREATE INDEX "idx_posts_title" ON "test"."posts" USING btree ("title");
       CREATE UNIQUE INDEX "idx_posts_slug" ON "test"."posts" USING btree ("slug");
       CREATE INDEX "idx_posts_published" ON "test"."posts" USING btree ("isPublished","publishedAt");
+      CREATE INDEX "idx_posts_shard" ON "test"."posts" USING btree ("_shard");
       CREATE INDEX "idx_comments_post" ON "test"."comments" USING btree ("postId");
       CREATE INDEX "idx_comments_user" ON "test"."comments" USING btree ("userId");
       CREATE INDEX "idx_comments_parent" ON "test"."comments" USING btree ("parentId");
+      CREATE INDEX "idx_comments_shard" ON "test"."comments" USING btree ("_shard");
       CREATE UNIQUE INDEX "idx_tags_slug" ON "test"."tags" USING btree ("slug");
       CREATE INDEX "idx_tags_name" ON "test"."tags" USING btree ("name");
+      CREATE INDEX "idx_tags_shard" ON "test"."tags" USING btree ("_shard");
       CREATE UNIQUE INDEX "idx_postTags_post_tag" ON "test"."postTags" USING btree ("postId","tagId");
-      CREATE INDEX "idx_postTags_tag" ON "test"."postTags" USING btree ("tagId");"
+      CREATE INDEX "idx_postTags_tag" ON "test"."postTags" USING btree ("tagId");
+      CREATE INDEX "idx_postTags_shard" ON "test"."postTags" USING btree ("_shard");"
     `);
   });
 });
