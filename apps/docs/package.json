@@ -16,7 +16,9 @@
     "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts",
     "shadcn:generate": "tsx app/components/form-builder/generate-registry.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:render:stripe": "remotion render remotion/index.ts StripeBillingOverviewVideo stripe-billing-overview.mp4"
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
@@ -64,7 +66,11 @@
     "@cloudflare/vite-plugin": "^1.21.0",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^7.12.0",
+    "@remotion/cli": "^4.0.381",
+    "@remotion/google-fonts": "^4.0.381",
+    "@remotion/tailwind-v4": "^4.0.429",
     "@resvg/resvg-js": "^2.6.2",
+    "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@types/mdx": "^2.0.13",
     "@types/node": "^24.10.9",
@@ -74,6 +80,7 @@
     "drizzle-kit": "^0.31.8",
     "gray-matter": "^4.0.3",
     "react-router-devtools": "^5.1.6",
+    "remotion": "^4.0.381",
     "satori": "^0.19.2",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
