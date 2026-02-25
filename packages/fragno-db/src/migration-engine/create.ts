@@ -1,6 +1,13 @@
 import { type MigrationOperation } from "./shared";
 import type { AnySchema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import {
+  buildSystemMigrationOperations,
+  resolveSystemMigrationRange,
+  resolveSystemMigrationTables,
+  type SystemMigration,
+  type SystemMigrationContext,
+} from "./system-migrations";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -16,6 +23,17 @@ export interface MigrateOptions {
    * We don't recommend to disable it other than testing purposes.
    */
   updateSettings?: boolean;
+  /**
+   * System migration version currently stored in the database.
+   * If omitted, system migrations are skipped unless a system getVersion is provided.
+   * System migrations are also skipped on fresh databases (fromVersion = 0) while still
+   * updating the system version.
+   */
+  systemFromVersion?: number;
+  /**
+   * Override the target system migration version.
+   */
+  systemToVersion?: number;
 }
 
 export interface PreparedMigration {
@@ -68,6 +86,8 @@ export interface MigrationEngineOptions {
     ) => Awaitable<MigrationOperation[]>;
   };
 
+  system?: SystemMigrationConfig;
+
   sql?: {
     toSql: (operations: MigrationOperation[]) => string;
   };
@@ -102,6 +122,32 @@ export interface MigrationTransformer {
   ) => MigrationOperation[];
 }
 
+type SystemMigrationConfig = {
+  /**
+   * System migration list for this dialect.
+   */
+  migrations: SystemMigration[];
+
+  /**
+   * Get current system migration version from database (0 if not initialized)
+   */
+  getVersion: () => Promise<number>;
+
+  /**
+   * Update system migration version in settings table.
+   */
+  updateSettingsInMigration: (
+    fromVersion: number,
+    toVersion: number,
+  ) => Awaitable<MigrationOperation[]>;
+
+  /**
+   * Override namespace for system migration keys.
+   * Defaults to schema.name when omitted.
+   */
+  namespace?: string;
+};
+
 export function createMigrator({
   settings,
   generateMigrationFromSchema = defaultGenerateMigrationFromSchema,
@@ -109,7 +155,10 @@ export function createMigrator({
   executor,
   sql: sqlConfig,
   transformers = [],
+  system,
 }: MigrationEngineOptions): Migrator {
+  const systemConfig = system;
+
   const instance: Migrator = {
     getVersion() {
       return settings.getVersion();
@@ -118,7 +167,12 @@ export function createMigrator({
       return this.prepareMigrationTo(targetSchema.version, options);
     },
     async prepareMigrationTo(toVersion, options = {}) {
-      const { updateSettings: updateVersion = true, fromVersion: providedFromVersion } = options;
+      const {
+        updateSettings: updateVersion = true,
+        fromVersion: providedFromVersion,
+        systemFromVersion,
+        systemToVersion,
+      } = options;
 
       // Use provided fromVersion if available, otherwise query the database
       const fromVersion = providedFromVersion ?? (await settings.getVersion());
@@ -149,7 +203,38 @@ export function createMigrator({
         );
       }
 
-      if (toVersion === fromVersion) {
+      let systemRange:
+        | {
+            fromVersion: number;
+            toVersion: number;
+            context: SystemMigrationContext;
+          }
+        | undefined;
+
+      if (systemConfig) {
+        const resolvedSystemFromVersion = systemFromVersion ?? (await systemConfig.getVersion());
+        const resolvedRange = resolveSystemMigrationRange(
+          systemConfig.migrations,
+          resolvedSystemFromVersion,
+          systemToVersion,
+        );
+
+        if (resolvedRange) {
+          systemRange = {
+            ...resolvedRange,
+            context: {
+              schema: targetSchema,
+              namespace: systemConfig.namespace ?? targetSchema.name,
+              tables: resolveSystemMigrationTables(targetSchema, fromVersion),
+            },
+          };
+        }
+      }
+
+      if (
+        toVersion === fromVersion &&
+        (!systemRange || systemRange.fromVersion === systemRange.toVersion)
+      ) {
         // Already at target version, return empty migration
         return {
           operations: [],
@@ -179,12 +264,40 @@ export function createMigrator({
         },
       };
 
-      let operations = updateVersion
-        ? [
-            ...(await context.auto()),
+      const isFreshDatabase = fromVersion === 0;
+      const systemOperations =
+        systemConfig && systemRange && !isFreshDatabase
+          ? buildSystemMigrationOperations(
+              systemConfig.migrations,
+              systemRange.context,
+              systemRange.fromVersion,
+              systemRange.toVersion,
+            )
+          : [];
+
+      let operations = await context.auto();
+      if (systemOperations.length > 0) {
+        operations = [...operations, ...systemOperations];
+      }
+
+      if (updateVersion) {
+        if (fromVersion !== toVersion) {
+          operations = [
+            ...operations,
             ...(await settings.updateSettingsInMigration(fromVersion, toVersion)),
-          ]
-        : await context.auto();
+          ];
+        }
+
+        if (systemConfig && systemRange && systemRange.fromVersion !== systemRange.toVersion) {
+          operations = [
+            ...operations,
+            ...(await systemConfig.updateSettingsInMigration(
+              systemRange.fromVersion,
+              systemRange.toVersion,
+            )),
+          ];
+        }
+      }
 
       for (const transformer of transformers) {
         if (!transformer.afterAll) {
