@@ -10,8 +10,8 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { ShardGate } from "./components/shard-gate";
 import { TopNav } from "./components/top-nav";
-
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -45,12 +45,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <div className="min-h-screen">
-      <TopNav />
-      <main className="px-6 py-10 lg:px-10">
-        <Outlet />
-      </main>
-    </div>
+    <ShardGate>
+      <div className="min-h-screen">
+        <TopNav />
+        <main className="px-6 py-10 lg:px-10">
+          <Outlet />
+        </main>
+      </div>
+    </ShardGate>
   );
 }
 

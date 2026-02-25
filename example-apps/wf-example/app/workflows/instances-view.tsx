@@ -25,6 +25,7 @@ type HistoryStep = {
   status: string;
   attempts: number;
   maxAttempts: number;
+  waitEventType?: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   result?: unknown | null;
@@ -36,6 +37,24 @@ type HistoryEvent = {
   type: string;
   createdAt: Date;
 };
+
+const eventPresets = [
+  {
+    label: "Approval",
+    type: "approval",
+    payload: '{\n  "approved": true,\n  "approver": "client-demo"\n}',
+  },
+  {
+    label: "Fulfillment",
+    type: "fulfillment",
+    payload: '{\n  "confirmationId": "cnf-123"\n}',
+  },
+  {
+    label: "Edge wait",
+    type: "edge",
+    payload: '{\n  "source": "client-demo"\n}',
+  },
+] as const;
 
 export function InstancesView() {
   const {
@@ -154,6 +173,15 @@ export function InstancesView() {
       body: { type: eventType, payload },
     });
   }, [eventPayload, eventType, selectedInstance, selectedWorkflow, sendEvent]);
+
+  const handlePrefillEvent = useCallback(
+    (type: string, payload: string) => {
+      setEventType(type);
+      setEventPayload(payload);
+      setEventError(null);
+    },
+    [setEventPayload, setEventType, setEventError],
+  );
 
   const handleWorkflowChange = useCallback(
     (value: string) => {
@@ -288,6 +316,7 @@ export function InstancesView() {
             sendEventError={sendEventError}
             eventLoading={!!eventLoading}
             onSendEvent={handleSendEvent}
+            onPrefillEvent={handlePrefillEvent}
             pauseLoading={!!pauseLoading}
             resumeLoading={!!resumeLoading}
             terminateLoading={!!terminateLoading}
@@ -331,6 +360,7 @@ type InstanceDetailPanelProps = {
   sendEventError: unknown;
   eventLoading: boolean;
   onSendEvent: () => void;
+  onPrefillEvent: (type: string, payload: string) => void;
   pauseLoading: boolean;
   resumeLoading: boolean;
   terminateLoading: boolean;
@@ -354,6 +384,7 @@ function InstanceDetailPanel({
   sendEventError,
   eventLoading,
   onSendEvent,
+  onPrefillEvent,
   pauseLoading,
   resumeLoading,
   terminateLoading,
@@ -393,6 +424,8 @@ function InstanceDetailPanel({
   }, [historyData]);
 
   const showEventError = Boolean(eventError || sendEventError);
+  const isComplete = data?.details.status === "complete";
+  const currentStep = data?.meta.currentStep;
 
   return (
     <div className="grid gap-5">
@@ -477,14 +510,20 @@ function InstanceDetailPanel({
                   <span className="text-xs tracking-[0.2em] text-slate-400 uppercase">Created</span>
                   <span>{data.meta.createdAt.toLocaleString()}</span>
                 </div>
-                {data.meta.currentStep && (
+                {currentStep && !isComplete && (
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                       Current step
                     </p>
                     <p className="mt-1 text-sm text-slate-700">
-                      {helpers.currentStepLabel(data.meta.currentStep)}
+                      {helpers.currentStepLabel(currentStep)}
                     </p>
+                    {currentStep.waitEventType && (
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                        Waiting for event:
+                        <span className="font-mono text-[11px]">{currentStep.waitEventType}</span>
+                      </div>
+                    )}
                   </div>
                 )}
                 <details className="rounded-lg bg-white p-3" open={false}>
@@ -495,7 +534,7 @@ function InstanceDetailPanel({
                     <code>{JSON.stringify(data.meta.params ?? {}, null, 2)}</code>
                   </pre>
                 </details>
-                <details className="rounded-lg bg-white p-3" open={false}>
+                <details className="rounded-lg bg-white p-3" open={isComplete}>
                   <summary className="cursor-pointer text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     Output
                   </summary>
@@ -561,6 +600,11 @@ function InstanceDetailPanel({
                             </span>
                             <span>Created: {new Date(step.createdAt).toLocaleString()}</span>
                             <span>Updated: {new Date(step.updatedAt).toLocaleString()}</span>
+                            {step.waitEventType && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                Waiting for event: {step.waitEventType}
+                              </span>
+                            )}
                           </div>
                           {step.error && (
                             <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -638,6 +682,24 @@ function InstanceDetailPanel({
               rows={7}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs"
             />
+            <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
+              Prefill event
+            </label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {eventPresets.map((preset) => (
+                <button
+                  key={preset.type}
+                  type="button"
+                  onClick={() => onPrefillEvent(preset.type, preset.payload)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:border-slate-300"
+                >
+                  <span className="block text-[10px] tracking-[0.2em] text-slate-400 uppercase">
+                    {preset.type}
+                  </span>
+                  <span className="mt-1 block text-sm">{preset.label}</span>
+                </button>
+              ))}
+            </div>
             {showEventError && (
               <p className="text-xs text-red-600">{eventError ?? "Failed to send event."}</p>
             )}
@@ -648,15 +710,6 @@ function InstanceDetailPanel({
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {eventLoading ? "Sending…" : "Send event"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setEventPayload('{\n  "approved": true,\n  "approver": "client-demo"\n}')
-              }
-              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300"
-            >
-              Reset example payload
             </button>
           </div>
         </section>
