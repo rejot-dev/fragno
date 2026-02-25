@@ -2,13 +2,19 @@ import type { SimpleQueryInterface } from "../query/simple-query-interface";
 import type { AnySchema } from "../schema/create";
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
-import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
+import type {
+  PreparedMigrations,
+  PrepareMigrationsOptions,
+} from "./generic-sql/migration/prepared-migrations";
 import type { SQLProvider } from "../shared/providers";
 import type { SQLiteStorageMode } from "./generic-sql/sqlite-storage";
 import type { SqlNamingStrategy } from "../naming/sql-naming";
+import type { ShardScope } from "../sharding";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
+
+export type { ShardScope };
 
 /**
  * Storage type for database context - stores the Unit of Work.
@@ -16,6 +22,8 @@ export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-
  */
 export type DatabaseContextStorage = {
   uow: IUnitOfWork;
+  shard: string | null;
+  shardScope: ShardScope;
 };
 
 export type SQLiteProfile = "default" | "prisma";
@@ -68,6 +76,7 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   prepareMigrations?: <const T extends AnySchema>(
     schema: T,
     namespace: string | null,
+    options?: PrepareMigrationsOptions,
   ) => PreparedMigrations;
 
   isConnectionHealthy: () => Promise<boolean>;

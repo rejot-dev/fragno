@@ -11,16 +11,24 @@ import {
 } from "./query/db-now";
 import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
 import type {
+  DatabaseHandlerContext,
+  DatabaseRequestStorage,
+  DatabaseServiceContext,
   FragnoPublicConfigWithDatabase,
   ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
-import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
+import type { HooksMap } from "./hooks/hooks";
+import {
+  getSchemaVersionFromDatabase,
+  getSystemMigrationVersionFromDatabase,
+} from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
 export { dbNow, dbInterval };
 export type { DbNow, DbInterval, DbIntervalInput };
+export type { ShardingStrategy } from "./sharding";
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
@@ -176,12 +184,9 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
     ImplicitDatabaseDependencies<TSchema>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
+    DatabaseServiceContext<HooksMap>,
+    DatabaseHandlerContext,
+    DatabaseRequestStorage,
     FragnoPublicConfigWithDatabase
   >;
 
@@ -243,22 +248,31 @@ export async function migrate<TSchema extends AnySchema>(
     internalFragment,
     internalNamespace,
   );
+  const systemMigrationVersion = await getSystemMigrationVersionFromDatabase(
+    internalFragment,
+    internalNamespace,
+  );
 
-  // Migrate internal fragment if needed
-  if (internalCurrentVersion < internalSchema.version) {
-    const internalMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
-    await internalMigrations.execute(internalCurrentVersion, internalSchema.version);
+  if (internalCurrentVersion > internalSchema.version) {
+    throw new Error(
+      `Cannot migrate internal settings backwards: current version (${internalCurrentVersion}) > target version (${internalSchema.version})`,
+    );
   }
+
+  const systemMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
+  await systemMigrations.execute(internalCurrentVersion, internalSchema.version, {
+    systemFromVersion: systemMigrationVersion,
+  });
 
   // Step 2: Get current database version for this fragment's namespace
   const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespace);
+  const systemFromVersion = await getSystemMigrationVersionFromDatabase(
+    internalFragment,
+    namespace,
+  );
 
   // Step 3: Run the migration from current version to target version
   const targetVersion = schema.version;
-
-  if (currentVersion === targetVersion) {
-    return;
-  }
 
   if (currentVersion > targetVersion) {
     throw new Error(
@@ -267,5 +281,7 @@ export async function migrate<TSchema extends AnySchema>(
   }
 
   const migrations = adapter.prepareMigrations(schema, namespace);
-  await migrations.execute(currentVersion, targetVersion);
+  await migrations.execute(currentVersion, targetVersion, {
+    systemFromVersion,
+  });
 }
