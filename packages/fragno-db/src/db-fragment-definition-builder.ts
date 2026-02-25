@@ -33,6 +33,10 @@ import {
   type DurableHooksProcessingOptions,
   createHookScheduler,
 } from "./hooks/hooks";
+import {
+  getDurableHooksRuntimeByConfig,
+  registerDurableHooksRuntime,
+} from "./hooks/durable-hooks-runtime";
 import type { SyncCommandRegistry, SyncCommandTargetRegistration } from "./sync/types";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 import { sanitizeNamespace } from "./naming/sql-naming";
@@ -920,6 +924,7 @@ export class DatabaseFragmentDefinitionBuilder<
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };
       hooksConfig.scheduler = createHookScheduler(hooksConfig);
+      registerDurableHooksRuntime(hooksConfig);
       if (depsKey) {
         hooksConfigCache.set(depsKey, hooksConfig);
       }
@@ -996,6 +1001,30 @@ export class DatabaseFragmentDefinitionBuilder<
                 console.error("Durable hooks processing failed", error);
               });
             }
+            if (hooksConfig && !planMode) {
+              const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);
+              if (
+                runtimeState &&
+                !runtimeState.dispatcherRegistered &&
+                !runtimeState.dispatcherWarningEmitted
+              ) {
+                const hasHooks = uow
+                  .getTriggeredHooks()
+                  .some((hook) => hook.namespace === hooksConfig.namespace);
+                if (hasHooks) {
+                  runtimeState.dispatcherWarningEmitted = true;
+                  console.warn(
+                    [
+                      "[fragno-db] Durable hooks dispatcher not configured for fragment",
+                      `"${hooksConfig.namespace}".`,
+                      "Hooks will only run during requests; scheduled/retry hooks may stall.",
+                      "Create a dispatcher with createDurableHooksProcessor([...]) from",
+                      "`@fragno-dev/db/dispatchers/node` or `@fragno-dev/db/dispatchers/cloudflare-do`.",
+                    ].join(" "),
+                  );
+                }
+              }
+            }
             if (userOnAfterMutate) {
               await userOnAfterMutate(uow);
             }
@@ -1045,15 +1074,21 @@ export class DatabaseFragmentDefinitionBuilder<
     // Build the final definition
     const finalDef = builderWithContext.build();
     if (this.#hooksFactory) {
-      finalDef.internalDataFactory = ({ config, options, deps, services, serviceDeps }) => ({
-        durableHooks: createHooksConfig({
+      finalDef.internalDataFactory = ({ config, options, deps, services, serviceDeps }) => {
+        const hooksConfig = createHooksConfig({
           config: config as TConfig,
           options: options as FragnoPublicConfigWithDatabase,
           deps: deps as TDeps,
           services: services as BoundServices<TBaseServices & TServices>,
           serviceDeps: serviceDeps as TServiceDependencies,
-        }),
-      });
+        });
+        if (!hooksConfig) {
+          return {};
+        }
+        return {
+          durableHooksToken: registerDurableHooksRuntime(hooksConfig),
+        };
+      };
     }
     if (this.#registryResolver) {
       const registryInternalRoutes = ({ deps }: { deps: TDeps }) => {

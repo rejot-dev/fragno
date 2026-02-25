@@ -156,10 +156,6 @@ export type {
   StuckHookProcessingEvent,
   StuckHookProcessingTimeoutMinutes,
 } from "./hooks/hooks";
-export {
-  createDurableHooksProcessor,
-  type DurableHooksProcessor,
-} from "./hooks/durable-hooks-processor";
 export { defineSyncCommands } from "./sync/commands";
 export type {
   SubmitAppliedResponse,

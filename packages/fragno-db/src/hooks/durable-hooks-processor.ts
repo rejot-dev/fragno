@@ -1,6 +1,7 @@
 import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { createHookScheduler, type HookProcessorConfig } from "./hooks";
+import { createHookScheduler } from "./hooks";
+import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
 
 export type DurableHooksProcessor = {
   process: () => Promise<number>;
@@ -9,8 +10,12 @@ export type DurableHooksProcessor = {
   namespace: string;
 };
 
+export type DurableHooksProcessorGroupOptions = {
+  onError?: (error: unknown) => void;
+};
+
 type DurableHooksInternal = {
-  durableHooks?: HookProcessorConfig;
+  durableHooksToken?: object;
 };
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
@@ -27,11 +32,18 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
 
 export function createDurableHooksProcessor<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
-): DurableHooksProcessor | null {
-  const durableHooks = (fragment.$internal as DurableHooksInternal).durableHooks;
-  if (!durableHooks) {
-    return null;
+): DurableHooksProcessor {
+  const durableHooksToken = (fragment.$internal as DurableHooksInternal).durableHooksToken;
+  if (!durableHooksToken) {
+    throw new Error(`[fragno-db] Durable hooks not configured for fragment "${fragment.name}".`);
   }
+  const runtime = getDurableHooksRuntimeByToken(durableHooksToken);
+  if (!runtime) {
+    throw new Error(`[fragno-db] Durable hooks runtime missing for fragment "${fragment.name}".`);
+  }
+  runtime.dispatcherRegistered = true;
+
+  const durableHooks = runtime.config;
 
   const { namespace, internalFragment } = durableHooks;
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
@@ -59,6 +71,81 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
           .transform(({ serviceResult: [result] }) => result)
           .execute();
       });
+    },
+  };
+}
+
+export function createDurableHooksProcessorGroup(
+  fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
+  options: DurableHooksProcessorGroupOptions = {},
+): DurableHooksProcessor {
+  if (fragments.length === 0) {
+    throw new Error("[fragno-db] No fragments provided for durable hooks processing.");
+  }
+  const processors = fragments.map((fragment) => createDurableHooksProcessor(fragment));
+
+  return createDurableHooksProcessorGroupFromProcessors(processors, options);
+}
+
+export function createDurableHooksProcessorGroupFromProcessors(
+  processors: readonly DurableHooksProcessor[],
+  options: DurableHooksProcessorGroupOptions = {},
+): DurableHooksProcessor {
+  if (processors.length === 0) {
+    throw new Error("[fragno-db] No processors provided for durable hooks processing.");
+  }
+  if (processors.length === 1) {
+    return processors[0];
+  }
+
+  const onError = options.onError ?? (() => {});
+  const namespace = processors.map((processor) => processor.namespace).join(",");
+
+  return {
+    namespace,
+    process: async () => {
+      const results = await Promise.allSettled(
+        processors.map(async (processor) => await processor.process()),
+      );
+      let processed = 0;
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          processed += result.value;
+        } else {
+          onError(result.reason);
+        }
+      }
+      return processed;
+    },
+    drain: async () => {
+      const results = await Promise.allSettled(
+        processors.map(async (processor) => await processor.drain()),
+      );
+      for (const result of results) {
+        if (result.status === "rejected") {
+          onError(result.reason);
+        }
+      }
+    },
+    getNextWakeAt: async () => {
+      const results = await Promise.allSettled(
+        processors.map(async (processor) => await processor.getNextWakeAt()),
+      );
+      let nextWakeAt: Date | null = null;
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const wakeAt = result.value;
+          if (!wakeAt) {
+            continue;
+          }
+          if (!nextWakeAt || wakeAt.getTime() < nextWakeAt.getTime()) {
+            nextWakeAt = wakeAt;
+          }
+        } else {
+          onError(result.reason);
+        }
+      }
+      return nextWakeAt;
     },
   };
 }

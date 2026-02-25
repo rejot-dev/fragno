@@ -23,6 +23,7 @@ import { getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { defineSyncCommands } from "./sync/commands";
 import * as hooks from "./hooks/hooks";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
+import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -1014,11 +1015,15 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         deps,
         services: { ping: () => "pong" },
         serviceDeps: {},
-      }) as { durableHooks?: { hooks?: Record<string, unknown> } } | undefined;
+      }) as { durableHooksToken?: object } | undefined;
 
       expect(observed).toBe("pong");
-      expect(internalData?.durableHooks?.hooks).toBeDefined();
-      expect(internalData?.durableHooks?.hooks).toHaveProperty("onPing");
+      expect(internalData?.durableHooksToken).toBeDefined();
+      const runtime = internalData?.durableHooksToken
+        ? getDurableHooksRuntimeByToken(internalData.durableHooksToken)
+        : undefined;
+      expect(runtime?.config.hooks).toBeDefined();
+      expect(runtime?.config.hooks).toHaveProperty("onPing");
     });
   });
 

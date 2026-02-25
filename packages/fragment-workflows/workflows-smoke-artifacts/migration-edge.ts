@@ -1,5 +1,6 @@
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { createDurableHooksProcessor, migrate } from "@fragno-dev/db";
+import { migrate } from "@fragno-dev/db";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
@@ -30,10 +31,7 @@ const fragment = instantiate(workflowsFragmentDefinition)
   .withOptions({ databaseAdapter: adapter })
   .build();
 
-const processor = createDurableHooksProcessor(fragment);
-if (!processor) {
-  throw new Error("Durable hooks not configured for workflows fragment.");
-}
+createDurableHooksProcessor([fragment]);
 
 const start = Date.now();
 console.log(`[migration-edge] start pid=${process.pid}`);

@@ -4,6 +4,7 @@ import { Cursor, withDatabase } from "@fragno-dev/db";
 import { defineFragment } from "@fragno-dev/core";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "./db-test";
+import { drainDurableHooks } from "./durable-hooks";
 import type { ExtractFragmentServices } from "@fragno-dev/core/route";
 
 // Test schema with multiple versions
@@ -90,6 +91,17 @@ describe("buildDatabaseFragmentsTest", () => {
     const users = await fragment.fragment.callServices(() => fragment.services.getUsers());
     expect(users).toHaveLength(1);
     expect(users[0]).toMatchObject(user);
+
+    await test.cleanup();
+  });
+
+  it("should no-op drainDurableHooks when durable hooks are not configured", async () => {
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
+      .build();
+
+    await expect(drainDurableHooks(fragments.test.fragment)).resolves.toBeUndefined();
 
     await test.cleanup();
   });
