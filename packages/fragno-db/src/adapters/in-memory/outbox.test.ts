@@ -7,7 +7,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
 import { internalSchema } from "../../fragments/internal-fragment";
 import { getInternalFragment } from "../../internal/adapter-registry";
-import type { AnyFragnoInstantiatedDatabaseFragment, DatabaseRequestContext } from "../../mod";
+import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import type { OutboxEntry, OutboxPayload } from "../../outbox/outbox";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../../schema/create";
 import { withDatabase } from "../../with-database";
@@ -38,12 +38,16 @@ const outboxFragmentDef = defineFragment(outboxFragmentName)
   .build();
 
 type OutboxTestContext = {
+  adapter: InMemoryAdapter;
   fragment: AnyFragnoInstantiatedDatabaseFragment;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
 };
 
-async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<OutboxTestContext> {
+async function buildOutboxTest(options: {
+  outboxEnabled?: boolean;
+  shardingStrategy?: { mode: "row" };
+}): Promise<OutboxTestContext> {
   const adapter = new InMemoryAdapter({
     idSeed: "outbox-seed",
   });
@@ -54,10 +58,12 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
     .withOptions({
       databaseAdapter: adapter,
       outbox: options.outboxEnabled ? { enabled: true } : undefined,
+      shardingStrategy: options.shardingStrategy,
     })
     .build();
 
   return {
+    adapter,
     fragment,
     internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
@@ -69,8 +75,15 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
 async function listOutbox(
   internalFragment: InternalFragmentInstance,
   options?: { afterVersionstamp?: string; limit?: number },
+  shardOptions?: { shard?: string | null; shardScope?: "scoped" | "global" },
 ): Promise<OutboxEntry[]> {
-  return internalFragment.inContext(async function (this: DatabaseRequestContext) {
+  return internalFragment.inContext(async function () {
+    if (shardOptions?.shardScope) {
+      this.setShardScope(shardOptions.shardScope);
+    }
+    if (shardOptions && "shard" in shardOptions) {
+      this.setShard(shardOptions.shard ?? null);
+    }
     return (await this.handlerTx()
       .withServiceCalls(() => [internalFragment.services.outboxService.list(options)] as const)
       .transform(({ serviceResult: [result] }) => result)
@@ -78,7 +91,7 @@ async function listOutbox(
   });
 }
 
-async function listOutboxMutations(internalFragment: InternalFragmentInstance): Promise<
+async function listOutboxMutations(adapter: InMemoryAdapter): Promise<
   Array<{
     entryVersionstamp: string;
     mutationVersionstamp: string;
@@ -89,22 +102,30 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
     op: string;
   }>
 > {
-  return internalFragment.inContext(async function (this: DatabaseRequestContext) {
-    return await this.handlerTx()
-      .retrieve(({ forSchema }) =>
-        forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-          b
-            .whereIndex("idx_outbox_mutations_entry")
-            .orderByIndex("idx_outbox_mutations_entry", "asc"),
-        ),
-      )
-      .transformRetrieve(([result]) => result)
-      .execute();
-  });
+  const uow = adapter
+    .createBaseUnitOfWork(undefined, {
+      queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+    })
+    .forSchema(internalSchema);
+  uow.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+  const [result] = (await uow.executeRetrieve()) as unknown as [
+    Array<{
+      entryVersionstamp: string;
+      mutationVersionstamp: string;
+      uowId: string;
+      schema: string;
+      table: string;
+      externalId: string;
+      op: string;
+    }>,
+  ];
+  return result;
 }
 
 async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email: string) {
-  return fragment.inContext(async function (this: DatabaseRequestContext) {
+  return fragment.inContext(async function () {
     await this.handlerTx()
       .mutate(({ forSchema }) => forSchema(outboxSchema).create("users", { email }))
       .execute();
@@ -131,7 +152,7 @@ async function createPost(
   title: string,
   authorId: FragnoReference,
 ) {
-  return fragment.inContext(async function (this: DatabaseRequestContext) {
+  return fragment.inContext(async function () {
     return await this.handlerTx()
       .mutate(({ forSchema }) => forSchema(outboxSchema).create("posts", { title, authorId }))
       .transform(({ mutateResult }) => mutateResult)
@@ -140,8 +161,34 @@ async function createPost(
 }
 
 describe("in-memory outbox", () => {
-  it("does not write outbox entries when disabled", async () => {
+  it("writes outbox rows from row-sharded contexts", async () => {
     const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+      shardingStrategy: { mode: "row" },
+    });
+
+    await fragment.inContext(async function () {
+      await fragment.$internal.deps.shardContext.with("shard-alpha", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(outboxSchema);
+            uow.create("users", { email: "shard-alpha@example.com" });
+          })
+          .execute(),
+      );
+    });
+
+    const entries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-alpha",
+      shardScope: "global",
+    });
+    expect(entries).toHaveLength(1);
+
+    await cleanup();
+  });
+
+  it("does not write outbox entries when disabled", async () => {
+    const { adapter, fragment, internalFragment, cleanup } = await buildOutboxTest({
       outboxEnabled: false,
     });
 
@@ -149,14 +196,16 @@ describe("in-memory outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(0);
-    const mutations = await listOutboxMutations(internalFragment);
+    const mutations = await listOutboxMutations(adapter);
     expect(mutations).toHaveLength(0);
 
     await cleanup();
   });
 
   it("stores refMap placeholders and lists entries in order", async () => {
-    const { fragment, internalFragment, cleanup } = await buildOutboxTest({ outboxEnabled: true });
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+    });
 
     const userId = await createUser(fragment, "alpha@example.com");
     expect(userId.internalId).toBeDefined();
@@ -185,7 +234,7 @@ describe("in-memory outbox", () => {
   });
 
   it("writes mutation log rows for each outbox entry", async () => {
-    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+    const { adapter, fragment, internalFragment, cleanup } = await buildOutboxTest({
       outboxEnabled: true,
     });
 
@@ -195,7 +244,7 @@ describe("in-memory outbox", () => {
     await createPost(fragment, "Log", FragnoReference.fromInternal(userId.internalId!));
 
     const entries = await listOutbox(internalFragment);
-    const mutations = await listOutboxMutations(internalFragment);
+    const mutations = await listOutboxMutations(adapter);
 
     expect(entries).toHaveLength(2);
     expect(mutations).toHaveLength(2);
@@ -258,7 +307,7 @@ describe("in-memory outbox", () => {
         })
         .build();
 
-      const userA = await fragmentA.inContext(async function (this: DatabaseRequestContext) {
+      const userA = await fragmentA.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) =>
             forSchema(schemaA).create("users", { email: "tenant-a@example.com" }),
@@ -281,7 +330,7 @@ describe("in-memory outbox", () => {
         return user.id;
       });
 
-      const userB = await fragmentB.inContext(async function (this: DatabaseRequestContext) {
+      const userB = await fragmentB.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) =>
             forSchema(schemaB).create("users", { email: "tenant-b@example.com" }),
@@ -308,7 +357,7 @@ describe("in-memory outbox", () => {
       expect(userB.internalId).toBeDefined();
       expect(userA.internalId).toBe(userB.internalId);
 
-      await fragmentB.inContext(async function (this: DatabaseRequestContext) {
+      await fragmentB.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) =>
             forSchema(schemaB).create("posts", {
