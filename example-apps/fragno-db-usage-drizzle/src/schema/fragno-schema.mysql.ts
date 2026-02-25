@@ -413,7 +413,6 @@ export const upvote_schema = {
 
 export const workflow_instance_workflows = mysqlTable("workflow_instance_workflows", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  instanceId: text("instanceId").notNull(),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -428,15 +427,13 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_status_upda83267b95").on(table.workflowName, table.status, table.updatedAt)
+  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
+  index("idx_workflow_instance_idx_workflow_instance_workflowNamdd6fe562").on(table.workflowName, table.status, table.updatedAt)
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
   runNumber: int("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
   name: text("name").notNull(),
@@ -461,20 +458,16 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_step_workflow_instance_stepInstance_workflo01bdff32"
   }),
-  uniqueIndex("uidx_workflow_step_idx_workflow_step_workflowName_instabbcccb8d").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
-  index("idx_workflow_step_idx_workflow_step_instanceRef_runNumb111fe377").on(table.instanceRef, table.runNumber),
-  index("idx_workflow_step_idx_workflow_step_history_createdAt_w1fb9e39a").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
-  index("idx_workflow_step_idx_workflow_step_status_wakeAt_workf12ffa25b").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
-  index("idx_workflow_step_idx_workflow_step_workflowName_instan0910de5c").on(table.workflowName, table.instanceId, table.status),
-  index("idx_workflow_step_idx_workflow_step_status_nextRetryAt_d5657dc4").on(table.status, table.nextRetryAt)
+  uniqueIndex("uidx_workflow_step_idx_workflow_step_instanceRef_runNum2a6b0b25").on(table.instanceRef, table.runNumber, table.stepKey),
+  index("idx_workflow_step_idx_workflow_step_instanceRef_runNumbe91f4dec").on(table.instanceRef, table.runNumber, table.createdAt),
+  index("idx_workflow_step_idx_workflow_step_instanceRef_status_8e044a37").on(table.instanceRef, table.status, table.wakeAt)
 ])
 
 export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
   runNumber: int("runNumber").notNull(),
+  actor: text("actor").notNull().default("user"),
   type: text("type").notNull(),
   payload: json("payload"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -488,9 +481,7 @@ export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_event_workflow_instance_eventInstance_workf9b5621c6"
   }),
-  index("idx_workflow_event_idx_workflow_event_type_deliveredAt_704adbee").on(table.workflowName, table.instanceId, table.runNumber, table.type, table.deliveredAt),
-  index("idx_workflow_event_idx_workflow_event_instanceRef_runNu9d715b8f").on(table.instanceRef, table.runNumber, table.createdAt),
-  index("idx_workflow_event_idx_workflow_event_history_createdAt62c7042e").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt)
+  index("idx_workflow_event_idx_workflow_event_instanceRef_runNu9d715b8f").on(table.instanceRef, table.runNumber, table.createdAt)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({

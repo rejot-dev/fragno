@@ -10,11 +10,12 @@ import type {
   SupportedAdapter,
   TestContext,
 } from "@fragno-dev/test";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
-import { createWorkflowsRunner } from "./new-runner";
+import { runWorkflowsTick } from "./new-runner";
 import type {
   InstanceStatus,
   InstanceStatusWithOutput,
@@ -22,6 +23,7 @@ import type {
   WorkflowEnqueuedHookPayload,
   WorkflowOutputFromEntry,
   WorkflowParamsFromEntry,
+  WorkflowRegistryEntry,
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
 } from "./workflow";
@@ -107,7 +109,8 @@ export type WorkflowsTestHarnessOptions<
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
   autoTickHooks?: boolean;
-  fragmentConfig?: Omit<WorkflowsFragmentConfig<TRegistry>, "workflows" | "runner" | "runtime">;
+  fragmentConfig?: Omit<WorkflowsFragmentConfig<TRegistry>, "workflows" | "runtime">;
+  fragmentOptions?: FragnoPublicConfigWithDatabase;
 };
 
 export type WorkflowsTestHarness<
@@ -117,7 +120,6 @@ export type WorkflowsTestHarness<
   fragments: WorkflowsTestHarnessFragments<TFragments>;
   fragment: WorkflowsHarnessFragmentInstance;
   db: SimpleQueryInterface<typeof workflowsSchema>;
-  runner: ReturnType<typeof createWorkflowsRunner>;
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;
@@ -144,12 +146,12 @@ export type WorkflowsTestHarness<
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
       instanceId: string,
-      options: { type: string; payload?: unknown },
+      options: { type: string; payload?: unknown; createdAt?: Date },
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (
       workflowNameOrKey: string,
       instanceId: string,
-      options: { type: string; payload?: unknown },
+      options: { type: string; payload?: unknown; createdAt?: Date },
     ): Promise<InstanceStatus>;
   };
   getStatus: {
@@ -286,6 +288,7 @@ export async function createWorkflowsTestHarness<
   const config: WorkflowsFragmentConfig<TRegistry> = {
     workflows,
     runtime,
+    autoTickHooks: options.autoTickHooks,
     ...options.fragmentConfig,
   };
 
@@ -293,12 +296,15 @@ export async function createWorkflowsTestHarness<
   const configuredBuilder = options.configureBuilder
     ? options.configureBuilder(baseBuilder)
     : baseBuilder;
+  const workflowsBuilder = instantiate(workflowsFragmentDefinition)
+    .withConfig(config)
+    .withRoutes([workflowsRoutesFactory]);
   const { fragments, test } = await configuredBuilder
     .withFragment(
       "workflows",
-      instantiate(workflowsFragmentDefinition)
-        .withConfig(config)
-        .withRoutes([workflowsRoutesFactory]),
+      options.fragmentOptions
+        ? workflowsBuilder.withOptions(options.fragmentOptions)
+        : workflowsBuilder,
     )
     .build();
 
@@ -306,13 +312,9 @@ export async function createWorkflowsTestHarness<
   const { fragment, db } = fragmentsWithWorkflows.workflows;
   const callRoute: AnyFragnoInstantiatedFragment["callRoute"] =
     fragmentsWithWorkflows.workflows.callRoute;
-  const runner = createWorkflowsRunner({
-    fragment,
-    workflows,
-    runtime,
-  });
-  if (options.autoTickHooks !== false) {
-    config.runner = runner;
+  const workflowsByName = new Map<string, WorkflowRegistryEntry>();
+  for (const entry of Object.values(workflows)) {
+    workflowsByName.set(entry.name, entry);
   }
 
   const createInstance = async (
@@ -346,12 +348,23 @@ export async function createWorkflowsTestHarness<
   const sendEvent = async (
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
-    eventOptions: { type: string; payload?: unknown },
+    eventOptions: { type: string; payload?: unknown; createdAt?: Date },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+    if (eventOptions.createdAt !== undefined) {
+      return await fragment.inContext(async function () {
+        const status = await this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.sendEvent(workflowName, instanceId, eventOptions),
+          ])
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+        return status;
+      });
+    }
     const response = await callRoute("POST", "/:workflowName/instances/:instanceId/events", {
       pathParams: { workflowName, instanceId },
-      body: eventOptions,
+      body: { type: eventOptions.type, payload: eventOptions.payload },
     });
     const data = assertJsonResponse<{ status: InstanceStatus }>(response);
     return data.status;
@@ -393,7 +406,14 @@ export async function createWorkflowsTestHarness<
   };
 
   const tick = async (payload: WorkflowEnqueuedHookPayload) =>
-    await runner.tick({ ...payload, timestamp: clock.now() });
+    await fragment.inContext(function () {
+      return runWorkflowsTick({
+        handlerTx: this.handlerTx,
+        workflows,
+        workflowsByName,
+        payload: { ...payload, timestamp: clock.now() },
+      });
+    });
 
   const runUntilIdle = async (
     payload: WorkflowEnqueuedHookPayload,
@@ -405,7 +425,14 @@ export async function createWorkflowsTestHarness<
     let processed = 0;
 
     while (ticks < maxTicks) {
-      const result = await runner.tick({ ...payload, timestamp: clock.now() });
+      const result = await fragment.inContext(function () {
+        return runWorkflowsTick({
+          handlerTx: this.handlerTx,
+          workflows,
+          workflowsByName,
+          payload: { ...payload, timestamp: clock.now() },
+        });
+      });
       ticks += 1;
       processed += result;
       if (result === 0) {
@@ -420,7 +447,6 @@ export async function createWorkflowsTestHarness<
     fragments: fragmentsWithWorkflows,
     fragment,
     db,
-    runner,
     clock,
     runtime,
     test,

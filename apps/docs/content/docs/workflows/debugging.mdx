@@ -25,7 +25,6 @@ Tips:
 ### Instance never runs
 
 - Ensure the dispatcher is configured and running.
-- If using HTTP ticks, confirm `/_runner/tick` is being called.
 
 ### Stuck in waiting
 
@@ -39,7 +38,7 @@ Tips:
 
 ### Pause/resume not changing status
 
-- The pause request is respected on the next tick; make sure the runner is still running.
+- The pause request is respected on the next tick; make sure the dispatcher is still running.
 - If the instance is terminal (`complete`, `terminated`, `errored`), it will not resume.
 
 ## When to open an issue
@@ -48,4 +47,4 @@ If the instance is in a non-terminal state but no tasks are being processed, cap
 
 - the instance status and metadata
 - history output (with logs)
-- runner/dispatcher configuration
+- dispatcher configuration

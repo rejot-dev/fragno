@@ -254,6 +254,10 @@ export type WorkflowScenarioSendEventStep<
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
   event: ScenarioInput<{ type: string; payload?: unknown }, TRegistry, TVars>;
+  /**
+   * When set, used as createdAt for the event. Makes ordering deterministic and tests non-flaky.
+   */
+  timestamp?: ScenarioInput<Date, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -265,6 +269,13 @@ export type WorkflowScenarioEventAndRunUntilIdleStep<
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
   event: ScenarioInput<{ type: string; payload?: unknown }, TRegistry, TVars>;
+  /**
+   * When set, used as createdAt for the event. Makes ordering deterministic and tests non-flaky.
+   */
+  eventTimestamp?: ScenarioInput<Date, TRegistry, TVars>;
+  /**
+   * When set, used as the tick timestamp for runUntilIdle (e.g. for clock-driven scenarios).
+   */
   timestamp?: ScenarioInput<Date, TRegistry, TVars>;
   maxTicks?: ScenarioInput<number, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
@@ -1071,7 +1082,13 @@ export async function runScenario<
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const event = await resolveScenarioInput(step.event, context);
-          const status = await context.harness.sendEvent(workflowName, instanceId, event);
+          const timestamp = step.timestamp
+            ? await resolveScenarioInput(step.timestamp, context)
+            : undefined;
+          const status = await context.harness.sendEvent(workflowName, instanceId, {
+            ...event,
+            ...(timestamp ? { createdAt: timestamp } : {}),
+          });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
@@ -1083,7 +1100,13 @@ export async function runScenario<
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const event = await resolveScenarioInput(step.event, context);
-          const status = await context.harness.sendEvent(workflowName, instanceId, event);
+          const eventTimestamp = step.eventTimestamp
+            ? await resolveScenarioInput(step.eventTimestamp, context)
+            : undefined;
+          const status = await context.harness.sendEvent(workflowName, instanceId, {
+            ...event,
+            ...(eventTimestamp ? { createdAt: eventTimestamp } : {}),
+          });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }

@@ -5,7 +5,6 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import {
-  createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
   type WorkflowsFragmentConfig,
@@ -32,8 +31,6 @@ const fragment = instantiate(workflowsFragmentDefinition)
   .withOptions({ databaseAdapter: adapter })
   .build();
 
-const runner = createWorkflowsRunner({ fragment, workflows, runtime });
-config.runner = runner;
 const dispatcher = createDurableHooksProcessor([fragment], {
   pollIntervalMs: 2000,
   onError: (error) => {

@@ -1,14 +1,11 @@
 // Shared types for runner helpers and transactions.
 
-import type { FragnoRuntime } from "@fragno-dev/core";
 import type {
   TableToColumnValues,
   TableToInsertValues,
   TableToUpdateValues,
 } from "@fragno-dev/db/query";
 import type { workflowsSchema } from "../schema";
-import type { WorkflowsHooks, WorkflowsRegistry, WorkflowsRunner } from "../workflow";
-import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 export type RunnerTaskKind = "run" | "wake" | "retry";
 
@@ -56,22 +53,3 @@ export type WorkflowStepUpdateDraft = WorkflowStepUpdate & {
   nextRetryDelayMs?: number | null;
   wakeDelayMs?: number | null;
 };
-
-export type WorkflowsRunnerFragment = {
-  inContext: <T>(
-    callback: (this: DatabaseRequestContext<WorkflowsHooks>) => T | Promise<T>,
-  ) => T | Promise<T>;
-  services: Record<string, unknown>;
-};
-
-export type WorkflowsRunnerOptions = {
-  fragment: WorkflowsRunnerFragment;
-  workflows: WorkflowsRegistry;
-  runtime: FragnoRuntime;
-};
-
-export type RunHandlerTx = <T>(
-  callback: (handlerTx: DatabaseRequestContext<WorkflowsHooks>["handlerTx"]) => T | Promise<T>,
-) => Promise<T>;
-
-export type RunnerFactory = (options: WorkflowsRunnerOptions) => WorkflowsRunner;

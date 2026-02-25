@@ -9,7 +9,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 ## Overview
 
 The Workflows fragment provides durable, replayable workflow execution with steps, timers, retries,
-and external events. This quickstart walks through defining a workflow, wiring the runner, and
+and external events. This quickstart walks through defining a workflow, wiring durable hooks, and
 exposing routes.
 
 ## Installation
@@ -77,22 +77,17 @@ export const ApprovalWorkflow = defineWorkflow(
 
 ## Create the Fragment Server
 
-Wire the workflow runner, dispatcher, and fragment definition:
+Wire the durable hooks dispatcher and fragment definition:
 
 ```ts title="lib/workflows-fragment.ts"
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { createDurableHooksProcessor, type DatabaseAdapter } from "@fragno-dev/db";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
-import {
-  createWorkflowsRunner,
-  workflowsFragmentDefinition,
-  workflowsRoutesFactory,
-} from "@fragno-dev/workflows";
+import { type DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
-  let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
 
   const config = { workflows, runtime };
   const fragment = instantiate(workflowsFragmentDefinition)
@@ -101,16 +96,7 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
     .withOptions({ databaseAdapter: adapter })
     .build();
 
-  runner = createWorkflowsRunner({ fragment, workflows, runtime });
-  config.runner = runner;
-
-  const processor = createDurableHooksProcessor(fragment);
-  if (!processor) {
-    throw new Error("Durable hooks not configured for workflows fragment.");
-  }
-
-  const dispatcher = createDurableHooksDispatcher({
-    processor,
+  const dispatcher = createDurableHooksProcessor([fragment], {
     pollIntervalMs: 2000,
   });
 
@@ -143,7 +129,7 @@ npx fragno-cli db migrate lib/workflows-fragment.ts
 
 ## Test Workflows
 
-Use the test harness to drive the runner with a controllable clock and deterministic runtime:
+Use the test harness to drive workflow ticks with a controllable clock and deterministic runtime:
 
 ```ts title="lib/workflows.test.ts"
 import { createWorkflowsTestHarness, createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
@@ -174,15 +160,8 @@ For higher-level scripting, see the [Scenario DSL](/docs/workflows/scenario-dsl)
 
 ## Drive the Runner
 
-If you want an external scheduler to drive execution, send `POST /_runner/tick` to your fragment:
-
-```ts
-await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ maxInstances: 10, maxSteps: 100 }),
-});
-```
+For external schedulers, run a durable hooks dispatcher (Node or Cloudflare DO) so hooks are
+processed when work is enqueued.
 
 ## Use the CLI
 

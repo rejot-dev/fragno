@@ -1,0 +1,112 @@
+{
+  "description": "A Fragno fragment",
+  "version": "0.0.1",
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "keywords": [
+    "fragno",
+    "typescript",
+    "react",
+    "vue",
+    "svelte",
+    "solidjs"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/node/fragment/index.d.ts",
+      "default": "./dist/node/fragment/index.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/fragment/client/react.js",
+        "default": "./src/fragment/client/react.ts"
+      },
+      "types": "./dist/browser/fragment/client/react.d.ts",
+      "default": "./dist/browser/fragment/client/react.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/fragment/client/vue.js",
+        "default": "./src/fragment/client/vue.ts"
+      },
+      "types": "./dist/browser/fragment/client/vue.d.ts",
+      "default": "./dist/browser/fragment/client/vue.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/fragment/client/svelte.js",
+        "default": "./src/fragment/client/svelte.ts"
+      },
+      "types": "./dist/browser/fragment/client/svelte.d.ts",
+      "default": "./dist/browser/fragment/client/svelte.js"
+    },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/fragment/client/solid.js",
+        "default": "./src/fragment/client/solid.ts"
+      },
+      "types": "./dist/browser/fragment/client/solid.d.ts",
+      "default": "./dist/browser/fragment/client/solid.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/fragment/client/vanilla.js",
+        "default": "./src/fragment/client/vanilla.ts"
+      },
+      "types": "./dist/browser/fragment/client/vanilla.d.ts",
+      "default": "./dist/browser/fragment/client/vanilla.js"
+    },
+    "./cli": {
+      "types": "./dist/node/server/cli.d.ts",
+      "default": "./dist/node/server/cli.js"
+    },
+    "./test-server": {
+      "types": "./dist/node/server/test-server.d.ts",
+      "default": "./dist/node/server/test-server.js"
+    }
+  },
+  "main": "./dist/node/fragment/index.js",
+  "module": "./dist/node/fragment/index.js",
+  "types": "./dist/node/fragment/index.d.ts",
+  "bin": {
+    "workflow-usage": "./bin/run.js"
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown",
+    "serve": "tsx --watch src/server/test-server.ts",
+    "cli": "tsx src/server/cli.ts",
+    "db:dump": "sqlite3 ${WORKFLOW_USAGE_DB_PATH:-usage-fragment.sqlite} .dump | grep -E '^INSERT' > db-dump.txt",
+    "db:dump:full": "sqlite3 ${WORKFLOW_USAGE_DB_PATH:-usage-fragment.sqlite} .dump > db-dump-full.txt"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/node": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
+    "@standard-schema/spec": "^1.1.0",
+    "better-sqlite3": "^12.6.2",
+    "gunshi": "^0.26.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.2.2",
+    "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "tsdown": "^0.20.3",
+    "tsx": "^4.21.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=5",
+    "react": ">=18.0.0",
+    "svelte": ">=4.0.0",
+    "solid-js": ">=1.0.0",
+    "vue": ">=3.0.0"
+  },
+  "name": "@fragno-dev/workflow-usage-fragment"
+}

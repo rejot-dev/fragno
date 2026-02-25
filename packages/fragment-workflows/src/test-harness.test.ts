@@ -95,6 +95,41 @@ describe("createWorkflowsTestHarness", () => {
     expect(eventStatus.status).toBe("complete");
   });
 
+  test("supports null database namespace when scheduling wake hooks", async () => {
+    const workflows = {
+      sleep: SleepWorkflow,
+    };
+
+    const harness = await createWorkflowsTestHarness({
+      workflows,
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentOptions: { databaseNamespace: null },
+    });
+
+    const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
+    const [sleepInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+        eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
+      ),
+    );
+    if (!sleepInstance) {
+      throw new Error("Missing sleep instance");
+    }
+
+    await harness.runUntilIdle(buildPayload(sleepInstance, "create"));
+
+    let sleepStatus = await harness.getStatus("sleep", sleepId);
+    expect(sleepStatus.status).toBe("waiting");
+
+    const processed = await harness.tick(buildPayload(sleepInstance, "wake"));
+    expect(processed).toBe(1);
+
+    sleepStatus = await harness.getStatus("sleep", sleepId);
+    expect(sleepStatus.status).toBe("waiting");
+  });
+
   test("schedules retries relative to failure time", async () => {
     let attempts = 0;
     let testClock: WorkflowsTestClock | null = null;

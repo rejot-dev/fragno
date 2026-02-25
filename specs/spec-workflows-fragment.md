@@ -414,45 +414,9 @@ Rules:
 
 - `workflows.<bindingKey>` exposes the `Workflow` interface (`create/get/createBatch`) for that
   workflow definition.
-- The same bindings object is available inside workflow code via `context.workflows` in the
-  `defineWorkflow` run function (see §6.6).
 - The HTTP API uses `:workflowName` (the registered `name`), not the binding key.
-- Implementation note: `fragment.workflows` must call the fragment’s internal services directly (no
-  HTTP), and the runner must pass equivalent bindings into workflow code via `context.workflows` so
-  that child workflow creation reuses the same start path and semantics.
 
-### 6.6 Starting Child Workflows
-
-Workflows can start other workflows from within a step (Cloudflare-like). This should be done inside
-`step.do(...)` to preserve determinism and idempotency.
-
-Semantics:
-
-- Creating a child workflow does **not** block the parent; parent continues immediately after the
-  child instance is created.
-
-Example:
-
-```ts
-export const ParentWorkflow = defineWorkflow(
-  { name: "parent-workflow" },
-  async (event, step, context) => {
-    await step.do("trigger child workflow", async () => {
-      const child = await context.workflows.CHILD.create({
-        id: `child-${event.instanceId}`,
-        params: { parentInstanceId: event.instanceId },
-      });
-
-      return { childInstanceId: child.id };
-    });
-
-    // Parent continues; does not wait for child completion.
-    await step.do("continue", async () => ({ ok: true }));
-  },
-);
-```
-
-### 6.7 Fragno Runtime (Time + Randomness)
+### 6.6 Fragno Runtime (Time + Randomness)
 
 Workflows must use a shared Fragno runtime for **time** and **randomness** so tests and model
 checking can control these sources of nondeterminism consistently across fragments.
@@ -507,7 +471,7 @@ Rules:
 
 - A Fragno DB adapter (`FragnoPublicConfigWithDatabase`) and migrations execution (via `fragno-cli`
   or `@fragno-dev/db` `migrate()` where relevant).
-- A **Fragno runtime** (`FragnoRuntime`) providing time and randomness (SPEC §6.7).
+- A **Fragno runtime** (`FragnoRuntime`) providing time and randomness (SPEC §6.6).
 - Any authentication/authorization policy for management endpoints (configurable).
 - A way to run/wake the runner (all supported):
   - in-process (Node) via `@fragno-dev/db/dispatchers/node`
@@ -1177,15 +1141,14 @@ Cloudflare-style expectations:
 4. Distributed runners required and must be well tested (SPEC §9.1.1)
 5. Retention: infinite by default; keep full history always (SPEC §11.8, §14.1)
 6. No explicit instance delete API in v1 (SPEC §14.1)
-7. Programmatic starts via `fragment.workflows.<bindingKey>.create/get/createBatch` and
-   `context.workflows` inside workflows (SPEC §6.5, §6.6)
+7. Programmatic starts via `fragment.workflows.<bindingKey>.create/get/createBatch` (SPEC §6.5)
 8. `sendEvent` buffers for `active|waiting|paused` and rejects for `complete|terminated|errored`
    (SPEC §9.5, §11.7)
 9. `createBatch` excludes skipped IDs from the response (Cloudflare-like) (SPEC §11.4)
 10. `sendEvent` does not create instances (SPEC §11.7)
 11. Pausing does not freeze sleep/event timeouts (SPEC §9.4)
 12. Step attempt timeouts are best-effort (SPEC §9.3)
-13. Workflows runtime uses `FragnoRuntime`; `clock` is removed from config (SPEC §6.7, §7.4)
+13. Workflows runtime uses `FragnoRuntime`; `clock` is removed from config (SPEC §6.6, §7.4)
 
 ## 17. Workflow Management CLI (NEW; app: `fragno-wf`)
 

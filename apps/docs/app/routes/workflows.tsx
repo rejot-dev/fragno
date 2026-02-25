@@ -83,10 +83,11 @@ export const workflows = { approval: ApprovalWorkflow } as const;`,
   },
   {
     title: "3. Create the fragment server",
-    description: "Instantiate the fragment and attach the workflow runner.",
+    description: "Instantiate the fragment and start durable hook processing.",
     lang: "ts",
     code: `import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { createWorkflowsRunner, workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
 const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig({ workflows, runtime: defaultFragnoRuntime })
@@ -94,7 +95,8 @@ const fragment = instantiate(workflowsFragmentDefinition)
   .withOptions({ databaseAdapter })
   .build();
 
-const runner = createWorkflowsRunner({ fragment, workflows, runtime: defaultFragnoRuntime });`,
+const dispatcher = createDurableHooksProcessor([fragment], { pollIntervalMs: 2000 });
+dispatcher.startPolling();`,
   },
 ];
 
@@ -116,31 +118,6 @@ const workflowExamples: WorkflowExample[] = [
         return { ok: true };
       },
     );
-  },
-);`,
-  },
-  {
-    id: "parent-child",
-    title: "Parent + child workflows",
-    summary: "Spawn child workflows from a parent run.",
-    code: `const ChildWorkflow = defineWorkflow(
-  { name: "child-workflow" },
-  async (event, step) => {
-    return await step.do("child-run", () => ({ parentId: event.payload.parentId }));
-  },
-);
-
-const ParentWorkflow = defineWorkflow(
-  { name: "parent-workflow" },
-  async (event, step, context) => {
-    return await step.do("spawn-child", async () => {
-      const child = await context.workflows["child"].create({
-        id: \`child-\${event.instanceId}\`,
-        params: { parentId: event.instanceId },
-      });
-
-      return { childId: child.id };
-    });
   },
 );`,
   },

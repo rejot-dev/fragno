@@ -52,11 +52,15 @@ type StepTxQueue = {
 };
 
 /**
- * Build a deterministic step key from type and name.
+ * Build a deterministic step key from type, name, and optional occurrence.
  * Bigger picture: stable step keys are the identity for replayable workflow steps.
  */
-function buildStepKey(type: string, name: string): string {
-  return `${type}:${name}`;
+function buildStepKey(type: string, name: string, occurrence?: number): string {
+  const base = `${type}:${name}`;
+  if (occurrence === undefined || occurrence === 0) {
+    return base;
+  }
+  return `${base}#${occurrence}`;
 }
 
 /**
@@ -109,6 +113,7 @@ function computeBackoffDelayMs(
 export class RunnerStep implements WorkflowStep {
   #state: RunnerState;
   #taskKind: RunnerTaskKind;
+  #stepOccurrences = new Map<string, number>();
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
@@ -137,7 +142,7 @@ export class RunnerStep implements WorkflowStep {
       throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
     }
 
-    const stepKey = buildStepKey("do", name);
+    const stepKey = this.#nextStepKey("do", name);
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
@@ -244,7 +249,7 @@ export class RunnerStep implements WorkflowStep {
 
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
     const delayMs = parseDurationMs(duration);
-    const stepKey = buildStepKey("sleep", name);
+    const stepKey = this.#nextStepKey("sleep", name);
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (isCompletedStatus(snapshot?.status)) {
@@ -289,7 +294,7 @@ export class RunnerStep implements WorkflowStep {
   }
 
   async sleepUntil(name: string, timestamp: Date | number): Promise<void> {
-    const stepKey = buildStepKey("sleep", name);
+    const stepKey = this.#nextStepKey("sleep", name);
     const target = coerceTimestamp(timestamp);
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
@@ -337,7 +342,7 @@ export class RunnerStep implements WorkflowStep {
     name: string,
     options: { type: string; timeout?: WorkflowDuration },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
-    const stepKey = buildStepKey("waitForEvent", name);
+    const stepKey = this.#nextStepKey("waitForEvent", name);
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
@@ -481,6 +486,13 @@ export class RunnerStep implements WorkflowStep {
         !event.consumedByStepKey &&
         (!wakeAt || event.createdAt <= wakeAt),
     );
+  }
+
+  #nextStepKey(type: string, name: string): string {
+    const baseKey = buildStepKey(type, name);
+    const occurrence = this.#stepOccurrences.get(baseKey) ?? 0;
+    this.#stepOccurrences.set(baseKey, occurrence + 1);
+    return buildStepKey(type, name, occurrence);
   }
 
   #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {

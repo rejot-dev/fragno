@@ -134,16 +134,10 @@ export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegi
   >;
 };
 
-/** Execution context passed to workflow functions. */
-export type WorkflowContext<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
-  workflows: WorkflowBindings<TRegistry>;
-};
-
 /** Function-based workflow run signature. */
 export type WorkflowRunFn<TParams = unknown, TOutput = unknown> = (
   event: WorkflowEvent<TParams>,
   step: WorkflowStep,
-  context: WorkflowContext,
 ) => Promise<TOutput> | TOutput;
 
 /** Function-based workflow definition. */
@@ -156,11 +150,7 @@ export interface WorkflowDefinition<
   name: string;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
-  run(
-    event: WorkflowEvent<TParams>,
-    step: WorkflowStep,
-    context: WorkflowContext,
-  ): Promise<TOutput> | TOutput;
+  run(event: WorkflowEvent<TParams>, step: WorkflowStep): Promise<TOutput> | TOutput;
 }
 
 export function defineWorkflow<TParams, TOutput = unknown>(
@@ -259,21 +249,18 @@ export interface WorkflowsDispatcher {
   wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
 }
 
-/** Runner interface used by routes and dispatchers. */
-export interface WorkflowsRunner {
-  /** timestamp is database time of the durable hook enqueue event */
-  tick: (payload: WorkflowEnqueuedHookPayload & { timestamp: Date }) => Promise<number> | number;
-}
-
 /** Actions available on workflow instances. */
 export type WorkflowManagementAction = "pause" | "resume" | "terminate" | "restart";
 
-/** Authorization context for runner tick requests. */
 /** Configuration for the workflows fragment. */
 export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
   workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
-  runner?: WorkflowsRunner;
+  /**
+   * Disable built-in durable hook ticking (useful for tests that drive ticks manually).
+   * Defaults to true.
+   */
+  autoTickHooks?: boolean;
   runtime: FragnoRuntime;
 }
 

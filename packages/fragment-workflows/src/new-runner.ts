@@ -1,8 +1,11 @@
 // New single-transaction runner scaffold (no task claiming, OCC-only coordination).
 
-import { ConcurrencyConflictError, type IUnitOfWork } from "@fragno-dev/db";
-import type { WorkflowsRegistry, WorkflowsRunner } from "./workflow";
-import { createWorkflowsBindingsForRunner } from "./bindings-runner";
+import {
+  ConcurrencyConflictError,
+  type DatabaseRequestContext,
+  type IUnitOfWork,
+} from "@fragno-dev/db";
+import type { WorkflowsRegistry } from "./workflow";
 import { workflowsSchema } from "./schema";
 import { isTerminalStatus } from "./runner/status";
 import { createRunnerState } from "./runner/state";
@@ -12,7 +15,6 @@ import type {
   WorkflowEventRecord,
   WorkflowInstanceRecord,
   WorkflowStepRecord,
-  WorkflowsRunnerOptions,
 } from "./runner/types";
 import {
   isSystemEventActor,
@@ -22,6 +24,11 @@ import {
 import type { WorkflowEnqueuedHookPayload } from "./workflow";
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { toError } from "./runner/utils";
+
+function resolveWorkflowsNamespace(uow: IUnitOfWork): string {
+  const ns = uow.forSchema(workflowsSchema).namespace;
+  return ns ?? workflowsSchema.name;
+}
 
 type RunnerTickSelection = {
   instance: WorkflowInstanceRecord | null;
@@ -36,7 +43,6 @@ type RunnerTickPlan = {
 
 type RunnerTickContext = {
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
-  workflowBindings: ReturnType<typeof createWorkflowsBindingsForRunner>;
 };
 
 type RunnerTickSelectionResult = {
@@ -63,11 +69,16 @@ function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTa
 }
 
 /**
- * Sort event history deterministically by id for stable tie-breaking.
+ * Sort event history deterministically by createdAt, then id for tie-breaking.
+ * Note: the DB already orders by createdAt; we keep a stable in-memory sort to
+ * guard against equal timestamps or unordered retrieval paths.
  * Bigger picture: keeps event consumption stable across retries and OCC conflicts.
  */
 function sortEventsForRunner(events: WorkflowEventRecord[]): WorkflowEventRecord[] {
-  return [...events].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return [...events].sort((a, b) => {
+    const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
+    return timeDiff !== 0 ? timeDiff : String(a.id).localeCompare(String(b.id));
+  });
 }
 
 /**
@@ -189,7 +200,9 @@ function planEarlyReschedule(
         processed: 1,
         operations: [
           (uow) => {
+            const ns = resolveWorkflowsNamespace(uow);
             uow.triggerHook(
+              ns,
               "onWorkflowEnqueued",
               {
                 workflowName: selectionResult.instance.workflowName,
@@ -222,7 +235,9 @@ function planEarlyReschedule(
         processed: 1,
         operations: [
           (uow) => {
+            const ns = resolveWorkflowsNamespace(uow);
             uow.triggerHook(
+              ns,
               "onWorkflowEnqueued",
               {
                 workflowName: selectionResult.instance.workflowName,
@@ -300,7 +315,7 @@ async function runTask(
   const initialEvent = buildWorkflowEvent(instance, timestamp);
 
   try {
-    const output = await workflow.run(initialEvent, step, { workflows: ctx.workflowBindings });
+    const output = await workflow.run(initialEvent, step);
     return { type: "completed", output };
   } catch (err) {
     if (err instanceof RunnerStepSuspended) {
@@ -352,153 +367,142 @@ async function buildTickPlan(
  * Bigger picture: prevents durable hook retries from looping on non-retryable mutation failures.
  */
 async function markInstanceErrored(
-  fragment: WorkflowsRunnerOptions["fragment"],
+  handlerTx: DatabaseRequestContext["handlerTx"],
   payload: WorkflowEnqueuedHookPayload,
   error: Error,
 ): Promise<boolean> {
   let updated = false;
-  await fragment.inContext(function () {
-    return this.handlerTx({
-      onAfterRetrieve: (uow, results) => {
-        const [instances] = results as [WorkflowInstanceRecord[]];
-        const instance = instances[0];
-        if (!instance) {
-          return;
-        }
-        if (instance.runNumber !== payload.runNumber) {
-          return;
-        }
-        if (isTerminalStatus(instance.status)) {
-          return;
-        }
+  await handlerTx({
+    onAfterRetrieve: (uow, results) => {
+      const [instances] = results as [WorkflowInstanceRecord[]];
+      const instance = instances[0];
+      if (!instance) {
+        return;
+      }
+      if (instance.runNumber !== payload.runNumber) {
+        return;
+      }
+      if (isTerminalStatus(instance.status)) {
+        return;
+      }
 
-        const schemaUow = uow.forSchema(workflowsSchema);
-        schemaUow.update("workflow_instance", instance.id, (b) => {
-          const now = b.now();
-          return b
-            .set({
-              status: "errored",
-              output: null,
-              errorName: error.name,
-              errorMessage: error.message,
-              updatedAt: now,
-              completedAt: now,
-              ...(instance.startedAt ? {} : { startedAt: now }),
-            })
-            .check();
-        });
-        updated = true;
-      },
-    })
-      .retrieve(({ forSchema }) =>
-        forSchema(workflowsSchema).find("workflow_instance", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceId)),
-        ),
-      )
-      .execute();
-  });
+      const schemaUow = uow.forSchema(workflowsSchema);
+      schemaUow.update("workflow_instance", instance.id, (b) => {
+        const now = b.now();
+        return b
+          .set({
+            status: "errored",
+            output: null,
+            errorName: error.name,
+            errorMessage: error.message,
+            updatedAt: now,
+            completedAt: now,
+            ...(instance.startedAt ? {} : { startedAt: now }),
+          })
+          .check();
+      });
+      updated = true;
+    },
+  })
+    .retrieve(({ forSchema }) =>
+      forSchema(workflowsSchema).find("workflow_instance", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceId)),
+      ),
+    )
+    .execute();
 
   return updated;
 }
 
 /**
- * Create a single-transaction workflow runner that relies on OCC for coordination.
+ * Execute one tick, doing all reads and writes inside a single handlerTx call.
  * Bigger picture: enforces the one-retrieve/one-mutate tick contract across the runner.
  */
-export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): WorkflowsRunner {
-  const workflowsByName = new Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>();
-  for (const entry of Object.values(runnerOptions.workflows)) {
-    workflowsByName.set(entry.name, entry);
+export async function runWorkflowsTick(options: {
+  handlerTx: DatabaseRequestContext["handlerTx"];
+  workflows: WorkflowsRegistry;
+  payload: WorkflowEnqueuedHookPayload & { timestamp: Date };
+  workflowsByName?: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
+}): Promise<number> {
+  const workflowsByName =
+    options.workflowsByName ??
+    new Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>(
+      Object.values(options.workflows).map((entry) => [entry.name, entry]),
+    );
+
+  if (workflowsByName.size === 0) {
+    return 0;
   }
 
-  const workflowBindings = createWorkflowsBindingsForRunner({
-    workflows: runnerOptions.workflows,
-    fragment: runnerOptions.fragment,
-  });
+  // Instance-scoped tick: we only fetch data for the payload's instance/run.
+  let processed = 0;
+  let mutatePhase = false;
 
-  return {
-    /** Execute one tick, doing all reads and writes inside a single handlerTx call. */
-    async tick(payload: WorkflowEnqueuedHookPayload & { timestamp: Date }) {
-      // Instance-scoped tick: we only fetch data for the payload's instance/run.
-
-      let processed = 0;
-      let mutatePhase = false;
-
-      try {
-        await runnerOptions.fragment.inContext(function () {
-          return this.handlerTx({
-            // We must plan mutations after retrieve and before executeMutations. The
-            // transform hooks are synchronous and run too late, so we use onAfterRetrieve.
-            onAfterRetrieve: async (uow, results) => {
-              const retrieveResults = results as [
-                WorkflowInstanceRecord[],
-                WorkflowStepRecord[],
-                WorkflowEventRecord[],
-              ];
-              const [instances, steps, events] = retrieveResults;
-              const selection: RunnerTickSelection = {
-                instance: instances[0] ?? null,
-                steps: steps ?? [],
-                events: events ?? [],
-              };
-              const plan = await buildTickPlan(
-                selection,
-                {
-                  workflowsByName,
-                  workflowBindings,
-                },
-                payload,
-              );
-              processed = plan.processed;
-              for (const operation of plan.operations) {
-                operation(uow);
-              }
-            },
-            onBeforeMutate: () => {
-              mutatePhase = true;
-            },
-          })
-            .retrieve(({ forSchema }) =>
-              forSchema(workflowsSchema)
-                .find("workflow_instance", (b) =>
-                  b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceId)),
-                )
-                .find("workflow_step", (b) =>
-                  b
-                    .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                      eb.and(
-                        eb("instanceRef", "=", payload.instanceRef),
-                        eb("runNumber", "=", payload.runNumber),
-                      ),
-                    )
-                    .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-                )
-                .find("workflow_event", (b) =>
-                  b
-                    .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-                      eb.and(
-                        eb("instanceRef", "=", payload.instanceRef),
-                        eb("runNumber", "=", payload.runNumber),
-                      ),
-                    )
-                    .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
+  try {
+    await options
+      .handlerTx({
+        // We must plan mutations after retrieve and before executeMutations. The
+        // transform hooks are synchronous and run too late, so we use onAfterRetrieve.
+        onAfterRetrieve: async (uow, results) => {
+          const retrieveResults = results as [
+            WorkflowInstanceRecord[],
+            WorkflowStepRecord[],
+            WorkflowEventRecord[],
+          ];
+          const [instances, steps, events] = retrieveResults;
+          const selection: RunnerTickSelection = {
+            instance: instances[0] ?? null,
+            steps: steps ?? [],
+            events: events ?? [],
+          };
+          const plan = await buildTickPlan(selection, { workflowsByName }, options.payload);
+          processed = plan.processed;
+          for (const operation of plan.operations) {
+            operation(uow);
+          }
+        },
+        onBeforeMutate: () => {
+          mutatePhase = true;
+        },
+      })
+      .retrieve(({ forSchema }) =>
+        forSchema(workflowsSchema)
+          .find("workflow_instance", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", options.payload.instanceId)),
+          )
+          .find("workflow_step", (b) =>
+            b
+              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(
+                  eb("instanceRef", "=", options.payload.instanceRef),
+                  eb("runNumber", "=", options.payload.runNumber),
                 ),
-            )
-            .execute();
-        });
-      } catch (err) {
-        if (err instanceof ConcurrencyConflictError) {
-          return 0;
-        }
-        if (mutatePhase) {
-          const error = toError(err);
-          await markInstanceErrored(runnerOptions.fragment, payload, error);
-          return 0;
-        }
-        throw err;
-      }
+              )
+              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+          )
+          .find("workflow_event", (b) =>
+            b
+              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(
+                  eb("instanceRef", "=", options.payload.instanceRef),
+                  eb("runNumber", "=", options.payload.runNumber),
+                ),
+              )
+              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
+          ),
+      )
+      .execute();
+  } catch (err) {
+    if (err instanceof ConcurrencyConflictError) {
+      return 0;
+    }
+    if (mutatePhase) {
+      const error = toError(err);
+      await markInstanceErrored(options.handlerTx, options.payload, error);
+      return 0;
+    }
+    throw err;
+  }
 
-      return processed;
-    },
-  };
+  return processed;
 }

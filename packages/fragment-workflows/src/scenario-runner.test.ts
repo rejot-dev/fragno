@@ -872,6 +872,123 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("waitForEvent completes before timeout when event is delivered", async () => {
+    const TimeoutWorkflow = defineWorkflow(
+      { name: "event-before-timeout-workflow" },
+      async (_event, step) => {
+        const ready = await step.waitForEvent<{ ok: boolean }>("ready", {
+          type: "ready",
+          timeout: "5 minutes",
+        });
+        return { ok: ready.payload.ok };
+      },
+    );
+
+    const workflows = { TIMEOUT_EVENT: TimeoutWorkflow };
+
+    type ScenarioVars = {
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      status?: { status: string; output?: { ok: boolean } };
+      steps?: WorkflowScenarioStepRow[];
+      events?: WorkflowScenarioEventRow[];
+      lateTicks?: { processed: number; ticks: number };
+      afterAdvanceStatus?: { status: string; output?: { ok: boolean } };
+      afterAdvanceSteps?: WorkflowScenarioStepRow[];
+      afterAdvanceEvents?: WorkflowScenarioEventRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "wait-timeout-event",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "TIMEOUT_EVENT", id: "timeout-event-1" }),
+        scenarioSteps.tick({
+          workflow: "TIMEOUT_EVENT",
+          instanceId: "timeout-event-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "TIMEOUT_EVENT",
+          instanceId: "timeout-event-1",
+          event: { type: "ready", payload: { ok: true } },
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "events",
+        }),
+        scenarioSteps.advanceTimeAndRunUntilIdle({
+          workflow: "TIMEOUT_EVENT",
+          instanceId: "timeout-event-1",
+          setTo: (ctx) => {
+            const wakeAt = ctx.vars.wakeAt;
+            if (!wakeAt) {
+              throw new Error("MISSING_WAKE_AT");
+            }
+            return new Date(wakeAt.getTime() + 10 * 60 * 1000);
+          },
+          storeAs: "lateTicks",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "afterAdvanceStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "afterAdvanceSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("TIMEOUT_EVENT", "timeout-event-1"),
+          storeAs: "afterAdvanceEvents",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(ctx.vars.status?.output).toEqual({ ok: true });
+
+          expect(ctx.vars.steps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:ready",
+            status: "completed",
+          });
+
+          expect(ctx.vars.events).toHaveLength(1);
+          expect(ctx.vars.events?.[0]).toMatchObject({
+            type: "ready",
+            consumedByStepKey: "waitForEvent:ready",
+          });
+
+          expect(ctx.vars.lateTicks?.processed).toBe(0);
+          expect(ctx.vars.lateTicks?.ticks).toBe(1);
+          expect(ctx.vars.afterAdvanceStatus?.status).toBe("complete");
+          expect(ctx.vars.afterAdvanceStatus?.output).toEqual({ ok: true });
+          expect(ctx.vars.afterAdvanceSteps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:ready",
+            status: "completed",
+          });
+          expect(ctx.vars.afterAdvanceEvents).toHaveLength(1);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("getHistory returns ordered step and event data", async () => {
     const HistoryWorkflow = defineWorkflow({ name: "history-workflow" }, async (_event, step) => {
       const seed = await step.do("seed", () => 3);
@@ -987,11 +1104,13 @@ describe("Workflows Runner (Scenario DSL)", () => {
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           event: { type: "ready", payload: { value: 1 } },
+          timestamp: new Date(1000),
         }),
         scenarioSteps.event({
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           event: { type: "ready", payload: { value: 2 } },
+          timestamp: new Date(1001),
         }),
         scenarioSteps.tick({
           workflow: "EVENT_ORDER",
@@ -1011,9 +1130,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           const events = ctx.vars.events ?? [];
           expect(events).toHaveLength(2);
 
-          const [firstEvent, secondEvent] = [...events].sort((a, b) =>
-            String(a.id).localeCompare(String(b.id)),
-          );
+          const [firstEvent, secondEvent] = events;
 
           expect(ctx.vars.status?.output).toEqual({
             first: (firstEvent.payload as { value: number }).value,
@@ -1754,6 +1871,100 @@ describe("Workflows Runner (Scenario DSL)", () => {
           });
           expect(ctx.vars.instance?.completedAt).toBeInstanceOf(Date);
           expect(runs).toBe(0);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("ignores wake ticks after termination", async () => {
+    const SleepWorkflow = defineWorkflow(
+      { name: "terminate-sleep-workflow" },
+      async (_event, step) => {
+        await step.sleep("nap", "10 minutes");
+        return { done: true };
+      },
+    );
+
+    const workflows = { SLEEP_TERM: SleepWorkflow };
+
+    type ScenarioVars = {
+      waitingStatus?: { status: string };
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      terminateResponse?: RouteResponse;
+      wakeProcessed?: number;
+      afterWakeStatus?: { status: string };
+      afterWakeSteps?: WorkflowScenarioStepRow[];
+      instance?: WorkflowScenarioInstanceRow | null;
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "terminate-sleep-wake",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "SLEEP_TERM", id: "sleep-term-1" }),
+        scenarioSteps.tick({
+          workflow: "SLEEP_TERM",
+          instanceId: "sleep-term-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
+          storeAs: "waitingStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SLEEP_TERM", "sleep-term-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        scenarioSteps.terminate({
+          workflow: "SLEEP_TERM",
+          instanceId: "sleep-term-1",
+          storeAs: "terminateResponse",
+        }),
+        scenarioSteps.tick({
+          workflow: "SLEEP_TERM",
+          instanceId: "sleep-term-1",
+          reason: "wake",
+          timestamp: (ctx) => {
+            const wakeAt = ctx.vars.wakeAt;
+            if (!wakeAt) {
+              throw new Error("MISSING_WAKE_AT");
+            }
+            return new Date(wakeAt.getTime() + 1);
+          },
+          storeAs: "wakeProcessed",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
+          storeAs: "afterWakeStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("SLEEP_TERM", "sleep-term-1"),
+          storeAs: "afterWakeSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getInstance("SLEEP_TERM", "sleep-term-1"),
+          storeAs: "instance",
+        }),
+        scenarioSteps.assert((ctx) => {
+          assertOkResponse(ctx.vars.terminateResponse as RouteResponse);
+          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
+          expect(ctx.vars.wakeAt).toBeInstanceOf(Date);
+          expect(ctx.vars.wakeProcessed).toBe(0);
+          expect(ctx.vars.afterWakeStatus?.status).toBe("terminated");
+          expect(ctx.vars.instance).toMatchObject({ status: "terminated" });
+          expect(ctx.vars.instance?.completedAt).toBeInstanceOf(Date);
+          expect(ctx.vars.afterWakeSteps?.[0]).toMatchObject({
+            stepKey: "sleep:nap",
+            status: "waiting",
+          });
         }),
       ],
     });

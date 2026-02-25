@@ -11,7 +11,7 @@
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
-    "db:fragno:generate": "fragno-cli db generate ./app/workflows/workflows-fragment.server.ts -o ./app/db/workflows.schema.ts",
+    "db:fragno:generate": "fragno-cli db generate --format drizzle ./app/workflows/workflows-fragment.server.ts -o ./app/db/workflows.schema.ts",
     "db:fragno:migrate": "fragno-cli db migrate ./app/workflows/workflows-fragment.server.ts"
   },
   "dependencies": {

@@ -101,20 +101,8 @@ Body:
 { "type": "event-type", "payload": { "...": "..." } }
 ```
 
-## Runner tick
-
-`POST /_runner/tick`
-
-Body:
-
-```json
-{ "maxInstances": 10, "maxSteps": 100 }
-```
-
-Returns `{ "processed": number }`.
-
 ## Authorization hooks
 
 All routes go through `authorizeRequest`. Dedicated hooks are also available for instance creation,
-management actions, send-event, and runner tick. If you need per-route policies, use those hooks in
-the fragment config.
+management actions, and send-event. If you need per-route policies, use those hooks in the fragment
+config.

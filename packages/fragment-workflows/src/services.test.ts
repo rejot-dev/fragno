@@ -1,24 +1,26 @@
 // Tests for workflow service APIs such as instance control, history, and events.
-import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
+import { defineWorkflow } from "./workflow";
 import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
 
-describe("Workflows Fragment Services", () => {
-  const runner = {
-    tick: vi.fn(),
-  };
+const demoWorkflow = defineWorkflow({ name: "demo-workflow" }, async (_event, step) => {
+  await step.do("noop", () => ({}));
+});
 
+describe("Workflows Fragment Services", () => {
   const setup = async () => {
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
       .withFragment(
         "workflows",
         instantiate(workflowsFragmentDefinition).withConfig({
-          runner,
+          autoTickHooks: false,
           runtime: defaultFragnoRuntime,
+          workflows: { demo: demoWorkflow },
         }),
       )
       .build();
@@ -48,7 +50,6 @@ describe("Workflows Fragment Services", () => {
   beforeEach(async () => {
     await drainDurableHooks(fragment);
     await testContext.resetDatabase();
-    runner.tick.mockReset();
   });
 
   test("createInstance should create instance records", async () => {
@@ -68,17 +69,6 @@ describe("Workflows Fragment Services", () => {
       runNumber: 0,
     });
     expect(instance.id.toString()).toBe(result.id);
-  });
-
-  test("createInstance should tick the runner via durable hook", async () => {
-    await runService(() =>
-      fragment.services.createInstance("demo-workflow", {
-        id: "hook-1",
-      }),
-    );
-
-    await drainDurableHooks(fragment);
-    expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
   test("createBatch should skip existing instance IDs", async () => {
@@ -108,7 +98,6 @@ describe("Workflows Fragment Services", () => {
     );
 
     await drainDurableHooks(fragment);
-    runner.tick.mockClear();
 
     const paused = await runService<{ status: string }>(() =>
       fragment.services.pauseInstance("demo-workflow", created.id),
@@ -128,13 +117,9 @@ describe("Workflows Fragment Services", () => {
       consumedByStepKey: null,
     });
 
-    await drainDurableHooks(fragment);
-    expect(runner.tick).toHaveBeenCalledTimes(1);
-
     await db.update("workflow_instance", instance.id, (b) =>
       b.set({ status: "paused", updatedAt: new Date() }),
     );
-    runner.tick.mockClear();
 
     const resumed = await runService<{ status: string }>(() =>
       fragment.services.resumeInstance("demo-workflow", created.id),
@@ -147,7 +132,6 @@ describe("Workflows Fragment Services", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
   test("pauseInstance does not change waiting instances immediately", async () => {
@@ -185,8 +169,6 @@ describe("Workflows Fragment Services", () => {
       errorMessage: null,
     });
     await drainDurableHooks(fragment);
-    runner.tick.mockClear();
-    const tickCallsBefore = runner.tick.mock.calls.length;
 
     const terminated = await runService<{ status: string }>(() =>
       fragment.services.terminateInstance("demo-workflow", "terminate-1"),
@@ -202,7 +184,6 @@ describe("Workflows Fragment Services", () => {
     expect(instance.id.toString()).toBe("terminate-1");
     expect(instance.completedAt).toBeInstanceOf(Date);
     await drainDurableHooks(fragment);
-    expect(runner.tick.mock.calls.length).toBe(tickCallsBefore);
   });
 
   test("restart should enqueue new run and reset instance state", async () => {
@@ -220,7 +201,6 @@ describe("Workflows Fragment Services", () => {
         completedAt: new Date(),
       }),
     );
-    runner.tick.mockClear();
 
     const restarted = await runService<{ status: string }>(() =>
       fragment.services.restartInstance("demo-workflow", created.id),
@@ -240,8 +220,6 @@ describe("Workflows Fragment Services", () => {
       completedAt: null,
     });
     expect(restartedInstance.id.toString()).toBe(created.id);
-
-    expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
   test("sendEvent should buffer and wake waiting instance", async () => {
@@ -254,7 +232,6 @@ describe("Workflows Fragment Services", () => {
       b.set({ status: "waiting", updatedAt: new Date() }),
     );
     await drainDurableHooks(fragment);
-    runner.tick.mockClear();
 
     await db.create("workflow_step", {
       instanceRef: instance.id,
@@ -290,7 +267,6 @@ describe("Workflows Fragment Services", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
   test("sendEvent should not wake when waitForEvent has timed out", async () => {
@@ -307,8 +283,6 @@ describe("Workflows Fragment Services", () => {
       errorName: null,
       errorMessage: null,
     });
-
-    runner.tick.mockClear();
 
     await db.create("workflow_step", {
       instanceRef,
@@ -340,8 +314,6 @@ describe("Workflows Fragment Services", () => {
     expect(event).toMatchObject({
       type: "approval",
     });
-
-    expect(runner.tick).not.toHaveBeenCalled();
   });
 
   test("sendEvent should reject terminal instances", async () => {
