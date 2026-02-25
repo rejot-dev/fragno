@@ -5,9 +5,11 @@ import type { AnyTable } from "../schema/create";
 import type { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 import { createColdKysely } from "../adapters/generic-sql/migration/cold-kysely";
 import { createSQLQueryCompiler } from "../adapters/generic-sql/query/create-sql-query-compiler";
+import type { AnyExpressionBuilder } from "../adapters/generic-sql/query/sql-query-compiler";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../sharding";
 
 export type ConflictKey = {
   schema: string;
@@ -44,9 +46,24 @@ export type ConflictCheckRuntime = {
   driverConfig: DriverConfig;
   sqliteStorageMode?: SQLiteStorageMode;
   resolver?: NamingResolver;
+  shardingStrategy?: ShardingStrategy;
+  shard?: string | null;
+  shardScope?: ShardScope;
 };
 
 const OUTBOX_MUTATIONS_TABLE = "fragno_db_outbox_mutations" as const;
+
+const shouldApplyShardFilter = (runtime: ConflictCheckRuntime): boolean =>
+  runtime.shardingStrategy?.mode === "row" && (runtime.shardScope ?? "scoped") === "scoped";
+
+const resolveShard = (runtime: ConflictCheckRuntime): string =>
+  resolveShardValue(runtime.shard ?? null);
+
+const resolveShardColumn = (runtime: ConflictCheckRuntime, tableName: string): string =>
+  runtime.resolver ? runtime.resolver.getColumnName(tableName, "_shard") : "_shard";
+
+const buildShardPredicate = (eb: AnyExpressionBuilder, columnRef: string, shard: string) =>
+  eb(columnRef, "=", shard);
 
 const normalizeKeys = (keys: ConflictKey[]): ConflictKey[] =>
   keys.filter((key) => key.externalId.trim().length > 0);
@@ -94,6 +111,12 @@ const hasKeyConflicts = async (
   const grouped = groupKeys(combinedKeys);
   const db = createColdKysely(runtime.driverConfig.databaseType);
   let query = db.selectFrom(OUTBOX_MUTATIONS_TABLE).select(sql<number>`1`.as("exists"));
+  if (shouldApplyShardFilter(runtime)) {
+    const shard = resolveShard(runtime);
+    query = query.where((eb) =>
+      buildShardPredicate(eb, resolveShardColumn(runtime, OUTBOX_MUTATIONS_TABLE), shard),
+    );
+  }
 
   if (baseVersionstamp) {
     query = query.where("entryVersionstamp", ">", baseVersionstamp);
@@ -131,6 +154,12 @@ const hasUnknownReadConflicts = async (
 
   if (strategy === "conflict") {
     let query = db.selectFrom(OUTBOX_MUTATIONS_TABLE).select(sql<number>`1`.as("exists"));
+    if (shouldApplyShardFilter(runtime)) {
+      const shard = resolveShard(runtime);
+      query = query.where((eb) =>
+        buildShardPredicate(eb, resolveShardColumn(runtime, OUTBOX_MUTATIONS_TABLE), shard),
+      );
+    }
     if (baseVersionstamp) {
       query = query.where("entryVersionstamp", ">", baseVersionstamp);
     }
@@ -141,6 +170,12 @@ const hasUnknownReadConflicts = async (
 
   const grouped = groupTables(unknownReads);
   let query = db.selectFrom(OUTBOX_MUTATIONS_TABLE).select(sql<number>`1`.as("exists"));
+  if (shouldApplyShardFilter(runtime)) {
+    const shard = resolveShard(runtime);
+    query = query.where((eb) =>
+      buildShardPredicate(eb, resolveShardColumn(runtime, OUTBOX_MUTATIONS_TABLE), shard),
+    );
+  }
 
   if (baseVersionstamp) {
     query = query.where("entryVersionstamp", ">", baseVersionstamp);
@@ -179,6 +214,22 @@ const hasScopeConflicts = async (
   });
 
   let query = baseQuery.select(sql<number>`1`.as("exists"));
+  if (shouldApplyShardFilter(runtime)) {
+    const shard = resolveShard(runtime);
+    if (aliases.length > 0) {
+      query = query.where((eb) =>
+        eb.and(
+          aliases.map((alias) =>
+            buildShardPredicate(
+              eb,
+              `${alias.alias}.${resolveShardColumn(runtime, alias.table.name)}`,
+              shard,
+            ),
+          ),
+        ),
+      );
+    }
+  }
   const mutationAliases: string[] = [];
 
   for (const [index, alias] of aliases.entries()) {
@@ -206,7 +257,21 @@ const hasScopeConflicts = async (
 
   if (mutationAliases.length > 0) {
     query = query.where((eb) =>
-      eb.or(mutationAliases.map((alias) => eb(`${alias}.entryVersionstamp`, "is not", null))),
+      eb.or(
+        mutationAliases.map((alias) => {
+          const entryCondition = eb(`${alias}.entryVersionstamp`, "is not", null);
+          if (!shouldApplyShardFilter(runtime)) {
+            return entryCondition;
+          }
+          const shard = resolveShard(runtime);
+          const shardCondition = buildShardPredicate(
+            eb,
+            `${alias}.${resolveShardColumn(runtime, OUTBOX_MUTATIONS_TABLE)}`,
+            shard,
+          );
+          return eb.and([entryCondition, shardCondition]);
+        }),
+      ),
     );
   }
 

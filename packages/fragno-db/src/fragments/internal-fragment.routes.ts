@@ -10,6 +10,9 @@ import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
 import type { DatabaseHandlerContext } from "../db-fragment-definition-builder";
 import type { OutboxEntry } from "../outbox/outbox";
+import type { ConditionBuilder } from "../query/condition-builder";
+import type { AnyColumn } from "../schema/create";
+import { resolveShardValue } from "../sharding";
 
 type InternalDescribeResponse = {
   adapterIdentity: string;
@@ -208,7 +211,7 @@ type InternalSyncError = {
 };
 
 export const createInternalFragmentSyncRoutes = () =>
-  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config }) => [
+  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config, deps }) => [
     defineRoute({
       method: "POST",
       path: "/sync",
@@ -235,6 +238,11 @@ export const createInternalFragmentSyncRoutes = () =>
           return json(adapterIdentityResult.error, { status: 500 });
         }
 
+        const shard = deps.shardContext.get();
+        const shardScope = deps.shardContext.getScope();
+        const shardingStrategy = registry.shardingStrategy;
+        const shouldApplyShardFilter = shardingStrategy?.mode === "row" && shardScope === "scoped";
+
         const body = (await input.input?.valid()) as SubmitRequest | undefined;
 
         const result = await submitSyncRequest(body, {
@@ -250,18 +258,41 @@ export const createInternalFragmentSyncRoutes = () =>
           countOutboxMutations: async (afterVersionstamp) => {
             const count = await this.handlerTx()
               .retrieve(({ forSchema }) => {
-                const builder = afterVersionstamp
-                  ? forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-                      b
-                        .whereIndex("idx_outbox_mutations_entry", (eb) =>
-                          eb("entryVersionstamp", ">", afterVersionstamp),
-                        )
-                        .selectCount(),
-                    )
-                  : forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-                      b.whereIndex("idx_outbox_mutations_entry").selectCount(),
-                    );
-                return builder;
+                if (shouldApplyShardFilter) {
+                  return forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) => {
+                    if (afterVersionstamp) {
+                      return b
+                        .whereIndex("idx_outbox_mutations_shard_entry", ((
+                          eb: ConditionBuilder<Record<string, AnyColumn>>,
+                        ) =>
+                          eb.and(
+                            eb("_shard", "=", resolveShardValue(shard)),
+                            eb("entryVersionstamp", ">", afterVersionstamp),
+                          )) as never)
+                        .selectCount();
+                    }
+
+                    return b
+                      .whereIndex("idx_outbox_mutations_shard_entry", ((
+                        eb: ConditionBuilder<Record<string, AnyColumn>>,
+                      ) => eb("_shard", "=", resolveShardValue(shard))) as never)
+                      .selectCount();
+                  });
+                }
+
+                if (afterVersionstamp) {
+                  return forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
+                    b
+                      .whereIndex("idx_outbox_mutations_entry", (eb) =>
+                        eb("entryVersionstamp", ">", afterVersionstamp),
+                      )
+                      .selectCount(),
+                  );
+                }
+
+                return forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
+                  b.whereIndex("idx_outbox_mutations_entry").selectCount(),
+                );
               })
               .transformRetrieve(([result]) => (typeof result === "number" ? result : 0))
               .execute();

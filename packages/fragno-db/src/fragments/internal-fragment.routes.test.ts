@@ -199,6 +199,73 @@ describe("internal fragment describe routes", () => {
   });
 });
 
+describe("internal fragment outbox routes", () => {
+  it("filters outbox entries by shard", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+        shardingStrategy: { mode: "row" },
+      })
+      .build();
+
+    alphaFragment.withMiddleware(async ({ headers }, { deps }) => {
+      deps.shardContext.set(headers.get("x-fragno-shard"));
+      return undefined;
+    });
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    await alphaFragment.inContext(async function () {
+      await alphaFragment.$internal.deps.shardContext.with("tenant-a", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(alphaSchema).create("alpha_items", { name: "Tenant A" });
+          })
+          .execute(),
+      );
+    });
+
+    await alphaFragment.inContext(async function () {
+      await alphaFragment.$internal.deps.shardContext.with("tenant-b", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(alphaSchema).create("alpha_items", { name: "Tenant B" });
+          })
+          .execute(),
+      );
+    });
+
+    const response = await alphaFragment.handler(
+      new Request("http://localhost/alpha/_internal/outbox", {
+        method: "GET",
+        headers: { "x-fragno-shard": "tenant-a" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toHaveLength(1);
+    expect(payload[0]?.payload?.json).toEqual(
+      expect.objectContaining({
+        mutations: [
+          expect.objectContaining({
+            values: expect.objectContaining({ name: "Tenant A" }),
+          }),
+        ],
+      }),
+    );
+
+    await close();
+  });
+});
+
 describe("internal fragment sync routes", () => {
   const registerAlphaSyncCommands = (adapter: SqlAdapter) => {
     const registry = getRegistryForAdapterSync(adapter);
@@ -374,6 +441,90 @@ describe("internal fragment sync routes", () => {
     const submitPayload = await submitResponse.json();
     expect(submitPayload.status).toBe("conflict");
     expect(submitPayload.reason).toBe("limit_exceeded");
+
+    await close();
+  });
+
+  it("scopes sync responses by shard", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+        shardingStrategy: { mode: "row" },
+      })
+      .build();
+
+    alphaFragment.withMiddleware(async ({ headers }, { deps }) => {
+      deps.shardContext.set(headers.get("x-fragno-shard"));
+      return undefined;
+    });
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    await alphaFragment.inContext(async function () {
+      await alphaFragment.$internal.deps.shardContext.with("tenant-a", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(alphaSchema).create("alpha_items", { name: "Tenant A" });
+          })
+          .execute(),
+      );
+    });
+
+    await alphaFragment.inContext(async function () {
+      await alphaFragment.$internal.deps.shardContext.with("tenant-b", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(alphaSchema).create("alpha_items", { name: "Tenant B" });
+          })
+          .execute(),
+      );
+    });
+
+    const describeResponse = await alphaFragment.handler(
+      new Request("http://localhost/alpha/_internal", {
+        method: "GET",
+        headers: { "x-fragno-shard": "tenant-a" },
+      }),
+    );
+    const describePayload = await describeResponse.json();
+
+    const submitResponse = await alphaFragment.handler(
+      new Request("http://localhost/alpha/_internal/sync", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-fragno-shard": "tenant-a",
+        },
+        body: JSON.stringify({
+          requestId: "req-shard-tenant-a",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands: [],
+        }),
+      }),
+    );
+
+    expect(submitResponse.status).toBe(200);
+    const submitPayload = await submitResponse.json();
+    expect(submitPayload.status).toBe("conflict");
+    expect(submitPayload.reason).toBe("no_commands");
+    expect(submitPayload.entries).toHaveLength(1);
+    expect(submitPayload.entries[0]?.payload?.json).toEqual(
+      expect.objectContaining({
+        mutations: [
+          expect.objectContaining({
+            values: expect.objectContaining({ name: "Tenant A" }),
+          }),
+        ],
+      }),
+    );
 
     await close();
   });
