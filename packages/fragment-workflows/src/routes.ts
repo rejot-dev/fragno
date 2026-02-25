@@ -4,11 +4,10 @@ import { z } from "zod";
 import { workflowsFragmentDefinition } from "./definition";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
 
-const workflowNameSchema = z.string().min(1).max(64);
 const identifierSchema = z
   .string()
   .min(1)
-  .max(30)
+  .max(128)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
 
 const instanceStatusSchema = z.enum([
@@ -146,19 +145,6 @@ const parseCursor = (cursorParam: string | undefined) => {
 
 export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).create(
   ({ services, config, defineRoute }) => {
-    const knownWorkflowNames = new Set(getWorkflowNames(config.workflows));
-
-    const assertWorkflowName = <Code extends string>(
-      workflowName: string,
-      error: ErrorResponder<Code>,
-    ) => {
-      const parsed = workflowNameSchema.safeParse(workflowName);
-      if (!parsed.success || !knownWorkflowNames.has(workflowName)) {
-        return error({ message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" as Code }, 404);
-      }
-      return undefined;
-    };
-
     const assertIdentifier = <Code extends string>(
       value: string,
       code: Code,
@@ -173,6 +159,10 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
     const handleServiceError = <Code extends string>(err: unknown, error: ErrorResponder<Code>) => {
       if (!(err instanceof Error)) {
         throw err;
+      }
+
+      if (err.message === "WORKFLOW_NOT_FOUND") {
+        return error({ message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" as Code }, 404);
       }
 
       if (err.message === "INSTANCE_NOT_FOUND") {
@@ -216,6 +206,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "GET",
         path: "/:workflowName/instances",
         queryParameters: ["status", "pageSize", "cursor"],
+        errorCodes: ["WORKFLOW_NOT_FOUND"],
         outputSchema: z.object({
           instances: z.array(
             z.object({
@@ -231,10 +222,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams, query } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const params = listInstancesQuerySchema.parse({
             status: query.get("status") || undefined,
@@ -244,23 +231,27 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
 
           const cursor = parseCursor(params.cursor);
 
-          const result = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.listInstances({
-                workflowName,
-                status: params.status as InstanceStatus["status"] | undefined,
-                pageSize: params.pageSize,
-                cursor,
-              }),
-            ])
-            .transform(({ serviceResult: [result] }) => result)
-            .execute();
+          try {
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.listInstances({
+                  workflowName,
+                  status: params.status as InstanceStatus["status"] | undefined,
+                  pageSize: params.pageSize,
+                  cursor,
+                }),
+              ])
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
 
-          return json({
-            instances: result.instances,
-            cursor: result.cursor?.encode(),
-            hasNextPage: result.hasNextPage,
-          });
+            return json({
+              instances: result.instances,
+              cursor: result.cursor?.encode(),
+              hasNextPage: result.hasNextPage,
+            });
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
         },
       }),
       defineRoute({
@@ -282,10 +273,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
           const payload = await input.valid();
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
+
           if (payload.id) {
             const idError = assertIdentifier(payload.id, "INVALID_INSTANCE_ID", errorResponder);
             if (idError) {
@@ -329,10 +317,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
           const payload = await input.valid();
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
+
           for (const instance of payload.instances) {
             const idError = assertIdentifier(instance.id, "INVALID_INSTANCE_ID", errorResponder);
             if (idError) {
@@ -375,10 +360,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -430,10 +411,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -480,10 +457,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -531,10 +504,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -561,10 +530,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -591,10 +556,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -621,10 +582,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -661,10 +618,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
           const payload = await input.valid();
-          const workflowError = assertWorkflowName(workflowName, errorResponder);
-          if (workflowError) {
-            return workflowError;
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);

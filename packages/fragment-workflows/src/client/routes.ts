@@ -4,7 +4,7 @@ import { z } from "zod";
 const identifierSchema = z
   .string()
   .min(1)
-  .max(30)
+  .max(128)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
 
 const instanceStatusSchema = z.enum([

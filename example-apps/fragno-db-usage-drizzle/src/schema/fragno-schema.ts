@@ -421,7 +421,6 @@ const schema_workflows = pgSchema("workflows");
 
 export const workflow_instance_workflows = schema_workflows.table("workflow_instance", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  instanceId: text("instanceId").notNull(),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -436,15 +435,13 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("idx_workflow_instance_workflowName_instanceId").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_status_updatedAt").on(table.workflowName, table.status, table.updatedAt)
+  uniqueIndex("idx_workflow_instance_workflowName_id").on(table.workflowName, table.id),
+  index("idx_workflow_instance_workflowName_status_updatedAt").on(table.workflowName, table.status, table.updatedAt)
 ])
 
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
   name: text("name").notNull(),
@@ -469,20 +466,16 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_step_workflow_instance_stepInstance"
   }),
-  uniqueIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
-  index("idx_workflow_step_instanceRef_runNumber").on(table.instanceRef, table.runNumber),
-  index("idx_workflow_step_history_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
-  index("idx_workflow_step_status_wakeAt").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
-  index("idx_workflow_step_workflowName_instanceId_status").on(table.workflowName, table.instanceId, table.status),
-  index("idx_workflow_step_status_nextRetryAt").on(table.status, table.nextRetryAt)
+  uniqueIndex("idx_workflow_step_instanceRef_runNumber_stepKey").on(table.instanceRef, table.runNumber, table.stepKey),
+  index("idx_workflow_step_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt),
+  index("idx_workflow_step_instanceRef_status_wakeAt").on(table.instanceRef, table.status, table.wakeAt)
 ])
 
 export const workflow_event_workflows = schema_workflows.table("workflow_event", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  workflowName: text("workflowName").notNull(),
-  instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
+  actor: text("actor").notNull().default("user"),
   type: text("type").notNull(),
   payload: json("payload"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -496,9 +489,7 @@ export const workflow_event_workflows = schema_workflows.table("workflow_event",
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_event_workflow_instance_eventInstance"
   }),
-  index("idx_workflow_event_type_deliveredAt").on(table.workflowName, table.instanceId, table.runNumber, table.type, table.deliveredAt),
-  index("idx_workflow_event_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt),
-  index("idx_workflow_event_history_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt)
+  index("idx_workflow_event_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({

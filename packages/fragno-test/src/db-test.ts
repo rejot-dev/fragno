@@ -561,6 +561,8 @@ export class DatabaseFragmentsTestBuilder<
       definition: FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       actualConfig: any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      actualOptions?: any,
     ) => {
       let schema: AnySchema | undefined;
       let namespace: string | null | undefined;
@@ -588,6 +590,7 @@ export class DatabaseFragmentsTestBuilder<
           const deps = definition.dependencies({
             config: actualConfig ?? {},
             options: {
+              ...actualOptions,
               databaseAdapter: mockAdapter as any, // eslint-disable-line @typescript-eslint/no-explicit-any
             } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
           });
@@ -633,7 +636,11 @@ export class DatabaseFragmentsTestBuilder<
       if (fragmentConfig.kind === "builder") {
         const builder = fragmentConfig.builder;
         const definition = builder.definition;
-        const { schema, namespace } = extractSchemaFromDefinition(definition, builder.config ?? {});
+        const { schema, namespace } = extractSchemaFromDefinition(
+          definition,
+          builder.config ?? {},
+          builder.options ?? {},
+        );
 
         schemaConfigs.push({
           schema,

@@ -1,11 +1,10 @@
-// Tests for workflow fragment persistence, routes, and bindings.
-import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+// Tests for workflow fragment persistence and routes.
+import { assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
-import { attachWorkflowsBindings } from "./bindings";
 import {
   NonRetryableError,
   defineWorkflow,
@@ -24,17 +23,13 @@ describe("Workflows Fragment", () => {
   const workflows = {
     DEMO: DemoWorkflow,
   } as const;
-  const runner = {
-    tick: vi.fn(),
-  };
-
   const setup = async () => {
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
       .withFragment(
         "workflows",
         instantiate(workflowsFragmentDefinition)
-          .withConfig({ workflows, runner, runtime: defaultFragnoRuntime })
+          .withConfig({ workflows, autoTickHooks: false, runtime: defaultFragnoRuntime })
           .withRoutes([workflowsRoutesFactory]),
       )
       .build();
@@ -56,7 +51,6 @@ describe("Workflows Fragment", () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
-    runner.tick.mockReset();
   });
 
   test("should expose workflows schema", () => {
@@ -167,26 +161,6 @@ describe("Workflows Fragment", () => {
     expect(error.name).toBe("NonRetryableError");
   });
 
-  test("should expose programmatic workflow bindings", async () => {
-    const boundFragment = attachWorkflowsBindings(fragment, workflows);
-
-    const instance = await boundFragment.workflows["DEMO"].create({
-      id: "binding-1",
-      params: { source: "bindings" },
-    });
-
-    const status = await instance.status();
-    expect(status.status).toBe("active");
-
-    const stored = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-        eb.and(eb("workflowName", "=", "demo-workflow"), eb("id", "=", "binding-1")),
-      ),
-    );
-
-    expect(stored?.id.toString()).toBe("binding-1");
-  });
-
   describe("Routes", () => {
     test("GET / should list registered workflows", async () => {
       const response = await fragment.callRoute("GET", "/");
@@ -195,6 +169,18 @@ describe("Workflows Fragment", () => {
       expect(response.data).toMatchObject({
         workflows: [{ name: "demo-workflow" }],
       });
+    });
+
+    test("GET /:workflowName/instances should return 404 for unknown workflows", async () => {
+      const response = await fragment.callRoute("GET", "/:workflowName/instances", {
+        pathParams: { workflowName: "missing-workflow" },
+      });
+
+      expect(response.type).toBe("error");
+      if (response.type === "error") {
+        expect(response.error.code).toBe("WORKFLOW_NOT_FOUND");
+        expect(response.status).toBe(404);
+      }
     });
 
     test("POST /:workflowName/instances should create a workflow instance", async () => {

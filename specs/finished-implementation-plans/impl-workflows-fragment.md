@@ -26,7 +26,6 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
    - `NonRetryableError`
 4. [x] Implement the workflow registry + programmatic bindings API (SPEC §6.5, §6.6):
    - fragment exposes `fragment.workflows.<bindingKey>`
-   - workflows have access to `context.workflows` for child workflow creation
    - align `createBatch` typing with Cloudflare (`WorkflowInstanceCreateOptionsWithId`; SPEC §6.3)
 5. [x] Add minimal docs/examples mirroring `example-fragments/example-fragment/src/index.ts`.
 

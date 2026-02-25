@@ -2,7 +2,6 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { type DatabaseAdapter } from "@fragno-dev/db";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import {
-  createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
   type WorkflowsFragmentConfig,
@@ -58,7 +57,6 @@ const workflows = {
 // oxlint-disable-next-line no-explicit-any
 export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
-  let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
 
   const config: WorkflowsFragmentConfig = {
     workflows,
@@ -70,8 +68,6 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
     .withOptions({ databaseAdapter: a })
     .build();
 
-  runner = createWorkflowsRunner({ fragment, workflows, runtime });
-  config.runner = runner;
   const dispatcher = createDurableHooksProcessor([fragment], {
     pollIntervalMs: 2000,
     onError: (error) => {

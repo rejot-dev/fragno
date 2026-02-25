@@ -1,0 +1,7 @@
+# SQLite database
+*.sqlite
+usage-fragment.sqlite
+
+# DB dump outputs
+db-dump.txt
+db-dump-full.txt

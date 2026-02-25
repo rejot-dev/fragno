@@ -3,6 +3,7 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
+import { runWorkflowsTick } from "./new-runner";
 import { workflowsSchema } from "./schema";
 import {
   isSystemEventActor,
@@ -131,7 +132,7 @@ type InstanceDetails = { id: string; details: InstanceStatus };
 
 function generateInstanceId(randomUuid: () => string) {
   const prefix = "inst_";
-  const maxLength = 30;
+  const maxLength = 128;
   const raw = randomUuid().replace(/-/g, "");
   const suffixLength = Math.max(maxLength - prefix.length, 0);
   return `${prefix}${raw.slice(0, suffixLength)}`;
@@ -242,16 +243,31 @@ function isTerminalStatus(status: InstanceStatus["status"]) {
 
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
-  .provideHooks(({ defineHook, config }) => ({
-    onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
-      if (!config.runner?.tick) {
-        return;
-      }
-      // nextRetryAt is null if the try is immediate, in that case we can use createdAt.
-      const timestamp = this.nextRetryAt ?? this.createdAt;
-      await config.runner.tick({ ...payload, timestamp });
-    }),
-  }))
+  .provideHooks(({ defineHook, config }) => {
+    const workflows = config.workflows ?? {};
+    const workflowsByName = new Map<string, WorkflowRegistryEntry>();
+    for (const entry of Object.values(workflows)) {
+      workflowsByName.set(entry.name, entry);
+    }
+    return {
+      onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
+        if (config.autoTickHooks === false) {
+          return;
+        }
+        if (workflowsByName.size === 0) {
+          return;
+        }
+        // nextRetryAt is null if the try is immediate, in that case we can use createdAt.
+        const timestamp = this.nextRetryAt ?? this.createdAt;
+        await runWorkflowsTick({
+          handlerTx: this.handlerTx,
+          workflowsByName,
+          workflows,
+          payload: { ...payload, timestamp },
+        });
+      }),
+    };
+  })
   .providesBaseService(({ defineService, config }) => {
     const randomUuid = () => config.runtime.random.uuid();
     const workflowsByName = new Map<string, WorkflowRegistryEntry>();
@@ -259,6 +275,12 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     for (const entry of Object.values(config.workflows ?? {})) {
       workflowsByName.set(entry.name, entry);
     }
+
+    const assertWorkflowName = (workflowName: string) => {
+      if (!workflowsByName.has(workflowName)) {
+        throw new Error("WORKFLOW_NOT_FOUND");
+      }
+    };
 
     const validateWorkflowParams = async (workflowName: string, params: unknown) => {
       const entry = workflowsByName.get(workflowName);
@@ -287,6 +309,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     return defineService({
       validateWorkflowParams,
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
+        assertWorkflowName(workflowName);
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
         const params = options?.params ?? {};
 
@@ -337,6 +360,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       createBatch: function (workflowName: string, instances: { id: string; params?: unknown }[]) {
+        assertWorkflowName(workflowName);
         if (instances.length === 0) {
           return this.serviceTx(workflowsSchema)
             .transform(() => [])
@@ -407,6 +431,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceStatus: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -424,6 +449,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceMetadata: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -465,6 +491,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceRunNumber: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -488,6 +515,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         cursor,
         order = "desc",
       }: ListInstancesParams) {
+        assertWorkflowName(workflowName);
         const effectivePageSize = cursor?.pageSize ?? pageSize;
         const effectiveOrder = cursor?.orderDirection ?? order;
 
@@ -529,6 +557,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       listHistory: function ({ workflowName, instanceId, runNumber }: ListHistoryParams) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) => {
             return uow
@@ -587,6 +616,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       pauseInstance: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -632,6 +662,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       resumeInstance: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -677,6 +708,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       terminateInstance: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -715,6 +747,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       restartInstance: function (workflowName: string, instanceId: string) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -762,11 +795,19 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
+      /**
+       * Send an event to a workflow instance. Wakes the instance if it is waiting for this event type.
+       *
+       * @param options.type - Event type (must match waitForEvent filter).
+       * @param options.payload - Optional payload attached to the event.
+       * @param options.createdAt - Internal: when to backdate the event. Used by scenario tests for deterministic ordering. Not exposed to users.
+       */
       sendEvent: function (
         workflowName: string,
         instanceId: string,
-        options: { type: string; payload?: unknown },
+        options: { type: string; payload?: unknown; createdAt?: Date },
       ) {
+        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow
@@ -801,6 +842,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
               payload: options.payload ?? null,
+              ...(options.createdAt ? { createdAt: options.createdAt } : {}),
               deliveredAt: null,
               consumedByStepKey: null,
             });

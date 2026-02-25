@@ -1,27 +1,20 @@
 ---
-title: Runner & Dispatcher
-description: Wire workflow execution in Node, Cloudflare, or via HTTP ticks.
+title: Dispatcher & Hooks
+description: Wire workflow execution in Node or Cloudflare via durable hooks.
 icon: Code
 ---
 
-Workflows execute when the runner is ticked. The dispatcher is responsible for waking the runner
-when work is available.
+Workflows execute when durable hooks are processed. The dispatcher is responsible for polling and
+processing hooks when work is available.
 
 ## In-process dispatcher (Node)
 
 Use the in-process dispatcher for local development or small deployments:
 
 ```ts
-import { createDurableHooksProcessor } from "@fragno-dev/db";
-import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 
-const processor = createDurableHooksProcessor(fragment);
-if (!processor) {
-  throw new Error("Fragment has no durable hooks configured.");
-}
-
-const dispatcher = createDurableHooksDispatcher({
-  processor,
+const dispatcher = createDurableHooksProcessor([fragment], {
   pollIntervalMs: 2000,
 });
 
@@ -30,24 +23,18 @@ dispatcher.startPolling();
 
 ## Cloudflare Durable Object dispatcher
 
-For Cloudflare, use the Durable Object dispatcher package so alarms drive the runner:
+For Cloudflare, use the Durable Object dispatcher package so alarms drive hook processing:
 
 ```ts
-import { createDurableHooksProcessor } from "@fragno-dev/db";
-import { createDurableHooksDispatcherDurableObject } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 
 export class WorkflowsDispatcher {
-  handler: ReturnType<ReturnType<typeof createDurableHooksDispatcherDurableObject>>;
+  handler: ReturnType<ReturnType<NonNullable<typeof createDurableHooksProcessor>>>;
 
   constructor(state: DurableObjectState, env: Env) {
-    const processor = createDurableHooksProcessor(env.fragment);
-    if (!processor) {
-      throw new Error("Fragment has no durable hooks configured.");
-    }
+    const dispatcher = createDurableHooksProcessor([env.fragment]);
 
-    this.handler = createDurableHooksDispatcherDurableObject({
-      createProcessor: () => processor,
-    })(state, env);
+    this.handler = dispatcher(state, env);
   }
 
   alarm() {
@@ -56,20 +43,8 @@ export class WorkflowsDispatcher {
 }
 ```
 
-## HTTP tick integration
-
-If you want an external scheduler or queue to drive execution, POST to the tick route:
-
-```ts
-await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ maxInstances: 10, maxSteps: 100 }),
-});
-```
-
 ## Notes
 
-- Protect `/_runner/tick` with auth or disable it in production.
-- Use a durable hook handler to call the tick route when workflows are enqueued.
-- Distributed runners are supported; multiple callers can safely tick concurrently.
+- Protect dispatcher endpoints or workers with auth and network-level controls.
+- Use a durable hook processor/dispatcher to run workflows when enqueued.
+- Multiple dispatcher instances can safely poll concurrently.

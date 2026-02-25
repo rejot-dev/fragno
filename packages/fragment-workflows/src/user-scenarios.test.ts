@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { defineWorkflow } from "./workflow";
+import {
+  defineFragment,
+  instantiate,
+  type InstantiatedFragmentFromDefinition,
+} from "@fragno-dev/core";
+import { withDatabase } from "@fragno-dev/db";
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { defineWorkflow, type AnyTxResult } from "./workflow";
 import {
   createScenarioSteps,
   defineScenario,
@@ -160,101 +167,94 @@ describe("Workflows Runner (User Scenarios)", () => {
     await runScenario(scenario);
   });
 
-  test("parent workflow spawns a child and resumes on child event", async () => {
-    // report: parent workflows can spawn child workflows and react to child-completion events.
-    const ParentWorkflow = defineWorkflow(
-      { name: "parent-workflow" },
-      async (event, step, context) => {
-        const childId = await step.do("spawn-child", async () => {
-          const child = await context.workflows["CHILD"].create({
-            id: `${event.instanceId}-child`,
-            params: { parentId: event.instanceId },
-          });
-          return child.id;
-        });
-        const done = await step.waitForEvent<{ childId: string }>("child-done", {
-          type: "child-done",
-        });
-        return { childId, notifiedChild: done.payload.childId };
-      },
+  test("mutate-only service calls can run inside step tx", async () => {
+    // report: mutate-only service calls are allowed via tx.serviceCalls.
+    const recordSchema = schema("scenario_record", (s) =>
+      s.addTable("records", (t) =>
+        t.addColumn("id", idColumn()).addColumn("note", column("string")),
+      ),
     );
 
-    const ChildWorkflow = defineWorkflow<{ parentId: string }>(
-      { name: "child-workflow" },
-      async (event, step, context) => {
-        await step.waitForEvent("go", { type: "go" });
-        await step.do("notify-parent", async () => {
-          const parent = await context.workflows["PARENT"].get(event.payload.parentId);
-          await parent.sendEvent({
-            type: "child-done",
-            payload: { childId: event.instanceId },
-          });
-          return true;
+    const recordDefinition = defineFragment("scenario-records")
+      .extend(withDatabase(recordSchema))
+      .providesService("records", ({ defineService }) =>
+        defineService({
+          record: function (note: string) {
+            return this.serviceTx(recordSchema)
+              .mutate(({ uow }) => {
+                uow.create("records", { note });
+              })
+              .build();
+          },
+          countRecords: function () {
+            return this.serviceTx(recordSchema)
+              .retrieve((uow) => uow.find("records", (b) => b.whereIndex("primary")))
+              .transformRetrieve(([rows]) => rows.length)
+              .build();
+          },
+        }),
+      )
+      .build();
+
+    let recordFragment: InstantiatedFragmentFromDefinition<typeof recordDefinition>;
+
+    const DirectServiceWorkflow = defineWorkflow(
+      { name: "direct-service-workflow" },
+      async (event, step) => {
+        await step.do("record", (tx) => {
+          if (!recordFragment) {
+            throw new Error("MISSING_SERVICE");
+          }
+          tx.serviceCalls(() => [
+            recordFragment.services.records.record(`note-${event.instanceId}`) as AnyTxResult,
+          ]);
         });
         return { ok: true };
       },
     );
 
-    const workflows = { PARENT: ParentWorkflow, CHILD: ChildWorkflow };
+    const workflows = { DIRECT: DirectServiceWorkflow };
 
     type ScenarioVars = {
-      parentWaiting?: { status: string };
-      childInitial?: { status: string };
-      childFinal?: { status: string };
-      parentFinal?: { status: string; output?: { childId: string; notifiedChild: string } };
+      status?: { status: string; output?: { ok: boolean } };
+      recordCount?: number;
     };
 
     const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "parent-child-orchestration",
+      name: "direct-service-call-mutate-only",
       workflows,
+      harness: {
+        configureBuilder: (builder) =>
+          builder.withFragmentFactory("records", recordDefinition, ({ adapter }) => {
+            const fragment = instantiate(recordDefinition)
+              .withOptions({ databaseAdapter: adapter })
+              .build();
+            recordFragment = fragment;
+            return fragment;
+          }),
+      },
       steps: [
-        scenarioSteps.create({ workflow: "PARENT", id: "parent-1" }),
-        scenarioSteps.runUntilIdle({
-          workflow: "PARENT",
-          instanceId: "parent-1",
-          reason: "create",
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "DIRECT", id: "direct-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("DIRECT", "direct-1"),
+          storeAs: "status",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("PARENT", "parent-1"),
-          storeAs: "parentWaiting",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("CHILD", "parent-1-child"),
-          storeAs: "childInitial",
-        }),
-        scenarioSteps.event({
-          workflow: "CHILD",
-          instanceId: "parent-1-child",
-          event: { type: "go", payload: { ok: true } },
-        }),
-        scenarioSteps.runUntilIdle({
-          workflow: "CHILD",
-          instanceId: "parent-1-child",
-          reason: "create",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("CHILD", "parent-1-child"),
-          storeAs: "childFinal",
-        }),
-        scenarioSteps.runUntilIdle({
-          workflow: "PARENT",
-          instanceId: "parent-1",
-          reason: "event",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("PARENT", "parent-1"),
-          storeAs: "parentFinal",
+          read: async () => {
+            return await recordFragment.inContext(async function () {
+              return await this.handlerTx()
+                .withServiceCalls(() => [recordFragment.services.records.countRecords()] as const)
+                .transform(({ serviceResult: [count] }) => count)
+                .execute();
+            });
+          },
+          storeAs: "recordCount",
         }),
         scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.parentWaiting?.status).toBe("waiting");
-          expect(ctx.vars.childInitial?.status).toBe("active");
-          expect(ctx.vars.childFinal?.status).toBe("complete");
-          expect(ctx.vars.parentFinal?.status).toBe("complete");
-          expect(ctx.vars.parentFinal?.output).toEqual({
-            childId: "parent-1-child",
-            notifiedChild: "parent-1-child",
-          });
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(ctx.vars.status?.output).toEqual({ ok: true });
+          expect(ctx.vars.recordCount).toBe(1);
         }),
       ],
     });
@@ -479,8 +479,8 @@ describe("Workflows Runner (User Scenarios)", () => {
     await runScenario(scenario);
   });
 
-  test("constant step name replays the first event in a loop", async () => {
-    // report: reusing a step name in a loop should replay the first event and leave later events buffered.
+  test("constant step name consumes events in order in a loop", async () => {
+    // report: reusing a step name should create distinct occurrences and consume events in order.
     const ConstantNameWorkflow = defineWorkflow(
       { name: "constant-name-loop-workflow" },
       async (_event, step) => {
@@ -511,11 +511,13 @@ describe("Workflows Runner (User Scenarios)", () => {
           workflow: "CONSTANT",
           instanceId: "constant-1",
           event: { type: "ready", payload: { value: 4 } },
+          timestamp: new Date(1000),
         }),
         scenarioSteps.event({
           workflow: "CONSTANT",
           instanceId: "constant-1",
           event: { type: "ready", payload: { value: 7 } },
+          timestamp: new Date(1001),
         }),
         scenarioSteps.runUntilIdle({
           workflow: "CONSTANT",
@@ -536,15 +538,204 @@ describe("Workflows Runner (User Scenarios)", () => {
         }),
         scenarioSteps.assert((ctx) => {
           expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ total: 8 });
+          expect(ctx.vars.status?.output).toEqual({ total: 11 });
 
-          expect(ctx.vars.steps).toHaveLength(1);
-          expect(ctx.vars.steps?.[0]).toMatchObject({ stepKey: "waitForEvent:ready" });
+          const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
+          expect(stepKeys).toEqual(["waitForEvent:ready", "waitForEvent:ready#1"]);
 
           expect(ctx.vars.events).toHaveLength(2);
-          const [first, second] = ctx.vars.events ?? [];
-          expect(first.consumedByStepKey).toBe("waitForEvent:ready");
-          expect(second.consumedByStepKey).toBeNull();
+          const events = [...(ctx.vars.events ?? [])].sort(
+            (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+          );
+          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:ready");
+          expect(events[1]?.consumedByStepKey).toBe("waitForEvent:ready#1");
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("duplicate events with same type are consumed only once per wait step", async () => {
+    // report: at-least-once webhook delivery may send the same event multiple times;
+    // only one should be consumed by the matching waitForEvent step.
+    let completions = 0;
+    const WebhookWorkflow = defineWorkflow(
+      { name: "webhook-dedup-workflow" },
+      async (_event, step) => {
+        const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+          type: "approval",
+        });
+        completions += 1;
+        return { approved: approval.payload.approved };
+      },
+    );
+
+    const workflows = { WEBHOOK: WebhookWorkflow };
+
+    type ScenarioVars = {
+      status?: { status: string; output?: { approved: boolean } };
+      events?: WorkflowScenarioEventRow[];
+      steps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "duplicate-event-idempotency",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "WEBHOOK", id: "dedup-1" }),
+        scenarioSteps.event({
+          workflow: "WEBHOOK",
+          instanceId: "dedup-1",
+          event: { type: "approval", payload: { approved: true } },
+          timestamp: new Date(1000),
+        }),
+        scenarioSteps.event({
+          workflow: "WEBHOOK",
+          instanceId: "dedup-1",
+          event: { type: "approval", payload: { approved: true } },
+          timestamp: new Date(1001),
+        }),
+        scenarioSteps.event({
+          workflow: "WEBHOOK",
+          instanceId: "dedup-1",
+          event: { type: "approval", payload: { approved: true } },
+          timestamp: new Date(1002),
+        }),
+        scenarioSteps.runUntilIdle({
+          workflow: "WEBHOOK",
+          instanceId: "dedup-1",
+          reason: "create",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("WEBHOOK", "dedup-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("WEBHOOK", "dedup-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("WEBHOOK", "dedup-1"),
+          storeAs: "events",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(ctx.vars.status?.output).toEqual({ approved: true });
+
+          expect(ctx.vars.steps).toHaveLength(1);
+          expect(ctx.vars.steps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:approval",
+            status: "completed",
+          });
+
+          const consumed = (ctx.vars.events ?? []).filter((e) => e.consumedByStepKey !== null);
+          expect(consumed).toHaveLength(1);
+          expect(consumed[0]?.consumedByStepKey).toBe("waitForEvent:approval");
+
+          const unconsumed = (ctx.vars.events ?? []).filter((e) => e.consumedByStepKey === null);
+          expect(unconsumed).toHaveLength(2);
+
+          expect(completions).toBe(1);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("duplicate events across two sequential wait steps each consume exactly one", async () => {
+    // report: with two sequential waitForEvent steps and duplicates of each event type,
+    // each step should consume exactly one event.
+    const TwoStepWorkflow = defineWorkflow(
+      { name: "two-step-dedup-workflow" },
+      async (_event, step) => {
+        const first = await step.waitForEvent<{ value: number }>("first", { type: "first" });
+        const second = await step.waitForEvent<{ value: number }>("second", { type: "second" });
+        return { sum: first.payload.value + second.payload.value };
+      },
+    );
+
+    const workflows = { TWO_STEP: TwoStepWorkflow };
+
+    type ScenarioVars = {
+      status?: { status: string; output?: { sum: number } };
+      events?: WorkflowScenarioEventRow[];
+      steps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "two-step-duplicate-events",
+      workflows,
+      steps: [
+        scenarioSteps.create({ workflow: "TWO_STEP", id: "two-step-1" }),
+        scenarioSteps.event({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          event: { type: "first", payload: { value: 10 } },
+          timestamp: new Date(1000),
+        }),
+        scenarioSteps.event({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          event: { type: "first", payload: { value: 10 } },
+          timestamp: new Date(1001),
+        }),
+        scenarioSteps.runUntilIdle({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          reason: "create",
+        }),
+        scenarioSteps.event({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          event: { type: "second", payload: { value: 20 } },
+          timestamp: new Date(2000),
+        }),
+        scenarioSteps.event({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          event: { type: "second", payload: { value: 20 } },
+          timestamp: new Date(2001),
+        }),
+        scenarioSteps.runUntilIdle({
+          workflow: "TWO_STEP",
+          instanceId: "two-step-1",
+          reason: "event",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TWO_STEP", "two-step-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TWO_STEP", "two-step-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("TWO_STEP", "two-step-1"),
+          storeAs: "events",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(ctx.vars.status?.output).toEqual({ sum: 30 });
+
+          const stepKeys = (ctx.vars.steps ?? []).map((s) => s.stepKey).sort();
+          expect(stepKeys).toEqual(["waitForEvent:first", "waitForEvent:second"]);
+
+          const firstConsumed = (ctx.vars.events ?? []).filter(
+            (e) => e.consumedByStepKey === "waitForEvent:first",
+          );
+          expect(firstConsumed).toHaveLength(1);
+
+          const secondConsumed = (ctx.vars.events ?? []).filter(
+            (e) => e.consumedByStepKey === "waitForEvent:second",
+          );
+          expect(secondConsumed).toHaveLength(1);
+
+          const unconsumed = (ctx.vars.events ?? []).filter((e) => e.consumedByStepKey === null);
+          expect(unconsumed).toHaveLength(2);
         }),
       ],
     });

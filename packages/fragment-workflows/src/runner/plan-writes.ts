@@ -101,6 +101,7 @@ function applyServiceCalls(uow: IUnitOfWork, calls: AnyTxResult[]) {
     }
     const { callbacks, schema } = call._internal;
     if (!callbacks.mutate) {
+      call._internal.restrictedUow.signalReadyForMutation();
       continue;
     }
     if (!schema) {
@@ -111,6 +112,7 @@ function applyServiceCalls(uow: IUnitOfWork, calls: AnyTxResult[]) {
       retrieveResult: [],
       serviceIntermediateResult: [],
     });
+    call._internal.restrictedUow.signalReadyForMutation();
   }
 }
 
@@ -207,8 +209,10 @@ export function applyOutcome(
 
   const kind = reason.type === "retry" ? "retry" : "wake";
   const processAt = runAt ?? schemaUow.now().plus({ ms: delayMs ?? 0 });
+  const namespace = schemaUow.namespace ?? workflowsSchema.name;
 
   uow.triggerHook(
+    namespace,
     "onWorkflowEnqueued",
     {
       workflowName: instance.workflowName,
