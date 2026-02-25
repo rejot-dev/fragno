@@ -4,7 +4,7 @@ interface ReactProps {
   className?: string;
 }
 
-export function React({ className }: ReactProps) {
+function ReactLogo({ className }: ReactProps) {
   return (
     <svg
       width="23.812498mm"
@@ -31,3 +31,5 @@ export function React({ className }: ReactProps) {
     </svg>
   );
 }
+
+export { ReactLogo as React };
