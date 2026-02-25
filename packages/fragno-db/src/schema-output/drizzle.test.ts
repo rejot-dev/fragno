@@ -50,7 +50,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const users_test = schema_test.table("users", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
@@ -62,7 +62,7 @@ describe("generateDrizzleSchema", () => {
         ])
 
         export const posts_test = schema_test.table("posts", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
@@ -121,7 +121,7 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: int("age"),
@@ -133,7 +133,7 @@ describe("generateDrizzleSchema", () => {
         ])
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
@@ -281,7 +281,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const events_test = schema_test.table("events", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -320,7 +320,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const events_test = schema_test.table("events", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -374,7 +374,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const files_test = schema_test.table("files", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -431,14 +431,14 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const users_test = schema_test.table("users", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const posts_test = schema_test.table("posts", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -498,14 +498,14 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
         })
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -670,14 +670,14 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const categories_test = schema_test.table("categories", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const products_test = schema_test.table("products", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -748,7 +748,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const category_test = schema_test.table("category", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -820,7 +820,7 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const comment_test = schema_test.table("comment", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -870,7 +870,7 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const comment_test = mysqlTable("comment_test", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -1045,7 +1045,7 @@ describe("generateDrizzleSchema", () => {
         const schema_my_fragment_v2 = pgSchema("my-fragment-v2");
 
         export const users_my_fragment_v2 = schema_my_fragment_v2.table("users", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
@@ -1057,7 +1057,7 @@ describe("generateDrizzleSchema", () => {
         ])
 
         export const posts_my_fragment_v2 = schema_my_fragment_v2.table("posts", {
-          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),

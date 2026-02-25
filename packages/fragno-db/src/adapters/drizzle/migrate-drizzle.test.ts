@@ -151,7 +151,7 @@ describe("generateSchema and migrate", () => {
 
     expect(migrationStatements.join("\n")).toMatchInlineSnapshot(`
       "CREATE TABLE "fragno_db_settings" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"key" text NOT NULL,
       	"value" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
@@ -160,7 +160,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "fragno_hooks" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"namespace" text NOT NULL,
       	"hookName" text NOT NULL,
       	"payload" json NOT NULL,
@@ -178,7 +178,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "fragno_db_outbox" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"versionstamp" text NOT NULL,
       	"uowId" text NOT NULL,
       	"payload" json NOT NULL,
@@ -190,7 +190,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "fragno_db_outbox_mutations" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"entryVersionstamp" text NOT NULL,
       	"mutationVersionstamp" text NOT NULL,
       	"uowId" text NOT NULL,
@@ -205,7 +205,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "fragno_db_sync_requests" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"requestId" text NOT NULL,
       	"status" text NOT NULL,
       	"confirmedCommandIds" json NOT NULL,
@@ -219,7 +219,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "test"."users" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"name" text NOT NULL,
       	"email" text NOT NULL,
       	"age" integer,
@@ -233,7 +233,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "test"."posts" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"title" text NOT NULL,
       	"slug" varchar(255) NOT NULL,
       	"content" text NOT NULL,
@@ -253,7 +253,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "test"."comments" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"content" text NOT NULL,
       	"postId" bigint NOT NULL,
       	"userId" bigint NOT NULL,
@@ -267,7 +267,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "test"."tags" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"name" text NOT NULL,
       	"slug" varchar(100) NOT NULL,
       	"description" text,
@@ -279,7 +279,7 @@ describe("generateSchema and migrate", () => {
       );
 
       CREATE TABLE "test"."postTags" (
-      	"id" varchar(30) NOT NULL,
+      	"id" varchar(128) NOT NULL,
       	"postId" bigint NOT NULL,
       	"tagId" bigint NOT NULL,
       	"order" integer DEFAULT 0 NOT NULL,

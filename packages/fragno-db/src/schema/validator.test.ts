@@ -121,7 +121,7 @@ describe("table validation", () => {
     const users = testSchema.tables.users;
     const posts = testSchema.tables.posts;
 
-    const longId = "a".repeat(31);
+    const longId = "a".repeat(129);
     const longTitleResult = posts["~standard"].validate({
       id: "post-1",
       userId: "user-1",

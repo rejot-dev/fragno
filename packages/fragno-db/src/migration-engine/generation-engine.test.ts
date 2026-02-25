@@ -293,7 +293,7 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test-db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "test-db"."users" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);
