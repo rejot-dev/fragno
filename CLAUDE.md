@@ -29,6 +29,7 @@ reduce noise and only show errors.
 - `pnpm exec turbo types:check --output-logs=errors-only` - TypeScript type checking across all
   packages
 - `pnpm exec turbo test --output-logs=errors-only` - Run tests across all packages
+- `pnpm run lint` - Run oxlint for the repo
 
 Use `--filter` to target specific packages or directories:
 
@@ -41,6 +42,7 @@ Examples:
 
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
+- `pnpm run lint`
 
 ## Tools
 
