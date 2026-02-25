@@ -12,11 +12,11 @@ import {
   type LofiExecutableQueryInterface,
   type LofiReadPlan,
 } from "../../query/read-plan";
+import { shouldIgnoreSystemColumn } from "../../system-columns";
 import type { LofiQueryInterface, LofiQueryableAdapter } from "../../types";
 import type { InMemoryLofiAdapter } from "../in-memory/adapter";
 import type { InMemoryLofiRow } from "../in-memory/store";
 import { compareNormalizedValues } from "../in-memory/value-comparison";
-
 type CompiledJoin = {
   alias: string;
   table: AnyTable;
@@ -681,7 +681,7 @@ const buildOutputFromLofiRow = (
 
   for (const columnName of columnNames) {
     const column = table.columns[columnName];
-    if (!column || column.isHidden) {
+    if (!column || column.isHidden || shouldIgnoreSystemColumn(columnName)) {
       continue;
     }
 
@@ -731,7 +731,8 @@ const mergeRowColumns = (
   const columnNames = select && select !== true ? select : (Object.keys(table.columns) as string[]);
 
   for (const columnName of columnNames) {
-    if (!table.columns[columnName]) {
+    const column = table.columns[columnName];
+    if (!column || column.isHidden || shouldIgnoreSystemColumn(columnName)) {
       continue;
     }
     if (columnName in overlayRow) {
@@ -1023,6 +1024,10 @@ const stripSelection = (options: {
   if (select && select !== true) {
     const keep = new Set(select);
     for (const key of Object.keys(stripped)) {
+      if (shouldIgnoreSystemColumn(key)) {
+        delete stripped[key];
+        continue;
+      }
       if (table.columns[key] && !keep.has(key)) {
         delete stripped[key];
       }
@@ -1073,10 +1078,12 @@ const augmentSelect = (options: {
   const augmented = new Set(select);
   augmented.add(table.getIdColumn().name);
   for (const column of orderColumns) {
-    augmented.add(column.name);
+    if (!shouldIgnoreSystemColumn(column.name)) {
+      augmented.add(column.name);
+    }
   }
 
-  const result = Array.from(augmented);
+  const result = Array.from(augmented).filter((column) => !shouldIgnoreSystemColumn(column));
   return result.length === select.length ? select : result;
 };
 

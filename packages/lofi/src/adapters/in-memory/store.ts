@@ -3,10 +3,10 @@ import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/sch
 
 import type { ReferenceTarget } from "../../indexeddb/types";
 import { normalizeValue } from "../../query/normalize";
+import { stripShardField } from "../../system-columns";
 import type { LofiMutation } from "../../types";
 import { SortedArrayIndex, type IndexKey } from "./sorted-array-index";
 import { compareNormalizedValues } from "./value-comparison";
-
 export type InMemoryLofiRow = {
   key: [string, string, string, string];
   endpoint: string;
@@ -421,13 +421,15 @@ export class InMemoryLofiStore {
       return;
     }
 
-    const values = mutation.op === "create" ? mutation.values : mutation.set;
+    const rawValues = mutation.op === "create" ? mutation.values : mutation.set;
+    const values = stripShardField(rawValues) ?? rawValues;
     if (!existing && mutation.op === "update") {
       return;
     }
 
     tableStore.tombstones.delete(mutation.externalId);
-    const data = existing ? { ...existing.data, ...values } : { ...values };
+    const merged = existing ? { ...existing.data, ...values } : { ...values };
+    const data = stripShardField(merged) ?? merged;
     const internalId = existing ? existing._lofi.internalId : this.allocateInternalId(tableStore);
     const version = existing ? existing._lofi.version + (mutation.op === "update" ? 1 : 0) : 1;
     const norm = buildNormalizedValues({
