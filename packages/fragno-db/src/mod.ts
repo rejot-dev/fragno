@@ -6,7 +6,11 @@ import type {
   ImplicitDatabaseDependencies,
   DatabaseHandlerContext,
 } from "./db-fragment-definition-builder";
-import { getSchemaVersionFromDatabase, internalSchema } from "./fragments/internal-fragment";
+import {
+  getSchemaVersionFromDatabase,
+  getSystemMigrationVersionFromDatabase,
+  internalSchema,
+} from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
@@ -17,7 +21,6 @@ import {
   type DbIntervalInput,
   type DbNow,
 } from "./query/db-now";
-
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
 export { dbNow, dbInterval };
@@ -34,6 +37,7 @@ export {
   type DatabaseConstraintErrorOptions,
   type DatabaseTransactionErrorOptions,
 } from "./errors";
+export type { ShardingStrategy } from "./sharding";
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
@@ -211,22 +215,31 @@ export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): 
     internalFragment,
     internalNamespace,
   );
+  const systemMigrationVersion = await getSystemMigrationVersionFromDatabase(
+    internalFragment,
+    internalNamespace,
+  );
 
-  // Migrate internal fragment if needed
-  if (internalCurrentVersion < internalSchema.version) {
-    const internalMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
-    await internalMigrations.execute(internalCurrentVersion, internalSchema.version);
+  if (internalCurrentVersion > internalSchema.version) {
+    throw new Error(
+      `Cannot migrate internal settings backwards: current version (${internalCurrentVersion}) > target version (${internalSchema.version})`,
+    );
   }
+
+  const systemMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
+  await systemMigrations.execute(internalCurrentVersion, internalSchema.version, {
+    systemFromVersion: systemMigrationVersion,
+  });
 
   // Step 2: Get current database version for this fragment's namespace
   const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespace);
+  const systemFromVersion = await getSystemMigrationVersionFromDatabase(
+    internalFragment,
+    namespace,
+  );
 
   // Step 3: Run the migration from current version to target version
   const targetVersion = schema.version;
-
-  if (currentVersion === targetVersion) {
-    return;
-  }
 
   if (currentVersion > targetVersion) {
     throw new Error(
@@ -235,5 +248,7 @@ export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): 
   }
 
   const migrations = adapter.prepareMigrations(schema, namespace);
-  await migrations.execute(currentVersion, targetVersion);
+  await migrations.execute(currentVersion, targetVersion, {
+    systemFromVersion,
+  });
 }
