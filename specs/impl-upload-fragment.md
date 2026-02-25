@@ -31,9 +31,9 @@ Reference: spec at `specs/spec-upload-fragment.md`.
       create/progress/complete/ abort/delete flows per spec section 9, using `FileKeyParts` as the
       canonical identifier and encoding to `fileKey` for storage; enforce atomicity with
       `this.serviceTx(...)` and `.check()` for optimistic concurrency as per spec section 5.4.
-- [x] Audit all database access in the fragment to ensure no direct `deps.db` usage; handler routes
-      must use `this.handlerTx()` and background work must use `fragment.inContext(...).handlerTx()`
-      per spec section 5.4.
+- [x] Audit all database access in the fragment to ensure no direct query engine usage; handler
+      routes must use `this.handlerTx()` and background work must use
+      `fragment.inContext(...).handlerTx()` per spec section 5.4.
 - [x] Add durable hooks to the fragment definition in `packages/fragment-upload/src/definition.ts`
       for final events only (`onFileReady`, `onUploadFailed`, `onFileDeleted`) per spec section 13,
       and wire them into service mutations.

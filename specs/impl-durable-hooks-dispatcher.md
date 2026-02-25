@@ -13,7 +13,7 @@ in `@fragno-dev/db`.
 - [x] Persist durable hook config on fragment instances and implement `createDurableHooksProcessor`
       (Spec 5).
 - [x] Ensure all dispatcher/processor DB access uses `fragment.inContext()` + `handlerTx()` and does
-      not use `deps.db` (Spec 5.1).
+      not use any direct query engine (Spec 5.1).
 - [x] Add Node dispatcher module under `@fragno-dev/db/dispatchers/node` with polling, wake, and
       in-flight coalescing (Spec 6.1).
 - [x] Add Cloudflare DO dispatcher module under `@fragno-dev/db/dispatchers/cloudflare-do` with
