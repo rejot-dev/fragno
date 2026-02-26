@@ -212,6 +212,17 @@ export type MutationOperation<
       generatedExternalId: string;
     }
   | {
+      type: "upsert";
+      schema: TSchema;
+      namespace?: string | null;
+      table: TTable["name"];
+      id: FragnoId | string;
+      checkVersion: boolean;
+      conflict: "update" | "ignore";
+      values: TableToInsertValues<TTable>;
+      generatedExternalId: string;
+    }
+  | {
       type: "delete";
       schema: TSchema;
       namespace?: string | null;
@@ -241,9 +252,9 @@ export interface CompiledMutation<TOutput> {
    */
   uowId?: string;
   /**
-   * The type of mutation operation (create, update, delete, or check).
+   * The type of mutation operation (create, upsert, update, delete, or check).
    */
-  op: "create" | "update" | "delete" | "check";
+  op: "create" | "update" | "delete" | "check" | "upsert";
   /**
    * Number of rows this operation must affect for the transaction to succeed.
    * If actual affected rows doesn't match, it indicates a version conflict.
@@ -559,6 +570,99 @@ export class FindBuilder<
     };
 
     return { type: "find", indexName, options };
+  }
+}
+
+/**
+ * Builder for upsert operations in Unit of Work
+ */
+export class UpsertBuilder<TTable extends AnyTable> {
+  readonly #tableName: string;
+  #id?: FragnoId | string;
+  #checkVersion = false;
+  #conflictMode: "update" | "ignore" = "update";
+  #values?: TableToInsertValues<TTable>;
+
+  constructor(tableName: string, id?: FragnoId | string) {
+    this.#tableName = tableName;
+    this.#id = id;
+  }
+
+  /**
+   * Specify the ID for the upsert.
+   */
+  id(id: FragnoId | string): this {
+    this.#id = id;
+    return this;
+  }
+
+  /**
+   * Specify values to insert/update.
+   */
+  values(values: TableToInsertValues<TTable>): this {
+    this.#values = values;
+    return this;
+  }
+
+  /**
+   * Database timestamp helper for mutation values.
+   */
+  now(): DbNow {
+    return dbNow();
+  }
+
+  interval(input: DbIntervalInput): DbInterval {
+    return dbInterval(input);
+  }
+
+  /**
+   * Enable version checking for optimistic concurrency control on the update path.
+   * @throws Error if the ID is just a string (no version available)
+   */
+  check(): this {
+    if (typeof this.#id === "string") {
+      throw new Error(
+        `Cannot use check() with a string ID on table "${this.#tableName}". ` +
+          `Version checking requires a FragnoId with version information.`,
+      );
+    }
+    this.#checkVersion = true;
+    return this;
+  }
+
+  /**
+   * Ignore conflicts (insert only, no update).
+   */
+  onConflictIgnore(): this {
+    this.#conflictMode = "ignore";
+    return this;
+  }
+
+  /**
+   * @internal
+   */
+  build(): {
+    id?: FragnoId | string;
+    checkVersion: boolean;
+    conflict: "update" | "ignore";
+    values: TableToInsertValues<TTable>;
+  } {
+    if (!this.#values) {
+      throw new Error(
+        `Must specify values using .values() before finalizing upsert operation on table "${this.#tableName}"`,
+      );
+    }
+
+    if (this.#conflictMode === "ignore" && this.#checkVersion) {
+      throw new Error(`Cannot use check() with onConflictIgnore() on table "${this.#tableName}".`);
+    }
+
+    return {
+      id: this.#id,
+      checkVersion: this.#checkVersion,
+      conflict: this.#conflictMode,
+      values: this.#values,
+    };
   }
 }
 
@@ -2231,6 +2335,64 @@ export class TypedUnitOfWork<
     return generateId(this.#schema, tableName);
   }
 
+  #normalizeIdForMutation<TTable extends AnyTable>(
+    tableSchema: TTable,
+    tableName: string,
+    values: TableToInsertValues<TTable>,
+    optionsId?: FragnoId | string,
+  ): { externalId: string; updatedValues: TableToInsertValues<TTable> } {
+    const idColumn = tableSchema.getIdColumn();
+    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
+
+    const resolveExternalId = (value: unknown): string => {
+      if (typeof value === "object" && value !== null && "externalId" in value) {
+        return (value as FragnoId).externalId;
+      }
+      return value as string;
+    };
+
+    let externalId: string;
+
+    if (optionsId !== undefined) {
+      externalId = optionsId instanceof FragnoId ? optionsId.externalId : optionsId;
+    } else if (providedIdValue !== undefined) {
+      externalId = resolveExternalId(providedIdValue);
+    } else {
+      const generated = idColumn.generateDefaultValue();
+      if (generated === undefined) {
+        throw new Error(
+          `No ID value provided and ID column ${idColumn.name} has no default generator`,
+        );
+      }
+      externalId = generated as string;
+      return {
+        externalId,
+        updatedValues: {
+          ...values,
+          [idColumn.name]: externalId,
+        } as TableToInsertValues<TTable>,
+      };
+    }
+
+    if (providedIdValue !== undefined) {
+      const providedExternalId = resolveExternalId(providedIdValue);
+      if (optionsId !== undefined && providedExternalId !== externalId) {
+        throw new Error(
+          `Upsert ID mismatch for table "${tableName}": options.id (${externalId}) does not match values.${idColumn.name} (${providedExternalId})`,
+        );
+      }
+      return { externalId, updatedValues: values };
+    }
+
+    return {
+      externalId,
+      updatedValues: {
+        ...values,
+        [idColumn.name]: externalId,
+      } as TableToInsertValues<TTable>,
+    };
+  }
+
   create<TableName extends keyof TSchema["tables"] & string>(
     tableName: TableName,
     values: TableToInsertValues<TSchema["tables"][TableName]>,
@@ -2240,40 +2402,11 @@ export class TypedUnitOfWork<
       throw new Error(`Table ${tableName} not found in schema`);
     }
 
-    const idColumn = tableSchema.getIdColumn();
-    let externalId: string;
-    let updatedValues = values;
-
-    // Check if ID value is provided in values
-    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
-
-    if (providedIdValue !== undefined) {
-      // Extract string from FragnoId or use string directly
-      if (
-        typeof providedIdValue === "object" &&
-        providedIdValue !== null &&
-        "externalId" in providedIdValue
-      ) {
-        externalId = (providedIdValue as FragnoId).externalId;
-      } else {
-        externalId = providedIdValue as string;
-      }
-    } else {
-      // Generate using the column's default configuration
-      const generated = idColumn.generateDefaultValue();
-      if (generated === undefined) {
-        throw new Error(
-          `No ID value provided and ID column ${idColumn.name} has no default generator`,
-        );
-      }
-      externalId = generated as string;
-
-      // Add the generated ID to values so it's used in the insert
-      updatedValues = {
-        ...values,
-        [idColumn.name]: externalId,
-      } as TableToInsertValues<TSchema["tables"][TableName]>;
-    }
+    const { externalId, updatedValues } = this.#normalizeIdForMutation(
+      tableSchema as TSchema["tables"][TableName],
+      tableName,
+      values,
+    );
 
     this.#uow.addMutationOperation({
       type: "create",
@@ -2285,6 +2418,84 @@ export class TypedUnitOfWork<
     });
 
     return FragnoId.fromExternal(externalId, 0);
+  }
+
+  upsert<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    builderFn: (
+      builder: Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build"> | void,
+  ): void;
+  upsert<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId | string,
+    builderFn: (
+      builder: Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build"> | void,
+  ): void;
+  upsert<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    idOrBuilder:
+      | FragnoId
+      | string
+      | ((
+          builder: Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build">,
+        ) => Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build"> | void),
+    builderFn?: (
+      builder: Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpsertBuilder<TSchema["tables"][TableName]>, "build"> | void,
+  ): void {
+    const tableSchema = this.#schema.tables[tableName];
+    if (!tableSchema) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder =
+      typeof idOrBuilder === "function"
+        ? new UpsertBuilder<TSchema["tables"][TableName]>(tableName)
+        : new UpsertBuilder<TSchema["tables"][TableName]>(tableName, idOrBuilder);
+    const buildFn = typeof idOrBuilder === "function" ? idOrBuilder : builderFn;
+    if (!buildFn) {
+      throw new Error(`Must provide a builder function for upsert on table "${tableName}".`);
+    }
+    buildFn(builder);
+    const { id, checkVersion, conflict, values } = builder.build();
+
+    const { externalId, updatedValues } = this.#normalizeIdForMutation(
+      tableSchema as TSchema["tables"][TableName],
+      tableName,
+      values,
+      id,
+    );
+
+    const idColumn = tableSchema.getIdColumn();
+    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
+    const idFromValues = providedIdValue instanceof FragnoId ? providedIdValue : undefined;
+    const idFromBuilder = id instanceof FragnoId ? id : undefined;
+    const opId =
+      idFromBuilder ??
+      idFromValues ??
+      id ??
+      (typeof providedIdValue === "string" ? providedIdValue : externalId);
+
+    if (checkVersion && !(opId instanceof FragnoId)) {
+      throw new Error(
+        `Cannot use check() with a string ID on table "${tableName}". ` +
+          `Version checking requires a FragnoId with version information.`,
+      );
+    }
+
+    this.#uow.addMutationOperation({
+      type: "upsert",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      id: opId,
+      checkVersion,
+      conflict,
+      values: updatedValues,
+      generatedExternalId: externalId,
+    });
   }
 
   update<TableName extends keyof TSchema["tables"] & string>(

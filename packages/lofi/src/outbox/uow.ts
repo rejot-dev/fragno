@@ -1,4 +1,4 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
+import { FragnoId, type AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 import type { LofiMutation } from "../types";
 
@@ -23,22 +23,47 @@ export function outboxMutationsToUowOperations(
     }
 
     if (mutation.op === "update") {
+      const checkVersion = mutation.checkVersion;
+      const hasCheckVersion = typeof checkVersion === "number";
       return {
         type: "update",
         schema,
         table: mutation.table,
-        id: mutation.externalId,
-        checkVersion: false,
+        id: hasCheckVersion
+          ? FragnoId.fromExternal(mutation.externalId, checkVersion)
+          : mutation.externalId,
+        checkVersion: hasCheckVersion,
         set: mutation.set,
       };
     }
 
+    if (mutation.op === "upsert") {
+      const checkVersion = mutation.checkVersion;
+      const hasCheckVersion = typeof checkVersion === "number";
+      return {
+        type: "upsert",
+        schema,
+        table: mutation.table,
+        id: hasCheckVersion
+          ? FragnoId.fromExternal(mutation.externalId, checkVersion)
+          : mutation.externalId,
+        checkVersion: hasCheckVersion,
+        conflict: mutation.conflict ?? "update",
+        values: mutation.values,
+        generatedExternalId: mutation.externalId,
+      };
+    }
+
+    const checkVersion = mutation.checkVersion;
+    const hasCheckVersion = typeof checkVersion === "number";
     return {
       type: "delete",
       schema,
       table: mutation.table,
-      id: mutation.externalId,
-      checkVersion: false,
+      id: hasCheckVersion
+        ? FragnoId.fromExternal(mutation.externalId, checkVersion)
+        : mutation.externalId,
+      checkVersion: hasCheckVersion,
     };
   });
 }

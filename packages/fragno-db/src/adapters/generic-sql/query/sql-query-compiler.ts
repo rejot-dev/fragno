@@ -75,6 +75,25 @@ export interface UpdateCompilerOptions {
 }
 
 /**
+ * Options for compiling an upsert operation.
+ */
+export interface UpsertCompilerOptions {
+  values: Record<string, unknown>;
+  conflictWhere?: Condition;
+  conflictAction?: "update" | "ignore";
+  /**
+   * Version value to check for optimistic concurrency control on dialects that
+   * can't express conflict WHERE clauses (e.g. MySQL).
+   */
+  checkVersionValue?: number;
+  /**
+   * Whether to add RETURNING clause to the UPSERT query.
+   * Used for version conflict detection when driver supports RETURNING but not affected rows.
+   */
+  returning?: boolean;
+}
+
+/**
  * Options for compiling a delete operation
  */
 export interface DeleteCompilerOptions {
@@ -383,6 +402,68 @@ export abstract class SQLQueryCompiler {
 
     // Apply RETURNING if supported
     if (this.driverConfig.supportsReturning) {
+      const columns = mapSelect(true, table, this.resolver, {
+        tableName: this.getTableName(table),
+      });
+      insert = this.applyReturning(insert, columns);
+    }
+
+    return insert.compile();
+  }
+
+  /**
+   * Compile an UPSERT (INSERT ... ON CONFLICT / ON DUPLICATE KEY UPDATE) query.
+   */
+  compileUpsert(table: AnyTable, options: UpsertCompilerOptions): CompiledQuery {
+    const encodedValues = this.encoder.encodeForDatabase({
+      values: options.values,
+      table,
+      generateDefaults: true,
+    });
+
+    let insert: AnyInsertQueryBuilder = this.db
+      .insertInto(this.getTableName(table))
+      .values(encodedValues);
+
+    const updateValues = this.encoder.encodeForDatabase({
+      values: options.values,
+      table,
+      generateDefaults: false,
+    });
+
+    const idColumn = table.getIdColumn();
+    const idColumnName = this.resolver
+      ? this.resolver.getColumnName(table.name, idColumn.name)
+      : idColumn.name;
+    if (idColumnName in updateValues) {
+      delete updateValues[idColumnName];
+    }
+
+    const versionCol = table.getVersionColumn();
+    const versionColumnName = this.resolver
+      ? this.resolver.getColumnName(table.name, versionCol.name)
+      : versionCol.name;
+    updateValues[versionColumnName] = sql`coalesce(${sql.ref(versionColumnName)}, 0) + 1`;
+
+    const conflictColumns = [
+      this.resolver ? this.resolver.getColumnName(table.name, idColumn.name) : idColumn.name,
+    ];
+
+    if (options.conflictAction === "ignore") {
+      insert = insert.onConflict((oc) => oc.columns(conflictColumns).doNothing());
+    } else {
+      insert = insert.onConflict((oc) => {
+        let conflict = oc.columns(conflictColumns).doUpdateSet(updateValues);
+        if (options.conflictWhere) {
+          conflict = conflict.where((eb) =>
+            this.buildWhereClause(options.conflictWhere!, eb, table),
+          );
+        }
+        return conflict;
+      });
+    }
+
+    if (options.returning && this.driverConfig.supportsReturning) {
       const columns = mapSelect(true, table, this.resolver, {
         tableName: this.getTableName(table),
       });

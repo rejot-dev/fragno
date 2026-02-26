@@ -11,7 +11,12 @@ import {
 import { resolveInMemoryAdapterOptions, type InMemoryAdapterOptions } from "./options";
 
 const testSchema = schema("test", (s) =>
-  s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+  s.addTable("users", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("name", column("string"))
+      .createIndex("unique_name", ["name"], { unique: true }),
+  ),
 );
 
 const fkSchema = schema("fk", (s) =>
@@ -105,6 +110,113 @@ describe("in-memory uow mutations", () => {
 
     expect(staleUser?.name).toBe("June");
     expect(staleUser?.id.version).toBe(1);
+  });
+
+  it("upserts rows using the primary key", async () => {
+    const createUow = createTestUowFactory();
+
+    const createMutation = createUow();
+    createMutation.upsert("users", "user-1", (b) => b.values({ name: "Ada" }));
+    const createResult = await createMutation.executeMutations();
+    expect(createResult.success).toBe(true);
+
+    const upsertMutation = createUow();
+    upsertMutation.upsert("users", "user-1", (b) => b.values({ name: "Ada Lovelace" }));
+    const upsertResult = await upsertMutation.executeMutations();
+    expect(upsertResult.success).toBe(true);
+
+    const findAfterUpsert = createUow();
+    findAfterUpsert.find("users", (b) => b.whereIndex("primary"));
+    const rows = (await findAfterUpsert.executeRetrieve()) as unknown[];
+    const upsertedUser = (rows[0] as { id: FragnoId; name: string }[])[0];
+
+    expect(upsertedUser?.name).toBe("Ada Lovelace");
+    expect(upsertedUser?.id.externalId).toBe("user-1");
+    expect(upsertedUser?.id.version).toBe(1);
+  });
+
+  it("upserts with check enforces version", async () => {
+    const createUow = createTestUowFactory();
+
+    const createMutation = createUow();
+    createMutation.create("users", { id: "user-3", name: "Ada" });
+    const createResult = await createMutation.executeMutations();
+    expect(createResult.success).toBe(true);
+
+    const createdId = createMutation.getCreatedIds()[0]!;
+
+    const bumpMutation = createUow();
+    bumpMutation.update("users", createdId, (b) => b.set({ name: "Ada Updated" }).check());
+    const bumpResult = await bumpMutation.executeMutations();
+    expect(bumpResult.success).toBe(true);
+
+    const staleUpsert = createUow();
+    staleUpsert.upsert("users", createdId, (b) => b.values({ name: "Stale" }).check());
+    const staleResult = await staleUpsert.executeMutations();
+    expect(staleResult.success).toBe(false);
+
+    const currentId = new FragnoId({
+      externalId: createdId.externalId,
+      internalId: createdId.internalId,
+      version: createdId.version + 1,
+    });
+
+    const upsertMutation = createUow();
+    upsertMutation.upsert("users", currentId, (b) => b.values({ name: "Ada Checked" }).check());
+    const upsertResult = await upsertMutation.executeMutations();
+    expect(upsertResult.success).toBe(true);
+
+    const findAfterUpsert = createUow();
+    findAfterUpsert.find("users", (b) => b.whereIndex("primary"));
+    const rows = (await findAfterUpsert.executeRetrieve()) as unknown[];
+    const upsertedUser = (rows[0] as { id: FragnoId; name: string }[])[0];
+
+    expect(upsertedUser?.name).toBe("Ada Checked");
+    expect(upsertedUser?.id.externalId).toBe("user-3");
+    expect(upsertedUser?.id.version).toBe(2);
+  });
+
+  it("upserts with check inserts when missing", async () => {
+    const createUow = createTestUowFactory();
+
+    const insertMutation = createUow();
+    const newId = new FragnoId({ externalId: "user-4", version: 0 });
+    insertMutation.upsert("users", newId, (b) => b.values({ name: "New User" }).check());
+    const insertResult = await insertMutation.executeMutations();
+    expect(insertResult.success).toBe(true);
+
+    const findAfterInsert = createUow();
+    findAfterInsert.find("users", (b) => b.whereIndex("primary"));
+    const rows = (await findAfterInsert.executeRetrieve()) as unknown[];
+    const insertedUser = (rows[0] as { id: FragnoId; name: string }[])[0];
+
+    expect(insertedUser?.name).toBe("New User");
+    expect(insertedUser?.id.externalId).toBe("user-4");
+    expect(insertedUser?.id.version).toBe(0);
+  });
+
+  it("upserts with onConflictIgnore does not update existing rows", async () => {
+    const createUow = createTestUowFactory();
+
+    const createMutation = createUow();
+    createMutation.create("users", { id: "user-5", name: "Keep" });
+    const createResult = await createMutation.executeMutations();
+    expect(createResult.success).toBe(true);
+
+    const ignoreMutation = createUow();
+    ignoreMutation.upsert("users", "user-5", (b) =>
+      b.values({ name: "Overwrite?" }).onConflictIgnore(),
+    );
+    const ignoreResult = await ignoreMutation.executeMutations();
+    expect(ignoreResult.success).toBe(true);
+
+    const findAfterIgnore = createUow();
+    findAfterIgnore.find("users", (b) => b.whereIndex("primary"));
+    const rows = (await findAfterIgnore.executeRetrieve()) as unknown[];
+    const user = (rows[0] as { id: FragnoId; name: string }[])[0];
+
+    expect(user?.name).toBe("Keep");
+    expect(user?.id.version).toBe(0);
   });
 
   it("checks and deletes rows with version enforcement", async () => {

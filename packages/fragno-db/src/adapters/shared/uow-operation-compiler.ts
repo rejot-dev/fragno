@@ -88,6 +88,10 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
     op: MutationOperation<AnySchema> & { type: "create" },
   ): CompiledMutation<TCompiledQuery> | null;
 
+  abstract compileUpsert(
+    op: MutationOperation<AnySchema> & { type: "upsert" },
+  ): CompiledMutation<TCompiledQuery> | null;
+
   abstract compileUpdate(
     op: MutationOperation<AnySchema> & { type: "update" },
   ): CompiledMutation<TCompiledQuery> | null;
@@ -203,6 +207,8 @@ export function createUOWCompilerFromOperationCompiler<TCompiledQuery>(
       switch (op.type) {
         case "create":
           return operationCompiler.compileCreate(op);
+        case "upsert":
+          return operationCompiler.compileUpsert(op);
         case "update":
           return operationCompiler.compileUpdate(op);
         case "delete":

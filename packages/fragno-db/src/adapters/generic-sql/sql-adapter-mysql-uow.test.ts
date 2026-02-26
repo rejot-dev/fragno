@@ -1,7 +1,7 @@
-import SQLite from "better-sqlite3";
-import { SqliteDialect } from "kysely";
-import { SqlAdapter } from "./generic-sql-adapter";
+import { createPool } from "mysql2";
+import { MysqlDialect } from "kysely";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { column, idColumn, referenceColumn, schema, FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
 import {
@@ -9,12 +9,98 @@ import {
   createHandlerTxBuilder,
 } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
-import { BetterSQLite3DriverConfig } from "./driver-config";
+import { MySQL2DriverConfig } from "./driver-config";
 import { prepareHookMutations, type HooksMap } from "../../hooks/hooks";
-import { internalSchema } from "../../fragments/internal-fragment";
+import { internalSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
+import { sql } from "../../sql-driver/sql";
 
-describe("SqlAdapter SQLite", () => {
+const mysqlUrl = process.env["FRAGNO_TEST_MYSQL_URL"];
+
+const parsedMysqlUrl = (() => {
+  if (!mysqlUrl) {
+    return null;
+  }
+  try {
+    return new URL(mysqlUrl);
+  } catch {
+    return null;
+  }
+})();
+
+const isLocalMysqlHost = (hostname: string) =>
+  hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+
+const mysqlDatabaseName = parsedMysqlUrl?.pathname?.replace(/^\//, "") ?? "";
+const canRunMysqlTests =
+  !!mysqlUrl &&
+  parsedMysqlUrl !== null &&
+  isLocalMysqlHost(parsedMysqlUrl.hostname) &&
+  mysqlDatabaseName.length > 0;
+
+const describeMysql = describe.skipIf(!canRunMysqlTests);
+const namespace = `mysql_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const namespace2 = `${namespace}_2`;
+
+const isMysqlTableExistsError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const maybeCode = (error as { code?: unknown }).code;
+  const maybeErrno = (error as { errno?: unknown }).errno;
+  return maybeCode === "ER_TABLE_EXISTS_ERROR" || maybeErrno === 1050;
+};
+
+const tableExists = async (
+  driver: SqlAdapter["driver"],
+  dialect: MysqlDialect,
+  tableName: string,
+): Promise<boolean> => {
+  const query = sql`
+    select 1 as present
+    from information_schema.tables
+    where table_schema = database()
+      and table_name = ${tableName}
+    limit 1
+  `.compile(dialect);
+  const result = await driver.executeQuery(query);
+  return result.rows.length > 0;
+};
+
+const waitForTable = async (
+  driver: SqlAdapter["driver"],
+  dialect: MysqlDialect,
+  tableName: string,
+): Promise<boolean> => {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (await tableExists(driver, dialect, tableName)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+};
+
+const ensureInternalSchema = async (adapter: SqlAdapter, dialect: MysqlDialect): Promise<void> => {
+  const hasSettings = await tableExists(adapter.driver, dialect, SETTINGS_TABLE_NAME);
+  if (!hasSettings) {
+    try {
+      const migrations = adapter.prepareMigrations(internalSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    } catch (error) {
+      if (!isMysqlTableExistsError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const hooksReady = await waitForTable(adapter.driver, dialect, "fragno_hooks");
+  if (!hooksReady) {
+    throw new Error("fragno_hooks table is not available for MySQL tests.");
+  }
+};
+
+describeMysql("SqlAdapter MySQL", () => {
   const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
@@ -110,33 +196,31 @@ describe("SqlAdapter SQLite", () => {
   });
 
   let adapter: SqlAdapter;
-  let sqliteDatabase: InstanceType<typeof SQLite>;
 
   beforeAll(async () => {
-    sqliteDatabase = new SQLite(":memory:");
+    if (!mysqlUrl) {
+      throw new Error("FRAGNO_TEST_MYSQL_URL must be set to a local MySQL database.");
+    }
 
-    const dialect = new SqliteDialect({
-      database: sqliteDatabase,
+    const pool = createPool(mysqlUrl);
+    const dialect = new MysqlDialect({
+      pool,
     });
 
     adapter = new SqlAdapter({
       dialect,
-      driverConfig: new BetterSQLite3DriverConfig(),
+      driverConfig: new MySQL2DriverConfig(),
     });
 
-    // Create settings table first (needed for version tracking)
+    await ensureInternalSchema(adapter, dialect);
+
     {
-      const migrations = adapter.prepareMigrations(internalSchema, "");
+      const migrations = adapter.prepareMigrations(testSchema, namespace);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
     {
-      const migrations = adapter.prepareMigrations(testSchema, "namespace");
-      await migrations.executeWithDriver(adapter.driver, 0);
-    }
-
-    {
-      const migrations = adapter.prepareMigrations(schema2, "namespace2");
+      const migrations = adapter.prepareMigrations(schema2, namespace2);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
@@ -147,7 +231,7 @@ describe("SqlAdapter SQLite", () => {
 
   it("should execute Unit of Work with version checking", async () => {
     // Pass namespace to ensure mapper translates logical table names to physical (prefixed) names
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create two users at once using UOW
     const createUow = queryEngine.createUnitOfWork("create-users");
@@ -265,7 +349,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should throw on duplicate create within a UOW", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const duplicateId = "duplicate-user-id";
 
     const createUow = queryEngine.createUnitOfWork("create-duplicate-user");
@@ -283,7 +367,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should throw on unique email constraint violation within a UOW", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-unique-email");
     createUserUow.create("users", { name: "Unique Email User", age: 29 });
@@ -316,8 +400,8 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should fail inserting duplicate triggered hook ids", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const hookId = "hook-duplicate-id";
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
+    const hookId = `${namespace}-hook-duplicate-id`;
     const hooks: HooksMap = {
       onTest: () => {},
     };
@@ -355,7 +439,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should upsert using the primary key", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("upsert-user-insert");
     createUow.upsert("users", "user-1", (b) => b.values({ name: "Zzz Dedupe", age: 20 }));
@@ -382,7 +466,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should respect check() operations before upsert", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const name = "Zzz Check Upsert";
 
     const createUow = queryEngine.createUnitOfWork("check-upsert-create");
@@ -412,7 +496,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should enforce check() on upsert updates", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const name = "Zzz Check Inline";
 
     const createUow = queryEngine.createUnitOfWork("upsert-check-create");
@@ -460,7 +544,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should allow upsert insert with check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const name = "Zzz Check Insert";
 
     const insertUow = queryEngine.createUnitOfWork("upsert-check-insert");
@@ -479,7 +563,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should ignore conflicts with onConflictIgnore()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("upsert-ignore-create");
     createUow.create("users", { id: "user-ignore-1", name: "Keep", age: 30 });
@@ -507,7 +591,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should insert with onConflictIgnore() when record is missing", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const id = "user-ignore-insert-1";
 
     const insertUow = queryEngine.createUnitOfWork("upsert-ignore-insert");
@@ -527,7 +611,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should reject check() with onConflictIgnore()", () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const id = new FragnoId({ externalId: "user-ignore-check-1", version: 0 });
     const uow = queryEngine.createUnitOfWork("upsert-ignore-check");
 
@@ -539,7 +623,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support count operations", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "User1", age: 20 });
@@ -559,7 +643,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support cursor-based pagination", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "Page User A", age: 20 });
@@ -609,7 +693,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support joins", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "Email User", age: 20 });
@@ -670,7 +754,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should return null for left-joined relation when foreign key is null", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-optional-email");
     createUow.create("optional_emails", {
@@ -690,7 +774,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support complex nested joins (comments -> post -> author)", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user (author)
     const createAuthorUow = queryEngine.createUnitOfWork("create-author");
@@ -794,9 +878,9 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should return created IDs from UOW create operations", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
-    // Test 1: Create operations return IDs with both external and internal IDs
+    // Test 1: Create operations return IDs with external IDs (MySQL doesn't support RETURNING)
     const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
 
     uow1.create("users", { name: "Test User 1", age: 30 });
@@ -810,17 +894,17 @@ describe("SqlAdapter SQLite", () => {
     expect(createdIds1).toMatchObject([
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
     ]);
+    for (const id of createdIds1) {
+      expect(id.internalId).toBeUndefined();
+    }
 
     // All external IDs should be unique
     const externalIds = createdIds1.map((id) => id.externalId);
@@ -894,7 +978,7 @@ describe("SqlAdapter SQLite", () => {
 
     expect(createdIds3).toHaveLength(1);
     expect(createdIds3[0].externalId).toBe(customId);
-    expect(createdIds3[0].internalId).toBeDefined();
+    expect(createdIds3[0].internalId).toBeUndefined();
 
     // Verify the user was created with the custom ID
     const customIdUser = await queryEngine.findFirst("users", (b) =>
@@ -911,7 +995,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should handle timestamps and timezones correctly", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-timestamp");
@@ -968,8 +1052,8 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support forSchema for multi-schema queries", async () => {
-    const queryEngine1 = adapter.createQueryEngine(testSchema, "namespace");
-    const queryEngine2 = adapter.createQueryEngine(schema2, "namespace2");
+    const queryEngine1 = adapter.createQueryEngine(testSchema, namespace);
+    const queryEngine2 = adapter.createQueryEngine(schema2, namespace2);
 
     // Create test data in schema1 (users)
     const createUsersUow = queryEngine1.createUnitOfWork("create-users-for-multi-schema");
@@ -1055,7 +1139,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should verify hasNextPage in cursor pagination", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create exactly 15 users for precise pagination testing
     const prefix = "HasNextPageTest";
@@ -1106,7 +1190,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support handlerTx with retry logic", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a test user
     const createUow = queryEngine.createUnitOfWork("create-user-for-execute-uow");
@@ -1177,7 +1261,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should update non-existent entity without check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const missingId = "missing-user-update";
 
     const uow = queryEngine.createUnitOfWork("update-missing-user");
@@ -1195,7 +1279,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should fail update for non-existent entity with check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
     const missingId = FragnoId.fromExternal("missing-user-update-check", 0);
 
     const uow = queryEngine.createUnitOfWork("update-missing-user-check");
@@ -1213,7 +1297,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should fail check() when version changes", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");

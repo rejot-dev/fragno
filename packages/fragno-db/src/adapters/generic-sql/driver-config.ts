@@ -179,4 +179,33 @@ export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
   override readonly supportsJson = true;
   override readonly internalIdColumn = undefined;
   override readonly outboxVersionstampStrategy = "insert-on-duplicate-last-insert-id";
+
+  override extractAffectedRows(result: Record<string, unknown>): bigint {
+    const candidates = [
+      "numAffectedRows",
+      "numChangedRows",
+      "affectedRows",
+      "changedRows",
+    ] as const;
+
+    for (const key of candidates) {
+      if (!(key in result)) {
+        continue;
+      }
+      const value = result[key];
+      if (typeof value === "bigint") {
+        return value;
+      }
+      if (typeof value === "number") {
+        return BigInt(value);
+      }
+      if (typeof value === "string") {
+        return BigInt(value);
+      }
+    }
+
+    throw new Error(
+      `No affected rows found in result: ${JSON.stringify(result)}. Driver ${this.driverType} is expected to support affected rows.`,
+    );
+  }
 }

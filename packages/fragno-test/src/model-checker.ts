@@ -19,11 +19,12 @@ export type ModelCheckerStep = {
 export type ModelCheckerTraceHashMode = "state" | "trace" | "state+trace";
 
 export type NormalizedMutationOperation = {
-  type: "create" | "update" | "delete" | "check";
+  type: "create" | "update" | "delete" | "check" | "upsert";
   table: string;
   namespace?: string | null;
   id?: unknown;
   checkVersion?: boolean;
+  conflict?: "update" | "ignore";
   set?: Record<string, unknown>;
   values?: Record<string, unknown>;
   generatedExternalId?: string;
@@ -419,6 +420,19 @@ const normalizeMutationOperation = (
       id: normalizeForHash(op.id),
       checkVersion: op.checkVersion,
       set: normalizeForHash(op.set) as Record<string, unknown>,
+    };
+  }
+
+  if (op.type === "upsert") {
+    return {
+      type: "upsert",
+      table: op.table,
+      namespace: op.namespace,
+      id: normalizeForHash(op.id),
+      checkVersion: op.checkVersion,
+      conflict: op.conflict,
+      values: normalizeForHash(op.values) as Record<string, unknown>,
+      generatedExternalId: op.generatedExternalId,
     };
   }
 

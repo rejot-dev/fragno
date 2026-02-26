@@ -206,6 +206,68 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     };
   }
 
+  override compileUpsert(
+    op: MutationOperation<AnySchema> & { type: "upsert" },
+  ): CompiledMutation<CompiledQuery> | null {
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
+    const table = this.getTable(op.schema, op.table);
+
+    if (op.conflict === "ignore" && op.checkVersion) {
+      throw new Error(`Cannot use checkVersion with onConflictIgnore() on table "${op.table}".`);
+    }
+
+    let conflictWhere: Condition | undefined;
+    let expectedAffectedRows: bigint | null = null;
+    let expectedReturnedRows: number | null = null;
+    let returning = false;
+    let checkVersionValue: number | undefined;
+
+    if (op.checkVersion) {
+      const idColumn = table.getIdColumn();
+      const versionColumn = table.getVersionColumn();
+      const externalId = this.getExternalId(op.id);
+      const versionToCheck = this.getVersionToCheck(op.id, op.checkVersion);
+
+      const conditionsResult =
+        versionToCheck !== undefined
+          ? buildCondition(table.columns, (eb) =>
+              eb.and(
+                eb(idColumn.name, "=", externalId),
+                eb(versionColumn.name, "=", versionToCheck),
+              ),
+            )
+          : buildCondition(table.columns, (eb) => eb(idColumn.name, "=", externalId));
+
+      if (conditionsResult === false) {
+        return null;
+      }
+
+      conflictWhere = conditionsResult === true ? undefined : conditionsResult;
+      checkVersionValue = versionToCheck;
+
+      const useReturningForCheck =
+        this.driverConfig.supportsReturning && !this.driverConfig.supportsRowsAffected;
+
+      returning = useReturningForCheck;
+      expectedAffectedRows = useReturningForCheck ? null : 1n;
+      expectedReturnedRows = useReturningForCheck ? 1 : null;
+    }
+
+    return {
+      query: sqlCompiler.compileUpsert(table, {
+        values: op.values,
+        conflictWhere,
+        conflictAction: op.conflict,
+        checkVersionValue,
+        returning,
+      }),
+      operation: op,
+      op: "upsert",
+      expectedAffectedRows,
+      expectedReturnedRows,
+    };
+  }
+
   override compileUpdate(
     op: MutationOperation<AnySchema> & { type: "update" },
   ): CompiledMutation<CompiledQuery> | null {

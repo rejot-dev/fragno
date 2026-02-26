@@ -30,6 +30,20 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
         externalId: mutation.externalId,
         set: mutation.set,
         versionstamp: mutation.versionstamp,
+        checkVersion: mutation.checkVersion,
+      };
+    }
+
+    if (mutation.op === "upsert") {
+      return {
+        op: "upsert",
+        schema: mutation.schema,
+        table: mutation.table,
+        externalId: mutation.externalId,
+        values: mutation.values,
+        versionstamp: mutation.versionstamp,
+        conflict: mutation.conflict,
+        checkVersion: mutation.checkVersion,
       };
     }
 
@@ -39,6 +53,7 @@ const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
       table: mutation.table,
       externalId: mutation.externalId,
       versionstamp: mutation.versionstamp,
+      checkVersion: mutation.checkVersion,
     };
   });
 };

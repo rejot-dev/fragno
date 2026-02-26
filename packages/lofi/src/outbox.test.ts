@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import superjson from "superjson";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { FragnoId, column, idColumn, schema } from "@fragno-dev/db/schema";
 import type { OutboxPayload } from "@fragno-dev/db";
 import {
   decodeOutboxPayload,
@@ -165,5 +165,36 @@ describe("outbox utilities", () => {
     expect(() => outboxMutationsToUowOperations(mutations, { other: appSchema })).toThrow(
       "Unknown outbox schema: app",
     );
+  });
+
+  it("preserves upsert conflict and checkVersion when converting to uow operations", () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const mutations: LofiMutation[] = [
+      {
+        op: "upsert",
+        schema: "app",
+        table: "users",
+        externalId: "user-1",
+        versionstamp: "vs",
+        values: { name: "Ada" },
+        conflict: "ignore",
+        checkVersion: 3,
+      },
+    ];
+
+    const ops = outboxMutationsToUowOperations(mutations, { app: appSchema });
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    if (op.type !== "upsert") {
+      throw new Error("Expected upsert mutation");
+    }
+    expect(op.conflict).toBe("ignore");
+    expect(op.checkVersion).toBe(true);
+    expect(op.id).toBeInstanceOf(FragnoId);
+    expect((op.id as FragnoId).externalId).toBe("user-1");
+    expect((op.id as FragnoId).version).toBe(3);
   });
 });

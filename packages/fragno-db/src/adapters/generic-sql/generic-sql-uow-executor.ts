@@ -106,13 +106,25 @@ export async function executeMutation(
             createdInternalIds.push(null);
           }
         } else if (
-          (compiledMutation.op === "update" || compiledMutation.op === "delete") &&
+          (compiledMutation.op === "update" ||
+            compiledMutation.op === "delete" ||
+            compiledMutation.op === "upsert") &&
           compiledMutation.expectedAffectedRows !== null
         ) {
           // Check affected rows for updates/deletes
           const affectedRows = resultInterpreter.getAffectedRows(result);
 
-          if (affectedRows !== compiledMutation.expectedAffectedRows) {
+          const isMySqlUpsertCheck =
+            compiledMutation.op === "upsert" &&
+            compiledMutation.operation?.type === "upsert" &&
+            compiledMutation.operation.checkVersion &&
+            driverConfig.databaseType === "mysql";
+
+          const matchesExpected = isMySqlUpsertCheck
+            ? affectedRows === 1n || affectedRows === 2n
+            : affectedRows === compiledMutation.expectedAffectedRows;
+
+          if (!matchesExpected) {
             // Version conflict detected - the UPDATE/DELETE didn't affect the expected number of rows
             // This means either the row doesn't exist or the version has changed
             throw new Error(

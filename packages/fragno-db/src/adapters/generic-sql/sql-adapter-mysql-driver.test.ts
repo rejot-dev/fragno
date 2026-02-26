@@ -1,20 +1,106 @@
-import SQLite from "better-sqlite3";
-import { SqliteDialect } from "kysely";
-import { SqlAdapter } from "./generic-sql-adapter";
+import { createPool } from "mysql2";
+import { MysqlDialect } from "kysely";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema, FragnoId } from "../../schema/create";
-import { Cursor } from "../../query/cursor";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import {
+  Cursor,
   createServiceTxBuilder,
   createHandlerTxBuilder,
-} from "../../query/unit-of-work/execute-unit-of-work";
-import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
-import { BetterSQLite3DriverConfig } from "./driver-config";
-import { prepareHookMutations, type HooksMap } from "../../hooks/hooks";
-import { internalSchema } from "../../fragments/internal-fragment";
-import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
+  ExponentialBackoffRetryPolicy,
+  type DatabaseAdapter,
+} from "../../mod";
+import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
+import { MySQL2DriverConfig } from "./driver-config";
+import { SqlAdapter } from "./generic-sql-adapter";
+import { internalSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
+import { sql } from "../../sql-driver/sql";
 
-describe("SqlAdapter SQLite", () => {
+const mysqlUrl = process.env["FRAGNO_TEST_MYSQL_URL"];
+
+const parsedMysqlUrl = (() => {
+  if (!mysqlUrl) {
+    return null;
+  }
+  try {
+    return new URL(mysqlUrl);
+  } catch {
+    return null;
+  }
+})();
+
+const isLocalMysqlHost = (hostname: string) =>
+  hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+
+const mysqlDatabaseName = parsedMysqlUrl?.pathname?.replace(/^\//, "") ?? "";
+const canRunMysqlTests =
+  !!mysqlUrl &&
+  parsedMysqlUrl !== null &&
+  isLocalMysqlHost(parsedMysqlUrl.hostname) &&
+  mysqlDatabaseName.length > 0;
+
+const describeMysql = describe.skipIf(!canRunMysqlTests);
+const namespace = `mysql_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const namespace2 = `${namespace}_2`;
+
+const isMysqlTableExistsError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const maybeCode = (error as { code?: unknown }).code;
+  const maybeErrno = (error as { errno?: unknown }).errno;
+  return maybeCode === "ER_TABLE_EXISTS_ERROR" || maybeErrno === 1050;
+};
+
+const tableExists = async (
+  driver: SqlAdapter["driver"],
+  dialect: MysqlDialect,
+  tableName: string,
+): Promise<boolean> => {
+  const query = sql`
+    select 1 as present
+    from information_schema.tables
+    where table_schema = database()
+      and table_name = ${tableName}
+    limit 1
+  `.compile(dialect);
+  const result = await driver.executeQuery(query);
+  return result.rows.length > 0;
+};
+
+const waitForTable = async (
+  driver: SqlAdapter["driver"],
+  dialect: MysqlDialect,
+  tableName: string,
+): Promise<boolean> => {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (await tableExists(driver, dialect, tableName)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+};
+
+const ensureInternalSchema = async (adapter: SqlAdapter, dialect: MysqlDialect): Promise<void> => {
+  const hasSettings = await tableExists(adapter.driver, dialect, SETTINGS_TABLE_NAME);
+  if (!hasSettings) {
+    try {
+      const migrations = adapter.prepareMigrations(internalSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    } catch (error) {
+      if (!isMysqlTableExistsError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const hooksReady = await waitForTable(adapter.driver, dialect, "fragno_hooks");
+  if (!hooksReady) {
+    throw new Error("fragno_hooks table is not available for MySQL tests.");
+  }
+};
+
+describeMysql("SqlAdapter with mysql2", () => {
   const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
@@ -22,8 +108,7 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
           .addColumn("age", column("integer").nullable())
-          .createIndex("name_idx", ["name"])
-          .createIndex("unique_name", ["name"], { unique: true });
+          .createIndex("name_idx", ["name"]);
       })
       .addTable("emails", (t) => {
         return t
@@ -42,13 +127,6 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
       })
-      .addTable("optional_emails", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn().nullable())
-          .addColumn("email", column("string"))
-          .createIndex("optional_emails_user_idx", ["user_id"]);
-      })
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -66,11 +144,6 @@ describe("SqlAdapter SQLite", () => {
       .addReference("author", {
         type: "one",
         from: { table: "posts", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "optional_emails", column: "user_id" },
         to: { table: "users", column: "id" },
       })
       .addReference("post", {
@@ -109,45 +182,41 @@ describe("SqlAdapter SQLite", () => {
       });
   });
 
-  let adapter: SqlAdapter;
-  let sqliteDatabase: InstanceType<typeof SQLite>;
+  // oxlint-disable-next-line no-explicit-any
+  let adapter: DatabaseAdapter<any>;
 
   beforeAll(async () => {
-    sqliteDatabase = new SQLite(":memory:");
+    if (!mysqlUrl) {
+      throw new Error("FRAGNO_TEST_MYSQL_URL must be set to a local MySQL database.");
+    }
 
-    const dialect = new SqliteDialect({
-      database: sqliteDatabase,
-    });
+    const pool = createPool(mysqlUrl);
+    const dialect = new MysqlDialect({ pool });
+    const sqlAdapter = new SqlDriverAdapter(dialect);
+    const driverConfig = new MySQL2DriverConfig();
+    const genericAdapter = new SqlAdapter({ dialect, driverConfig });
 
-    adapter = new SqlAdapter({
-      dialect,
-      driverConfig: new BetterSQLite3DriverConfig(),
-    });
+    await ensureInternalSchema(genericAdapter, dialect);
 
-    // Create settings table first (needed for version tracking)
     {
-      const migrations = adapter.prepareMigrations(internalSchema, "");
-      await migrations.executeWithDriver(adapter.driver, 0);
+      const migrations = genericAdapter.prepareMigrations(testSchema, namespace);
+      await migrations.executeWithDriver(sqlAdapter, 0);
     }
 
     {
-      const migrations = adapter.prepareMigrations(testSchema, "namespace");
-      await migrations.executeWithDriver(adapter.driver, 0);
+      const migrations = genericAdapter.prepareMigrations(schema2, namespace2);
+      await migrations.executeWithDriver(sqlAdapter, 0);
     }
 
-    {
-      const migrations = adapter.prepareMigrations(schema2, "namespace2");
-      await migrations.executeWithDriver(adapter.driver, 0);
-    }
-
+    adapter = genericAdapter;
     return async () => {
-      await adapter.close();
+      await sqlAdapter.destroy();
     };
   }, 12000);
 
   it("should execute Unit of Work with version checking", async () => {
     // Pass namespace to ensure mapper translates logical table names to physical (prefixed) names
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create two users at once using UOW
     const createUow = queryEngine.createUnitOfWork("create-users");
@@ -164,7 +233,7 @@ describe("SqlAdapter SQLite", () => {
       Parameters<typeof createUow.find>[0]
     >();
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
-      "users" | "emails" | "posts" | "comments" | "optional_emails"
+      "users" | "emails" | "posts" | "comments"
     >();
 
     const { success: createSuccess } = await createUow.executeMutations();
@@ -264,282 +333,8 @@ describe("SqlAdapter SQLite", () => {
     });
   });
 
-  it("should throw on duplicate create within a UOW", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const duplicateId = "duplicate-user-id";
-
-    const createUow = queryEngine.createUnitOfWork("create-duplicate-user");
-    createUow.create("users", { id: duplicateId, name: "First", age: 21 });
-    createUow.create("users", { id: duplicateId, name: "Second", age: 22 });
-
-    await expect(createUow.executeMutations()).rejects.toThrow();
-
-    const [users] = await queryEngine
-      .createUnitOfWork("verify-duplicate-user-rollback")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", duplicateId)))
-      .executeRetrieve();
-
-    expect(users).toHaveLength(0);
-  });
-
-  it("should throw on unique email constraint violation within a UOW", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-
-    const createUserUow = queryEngine.createUnitOfWork("create-user-for-unique-email");
-    createUserUow.create("users", { name: "Unique Email User", age: 29 });
-    const { success } = await createUserUow.executeMutations();
-    expect(success).toBe(true);
-    const userId = createUserUow.getCreatedIds()[0];
-    expect(userId).toBeDefined();
-
-    const email = "duplicate@example.com";
-    const createEmailUow = queryEngine.createUnitOfWork("create-duplicate-email");
-    createEmailUow.create("emails", {
-      user_id: userId,
-      email,
-      is_primary: true,
-    });
-    createEmailUow.create("emails", {
-      user_id: userId,
-      email,
-      is_primary: false,
-    });
-
-    await expect(createEmailUow.executeMutations()).rejects.toThrow();
-
-    const [emails] = await queryEngine
-      .createUnitOfWork("verify-duplicate-email-rollback")
-      .find("emails", (b) => b.whereIndex("unique_email", (eb) => eb("email", "=", email)))
-      .executeRetrieve();
-
-    expect(emails).toHaveLength(0);
-  });
-
-  it("should fail inserting duplicate triggered hook ids", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const hookId = "hook-duplicate-id";
-    const hooks: HooksMap = {
-      onTest: () => {},
-    };
-
-    const internalFragmentStub = {
-      $internal: { deps: { schema: internalSchema } },
-    } as InternalFragmentInstance;
-
-    const buildHookUow = (name: string) => {
-      const uow = queryEngine.createUnitOfWork(name).forSchema(testSchema, hooks);
-      uow.triggerHook("onTest", { data: name }, { id: hookId });
-      prepareHookMutations(
-        uow,
-        internalFragmentStub,
-        new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-      );
-      return uow;
-    };
-
-    const firstUow = buildHookUow("hook-duplicate-first");
-    const { success } = await firstUow.executeMutations();
-    expect(success).toBe(true);
-
-    const secondUow = buildHookUow("hook-duplicate-second");
-    await expect(secondUow.executeMutations()).rejects.toThrow();
-
-    const verifyUow = queryEngine.createUnitOfWork("verify-duplicate-hook-id");
-    const internalUow = verifyUow.forSchema(internalSchema);
-    const findUow = internalUow.find("fragno_hooks", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
-    );
-    const [events] = await findUow.executeRetrieve();
-
-    expect(events).toHaveLength(1);
-  });
-
-  it("should upsert using the primary key", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-
-    const createUow = queryEngine.createUnitOfWork("upsert-user-insert");
-    createUow.upsert("users", "user-1", (b) => b.values({ name: "Zzz Dedupe", age: 20 }));
-    const { success: createSuccess } = await createUow.executeMutations();
-    expect(createSuccess).toBe(true);
-
-    const upsertUow = queryEngine.createUnitOfWork("upsert-user-update");
-    upsertUow.upsert("users", "user-1", (b) => b.values({ name: "Zzz Dedupe", age: 30 }));
-    const { success: upsertSuccess } = await upsertUow.executeMutations();
-    expect(upsertSuccess).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("verify-upsert")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-1")))
-      .executeRetrieve();
-
-    expect(users).toHaveLength(1);
-    expect(users[0]).toMatchObject({
-      id: expect.objectContaining({ externalId: "user-1" }),
-      name: "Zzz Dedupe",
-      age: 30,
-    });
-    expect(users[0].id.version).toBe(1);
-  });
-
-  it("should respect check() operations before upsert", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const name = "Zzz Check Upsert";
-
-    const createUow = queryEngine.createUnitOfWork("check-upsert-create");
-    createUow.create("users", { name, age: 20 });
-    const { success: createSuccess } = await createUow.executeMutations();
-    expect(createSuccess).toBe(true);
-    const createdId = createUow.getCreatedIds()[0];
-    expect(createdId).toBeDefined();
-
-    const bumpUow = queryEngine.createUnitOfWork("check-upsert-bump");
-    bumpUow.update("users", createdId!, (b) => b.set({ age: 21 }).check());
-    const { success: bumpSuccess } = await bumpUow.executeMutations();
-    expect(bumpSuccess).toBe(true);
-
-    const staleCheckUow = queryEngine.createUnitOfWork("check-upsert-stale");
-    staleCheckUow.check("users", createdId!);
-    staleCheckUow.upsert("users", createdId!.externalId, (b) => b.values({ name, age: 22 }));
-    const { success } = await staleCheckUow.executeMutations();
-    expect(success).toBe(false);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("check-upsert-verify")
-      .find("users", (b) => b.whereIndex("unique_name", (eb) => eb("name", "=", name)))
-      .executeRetrieve();
-
-    expect(users[0]).toMatchObject({ name, age: 21 });
-  });
-
-  it("should enforce check() on upsert updates", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const name = "Zzz Check Inline";
-
-    const createUow = queryEngine.createUnitOfWork("upsert-check-create");
-    createUow.create("users", { name, age: 20 });
-    const { success: createSuccess } = await createUow.executeMutations();
-    expect(createSuccess).toBe(true);
-    const createdId = createUow.getCreatedIds()[0]!;
-
-    const bumpUow = queryEngine.createUnitOfWork("upsert-check-bump");
-    bumpUow.update("users", createdId, (b) => b.set({ age: 21 }).check());
-    const { success: bumpSuccess } = await bumpUow.executeMutations();
-    expect(bumpSuccess).toBe(true);
-
-    const staleUpsertUow = queryEngine.createUnitOfWork("upsert-check-stale");
-    staleUpsertUow.upsert("users", createdId, (b) => b.values({ name, age: 22 }).check());
-    const { success: staleSuccess } = await staleUpsertUow.executeMutations();
-    expect(staleSuccess).toBe(false);
-
-    const [staleUsers] = await queryEngine
-      .createUnitOfWork("upsert-check-stale-verify")
-      .find("users", (b) => b.whereIndex("unique_name", (eb) => eb("name", "=", name)))
-      .executeRetrieve();
-
-    expect(staleUsers[0]).toMatchObject({ name, age: 21 });
-    expect(staleUsers[0].id.version).toBe(createdId.version + 1);
-
-    const currentId = new FragnoId({
-      externalId: createdId.externalId,
-      internalId: createdId.internalId,
-      version: createdId.version + 1,
-    });
-
-    const okUpsertUow = queryEngine.createUnitOfWork("upsert-check-ok");
-    okUpsertUow.upsert("users", currentId, (b) => b.values({ name, age: 23 }).check());
-    const { success: okSuccess } = await okUpsertUow.executeMutations();
-    expect(okSuccess).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("upsert-check-verify")
-      .find("users", (b) => b.whereIndex("unique_name", (eb) => eb("name", "=", name)))
-      .executeRetrieve();
-
-    expect(users[0]).toMatchObject({ name, age: 23 });
-    expect(users[0].id.version).toBe(createdId.version + 2);
-  });
-
-  it("should allow upsert insert with check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const name = "Zzz Check Insert";
-
-    const insertUow = queryEngine.createUnitOfWork("upsert-check-insert");
-    const newId = new FragnoId({ externalId: "user-check-1", version: 0 });
-    insertUow.upsert("users", newId, (b) => b.values({ name, age: 24 }).check());
-    const { success } = await insertUow.executeMutations();
-    expect(success).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("upsert-check-insert-verify")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", newId.externalId)))
-      .executeRetrieve();
-
-    expect(users[0]).toMatchObject({ name, age: 24 });
-    expect(users[0].id.version).toBe(0);
-  });
-
-  it("should ignore conflicts with onConflictIgnore()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-
-    const createUow = queryEngine.createUnitOfWork("upsert-ignore-create");
-    createUow.create("users", { id: "user-ignore-1", name: "Keep", age: 30 });
-    const { success: createSuccess } = await createUow.executeMutations();
-    expect(createSuccess).toBe(true);
-
-    const ignoreUow = queryEngine.createUnitOfWork("upsert-ignore");
-    ignoreUow.upsert("users", "user-ignore-1", (b) =>
-      b.values({ name: "Overwrite?", age: 31 }).onConflictIgnore(),
-    );
-    const { success: ignoreSuccess } = await ignoreUow.executeMutations();
-    expect(ignoreSuccess).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("upsert-ignore-verify")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-ignore-1")))
-      .executeRetrieve();
-
-    expect(users[0]).toMatchObject({ name: "Keep", age: 30 });
-    expect(users[0].id.version).toBe(0);
-
-    const cleanupUow = queryEngine.createUnitOfWork("upsert-ignore-cleanup");
-    cleanupUow.delete("users", "user-ignore-1");
-    await cleanupUow.executeMutations();
-  });
-
-  it("should insert with onConflictIgnore() when record is missing", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const id = "user-ignore-insert-1";
-
-    const insertUow = queryEngine.createUnitOfWork("upsert-ignore-insert");
-    insertUow.upsert("users", id, (b) =>
-      b.values({ name: "Zzz Ignore Insert", age: 40 }).onConflictIgnore(),
-    );
-    const { success } = await insertUow.executeMutations();
-    expect(success).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("upsert-ignore-insert-verify")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)))
-      .executeRetrieve();
-
-    expect(users[0]).toMatchObject({ name: "Zzz Ignore Insert", age: 40 });
-    expect(users[0].id.version).toBe(0);
-  });
-
-  it("should reject check() with onConflictIgnore()", () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const id = new FragnoId({ externalId: "user-ignore-check-1", version: 0 });
-    const uow = queryEngine.createUnitOfWork("upsert-ignore-check");
-
-    expect(() => {
-      uow.upsert("users", id, (b) =>
-        b.values({ name: "Zzz Ignore Check", age: 18 }).check().onConflictIgnore(),
-      );
-    }).toThrow(`Cannot use check() with onConflictIgnore() on table "users".`);
-  });
-
   it("should support count operations", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "User1", age: 20 });
@@ -559,7 +354,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support cursor-based pagination", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "Page User A", age: 20 });
@@ -609,7 +404,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support joins", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "Email User", age: 20 });
@@ -669,28 +464,8 @@ describe("SqlAdapter SQLite", () => {
     });
   });
 
-  it("should return null for left-joined relation when foreign key is null", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-
-    const createUow = queryEngine.createUnitOfWork("create-optional-email");
-    createUow.create("optional_emails", {
-      user_id: null,
-      email: "optional@example.com",
-    });
-    await createUow.executeMutations();
-
-    const uow = queryEngine
-      .createUnitOfWork("join-optional-email")
-      .find("optional_emails", (b) => b.whereIndex("primary").join((jb) => jb.user()));
-
-    const [[email]] = await uow.executeRetrieve();
-
-    expect(email.email).toBe("optional@example.com");
-    expect(email.user).toBeNull();
-  });
-
   it("should support complex nested joins (comments -> post -> author)", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user (author)
     const createAuthorUow = queryEngine.createUnitOfWork("create-author");
@@ -794,9 +569,9 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should return created IDs from UOW create operations", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
-    // Test 1: Create operations return IDs with both external and internal IDs
+    // Test 1: Create operations return IDs with external IDs (MySQL doesn't support RETURNING)
     const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
 
     uow1.create("users", { name: "Test User 1", age: 30 });
@@ -810,17 +585,17 @@ describe("SqlAdapter SQLite", () => {
     expect(createdIds1).toMatchObject([
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(BigInt),
       }),
     ]);
+    for (const id of createdIds1) {
+      expect(id.internalId).toBeUndefined();
+    }
 
     // All external IDs should be unique
     const externalIds = createdIds1.map((id) => id.externalId);
@@ -894,7 +669,7 @@ describe("SqlAdapter SQLite", () => {
 
     expect(createdIds3).toHaveLength(1);
     expect(createdIds3[0].externalId).toBe(customId);
-    expect(createdIds3[0].internalId).toBeDefined();
+    expect(createdIds3[0].internalId).toBeUndefined();
 
     // Verify the user was created with the custom ID
     const customIdUser = await queryEngine.findFirst("users", (b) =>
@@ -911,7 +686,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should handle timestamps and timezones correctly", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-timestamp");
@@ -968,8 +743,8 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support forSchema for multi-schema queries", async () => {
-    const queryEngine1 = adapter.createQueryEngine(testSchema, "namespace");
-    const queryEngine2 = adapter.createQueryEngine(schema2, "namespace2");
+    const queryEngine1 = adapter.createQueryEngine(testSchema, namespace);
+    const queryEngine2 = adapter.createQueryEngine(schema2, namespace2);
 
     // Create test data in schema1 (users)
     const createUsersUow = queryEngine1.createUnitOfWork("create-users-for-multi-schema");
@@ -1055,7 +830,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should verify hasNextPage in cursor pagination", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create exactly 15 users for precise pagination testing
     const prefix = "HasNextPageTest";
@@ -1106,7 +881,7 @@ describe("SqlAdapter SQLite", () => {
   });
 
   it("should support handlerTx with retry logic", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a test user
     const createUow = queryEngine.createUnitOfWork("create-user-for-execute-uow");
@@ -1176,44 +951,8 @@ describe("SqlAdapter SQLite", () => {
     });
   });
 
-  it("should update non-existent entity without check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const missingId = "missing-user-update";
-
-    const uow = queryEngine.createUnitOfWork("update-missing-user");
-    uow.update("users", missingId, (b) => b.set({ age: 99 }));
-
-    const { success } = await uow.executeMutations();
-    expect(success).toBe(true);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("verify-missing-user-update")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", missingId)))
-      .executeRetrieve();
-
-    expect(users).toHaveLength(0);
-  });
-
-  it("should fail update for non-existent entity with check()", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const missingId = FragnoId.fromExternal("missing-user-update-check", 0);
-
-    const uow = queryEngine.createUnitOfWork("update-missing-user-check");
-    uow.update("users", missingId, (b) => b.set({ age: 100 }).check());
-
-    const { success } = await uow.executeMutations();
-    expect(success).toBe(false);
-
-    const [users] = await queryEngine
-      .createUnitOfWork("verify-missing-user-update-check")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", missingId.externalId)))
-      .executeRetrieve();
-
-    expect(users).toHaveLength(0);
-  });
-
   it("should fail check() when version changes", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine = adapter.createQueryEngine(testSchema, namespace);
 
     // Create a user
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");

@@ -263,6 +263,20 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
       externalId: mutation.externalId,
       set: mutation.set,
       versionstamp: mutation.versionstamp,
+      checkVersion: mutation.checkVersion,
+    };
+  }
+
+  if (mutation.op === "upsert") {
+    return {
+      op: "upsert",
+      schema: mutation.schema,
+      table: mutation.table,
+      externalId: mutation.externalId,
+      values: mutation.values,
+      versionstamp: mutation.versionstamp,
+      conflict: mutation.conflict,
+      checkVersion: mutation.checkVersion,
     };
   }
 
@@ -272,6 +286,7 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
     table: mutation.table,
     externalId: mutation.externalId,
     versionstamp: mutation.versionstamp,
+    checkVersion: mutation.checkVersion,
   };
 }
 

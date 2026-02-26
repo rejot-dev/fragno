@@ -806,6 +806,77 @@ describe("UpdateBuilder with string ID", () => {
   });
 });
 
+describe("Upsert with check", () => {
+  const testSchema = schema("test", (s) =>
+    s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+  );
+
+  it("should allow upsert with FragnoId and check", async () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    const id = new FragnoId({ externalId: "user-123", version: 1 });
+    uow.forSchema(testSchema).upsert("users", id, (b) => b.values({ name: "New Name" }).check());
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops).toMatchObject([
+      {
+        type: "upsert",
+        id,
+        checkVersion: true,
+        conflict: "update",
+      },
+    ]);
+  });
+
+  it("should throw when using check with string ID", async () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .upsert("users", "user-123", (b) => b.values({ name: "New Name" }).check());
+    }).toThrow(
+      'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
+    );
+  });
+});
+
+describe("Upsert with onConflictIgnore", () => {
+  const testSchema = schema("test", (s) =>
+    s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+  );
+
+  it("should allow onConflictIgnore()", async () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    uow
+      .forSchema(testSchema)
+      .upsert("users", "user-123", (b) => b.values({ name: "New Name" }).onConflictIgnore());
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops).toMatchObject([
+      {
+        type: "upsert",
+        id: "user-123",
+        conflict: "ignore",
+      },
+    ]);
+  });
+
+  it("should throw when using check with onConflictIgnore()", async () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const id = new FragnoId({ externalId: "user-123", version: 1 });
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .upsert("users", id, (b) => b.values({ name: "New Name" }).onConflictIgnore().check());
+    }).toThrow('Cannot use check() with onConflictIgnore() on table "users".');
+  });
+});
+
 describe("DeleteBuilder with string ID", () => {
   const testSchema = schema("test", (s) =>
     s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),

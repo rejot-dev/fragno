@@ -169,6 +169,51 @@ describe("SQLQueryCompiler", () => {
 
       expect(query.sql).toMatchInlineSnapshot(`"delete from "users" where "users"."id" = ?"`);
     });
+
+    test("compileUpsert generates correct SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new PostgreSQLQueryCompiler(db, new NodePostgresDriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on conflict ("id") do update set "name" = ?, "email" = ?, "age" = ?, "_version" = coalesce("_version", 0) + 1"`,
+      );
+    });
+
+    test("compileUpsert with conflict where and returning", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new PostgreSQLQueryCompiler(db, new NodePostgresDriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        conflictWhere: {
+          type: "compare",
+          a: testSchema.tables.users.getVersionColumn(),
+          operator: "=",
+          b: 2,
+        },
+        returning: true,
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on conflict ("id") do update set "name" = ?, "email" = ?, "age" = ?, "_version" = coalesce("_version", 0) + 1 where "users"."_version" = ? returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+      );
+    });
   });
 
   describe("MySQLQueryCompiler", () => {
@@ -189,6 +234,65 @@ describe("SQLQueryCompiler", () => {
       );
       expect(query.sql).not.toContain("returning");
     });
+
+    test("compileUpsert generates correct SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new MySQLQueryCompiler(db, new MySQL2DriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on duplicate key update "name" = ?, "email" = ?, "age" = ?, "_version" = coalesce("_version", 0) + 1, "id" = if("id" = values("id"), "id", null)"`,
+      );
+    });
+
+    test("compileUpsert with check version generates conditional update SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new MySQLQueryCompiler(db, new MySQL2DriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        checkVersionValue: 5,
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on duplicate key update "name" = if("_version" = ?, ?, "name"), "email" = if("_version" = ?, ?, "email"), "age" = if("_version" = ?, ?, "age"), "_version" = if("_version" = ?, coalesce("_version", 0) + 1, "_version"), "id" = if("id" = values("id"), "id", null)"`,
+      );
+    });
+
+    test("compileUpsert with onConflictIgnore generates correct SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new MySQLQueryCompiler(db, new MySQL2DriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        conflictAction: "ignore",
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on duplicate key update "id" = "id""`,
+      );
+    });
   });
 
   describe("SQLiteQueryCompiler", () => {
@@ -208,6 +312,45 @@ describe("SQLQueryCompiler", () => {
         `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
       expect(query.sql).toContain("returning");
+    });
+
+    test("compileUpsert generates correct SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new SQLiteQueryCompiler(db, new BetterSQLite3DriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on conflict ("id") do update set "name" = ?, "email" = ?, "age" = ?, "_version" = coalesce("_version", 0) + 1"`,
+      );
+    });
+
+    test("compileUpsert with onConflictIgnore generates correct SQL", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new SQLiteQueryCompiler(db, new BetterSQLite3DriverConfig());
+
+      const query = compiler.compileUpsert(testSchema.tables.users, {
+        values: {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        conflictAction: "ignore",
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) on conflict ("id") do nothing"`,
+      );
     });
 
     test("compileUpdate succeeds when version column needs quoting", async () => {

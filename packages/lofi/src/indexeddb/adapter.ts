@@ -591,7 +591,66 @@ const applyMutation = async <
     return;
   }
 
-  const values = mutation.op === "create" ? mutation.values : mutation.set;
+  if (mutation.op === "upsert") {
+    const conflictRow = existing;
+    if (conflictRow) {
+      const idColumnName = table.getIdColumn().name;
+      const { [idColumnName]: _ignoredId, ...valuesWithoutId } = mutation.values;
+      if (conflictRow._lofi.versionstamp.startsWith("local-")) {
+        const isMatch = Object.entries(valuesWithoutId).every(([column, value]) =>
+          Object.is(conflictRow.data[column], value),
+        );
+        if (isMatch) {
+          const row: LofiRow = {
+            ...conflictRow,
+            data: { ...conflictRow.data, ...valuesWithoutId },
+            _lofi: {
+              ...conflictRow._lofi,
+              versionstamp: mutation.versionstamp,
+            },
+          };
+          await rowsStore.put(row);
+          return;
+        }
+      }
+
+      const data = { ...conflictRow.data, ...valuesWithoutId };
+      const internalId = conflictRow._lofi.internalId;
+      const version = conflictRow._lofi.version + 1;
+      const norm = await buildNormalizedValues({
+        schema,
+        table,
+        data,
+        rowId: conflictRow.id,
+        internalId,
+        version,
+        endpointName,
+        rowsStore,
+        referenceTargets,
+      });
+
+      const row: LofiRow = {
+        key: conflictRow.key,
+        endpoint: endpointName,
+        schema: schema.name,
+        table: table.name,
+        id: conflictRow.id,
+        data,
+        _lofi: {
+          versionstamp: mutation.versionstamp,
+          norm,
+          internalId,
+          version,
+        },
+      };
+
+      await rowsStore.put(row);
+      return;
+    }
+  }
+
+  const values =
+    mutation.op === "create" || mutation.op === "upsert" ? mutation.values : mutation.set;
   if (existing && existing._lofi.versionstamp.startsWith("local-")) {
     const isMatch = Object.entries(values).every(([column, value]) =>
       Object.is(existing.data[column], value),

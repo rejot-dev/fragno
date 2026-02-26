@@ -54,6 +54,26 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
       continue;
     }
 
+    if (op.type === "upsert") {
+      drafts.push({
+        op: "upsert",
+        schema: schemaName,
+        namespace,
+        table: op.table,
+        externalId: op.generatedExternalId,
+        values: encodeOutboxValues({
+          table,
+          values: op.values,
+          mutationIndex,
+          namespace,
+          lookups,
+        }),
+        conflict: op.conflict,
+        checkVersion: op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined,
+      });
+      continue;
+    }
+
     if (op.type === "update") {
       drafts.push({
         op: "update",

@@ -118,6 +118,22 @@ const buildLocalMutation = (
     };
   }
 
+  if (operation.type === "upsert") {
+    return {
+      op: "upsert",
+      schema: operation.schema.name,
+      table: operation.table,
+      externalId: operation.generatedExternalId,
+      values: operation.values as Record<string, unknown>,
+      versionstamp,
+      conflict: operation.conflict,
+      checkVersion:
+        operation.checkVersion && operation.id instanceof FragnoId
+          ? operation.id.version
+          : undefined,
+    };
+  }
+
   if (operation.type === "update") {
     return {
       op: "update",
@@ -126,6 +142,10 @@ const buildLocalMutation = (
       externalId: getExternalId(operation.id),
       set: operation.set as Record<string, unknown>,
       versionstamp,
+      checkVersion:
+        operation.checkVersion && operation.id instanceof FragnoId
+          ? operation.id.version
+          : undefined,
     };
   }
 
@@ -136,6 +156,10 @@ const buildLocalMutation = (
       table: operation.table,
       externalId: getExternalId(operation.id),
       versionstamp,
+      checkVersion:
+        operation.checkVersion && operation.id instanceof FragnoId
+          ? operation.id.version
+          : undefined,
     };
   }
 
@@ -151,6 +175,7 @@ const isMutationOperation = (
   operation: LocalCompiledOperation,
 ): operation is MutationOperation<AnySchema> =>
   operation.type === "create" ||
+  operation.type === "upsert" ||
   operation.type === "update" ||
   operation.type === "delete" ||
   operation.type === "check";
