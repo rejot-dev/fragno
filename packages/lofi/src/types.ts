@@ -141,6 +141,14 @@ export type LofiMutation =
       versionstamp: string;
     }
   | {
+      op: "upsert";
+      schema: string;
+      table: string;
+      externalId: string;
+      values: Record<string, unknown>;
+      versionstamp: string;
+    }
+  | {
       op: "update";
       schema: string;
       table: string;

@@ -234,7 +234,7 @@ export const collectWriteKeys = (
 
     const schemaName = op.namespace ?? "";
 
-    if (op.type === "create") {
+    if (op.type === "create" || op.type === "upsert") {
       keys.push({
         schema: schemaName,
         table: op.table,

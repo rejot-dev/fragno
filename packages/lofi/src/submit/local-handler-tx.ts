@@ -118,6 +118,17 @@ const buildLocalMutation = (
     };
   }
 
+  if (operation.type === "upsert") {
+    return {
+      op: "upsert",
+      schema: operation.schema.name,
+      table: operation.table,
+      externalId: operation.generatedExternalId,
+      values: operation.values as Record<string, unknown>,
+      versionstamp,
+    };
+  }
+
   if (operation.type === "update") {
     return {
       op: "update",
@@ -151,6 +162,7 @@ const isMutationOperation = (
   operation: LocalCompiledOperation,
 ): operation is MutationOperation<AnySchema> =>
   operation.type === "create" ||
+  operation.type === "upsert" ||
   operation.type === "update" ||
   operation.type === "delete" ||
   operation.type === "check";

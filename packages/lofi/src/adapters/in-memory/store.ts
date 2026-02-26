@@ -420,7 +420,50 @@ export class InMemoryLofiStore {
       return;
     }
 
-    const values = mutation.op === "create" ? mutation.values : mutation.set;
+    if (mutation.op === "upsert") {
+      const conflictRow = existing;
+      if (conflictRow) {
+        tableStore.tombstones.delete(conflictRow.id);
+        const idColumnName = table.getIdColumn().name;
+        const { [idColumnName]: _ignoredId, ...valuesWithoutId } = mutation.values;
+        const data = { ...conflictRow.data, ...valuesWithoutId };
+        const internalId = conflictRow._lofi.internalId;
+        const version = conflictRow._lofi.version + 1;
+        const norm = buildNormalizedValues({
+          schema,
+          table,
+          data,
+          rowId: conflictRow.id,
+          internalId,
+          version,
+          store: this,
+          referenceTargets: this.referenceTargets,
+        });
+
+        const row: InMemoryLofiRow = {
+          key: conflictRow.key,
+          endpoint: this.endpointName,
+          schema: schema.name,
+          table: table.name,
+          id: conflictRow.id,
+          data,
+          _lofi: {
+            versionstamp: mutation.versionstamp,
+            norm,
+            internalId,
+            version,
+          },
+        };
+
+        updateRowIndexes(tableStore, conflictRow, row);
+        tableStore.rowsByExternalId.set(row.id, row);
+        tableStore.rowsByInternalId.set(row._lofi.internalId, row);
+        return;
+      }
+    }
+
+    const values =
+      mutation.op === "create" || mutation.op === "upsert" ? mutation.values : mutation.set;
     if (!existing && mutation.op === "update") {
       return;
     }

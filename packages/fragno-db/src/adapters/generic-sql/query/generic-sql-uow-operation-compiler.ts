@@ -206,6 +206,23 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     };
   }
 
+  override compileUpsert(
+    op: MutationOperation<AnySchema> & { type: "upsert" },
+  ): CompiledMutation<CompiledQuery> | null {
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
+    const table = this.getTable(op.schema, op.table);
+
+    return {
+      query: sqlCompiler.compileUpsert(table, {
+        values: op.values,
+      }),
+      operation: op,
+      op: "upsert",
+      expectedAffectedRows: null,
+      expectedReturnedRows: null,
+    };
+  }
+
   override compileUpdate(
     op: MutationOperation<AnySchema> & { type: "update" },
   ): CompiledMutation<CompiledQuery> | null {

@@ -1415,6 +1415,81 @@ export const createInMemoryUowExecutor = (
           continue;
         }
 
+        if (operation.type === "upsert") {
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
+          const table = operation.schema.tables[operation.table];
+          if (!table) {
+            throw new Error(`Invalid table name ${operation.table}.`);
+          }
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+          const idColumn = table.getIdColumn();
+          const rawIdValue = (operation.values as Record<string, unknown>)[idColumn.name];
+          const externalId =
+            typeof rawIdValue === "string"
+              ? rawIdValue
+              : typeof rawIdValue === "object" && rawIdValue !== null && "externalId" in rawIdValue
+                ? (rawIdValue as FragnoId).externalId
+                : undefined;
+          if (typeof externalId !== "string" || externalId.length === 0) {
+            throw new Error(`Invalid external id for table "${table.name}".`);
+          }
+          const existing = findRowByExternalId(tableStore, table, externalId, resolver);
+
+          if (existing) {
+            const idColumnName = getPhysicalColumnName(table, idColumn.name, resolver);
+            const existingExternalId = existing.row[idColumnName];
+            if (typeof existingExternalId !== "string") {
+              throw new Error(`Invalid external id for table "${table.name}".`);
+            }
+
+            const updateValues = { ...(operation.values as Record<string, unknown>) };
+            delete updateValues[idColumn.name];
+            const updateOp: Extract<MutationOperation<AnySchema>, { type: "update" }> = {
+              type: "update",
+              schema: operation.schema,
+              namespace: operation.namespace,
+              table: operation.table,
+              id: existingExternalId,
+              checkVersion: false,
+              set: updateValues as Record<string, unknown>,
+            };
+            const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
+            if (rollback) {
+              rollbackActions.push(rollback);
+            }
+            continue;
+          }
+
+          const previousInternalId = tableStore.nextInternalId;
+          const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
+            type: "create",
+            schema: operation.schema,
+            namespace: operation.namespace,
+            table: operation.table,
+            values: operation.values,
+            generatedExternalId: externalId,
+          };
+          const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
+          rollbackActions.push(() => {
+            const row = tableStore.rows.get(internalId);
+            if (row) {
+              for (const indexStore of tableStore.indexes.values()) {
+                const key = buildIndexKey(table, indexStore.definition, row, resolver);
+                indexStore.index.remove(key, internalId);
+              }
+              tableStore.rows.delete(internalId);
+            }
+            tableStore.nextInternalId = previousInternalId;
+          });
+          continue;
+        }
+
         if (operation.type === "update") {
           const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
           const namespaceStore = getNamespaceStore(

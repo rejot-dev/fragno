@@ -27,6 +27,15 @@ export type OutboxMutation =
       values: Record<string, unknown>;
     }
   | {
+      op: "upsert";
+      schema: string;
+      namespace?: string;
+      table: string;
+      externalId: string;
+      versionstamp: string;
+      values: Record<string, unknown>;
+    }
+  | {
       op: "update";
       schema: string;
       namespace?: string;
