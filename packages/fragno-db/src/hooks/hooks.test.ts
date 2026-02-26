@@ -124,6 +124,96 @@ describe("Hook System", () => {
       });
     });
 
+    it("should store a provided hook id", async () => {
+      const namespace = internalFragment.$internal.deps.namespace ?? internalSchema.name;
+      const hookId = "hook-id-1";
+      const hooks: HooksMap = {
+        onId: vi.fn(),
+      };
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+
+            uow.triggerHook("onId", { data: "test" }, { id: hookId });
+
+            prepareHookMutations(
+              uow,
+              internalFragment,
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            );
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.id.externalId).toBe(hookId);
+    });
+
+    it("should fail when a hook id already exists", async () => {
+      const namespace = internalFragment.$internal.deps.namespace ?? internalSchema.name;
+      const hookId = "hook-id-conflict";
+      const hooks: HooksMap = {
+        onIdConflict: vi.fn(),
+      };
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+
+            uow.triggerHook("onIdConflict", { data: "first" }, { id: hookId });
+
+            prepareHookMutations(
+              uow,
+              internalFragment,
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            );
+          })
+          .execute();
+      });
+
+      await expect(
+        internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema, hooks);
+
+              uow.triggerHook("onIdConflict", { data: "second" }, { id: hookId });
+
+              prepareHookMutations(
+                uow,
+                internalFragment,
+                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+              );
+            })
+            .execute();
+        }),
+      ).rejects.toThrow();
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.id.externalId).toBe(hookId);
+    });
+
     it("should set maxAttempts to 1 when retry policy does not retry", async () => {
       const hooks: HooksMap = {
         onNoRetry: vi.fn(),

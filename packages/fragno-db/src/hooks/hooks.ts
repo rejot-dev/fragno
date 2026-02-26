@@ -96,6 +96,11 @@ export interface TriggerHookOptions {
    */
   retryPolicy?: RetryPolicy;
   /**
+   * Optional hook event ID. When provided, the hook insert will fail if a hook
+   * with the same ID already exists.
+   */
+  id?: string | FragnoId;
+  /**
    * Absolute time for the first attempt. If in the future, the hook is
    * scheduled for that time; if in the past, it runs immediately.
    */
@@ -229,7 +234,8 @@ export function prepareHookMutations(
     const processAt: Date | DbNow | null =
       rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
     const nextRetryAt = processAt ?? null;
-    internalUow.create("fragno_hooks", {
+    const hookValues = {
+      ...(hook.options?.id !== undefined ? { id: hook.options.id } : {}),
       namespace: hook.namespace,
       hookName: hook.hookName,
       payload: hook.payload,
@@ -240,7 +246,9 @@ export function prepareHookMutations(
       nextRetryAt,
       error: null,
       nonce: uow.idempotencyKey,
-    });
+    };
+
+    internalUow.create("fragno_hooks", hookValues);
   }
 }
 
