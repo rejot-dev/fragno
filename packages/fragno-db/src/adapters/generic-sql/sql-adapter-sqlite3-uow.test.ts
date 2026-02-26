@@ -10,7 +10,9 @@ import {
 } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "./driver-config";
+import { prepareHookMutations, type HooksMap } from "../../hooks/hooks";
 import { internalSchema } from "../../fragments/internal-fragment";
+import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
 
 describe("SqlAdapter SQLite", () => {
   const testSchema = schema("test", (s) => {
@@ -259,6 +261,45 @@ describe("SqlAdapter SQLite", () => {
       }),
       age: 26, // Still 26, not 27
     });
+  });
+
+  it("should fail inserting duplicate triggered hook ids", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const hookId = "hook-duplicate-id";
+    const hooks: HooksMap = {
+      onTest: () => {},
+    };
+
+    const internalFragmentStub = {
+      $internal: { deps: { schema: internalSchema } },
+    } as InternalFragmentInstance;
+
+    const buildHookUow = (name: string) => {
+      const uow = queryEngine.createUnitOfWork(name).forSchema(testSchema, hooks);
+      uow.triggerHook("onTest", { data: name }, { id: hookId });
+      prepareHookMutations(
+        uow,
+        internalFragmentStub,
+        new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+      );
+      return uow;
+    };
+
+    const firstUow = buildHookUow("hook-duplicate-first");
+    const { success } = await firstUow.executeMutations();
+    expect(success).toBe(true);
+
+    const secondUow = buildHookUow("hook-duplicate-second");
+    await expect(secondUow.executeMutations()).rejects.toThrow();
+
+    const verifyUow = queryEngine.createUnitOfWork("verify-duplicate-hook-id");
+    const internalUow = verifyUow.forSchema(internalSchema);
+    const findUow = internalUow.find("fragno_hooks", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
+    );
+    const [events] = await findUow.executeRetrieve();
+
+    expect(events).toHaveLength(1);
   });
 
   it("should support count operations", async () => {
