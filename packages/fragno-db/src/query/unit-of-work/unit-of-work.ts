@@ -45,6 +45,12 @@ export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];
 
 type RemoveEmptyObject<T> = T extends object ? (keyof T extends never ? never : T) : never;
 
+type ExtractJoinBuilderSelect<T> =
+  T extends JoinFindBuilder<infer _Table, infer TSelect, infer _JoinOut> ? TSelect : true;
+
+type ExtractJoinBuilderOut<T> =
+  T extends JoinFindBuilder<infer _Table, infer _Select, infer TJoinOut> ? TJoinOut : {};
+
 /**
  * Extract all indexed column names from a table's indexes
  */
@@ -824,15 +830,23 @@ export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
     infer TRelationType,
     infer TTargetTable
   >
-    ? <TSelect extends SelectClause<TTable["relations"][K]["table"]> = true, TNestedJoinOut = {}>(
-        builderFn?: (
+    ? <
+        TBuilderFn extends (
           builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
-        ) => JoinFindBuilder<TTable["relations"][K]["table"], TSelect, TNestedJoinOut>,
+        ) => unknown = (
+          builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
+        ) => JoinFindBuilder<TTable["relations"][K]["table"]>,
+      >(
+        builderFn?: TBuilderFn,
       ) => IndexedJoinBuilder<
         TTable,
         TJoinOut & {
           [P in K]: MapRelationType<
-            SelectResult<TTargetTable, TNestedJoinOut, TSelect>
+            SelectResult<
+              TTargetTable,
+              ExtractJoinBuilderOut<ReturnType<TBuilderFn>>,
+              ExtractJoinBuilderSelect<ReturnType<TBuilderFn>>
+            >
           >[TRelationType];
         }
       >

@@ -13,7 +13,7 @@ import type { CursorResult } from "./cursor";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
-export type SelectClause<T extends AnyTable> = true | (keyof T["columns"])[];
+export type SelectClause<T extends AnyTable> = true | readonly (keyof T["columns"])[];
 
 export type RawColumnValues<T extends AnyTable> = {
   [K in keyof T["columns"] as string extends K ? never : K]: T["columns"][K]["$out"];
@@ -45,7 +45,7 @@ export type TableToUpdateValues<T extends AnyTable> = {
 
 type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true
   ? TableToColumnValues<T>
-  : S extends (keyof T["columns"])[]
+  : S extends readonly (keyof T["columns"])[]
     ? Prettify<{
         [K in S[number] as string extends K ? never : K]: K extends keyof T["columns"]
           ? T["columns"][K]["$out"]

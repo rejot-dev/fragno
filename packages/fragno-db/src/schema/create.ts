@@ -1093,11 +1093,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   >(
     name: TTableName,
     callback: (
-      builder: TableBuilder<
-        Record<string, AnyColumn>,
-        Record<string, AnyRelation>,
-        Record<string, Index>
-      >,
+      builder: TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>,
     ) => TableBuilder<TColumns, TRelations, TIndexes>,
   ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>> {
     this.#version++;
@@ -1106,7 +1102,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
     }
 
-    const tableBuilder = new TableBuilder(name);
+    const tableBuilder = new TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>(
+      name,
+    );
     const result = callback(tableBuilder);
     const builtTable = result.build();
     const indexNames = result.getIndexes().map((idx) => idx.name);

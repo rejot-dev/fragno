@@ -12,6 +12,7 @@ import type {
   RawColumnValues,
   TableToColumnValues,
   TableToInsertValues,
+  TableToUpdateValues,
 } from "../query/simple-query-interface";
 
 describe("create", () => {
@@ -487,6 +488,34 @@ describe("create", () => {
 
     // Version should be: 1 (addTable) + 1 (first alter) + 1 (second alter)
     expect(userSchema.version).toBe(3);
+  });
+
+  it("should preserve user-defined columns after alterTable type updates", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .addColumn("passwordHash", column("string"));
+        })
+        .alterTable("users", (t) => {
+          expectTypeOf(t.alterColumn).parameter(0).toEqualTypeOf<"email" | "passwordHash">();
+          return t.alterColumn("passwordHash").nullable();
+        });
+    });
+
+    type UserColumns = typeof userSchema.tables.users.columns;
+    type UserColumnKeys = keyof UserColumns;
+
+    expectTypeOf<UserColumnKeys>().not.toEqualTypeOf<string>();
+    expectTypeOf<UserColumnKeys>().toEqualTypeOf<"id" | "email" | "passwordHash">();
+
+    type UpdateValues = TableToUpdateValues<typeof userSchema.tables.users>;
+    expectTypeOf<UpdateValues>().toMatchObjectType<{
+      email?: string;
+      passwordHash?: string | null;
+    }>();
   });
 
   it("should preserve indexes when altering a table", () => {
