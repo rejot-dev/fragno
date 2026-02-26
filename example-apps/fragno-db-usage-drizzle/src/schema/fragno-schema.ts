@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
 
@@ -93,7 +93,7 @@ const schema_auth = pgSchema("auth");
 export const user_auth = schema_auth.table("user", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
+  passwordHash: text("passwordHash"),
   role: text("role").notNull().default("user"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -221,6 +221,59 @@ export const organizationInvitation_auth = schema_auth.table("organizationInvita
   index("idx_org_invitation_email_status").on(table.email, table.status)
 ])
 
+export const oauthAccount_auth = schema_auth.table("oauthAccount", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  provider: text("provider").notNull(),
+  providerAccountId: text("providerAccountId").notNull(),
+  email: text("email"),
+  emailVerified: boolean("emailVerified").notNull().default(false),
+  image: text("image"),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  tokenType: text("tokenType"),
+  tokenExpiresAt: timestamp("tokenExpiresAt"),
+  scopes: json("scopes"),
+  rawProfile: json("rawProfile"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthAccount_user_oauthAccountUser"
+  }),
+  uniqueIndex("idx_oauth_account_provider_account").on(table.provider, table.providerAccountId),
+  index("idx_oauth_account_user").on(table.userId),
+  index("idx_oauth_account_provider").on(table.provider)
+])
+
+export const oauthState_auth = schema_auth.table("oauthState", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  provider: text("provider").notNull(),
+  state: text("state").notNull(),
+  codeVerifier: text("codeVerifier"),
+  redirectUri: text("redirectUri"),
+  returnTo: text("returnTo"),
+  linkUserId: bigint("linkUserId", { mode: "number" }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.linkUserId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthState_user_oauthStateLinkUser"
+  }),
+  uniqueIndex("idx_oauth_state_state").on(table.state),
+  index("idx_oauth_state_provider").on(table.provider),
+  index("idx_oauth_state_expiresAt").on(table.expiresAt)
+])
+
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
     relationName: "session_user"
@@ -233,6 +286,12 @@ export const user_authRelations = relations(user_auth, ({ many }) => ({
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
     relationName: "organizationInvitation_user"
+  }),
+  oauthAccountList: many(oauthAccount_auth, {
+    relationName: "oauthAccount_user"
+  }),
+  oauthStateList: many(oauthState_auth, {
+    relationName: "oauthState_user"
   })
 }));
 
@@ -303,6 +362,22 @@ export const organizationInvitation_authRelations = relations(organizationInvita
   })
 }));
 
+export const oauthAccount_authRelations = relations(oauthAccount_auth, ({ one }) => ({
+  oauthAccountUser: one(user_auth, {
+    relationName: "oauthAccount_user",
+    fields: [oauthAccount_auth.userId],
+    references: [user_auth._internalId]
+  })
+}));
+
+export const oauthState_authRelations = relations(oauthState_auth, ({ one }) => ({
+  oauthStateLinkUser: one(user_auth, {
+    relationName: "oauthState_user",
+    fields: [oauthState_auth.linkUserId],
+    references: [user_auth._internalId]
+  })
+}));
+
 export const auth_schema = {
   user_auth: user_auth,
   user_authRelations: user_authRelations,
@@ -328,7 +403,15 @@ export const auth_schema = {
   organizationInvitation_authRelations: organizationInvitation_authRelations,
   organizationInvitation: organizationInvitation_auth,
   organizationInvitationRelations: organizationInvitation_authRelations,
-  schemaVersion: 16
+  oauthAccount_auth: oauthAccount_auth,
+  oauthAccount_authRelations: oauthAccount_authRelations,
+  oauthAccount: oauthAccount_auth,
+  oauthAccountRelations: oauthAccount_authRelations,
+  oauthState_auth: oauthState_auth,
+  oauthState_authRelations: oauthState_authRelations,
+  oauthState: oauthState_auth,
+  oauthStateRelations: oauthState_authRelations,
+  schemaVersion: 21
 }
 
 // ============================================================================

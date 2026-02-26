@@ -195,5 +195,78 @@ export const authSchema = schema("auth", (s) => {
         column: "id",
       },
       type: "one",
+    })
+    .addTable("oauthAccount", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("userId", referenceColumn())
+        .addColumn("provider", column("string"))
+        .addColumn("providerAccountId", column("string"))
+        .addColumn("email", column("string").nullable())
+        .addColumn("emailVerified", column("bool").defaultTo(false))
+        .addColumn("image", column("string").nullable())
+        .addColumn("accessToken", column("string").nullable())
+        .addColumn("refreshToken", column("string").nullable())
+        .addColumn("idToken", column("string").nullable())
+        .addColumn("tokenType", column("string").nullable())
+        .addColumn("tokenExpiresAt", column("timestamp").nullable())
+        .addColumn("scopes", column("json").nullable())
+        .addColumn("rawProfile", column("json").nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_oauth_account_provider_account", ["provider", "providerAccountId"], {
+          unique: true,
+        })
+        .createIndex("idx_oauth_account_user", ["userId"])
+        .createIndex("idx_oauth_account_provider", ["provider"]);
+    })
+    .addTable("oauthState", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("provider", column("string"))
+        .addColumn("state", column("string"))
+        .addColumn("codeVerifier", column("string").nullable())
+        .addColumn("redirectUri", column("string").nullable())
+        .addColumn("returnTo", column("string").nullable())
+        .addColumn("linkUserId", referenceColumn().nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn("expiresAt", column("timestamp"))
+        .createIndex("idx_oauth_state_state", ["state"], { unique: true })
+        .createIndex("idx_oauth_state_provider", ["provider"])
+        .createIndex("idx_oauth_state_expiresAt", ["expiresAt"]);
+    })
+    .addReference("oauthAccountUser", {
+      from: {
+        table: "oauthAccount",
+        column: "userId",
+      },
+      to: {
+        table: "user",
+        column: "id",
+      },
+      type: "one",
+    })
+    .addReference("oauthStateLinkUser", {
+      from: {
+        table: "oauthState",
+        column: "linkUserId",
+      },
+      to: {
+        table: "user",
+        column: "id",
+      },
+      type: "one",
+    })
+    .alterTable("user", (t) => {
+      return t.alterColumn("passwordHash").nullable();
     });
 });

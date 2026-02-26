@@ -16,7 +16,7 @@ describe("organization services", async () => {
     const passwordHash = await hashPassword("password");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+        .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
         .execute();
     });
     return user;
@@ -910,7 +910,7 @@ describe("organization service role defaults", async () => {
     const passwordHash = await hashPassword("password");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+        .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
         .execute();
     });
     return user;
@@ -1030,7 +1030,7 @@ describe("organization service limits", async () => {
     const passwordHash = await hashPassword("password");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+        .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
         .execute();
     });
     return user;

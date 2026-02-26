@@ -19,6 +19,7 @@ import {
   Upload,
   Hammer,
   ListChecks,
+  KeyRound,
 } from "lucide-react";
 
 /**
@@ -48,4 +49,5 @@ export const iconComponents = {
   CircleQuestionMark: CircleHelp, // Note: CircleQuestionMark -> CircleHelp in lucide-react
   Hammer,
   ListChecks,
+  KeyRound,
 } as const;

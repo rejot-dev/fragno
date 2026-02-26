@@ -6,6 +6,9 @@ type AuthServiceContext = DatabaseServiceContext<{}>;
 
 export function createActiveOrganizationServices() {
   return {
+    /**
+     * Set the active organization for a session if the user is a member.
+     */
     setActiveOrganization: function (
       this: AuthServiceContext,
       sessionId: string,
@@ -50,6 +53,9 @@ export function createActiveOrganizationServices() {
         .build();
     },
 
+    /**
+     * Get the active organization id for a session.
+     */
     getActiveOrganization: function (this: AuthServiceContext, sessionId: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>

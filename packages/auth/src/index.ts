@@ -9,6 +9,8 @@ import { createOrganizationInvitationServices } from "./organization/invitation-
 import { createOrganizationMemberServices } from "./organization/member-services";
 import { createOrganizationServices } from "./organization/organization-services";
 import { organizationRoutesFactory } from "./organization/routes";
+import { createOAuthServices } from "./oauth/oauth-services";
+import { oauthRoutesFactory } from "./oauth/routes";
 import type { AuthHooks, AuthHooksMap, SessionHookPayload, UserHookPayload } from "./hooks";
 import type {
   DefaultOrganizationRole,
@@ -28,11 +30,13 @@ import {
 } from "./user/user-overview";
 import type { CookieOptions } from "./utils/cookie";
 import type { Role } from "./types";
+import type { AuthOAuthConfig } from "./oauth/types";
 
 export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
   cookieOptions?: CookieOptions;
   hooks?: AuthHooks;
   organizations?: OrganizationConfig<TRole> | false;
+  oauth?: AuthOAuthConfig;
 }
 
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
@@ -109,19 +113,18 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
     const organizationConfig = config.organizations === false ? undefined : config.organizations;
 
     const organizationConfigResolved = organizationConfig as OrganizationConfig<string> | undefined;
+    const autoCreateOptions = organizationsEnabled
+      ? {
+          autoCreateOrganization:
+            organizationConfig && organizationConfig.autoCreateOrganization !== false
+              ? organizationConfig.autoCreateOrganization
+              : undefined,
+          creatorRoles: organizationConfig?.creatorRoles,
+        }
+      : undefined;
 
     return defineService({
-      ...createUserServices(
-        organizationsEnabled
-          ? {
-              autoCreateOrganization:
-                organizationConfig && organizationConfig.autoCreateOrganization !== false
-                  ? organizationConfig.autoCreateOrganization
-                  : undefined,
-              creatorRoles: organizationConfig?.creatorRoles,
-            }
-          : undefined,
-      ),
+      ...createUserServices(autoCreateOptions),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
       ...createOrganizationServices({
@@ -134,6 +137,10 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
         organizationConfig: organizationConfigResolved,
       }),
       ...createActiveOrganizationServices(),
+      ...createOAuthServices({
+        oauth: config.oauth,
+        autoCreateOptions,
+      }),
     });
   })
   .build();
@@ -161,6 +168,7 @@ export function createAuthFragment(
       sessionRoutesFactory,
       userOverviewRoutesFactory,
       organizationRoutesFactory,
+      oauthRoutesFactory,
     ])
     .build();
 }
@@ -178,6 +186,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
       sessionRoutesFactory,
       userOverviewRoutesFactory,
       organizationRoutesFactory,
+      oauthRoutesFactory,
     ],
     {
       type: "options",
@@ -338,6 +347,8 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     },
   );
   const useUserInvitations = b.createHook("/organizations/invitations");
+  const useOAuthAuthorize = b.createHook("/oauth/:provider/authorize");
+  const useOAuthCallback = b.createHook("/oauth/:provider/callback");
 
   return {
     // Reactive hooks - Auth
@@ -363,6 +374,8 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     useInviteOrganizationMember,
     useRespondOrganizationInvitation,
     useUserInvitations,
+    useOAuthAuthorize,
+    useOAuthCallback,
 
     // Non-reactive methods
     signIn: {
@@ -409,6 +422,45 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
       return useMe.query();
     },
+
+    oauth: {
+      getAuthorizationUrl: async (params: {
+        provider: string;
+        returnTo?: string;
+        link?: boolean;
+        sessionId?: string;
+        redirectUri?: string;
+        scope?: string;
+        loginHint?: string;
+      }) => {
+        return useOAuthAuthorize.query({
+          path: { provider: params.provider },
+          query: {
+            redirectUri: params.redirectUri,
+            returnTo: params.returnTo,
+            link: params.link ? "true" : undefined,
+            sessionId: params.sessionId,
+            scope: params.scope,
+            loginHint: params.loginHint,
+          },
+        });
+      },
+      callback: async (params: {
+        provider: string;
+        code: string;
+        state: string;
+        requestSignUp?: boolean;
+      }) => {
+        return useOAuthCallback.query({
+          path: { provider: params.provider },
+          query: {
+            code: params.code,
+            state: params.state,
+            requestSignUp: params.requestSignUp ? "true" : undefined,
+          },
+        });
+      },
+    },
   };
 }
 
@@ -416,6 +468,10 @@ export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
 export type { AuthHooks, SessionHookPayload, UserHookPayload, SessionSummary } from "./hooks";
 export type { UserSummary } from "./types";
+export type { AuthOAuthConfig, OAuthProvider, OAuth2Tokens, OAuth2UserInfo } from "./oauth/types";
+export type { GithubOAuthClient } from "./oauth/providers/github/client";
+export type { GithubEmail, GithubProfile } from "./oauth/providers/github/github";
+export { createGithubOAuthClient, github } from "./oauth/providers/github/github";
 export type {
   AuthMeResponse,
   AutoCreateOrganizationConfig,

@@ -124,6 +124,9 @@ export function createOrganizationInvitationServices(
   const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   return {
+    /**
+     * Fetch an invitation by id and include its organization.
+     */
     getOrganizationInvitationById: function (this: AuthServiceContext, invitationId: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -156,6 +159,9 @@ export function createOrganizationInvitationServices(
         .build();
     },
 
+    /**
+     * Create an organization invitation with permission checks.
+     */
     createOrganizationInvitation: function (
       this: AuthServiceContext,
       input: CreateInvitationInput,
@@ -264,6 +270,9 @@ export function createOrganizationInvitationServices(
         .build();
     },
 
+    /**
+     * List invitations for an organization, optionally by status.
+     */
     listOrganizationInvitations: function (
       this: AuthServiceContext,
       params: { organizationId: string; status?: OrganizationInvitationStatus },
@@ -287,6 +296,9 @@ export function createOrganizationInvitationServices(
         .build();
     },
 
+    /**
+     * List invitations for an email address with organization details.
+     */
     listOrganizationInvitationsForUser: function (
       this: AuthServiceContext,
       params: { email: string; status?: OrganizationInvitationStatus },
@@ -339,6 +351,9 @@ export function createOrganizationInvitationServices(
         .build();
     },
 
+    /**
+     * Accept, reject, or cancel an invitation with validation and hooks.
+     */
     respondToOrganizationInvitation: function (
       this: AuthServiceContext,
       input: RespondInvitationInput,

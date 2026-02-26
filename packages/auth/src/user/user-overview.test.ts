@@ -42,7 +42,7 @@ describe("User Overview Services", () => {
       const passwordHash = await hashPassword(user.password);
       await fragment.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [services.createUser(user.email, passwordHash)])
+          .withServiceCalls(() => [services.createUserUnvalidated(user.email, passwordHash)])
           .execute();
       });
     }
