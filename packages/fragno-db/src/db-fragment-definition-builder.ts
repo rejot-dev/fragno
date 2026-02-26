@@ -1,6 +1,7 @@
 import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
+import { GLOBAL_SHARD_SENTINEL, type ShardScope, type ShardingStrategy } from "./sharding";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
@@ -9,6 +10,7 @@ import type {
   FragnoRouteConfig,
   BoundServices,
 } from "@fragno-dev/core";
+import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
@@ -69,7 +71,9 @@ type RegistryResolver = {
       fragment: RegistryFragmentMeta,
       options?: { outboxEnabled?: boolean },
     ) => void;
+    registerShardingStrategy: (strategy?: ShardingStrategy) => void;
     registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
+    shardingStrategy?: ShardingStrategy;
   };
   getInternalFragment: <TUOWConfig>(
     adapter: DatabaseAdapter<TUOWConfig>,
@@ -103,6 +107,10 @@ type AnyFragnoRouteConfig = FragnoRouteConfig<
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter?: DatabaseAdapter<any>;
+  /**
+   * Optional sharding strategy for row-level or adapter-level sharding.
+   */
+  shardingStrategy?: ShardingStrategy;
   /**
    * Optional outbox configuration for this fragment.
    */
@@ -138,6 +146,10 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    * The database namespace for this fragment.
    */
   namespace: string | null;
+  /**
+   * Shard context helpers bound to the current request storage.
+   */
+  shardContext: ShardContext;
   /**
    * Create a new Unit of Work for database operations.
    */
@@ -223,6 +235,27 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
   ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
 };
 
+type ShardContextMethods = {
+  getShard(): string | null;
+  setShard(shard: string | null): void;
+  withShard<T>(shard: string | null, fn: () => T | Promise<T>): T | Promise<T>;
+  getShardScope(): ShardScope;
+  setShardScope(scope: ShardScope): void;
+  withShardScope<T>(scope: ShardScope, fn: () => T | Promise<T>): T | Promise<T>;
+};
+
+/**
+ * @internal
+ */
+export type DatabaseServiceContextWithShard<THooks extends HooksMap> =
+  DatabaseServiceContext<THooks> & ShardContextMethods;
+
+/**
+ * @internal
+ */
+export type DatabaseHandlerContextWithShard<THooks extends HooksMap = {}> =
+  DatabaseHandlerContext<THooks> & ShardContextMethods;
+
 /**
  * Database fragment context provided to user callbacks.
  */
@@ -233,8 +266,9 @@ export type DatabaseFragmentContext = {
   databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
-type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragmentContext & {
-  db: SimpleQueryInterface<TSchema>;
+type DatabaseContextInternal<TSchema extends AnySchema> = {
+  databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  db: SimpleQueryInterface<TSchema, unknown>;
 };
 
 /**
@@ -244,13 +278,110 @@ type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragme
 function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
-): DatabaseFragmentContextInternal<TSchema> {
+): DatabaseContextInternal<TSchema> {
   const databaseAdapter = resolveDatabaseAdapter(options, schema);
 
   const namespace = resolveDatabaseNamespace(options, schema);
   const db = databaseAdapter.createQueryEngine(schema, namespace);
 
   return { databaseAdapter, db };
+}
+
+function resolveEffectiveShardingStrategy(
+  options: FragnoPublicConfigWithDatabase,
+  databaseAdapter: DatabaseAdapter<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  registryResolver?: RegistryResolver,
+): ShardingStrategy | undefined {
+  if (options.shardingStrategy) {
+    return options.shardingStrategy;
+  }
+  if (!registryResolver || process.env["FRAGNO_INIT_DRY_RUN"] === "true") {
+    return undefined;
+  }
+  return registryResolver.getRegistryForAdapterSync(databaseAdapter).shardingStrategy;
+}
+
+type ShardContextStorage = {
+  shard: string | null;
+  shardScope: ShardScope;
+};
+
+const SHARD_MAX_LENGTH = 64;
+
+function validateShard(shard: string | null): void {
+  if (shard === null) {
+    return;
+  }
+  if (shard === GLOBAL_SHARD_SENTINEL) {
+    throw new Error("Shard value is reserved for global scope.");
+  }
+  if (shard.length === 0) {
+    throw new Error("Shard must be a non-empty string.");
+  }
+  if (shard.length > SHARD_MAX_LENGTH) {
+    throw new Error(`Shard must be at most ${SHARD_MAX_LENGTH} characters.`);
+  }
+}
+
+function createShardContextHelpers<TStorage extends ShardContextStorage>(
+  storage: RequestContextStorage<TStorage>,
+): ShardContext {
+  const getStore = () => storage.getStore();
+
+  const withValue = <TValue, TReturn>(
+    getter: () => TValue,
+    setter: (value: TValue) => void,
+    value: TValue,
+    fn: () => TReturn | Promise<TReturn>,
+  ): TReturn | Promise<TReturn> => {
+    const previous = getter();
+    setter(value);
+    let result: TReturn | Promise<TReturn>;
+    try {
+      result = fn();
+    } catch (error) {
+      setter(previous);
+      throw error;
+    }
+    if (result && typeof (result as Promise<TReturn>).then === "function") {
+      return (result as Promise<TReturn>).finally(() => {
+        setter(previous);
+      });
+    }
+    setter(previous);
+    return result as TReturn;
+  };
+
+  return {
+    get: () => getStore().shard,
+    set: (shard) => {
+      validateShard(shard);
+      getStore().shard = shard;
+    },
+    with: (shard, fn) =>
+      withValue(
+        () => getStore().shard,
+        (value) => {
+          validateShard(value);
+          getStore().shard = value;
+        },
+        shard,
+        fn,
+      ),
+    getScope: () => getStore().shardScope,
+    setScope: (scope) => {
+      getStore().shardScope = scope;
+    },
+    withScope: (scope, fn) =>
+      withValue(
+        () => getStore().shardScope,
+        (value) => {
+          getStore().shardScope = value;
+        },
+        scope,
+        fn,
+      ),
+  };
 }
 
 function resolveDatabaseNamespace<TSchema extends AnySchema>(
@@ -271,6 +402,21 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
  */
 export type DatabaseRequestStorage = {
   uow: IUnitOfWork;
+  shard: string | null;
+  shardScope: ShardScope;
+};
+
+export type ShardContext = {
+  get: () => string | null;
+  set: (shard: string | null) => void;
+  with: <T>(shard: string | null, fn: () => T | Promise<T>) => T | Promise<T>;
+  getScope: () => ShardScope;
+  setScope: (scope: ShardScope) => void;
+  withScope: <T>(scope: ShardScope, fn: () => T | Promise<T>) => T | Promise<T>;
+};
+
+type DatabaseContextOptions = {
+  exposeShardContext?: boolean;
 };
 
 /**
@@ -310,6 +456,7 @@ export class DatabaseFragmentDefinitionBuilder<
   #hooksFactory?: (context: HooksFactoryContext<TConfig>) => THooks;
   #syncRegistry?: SyncCommandRegistry;
   #registryResolver?: RegistryResolver;
+  #contextOptions: Required<DatabaseContextOptions>;
 
   constructor(
     baseBuilder: FragmentDefinitionBuilder<
@@ -329,12 +476,16 @@ export class DatabaseFragmentDefinitionBuilder<
     hooksFactory?: (context: HooksFactoryContext<TConfig>) => THooks,
     syncRegistry?: SyncCommandRegistry,
     registryResolver?: RegistryResolver,
+    contextOptions?: DatabaseContextOptions,
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
     this.#hooksFactory = hooksFactory;
     this.#syncRegistry = syncRegistry;
     this.#registryResolver = registryResolver;
+    this.#contextOptions = {
+      exposeShardContext: contextOptions?.exposeShardContext ?? false,
+    };
   }
 
   /**
@@ -363,8 +514,12 @@ export class DatabaseFragmentDefinitionBuilder<
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
       const dbContext = createDatabaseContext(context.options, this.#schema);
+      const shardingStrategy = resolveEffectiveShardingStrategy(
+        context.options,
+        dbContext.databaseAdapter,
+        this.#registryResolver,
+      );
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
-
       // Call user function with enriched context
       const userDeps = fn({
         config: context.config,
@@ -373,11 +528,18 @@ export class DatabaseFragmentDefinitionBuilder<
       });
 
       // Create implicit dependencies
-      const createUow = () => dbContext.db.createUnitOfWork();
+      const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const createUow = () =>
+        dbContext.db.createUnitOfWork(undefined, {
+          shardingStrategy,
+          getShard: shardContext.get,
+          getShardScope: shardContext.getScope,
+        });
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
+        shardContext,
         createUnitOfWork: createUow,
       };
 
@@ -396,6 +558,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -430,6 +593,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -468,6 +632,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -513,6 +678,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -583,6 +749,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     ) as unknown as DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -632,6 +799,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       registry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -662,6 +830,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -694,6 +863,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#hooksFactory,
       this.#syncRegistry,
       this.#registryResolver,
+      this.#contextOptions,
     );
   }
 
@@ -710,8 +880,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices,
     TServiceDependencies,
     TPrivateServices,
-    DatabaseServiceContext<THooks>,
-    DatabaseHandlerContext<THooks>,
+    TServiceThisContext,
+    THandlerThisContext,
     DatabaseRequestStorage,
     TInternalRoutes
   > {
@@ -744,7 +914,11 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const dbContext = createDatabaseContext(context.options, this.#schema);
-      const { db } = dbContext;
+      const shardingStrategy = resolveEffectiveShardingStrategy(
+        context.options,
+        dbContext.databaseAdapter,
+        this.#registryResolver,
+      );
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
       const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
@@ -753,6 +927,7 @@ export class DatabaseFragmentDefinitionBuilder<
         const registry = this.#registryResolver.getRegistryForAdapterSync(
           dbContext.databaseAdapter,
         );
+        registry.registerShardingStrategy(context.options.shardingStrategy);
         const outboxEnabled = context.options.outbox?.enabled ?? false;
         registry.registerSchema(
           {
@@ -777,11 +952,18 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
+      const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
-        createUnitOfWork: () => db.createUnitOfWork(),
+        shardContext,
+        createUnitOfWork: () =>
+          dbContext.db.createUnitOfWork(undefined, {
+            shardingStrategy,
+            getShard: shardContext.get,
+            getShardScope: shardContext.getScope,
+          }),
       };
 
       return {
@@ -803,10 +985,23 @@ export class DatabaseFragmentDefinitionBuilder<
       ({ options }): DatabaseRequestStorage => {
         // Create database context - needed here to create the UOW
         const dbContextForStorage = createDatabaseContext(options, this.#schema);
+        const shardingStrategy = resolveEffectiveShardingStrategy(
+          options,
+          dbContextForStorage.databaseAdapter,
+          this.#registryResolver,
+        );
 
-        const uow = dbContextForStorage.db.createBaseUnitOfWork();
+        // Create a new Unit of Work for this request
+        const shardContext = createShardContextHelpers(
+          dbContextForStorage.databaseAdapter.contextStorage,
+        );
+        const uow: IUnitOfWork = dbContextForStorage.db.createBaseUnitOfWork(undefined, {
+          shardingStrategy,
+          getShard: shardContext.get,
+          getShardScope: shardContext.getScope,
+        });
 
-        return { uow };
+        return { uow, shard: null, shardScope: "scoped" };
       },
     );
 
@@ -855,7 +1050,13 @@ export class DatabaseFragmentDefinitionBuilder<
         throw new Error("Adapter registry resolver is missing for durable hooks.");
       }
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
-      const hookContextStorage = dbContextForHooks.databaseAdapter.contextStorage;
+      const hookShardingStrategy = resolveEffectiveShardingStrategy(
+        hookOptions,
+        dbContextForHooks.databaseAdapter,
+        registryResolver,
+      );
+      const hookStorage = dbContextForHooks.databaseAdapter.contextStorage;
+      const hookShardContext = createShardContextHelpers(hookStorage);
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: context.services
           ? this.#hooksFactory({
@@ -868,6 +1069,11 @@ export class DatabaseFragmentDefinitionBuilder<
           : undefined,
         namespace: namespaceKey,
         internalFragment: registryResolver.getInternalFragment(hookAdapter),
+        shardContext: {
+          hasStore: () => hookStorage.hasStore(),
+          get: hookShardContext.get,
+          getScope: hookShardContext.getScope,
+        },
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -876,15 +1082,19 @@ export class DatabaseFragmentDefinitionBuilder<
           const builder = createHandlerTxBuilder<THooks>({
             ...execOptions,
             createUnitOfWork: () => {
-              const baseUow = dbContextForHooks.db.createBaseUnitOfWork();
-              baseUow.registerSchema(
+              const uow = dbContextForHooks.db.createBaseUnitOfWork(undefined, {
+                shardingStrategy: hookShardingStrategy,
+                getShard: hookShardContext.get,
+                getShardScope: hookShardContext.getScope,
+              });
+              uow.registerSchema(
                 hooksConfig.internalFragment.$internal.deps.schema,
                 hooksConfig.internalFragment.$internal.deps.namespace,
               );
               if (storageRef) {
-                storageRef.uow = baseUow;
+                storageRef.uow = uow;
               }
-              return baseUow;
+              return uow;
             },
             onBeforeMutate: (uow) => {
               if (!planMode) {
@@ -911,10 +1121,15 @@ export class DatabaseFragmentDefinitionBuilder<
           });
           const execute = builder.execute.bind(builder);
           builder.execute = () =>
-            hookContextStorage.runWithInitializer(
+            hookStorage.runWithInitializer(
               () => {
-                storageRef = { uow: null as unknown as DatabaseContextStorage["uow"] };
-                return storageRef;
+                const storage: DatabaseContextStorage = {
+                  uow: null as unknown as DatabaseContextStorage["uow"],
+                  shard: null,
+                  shardScope: "scoped",
+                };
+                storageRef = storage;
+                return storage;
               },
               () => execute(),
             );
@@ -934,8 +1149,8 @@ export class DatabaseFragmentDefinitionBuilder<
     const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
 
     const builderWithContext = builderWithStorage.withThisContext<
-      DatabaseServiceContext<THooks>,
-      DatabaseHandlerContext<THooks>
+      TServiceThisContext,
+      THandlerThisContext
     >(({ storage, config, options, deps }) => {
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options, deps });
@@ -946,6 +1161,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const internalFragment = isInternalFragment
         ? undefined
         : (hooksConfig?.internalFragment ?? registryResolver?.getInternalFragment(databaseAdapter));
+      const shardContext = createShardContextHelpers(storage);
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -958,9 +1174,20 @@ export class DatabaseFragmentDefinitionBuilder<
         return createServiceTxBuilder<TSchema, THooks>(schema, uow, hooksConfig?.hooks);
       }
 
-      const serviceContext: DatabaseServiceContext<THooks> = {
-        serviceTx,
-      };
+      const shardContextMethods = this.#contextOptions.exposeShardContext
+        ? {
+            getShard: shardContext.get,
+            setShard: shardContext.set,
+            withShard: shardContext.with,
+            getShardScope: shardContext.getScope,
+            setShardScope: shardContext.setScope,
+            withShardScope: shardContext.withScope,
+          }
+        : undefined;
+
+      const serviceContext = (shardContextMethods
+        ? { serviceTx, ...shardContextMethods }
+        : { serviceTx }) as unknown as TServiceThisContext;
 
       // Builder API: handlerTx using createHandlerTxBuilder
       function handlerTx(execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) {
@@ -1063,10 +1290,9 @@ export class DatabaseFragmentDefinitionBuilder<
         ) as Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
       }
 
-      const handlerContext: DatabaseHandlerContext<THooks> = {
-        handlerTx,
-        callServices,
-      };
+      const handlerContext = (shardContextMethods
+        ? { handlerTx, callServices, ...shardContextMethods }
+        : { handlerTx, callServices }) as unknown as THandlerThisContext;
 
       return { serviceContext, handlerContext };
     });

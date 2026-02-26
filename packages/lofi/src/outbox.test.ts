@@ -120,7 +120,7 @@ describe("outbox utilities", () => {
         table: "users",
         externalId: "user-1",
         versionstamp: "vs",
-        values: { name: "Ada" },
+        values: { name: "Ada", _shard: "shard-a" },
       },
       {
         op: "update",
@@ -128,7 +128,7 @@ describe("outbox utilities", () => {
         table: "users",
         externalId: "user-1",
         versionstamp: "vs",
-        set: { name: "Grace" },
+        set: { name: "Grace", _shard: "shard-b" },
       },
       {
         op: "delete",

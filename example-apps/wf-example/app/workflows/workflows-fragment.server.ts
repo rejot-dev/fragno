@@ -1,5 +1,4 @@
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import { migrate } from "@fragno-dev/db";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import {
   workflowsFragmentDefinition,
@@ -9,6 +8,7 @@ import {
 
 import { createWorkflowsAdapter } from "./adapter.server";
 import { workflows } from "./workflows";
+import { getShardFromHeaders } from "~/sharding.server";
 
 export type WorkflowsInit = { type: "dry-run" } | { type: "live" };
 
@@ -26,8 +26,15 @@ export function createWorkflowsFragmentServer(init: WorkflowsInit) {
     .withOptions({
       databaseAdapter:
         init.type === "live" ? createWorkflowsAdapter() : createWorkflowsAdapter(undefined),
+      shardingStrategy: { mode: "row" },
     })
     .build();
+
+  fragment.withMiddleware(async ({ headers }, { deps }) => {
+    const shard = getShardFromHeaders(headers);
+    deps.shardContext.set(shard);
+    return undefined;
+  });
 
   if (init.type === "dry-run") {
     return { fragment, dispatcher: null };
@@ -56,8 +63,6 @@ export function getWorkflowsServer() {
 
 async function createServer(): Promise<WorkflowsServer> {
   const { fragment, dispatcher } = createWorkflowsFragmentServer({ type: "live" });
-
-  await migrate(fragment);
   if (dispatcher && process.env["WF_DISABLE_INTERNAL_DISPATCHER"] !== "1") {
     dispatcher.startPolling();
   }

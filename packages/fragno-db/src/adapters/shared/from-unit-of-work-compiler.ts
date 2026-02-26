@@ -21,6 +21,7 @@ import type {
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
+import type { ShardScope, ShardingStrategy } from "../../sharding";
 
 /**
  * Configuration options for creating a Unit of Work with generic SQL
@@ -37,6 +38,9 @@ export interface UnitOfWorkConfig {
    */
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
+  shardingStrategy?: ShardingStrategy;
+  getShard?: () => string | null;
+  getShardScope?: () => ShardScope;
 }
 
 /**

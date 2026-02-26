@@ -19,11 +19,12 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
-import { getRegistryForAdapterSync } from "./internal/adapter-registry";
+import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { defineSyncCommands } from "./sync/commands";
 import * as hooks from "./hooks/hooks";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
+import { GLOBAL_SHARD_SENTINEL } from "./sharding";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -38,7 +39,7 @@ const testSchema = schema("test", (s) => {
 type TestSchema = typeof testSchema;
 
 // Mock database adapter
-function createMockAdapter(): DatabaseAdapter {
+function createMockAdapter(): DatabaseAdapter & { __mockDb: SimpleQueryInterface<TestSchema> } {
   const createMockUow = () => ({
     forSchema: vi.fn(),
     executeRetrieve: vi.fn(),
@@ -46,19 +47,20 @@ function createMockAdapter(): DatabaseAdapter {
     registerSchema: vi.fn(),
     reset: vi.fn(),
   });
-
   const mockdb = {
     createUnitOfWork: vi.fn(() => createMockUow()),
     createBaseUnitOfWork: vi.fn(() => createMockUow()),
   } as unknown as SimpleQueryInterface<TestSchema>;
 
-  return {
+  const adapter = {
     createQueryEngine: vi.fn(() => mockdb),
     getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
     contextStorage: new RequestContextStorage(),
     namingStrategy: suffixNamingStrategy,
-  } as unknown as DatabaseAdapter;
+  } as unknown as DatabaseAdapter & { __mockDb: SimpleQueryInterface<TestSchema> };
+  adapter.__mockDb = mockdb;
+  return adapter;
 }
 
 describe("DatabaseFragmentDefinitionBuilder", () => {
@@ -596,6 +598,58 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
+  describe("sharding strategy registry", () => {
+    it("reuses the adapter sharding strategy for internal fragments", () => {
+      const mockAdapter = createMockAdapter();
+      const registry = getRegistryForAdapterSync(mockAdapter);
+
+      registry.registerShardingStrategy({ mode: "row" });
+
+      const internalFragment = getInternalFragment(mockAdapter);
+      expect(internalFragment.$internal.options.shardingStrategy).toEqual({ mode: "row" });
+      expect(registry.internalFragment.$internal.options.shardingStrategy).toEqual({ mode: "row" });
+    });
+
+    it("throws when registering mismatched sharding strategies for the same adapter", () => {
+      const mockAdapter = createMockAdapter();
+      const registry = getRegistryForAdapterSync(mockAdapter);
+
+      registry.registerShardingStrategy({ mode: "adapter", identifier: "primary" });
+
+      expect(() =>
+        registry.registerShardingStrategy({ mode: "adapter", identifier: "secondary" }),
+      ).toThrowError(/Sharding strategy already registered/i);
+    });
+
+    it("uses adapter-level sharding strategy when fragment omits it", () => {
+      const mockAdapter = createMockAdapter();
+      const strategy = { mode: "row" } as const;
+
+      const withStrategy = withDatabase(testSchema)(defineFragment("frag-with-strategy")).build();
+      withStrategy.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter, shardingStrategy: strategy },
+      });
+
+      const withoutStrategy = withDatabase(testSchema)(
+        defineFragment("frag-without-strategy"),
+      ).build();
+      const deps = withoutStrategy.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const mockDb = mockAdapter.__mockDb as unknown as {
+        createUnitOfWork: ReturnType<typeof vi.fn>;
+      };
+      const callCount = mockDb.createUnitOfWork.mock.calls.length;
+      deps.createUnitOfWork();
+      const call = mockDb.createUnitOfWork.mock.calls[callCount];
+
+      expect(call?.[1]?.shardingStrategy).toEqual(strategy);
+    });
+  });
+
   describe("providesBaseService", () => {
     it("should inject database context into base services", () => {
       const mockAdapter = createMockAdapter();
@@ -756,6 +810,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       expect(storage).toBeDefined();
       expect(storage.uow).toBeDefined();
+      expect(storage.shard).toBeNull();
+      expect(storage.shardScope).toBe("scoped");
     });
 
     it("should provide DatabaseServiceContext with serviceTx and DatabaseHandlerContext with handlerTx", () => {
@@ -767,6 +823,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
       } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -779,6 +837,112 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       expect(typeof contexts.serviceContext.serviceTx).toBe("function");
       expect(typeof contexts.handlerContext.handlerTx).toBe("function");
+    });
+
+    it("should expose shard context helpers via implicit deps", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+      });
+
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        storage: mockAdapter.contextStorage,
+      });
+
+      mockAdapter.contextStorage.run(storage, () => {
+        expect(deps.shardContext.get()).toBeNull();
+        deps.shardContext.set("tenant_1");
+        expect(deps.shardContext.get()).toBe("tenant_1");
+
+        deps.shardContext.setScope("global");
+        expect(deps.shardContext.getScope()).toBe("global");
+
+        deps.shardContext.with("tenant_2", () => {
+          expect(deps.shardContext.get()).toBe("tenant_2");
+        });
+        expect(deps.shardContext.get()).toBe("tenant_1");
+
+        deps.shardContext.withScope("scoped", () => {
+          expect(deps.shardContext.getScope()).toBe("scoped");
+        });
+        expect(deps.shardContext.getScope()).toBe("global");
+        expect("setShard" in contexts.serviceContext).toBe(false);
+        expect("getShard" in contexts.handlerContext).toBe(false);
+      });
+    });
+
+    it("should restore shard context when callbacks throw synchronously", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+      });
+
+      mockAdapter.contextStorage.run(storage, () => {
+        deps.shardContext.set("tenant_1");
+
+        expect(() =>
+          deps.shardContext.with("tenant_2", () => {
+            throw new Error("boom");
+          }),
+        ).toThrowError("boom");
+
+        expect(deps.shardContext.get()).toBe("tenant_1");
+
+        deps.shardContext.setScope("global");
+        expect(() =>
+          deps.shardContext.withScope("scoped", () => {
+            throw new Error("boom");
+          }),
+        ).toThrowError("boom");
+        expect(deps.shardContext.getScope()).toBe("global");
+      });
+    });
+
+    it("should validate shard values when setting shard context", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+      });
+
+      mockAdapter.contextStorage.run(storage, () => {
+        expect(() => deps.shardContext.set("")).toThrowError(/non-empty/i);
+        expect(() => deps.shardContext.set(GLOBAL_SHARD_SENTINEL)).toThrowError(/reserved/i);
+        const tooLongShard = "a".repeat(65);
+        expect(() => deps.shardContext.set(tooLongShard)).toThrowError(/at most 64/i);
+      });
     });
   });
 
@@ -938,6 +1102,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
       } as unknown as RequestContextStorage<DatabaseContextStorage>;
 
@@ -1046,6 +1212,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockStorage = {
         getStore: () => ({
           uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          shard: null,
+          shardScope: "scoped",
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;

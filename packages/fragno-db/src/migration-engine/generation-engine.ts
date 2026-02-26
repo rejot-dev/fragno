@@ -11,6 +11,7 @@ import {
   internalSchema,
   SETTINGS_TABLE_NAME,
   getSchemaVersionFromDatabase,
+  getSystemMigrationVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 import { instantiate } from "@fragno-dev/core";
@@ -158,6 +159,7 @@ export async function generateSchemaArtifacts<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
+  const settingsSystemVersion = await getSystemMigrationVersionFromDatabase(internalFragment, "");
 
   const generatedFiles: GenerationInternalResult[] = [];
 
@@ -169,6 +171,9 @@ export async function generateSchemaArtifacts<
   const settingsSql = settingsPreparedMigrations.getSQL(
     settingsSourceVersion,
     settingsTargetVersion,
+    {
+      systemFromVersion: settingsSystemVersion,
+    },
   );
 
   if (settingsSql.trim()) {
@@ -197,11 +202,18 @@ export async function generateSchemaArtifacts<
     }
 
     const preparedMigrations = dbAdapter.prepareMigrations(db.schema, db.namespace);
+    const namespaceKey = db.namespace ?? db.schema.name;
     const targetVersion = options?.toVersion ?? db.schema.version;
     const sourceVersion = options?.fromVersion ?? 0;
 
     // Generate migration from source to target version
-    const sql = preparedMigrations.getSQL(sourceVersion, targetVersion);
+    const systemFromVersion =
+      options?.fromVersion === undefined || sourceVersion === 0
+        ? 0
+        : await getSystemMigrationVersionFromDatabase(internalFragment, namespaceKey);
+    const sql = preparedMigrations.getSQL(sourceVersion, targetVersion, {
+      systemFromVersion,
+    });
 
     // If no migrations needed, skip this fragment
     if (sql.trim()) {
@@ -229,9 +241,10 @@ export async function generateSchemaArtifacts<
  * @param databases - Array of FragnoDatabase instances to migrate
  * @returns Array of execution results for each migration
  */
-export async function executeMigrations<const TDatabases extends FragnoDatabase<AnySchema>[]>(
-  databases: TDatabases,
-): Promise<ExecuteMigrationResult[]> {
+export async function executeMigrations<
+  // oxlint-disable-next-line no-explicit-any
+  const TDatabases extends FragnoDatabase<AnySchema, any>[],
+>(databases: TDatabases): Promise<ExecuteMigrationResult[]> {
   if (databases.length === 0) {
     throw new Error("No databases provided for migration");
   }
@@ -286,34 +299,41 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
+  const settingsSystemVersion = await getSystemMigrationVersionFromDatabase(internalFragment, "");
 
   // Internal fragment uses empty-string namespace: no table suffix, version key is ".schema_version"
   const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
   const settingsTargetVersion = internalSchema.version;
 
-  if (settingsSourceVersion < settingsTargetVersion) {
-    const compiledMigration = settingsPreparedMigrations.compile(
-      settingsSourceVersion,
-      settingsTargetVersion,
-      { updateVersionInMigration: true },
+  if (settingsSourceVersion > settingsTargetVersion) {
+    throw new Error(
+      `Cannot migrate internal settings backwards: current version (${settingsSourceVersion}) > target version (${settingsTargetVersion})`,
     );
+  }
 
-    if (compiledMigration.statements.length > 0) {
-      migrationsToExecute.push({
-        namespace: null,
-        namespaceKey: SETTINGS_TABLE_NAME,
-        fromVersion: settingsSourceVersion,
-        toVersion: settingsTargetVersion,
-        execute: () =>
-          settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
-            updateVersionInMigration: true,
-          }),
-      });
-    }
+  const compiledSettingsMigration = settingsPreparedMigrations.compile(
+    settingsSourceVersion,
+    settingsTargetVersion,
+    { updateVersionInMigration: true, systemFromVersion: settingsSystemVersion },
+  );
+
+  if (compiledSettingsMigration.statements.length > 0) {
+    migrationsToExecute.push({
+      namespace: null,
+      namespaceKey: SETTINGS_TABLE_NAME,
+      fromVersion: settingsSourceVersion,
+      toVersion: settingsTargetVersion,
+      execute: () =>
+        settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
+          updateVersionInMigration: true,
+          systemFromVersion: settingsSystemVersion,
+        }),
+    });
   }
 
   // 2. Prepare fragment migrations (sorted alphabetically)
-  const getNamespaceKey = (db: FragnoDatabase<AnySchema>) => db.namespace ?? db.schema.name;
+  // oxlint-disable-next-line no-explicit-any
+  const getNamespaceKey = (db: FragnoDatabase<AnySchema, any>) => db.namespace ?? db.schema.name;
   const sortedDatabases = [...databases].sort((a, b) =>
     getNamespaceKey(a).localeCompare(getNamespaceKey(b)),
   );
@@ -324,23 +344,34 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespaceKey);
     const targetVersion = fragnoDb.schema.version;
 
-    if (currentVersion < targetVersion) {
-      const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
-        updateVersionInMigration: true,
-      });
+    if (currentVersion > targetVersion) {
+      throw new Error(
+        `Cannot migrate backwards: current version (${currentVersion}) > target version (${targetVersion})`,
+      );
+    }
 
-      if (compiledMigration.statements.length > 0) {
-        migrationsToExecute.push({
-          namespace: fragnoDb.namespace,
-          namespaceKey,
-          fromVersion: currentVersion,
-          toVersion: targetVersion,
-          execute: () =>
-            preparedMigrations.execute(currentVersion, targetVersion, {
-              updateVersionInMigration: true,
-            }),
-        });
-      }
+    const systemFromVersion = await getSystemMigrationVersionFromDatabase(
+      internalFragment,
+      namespaceKey,
+    );
+
+    const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
+      updateVersionInMigration: true,
+      systemFromVersion,
+    });
+
+    if (compiledMigration.statements.length > 0) {
+      migrationsToExecute.push({
+        namespace: fragnoDb.namespace,
+        namespaceKey,
+        fromVersion: currentVersion,
+        toVersion: targetVersion,
+        execute: () =>
+          preparedMigrations.execute(currentVersion, targetVersion, {
+            updateVersionInMigration: true,
+            systemFromVersion,
+          }),
+      });
     }
   }
 

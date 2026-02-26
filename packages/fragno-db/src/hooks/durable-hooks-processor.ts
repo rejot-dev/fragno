@@ -1,7 +1,14 @@
 import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { createHookScheduler } from "./hooks";
-import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
+import {
+  createHookScheduler,
+  type DurableHooksProcessorScope,
+  type HookProcessorConfig,
+} from "./hooks";
+import {
+  getDurableHooksRuntimeByConfig,
+  getDurableHooksRuntimeByToken,
+} from "./durable-hooks-runtime";
 
 export type DurableHooksProcessor = {
   process: () => Promise<number>;
@@ -10,12 +17,17 @@ export type DurableHooksProcessor = {
   namespace: string;
 };
 
+export type DurableHooksProcessorOptions = {
+  scope?: DurableHooksProcessorScope;
+};
+
 export type DurableHooksProcessorGroupOptions = {
   onError?: (error: unknown) => void;
 };
 
 type DurableHooksInternal = {
   durableHooksToken?: object;
+  durableHooks?: HookProcessorConfig;
 };
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
@@ -34,30 +46,51 @@ function hasDurableHooksConfigured(
   fragment: AnyFragnoInstantiatedDatabaseFragment,
 ): fragment is AnyFragnoInstantiatedDatabaseFragment {
   const internal = fragment.$internal as DurableHooksInternal | undefined;
-  return Boolean(internal?.durableHooksToken);
+  return Boolean(internal?.durableHooksToken ?? internal?.durableHooks);
 }
 
 export function createDurableHooksProcessor<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
-): DurableHooksProcessor {
-  const durableHooksToken = (fragment.$internal as DurableHooksInternal).durableHooksToken;
-  if (!durableHooksToken) {
-    throw new Error(`[fragno-db] Durable hooks not configured for fragment "${fragment.name}".`);
+  options: DurableHooksProcessorOptions = {},
+): DurableHooksProcessor | null {
+  const internal = fragment.$internal as DurableHooksInternal;
+  let runtime = internal.durableHooks
+    ? getDurableHooksRuntimeByConfig(internal.durableHooks)
+    : internal.durableHooksToken
+      ? getDurableHooksRuntimeByToken(internal.durableHooksToken)
+      : undefined;
+  const durableHooks = internal.durableHooks ?? runtime?.config;
+  if (!durableHooks) {
+    return null;
   }
-  const runtime = getDurableHooksRuntimeByToken(durableHooksToken);
-  if (!runtime) {
-    throw new Error(`[fragno-db] Durable hooks runtime missing for fragment "${fragment.name}".`);
+  if (runtime) {
+    runtime.dispatcherRegistered = true;
   }
-  runtime.dispatcherRegistered = true;
-
-  const durableHooks = runtime.config;
 
   const { namespace, internalFragment } = durableHooks;
+  const processorScope = options.scope;
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     durableHooks.stuckProcessingTimeoutMinutes,
   );
-  const scheduler =
-    durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks));
+  const scheduler = processorScope
+    ? createHookScheduler(durableHooks, { processorScope })
+    : (durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks)));
+
+  const applyProcessorScope = (context: {
+    setShard: (shard: string | null) => void;
+    setShardScope: (scope: "scoped" | "global") => void;
+  }) => {
+    if (!processorScope) {
+      return;
+    }
+    if (processorScope.mode === "global") {
+      context.setShardScope("global");
+      context.setShard(null);
+      return;
+    }
+    context.setShardScope("scoped");
+    context.setShard(processorScope.shard);
+  };
 
   return {
     namespace,
@@ -65,6 +98,7 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
     drain: async () => scheduler.drain(),
     getNextWakeAt: async () => {
       return await internalFragment.inContext(async function () {
+        applyProcessorScope(this);
         return await this.handlerTx()
           .withServiceCalls(
             () =>
@@ -90,7 +124,9 @@ export function createDurableHooksProcessorGroup(
   if (configuredFragments.length === 0) {
     throw new Error("[fragno-db] No fragments provided for durable hooks processing.");
   }
-  const processors = configuredFragments.map((fragment) => createDurableHooksProcessor(fragment));
+  const processors = configuredFragments
+    .map((fragment) => createDurableHooksProcessor(fragment))
+    .filter((processor): processor is DurableHooksProcessor => Boolean(processor));
 
   return createDurableHooksProcessorGroupFromProcessors(processors, options);
 }

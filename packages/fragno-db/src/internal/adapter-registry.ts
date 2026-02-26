@@ -5,6 +5,7 @@ import {
   internalFragmentDef,
   type InternalFragmentInstance,
 } from "../fragments/internal-fragment";
+import type { ShardingStrategy } from "../sharding";
 import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import {
   createInternalFragmentDescribeRoutes,
@@ -38,11 +39,13 @@ export type AdapterRegistry = {
   fragments: Map<string, FragmentMeta>;
   outboxState: OutboxState;
   syncCommandTargets: Map<string, SyncCommandTarget>;
+  shardingStrategy?: ShardingStrategy;
   registerSchema: (
     schema: SchemaInfo,
     fragment: FragmentMeta,
     options?: { outboxEnabled?: boolean },
   ) => void;
+  registerShardingStrategy: (strategy?: ShardingStrategy) => void;
   registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
   resolveSyncTarget: (fragmentName: string, schemaName: string) => SyncCommandTarget | undefined;
   resolveSyncCommand: (
@@ -88,6 +91,7 @@ const sortFragments = (fragments: FragmentMeta[]): FragmentMeta[] =>
 const buildInternalFragment = (
   adapter: DatabaseAdapter<unknown>,
   registry: AdapterRegistry,
+  shardingStrategy?: ShardingStrategy,
 ): InternalFragmentInstance => {
   const routes = [
     createInternalFragmentDescribeRoutes(),
@@ -97,9 +101,19 @@ const buildInternalFragment = (
 
   return instantiate(internalFragmentDef)
     .withConfig({ registry })
-    .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
+    .withOptions({ databaseAdapter: adapter, databaseNamespace: null, shardingStrategy })
     .withRoutes(routes)
     .build();
+};
+
+const shardingStrategiesMatch = (existing: ShardingStrategy, next: ShardingStrategy): boolean => {
+  if (existing.mode !== next.mode) {
+    return false;
+  }
+  if (existing.mode === "adapter" && next.mode === "adapter") {
+    return existing.identifier === next.identifier;
+  }
+  return true;
 };
 
 const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
@@ -107,6 +121,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
   const fragments = new Map<string, FragmentMeta>();
   const outboxState = getOutboxStateForAdapter(adapter);
   const syncCommandTargets = new Map<string, SyncCommandTarget>();
+  let shardingStrategy: ShardingStrategy | undefined;
   let registry: AdapterRegistry;
 
   registry = {
@@ -115,6 +130,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
     fragments,
     outboxState,
     syncCommandTargets,
+    shardingStrategy,
     registerSchema: (schema, fragment, options) => {
       const namespaceKey = getNamespaceKey(schema);
       const existing = schemas.get(namespaceKey);
@@ -149,6 +165,20 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
         outboxState.enabledFragments.add(fragment.name);
         outboxState.config.enabled = true;
       }
+    },
+    registerShardingStrategy: (strategy) => {
+      if (!strategy) {
+        return;
+      }
+      if (shardingStrategy) {
+        if (!shardingStrategiesMatch(shardingStrategy, strategy)) {
+          throw new Error("Sharding strategy already registered for adapter.");
+        }
+        return;
+      }
+      shardingStrategy = strategy;
+      registry.shardingStrategy = strategy;
+      registry.internalFragment = buildInternalFragment(adapter, registry, strategy);
     },
     registerSyncCommands: (registration) => {
       const key = getSyncTargetKey(registration.fragmentName, registration.schemaName);
@@ -204,7 +234,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
     isOutboxEnabled: () => outboxState.config.enabled,
   };
 
-  registry.internalFragment = buildInternalFragment(adapter, registry);
+  registry.internalFragment = buildInternalFragment(adapter, registry, shardingStrategy);
   return registry;
 };
 

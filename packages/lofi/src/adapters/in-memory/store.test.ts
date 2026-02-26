@@ -8,8 +8,19 @@ const createAppSchema = () =>
     s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
   );
 
-const createStore = (appSchema: ReturnType<typeof createAppSchema>) =>
-  new InMemoryLofiStore({ endpointName: "app", schemas: [appSchema] });
+const createShardSchema = () =>
+  schema("app", (s) =>
+    s.addTable("users", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .addColumn("_shard", column("string").hidden()),
+    ),
+  );
+
+const createStore = (
+  appSchema: ReturnType<typeof createAppSchema> | ReturnType<typeof createShardSchema>,
+) => new InMemoryLofiStore({ endpointName: "app", schemas: [appSchema] });
 
 const createMutation = (name: string): LofiMutation => ({
   op: "create",
@@ -70,5 +81,32 @@ describe("InMemoryLofiStore", () => {
 
     store.applyMutation(createMutation("Bea"));
     expect(store.hasTombstone("app", "users", "user-1")).toBe(false);
+  });
+
+  it("ignores _shard system values in mutations", () => {
+    const appSchema = createShardSchema();
+    const store = createStore(appSchema);
+
+    store.applyMutation({
+      op: "create",
+      schema: "app",
+      table: "users",
+      externalId: "user-1",
+      versionstamp: "vs-1",
+      values: { name: "Ada", _shard: "shard-a" },
+    });
+
+    store.applyMutation({
+      op: "update",
+      schema: "app",
+      table: "users",
+      externalId: "user-1",
+      versionstamp: "vs-2",
+      set: { name: "Bea", _shard: "shard-b" },
+    });
+
+    const row = store.getRow("app", "users", "user-1");
+    expect(row?.data).not.toHaveProperty("_shard");
+    expect(row?._lofi.norm["_shard"]).toBeUndefined();
   });
 });

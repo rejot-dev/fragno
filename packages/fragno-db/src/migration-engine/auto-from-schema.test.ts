@@ -22,7 +22,7 @@ describe("generateMigrationFromSchema", () => {
     // We want to generate the migration for version 1 -> 2
     const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
-    expect(operations).toHaveLength(1);
+    expect(operations).toHaveLength(2);
     expect(operations[0]).toMatchObject({
       type: "create-table",
       name: "posts",
@@ -31,6 +31,13 @@ describe("generateMigrationFromSchema", () => {
         expect.objectContaining({ name: "title" }),
         expect.objectContaining({ name: "content" }),
       ]),
+    });
+    expect(operations[1]).toMatchObject({
+      type: "add-index",
+      table: "posts",
+      name: "idx_posts_shard",
+      columns: ["_shard"],
+      unique: false,
     });
   });
 
@@ -51,7 +58,7 @@ describe("generateMigrationFromSchema", () => {
     // Generate migrations from version 0 to 3 (all three tables)
     const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
-    expect(operations).toHaveLength(3);
+    expect(operations).toHaveLength(6);
     expect(operations[0]).toMatchObject({
       type: "create-table",
       name: "users",
@@ -61,6 +68,13 @@ describe("generateMigrationFromSchema", () => {
       ]),
     });
     expect(operations[1]).toMatchObject({
+      type: "add-index",
+      table: "users",
+      name: "idx_users_shard",
+      columns: ["_shard"],
+      unique: false,
+    });
+    expect(operations[2]).toMatchObject({
       type: "create-table",
       name: "posts",
       columns: expect.arrayContaining([
@@ -68,13 +82,27 @@ describe("generateMigrationFromSchema", () => {
         expect.objectContaining({ name: "title" }),
       ]),
     });
-    expect(operations[2]).toMatchObject({
+    expect(operations[3]).toMatchObject({
+      type: "add-index",
+      table: "posts",
+      name: "idx_posts_shard",
+      columns: ["_shard"],
+      unique: false,
+    });
+    expect(operations[4]).toMatchObject({
       type: "create-table",
       name: "comments",
       columns: expect.arrayContaining([
         expect.objectContaining({ name: "id" }),
         expect.objectContaining({ name: "text" }),
       ]),
+    });
+    expect(operations[5]).toMatchObject({
+      type: "add-index",
+      table: "comments",
+      name: "idx_comments_shard",
+      columns: ["_shard"],
+      unique: false,
     });
   });
 
@@ -129,9 +157,16 @@ describe("generateMigrationFromSchema", () => {
 
     const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
-    expect(operations).toHaveLength(2);
+    expect(operations).toHaveLength(3);
     expect(operations[0].type).toBe("create-table");
     expect(operations[1]).toMatchObject({
+      type: "add-index",
+      table: "users",
+      name: "idx_users_shard",
+      columns: ["_shard"],
+      unique: false,
+    });
+    expect(operations[2]).toMatchObject({
       type: "add-index",
       table: "users",
       name: "idx_email",
@@ -180,22 +215,23 @@ describe("generateMigrationFromSchema", () => {
     });
 
     const operationsV1 = generateMigrationFromSchema(mySchema, 0, 1);
-    expect(operationsV1).toHaveLength(1);
-    expect(operationsV1[0].type).toBe("create-table");
-    const createOp = operationsV1[0] as Extract<
+    const createOpsV1 = operationsV1.filter((op) => op.type === "create-table") as Extract<
       (typeof operationsV1)[number],
       { type: "create-table" }
-    >;
+    >[];
+    expect(createOpsV1).toHaveLength(1);
+    const createOp = createOpsV1[0];
     const nameColumn = createOp.columns.find((col) => col.name === "name");
     expect(nameColumn).toBeDefined();
     expect(nameColumn?.isNullable).toBe(false);
 
     const operationsV2 = generateMigrationFromSchema(mySchema, 0, 2);
-    expect(operationsV2).toHaveLength(2);
-    const createOpV2 = operationsV2[0] as Extract<
+    const createOpsV2 = operationsV2.filter((op) => op.type === "create-table") as Extract<
       (typeof operationsV2)[number],
       { type: "create-table" }
-    >;
+    >[];
+    expect(createOpsV2).toHaveLength(1);
+    const createOpV2 = createOpsV2[0];
     const nameColumnV2 = createOpV2.columns.find((col) => col.name === "name");
     expect(nameColumnV2).toBeDefined();
     expect(nameColumnV2?.isNullable).toBe(false);
@@ -220,10 +256,12 @@ describe("generateMigrationFromSchema", () => {
     // Generate all migrations from scratch
     const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
-    expect(operations).toHaveLength(3);
+    expect(operations).toHaveLength(5);
     expect(operations[0].type).toBe("create-table");
-    expect(operations[1].type).toBe("create-table");
-    expect(operations[2].type).toBe("add-foreign-key");
+    expect(operations[1].type).toBe("add-index");
+    expect(operations[2].type).toBe("create-table");
+    expect(operations[3].type).toBe("add-index");
+    expect(operations[4].type).toBe("add-foreign-key");
   });
 
   it("should generate mixed operations for tables, indexes, and foreign keys", () => {
@@ -248,11 +286,13 @@ describe("generateMigrationFromSchema", () => {
     // Generate all migrations from scratch
     const operations = generateMigrationFromSchema(mySchema, 0, 4);
 
-    expect(operations).toHaveLength(4);
+    expect(operations).toHaveLength(6);
     expect(operations[0].type).toBe("create-table");
     expect(operations[1].type).toBe("add-index");
-    expect(operations[2].type).toBe("create-table");
-    expect(operations[3].type).toBe("add-foreign-key");
+    expect(operations[2].type).toBe("add-index");
+    expect(operations[3].type).toBe("create-table");
+    expect(operations[4].type).toBe("add-index");
+    expect(operations[5].type).toBe("add-foreign-key");
   });
 
   it("should generate no operations when version range is empty", () => {
@@ -329,7 +369,9 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 0, mySchema.version);
     expect(operations.map((o) => o.type)).toEqual([
       "create-table",
+      "add-index",
       "create-table",
+      "add-index",
       "add-foreign-key",
       "alter-table",
       "add-index",
