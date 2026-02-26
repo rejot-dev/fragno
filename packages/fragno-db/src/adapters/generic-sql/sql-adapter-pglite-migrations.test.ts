@@ -1,14 +1,7 @@
 import { KyselyPGlite } from "kysely-pglite";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { SqlAdapter } from "./generic-sql-adapter";
-import {
-  column,
-  idColumn,
-  referenceColumn,
-  schema,
-  type FragnoId,
-  type FragnoReference,
-} from "../../schema/create";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
 import { PGLiteDriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -478,7 +471,6 @@ describe("SqlAdapter PGLite", () => {
     type PostTag = Prettify<InferArrayElement<typeof postTags>>;
     type Tag = Prettify<RemoveIndex<PostTag["tag"]>>;
     expectTypeOf<Tag>().toEqualTypeOf<{
-      id: FragnoId;
       name: string;
     } | null>();
 
@@ -487,10 +479,7 @@ describe("SqlAdapter PGLite", () => {
     expect(typeScriptPosts).toHaveLength(1);
     type Post = Prettify<(typeof typeScriptPosts)[number]["post"]>;
     expectTypeOf<Post>().toEqualTypeOf<{
-      id: FragnoId;
-      user_id: FragnoReference;
       title: string;
-      content: string;
     } | null>();
     expect(typeScriptPosts[0]!.post!.title).toBe("TypeScript Tips");
 

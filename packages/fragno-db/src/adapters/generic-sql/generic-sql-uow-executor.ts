@@ -358,7 +358,7 @@ async function insertOutboxRow(
   const values = { id, versionstamp, uowId, payload, refMap: refMapValue };
   const serializedValues: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
-    const col = outboxTable.columns[key];
+    const col = outboxTable.getColumnByName(key);
     if (!col) {
       serializedValues[key] = value;
       continue;
@@ -409,7 +409,7 @@ async function insertOutboxMutationRows(
     const serializedValues: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(values)) {
-      const col = mutationsTable.columns[key];
+      const col = mutationsTable.getColumnByName(key);
       if (!col) {
         serializedValues[key] = value;
         continue;

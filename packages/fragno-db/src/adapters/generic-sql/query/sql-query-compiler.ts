@@ -45,7 +45,7 @@ export type AnyInsertQueryBuilder<O = any> = InsertQueryBuilder<any, any, O>;
  * Options for compiling a find operation
  */
 export interface FindManyCompilerOptions {
-  select: true | string[];
+  select: true | readonly string[];
   where?: Condition;
   orderBy?: [AnyColumn, "asc" | "desc"][];
   limit?: number;

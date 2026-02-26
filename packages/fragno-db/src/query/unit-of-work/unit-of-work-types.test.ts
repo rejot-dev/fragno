@@ -138,7 +138,6 @@ describe("UnitOfWork type tests", () => {
     const [_userResult] = await uow1.executeRetrieve();
     type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
 
-    // @ts-expect-error assert type
     expectTypeOf<UserResult>().toEqualTypeOf<{
       id: FragnoId;
       name: string;
@@ -174,13 +173,8 @@ describe("UnitOfWork type tests", () => {
     type _JoinOutInviter = Prettify<_JoinOut["inviter"]>;
     //     ^?
 
-    // FIXME: There should not be a `{}` in the type
     expectTypeOf<_JoinOutInviter>().toEqualTypeOf<{
-      id: FragnoId;
       name: string;
-      email: string;
-      age: number | null;
-      invitedBy: FragnoReference | null;
     } | null>();
   });
 
@@ -194,14 +188,49 @@ describe("UnitOfWork type tests", () => {
     type _JoinOutPosts = Prettify<_JoinOut["posts"]>;
     //     ^?
 
-    // FIXME: There should not be a `{}` in the array
     expectTypeOf<_JoinOutPosts>().toEqualTypeOf<
       {
-        id: FragnoId;
         title: string;
-        content: string;
-        userId: FragnoReference;
       }[]
     >();
+  });
+
+  it("preserves nested select narrowing in join builder", () => {
+    const builder = new JoinFindBuilder("users", testSchema.tables.users);
+
+    const _builderOut = builder.join((jb) =>
+      jb.posts((pb) => pb.select(["title"]).join((jb2) => jb2.author((ab) => ab.select(["name"])))),
+    );
+
+    type JoinOut = InferJoinOutPrettify<typeof _builderOut>;
+    type Post = Prettify<JoinOut["posts"][number]>;
+    type PostTitle = Post["title"];
+    type Author = Prettify<NonNullable<Post["author"]>>;
+
+    expectTypeOf<PostTitle>().toEqualTypeOf<string>();
+    expectTypeOf<Author>().toEqualTypeOf<{ name: string }>();
+  });
+
+  it("preserves nested select narrowing via UOW find", async () => {
+    const uow = createTestUOW();
+
+    const uow1 = uow.find("users", (b) =>
+      b
+        .whereIndex("primary")
+        .join((jb) =>
+          jb.posts((pb) =>
+            pb.select(["title"]).join((jb2) => jb2.author((ab) => ab.select(["name"]))),
+          ),
+        ),
+    );
+
+    const [_userResult] = await uow1.executeRetrieve();
+    type User = RecursivePrettify<(typeof _userResult)[number]>;
+    type Post = Prettify<User["posts"][number]>;
+    type PostTitle = Post["title"];
+    type Author = Prettify<NonNullable<Post["author"]>>;
+
+    expectTypeOf<PostTitle>().toEqualTypeOf<string>();
+    expectTypeOf<Author>().toEqualTypeOf<{ name: string }>();
   });
 });
