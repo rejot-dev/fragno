@@ -23,6 +23,14 @@ export interface SessionHookPayload {
   actor: UserSummary | null;
 }
 
+export interface BeforeCreateUserPayload {
+  email: string;
+  role: UserSummary["role"];
+}
+
+// Synchronous to ensure checks run before mutations are committed.
+export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => void;
+
 export interface AuthHooks {
   onUserCreated?: (payload: UserHookPayload) => Promise<void> | void;
   onUserRoleUpdated?: (payload: UserHookPayload) => Promise<void> | void;

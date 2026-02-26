@@ -39,6 +39,9 @@ export function createUserOverviewServices() {
   });
 
   return {
+    /**
+     * List users with cursor-based pagination, optional search, and sorting.
+     */
     getUsersWithCursor: function (this: AuthServiceContext, params: GetUsersParams) {
       const { search, sortBy, sortOrder, pageSize, cursor } = params;
 

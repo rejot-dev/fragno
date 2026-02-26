@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey } from "drizzle-orm/mysql-core"
+import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
 import { createId } from "@fragno-dev/db/id"
 import { sql, relations } from "drizzle-orm"
 
@@ -7,7 +7,7 @@ import { sql, relations } from "drizzle-orm"
 // ============================================================================
 
 export const fragno_db_settings = mysqlTable("fragno_db_settings", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   key: text("key").notNull(),
   value: text("value").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -17,7 +17,7 @@ export const fragno_db_settings = mysqlTable("fragno_db_settings", {
 ])
 
 export const fragno_hooks = mysqlTable("fragno_hooks", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   namespace: text("namespace").notNull(),
   hookName: text("hookName").notNull(),
   payload: json("payload").notNull(),
@@ -38,7 +38,7 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
 ])
 
 export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: json("payload").notNull(),
@@ -52,7 +52,7 @@ export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
 ])
 
 export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   entryVersionstamp: text("entryVersionstamp").notNull(),
   mutationVersionstamp: text("mutationVersionstamp").notNull(),
   uowId: text("uowId").notNull(),
@@ -70,7 +70,7 @@ export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations
 ])
 
 export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   requestId: text("requestId").notNull(),
   status: text("status").notNull(),
   confirmedCommandIds: json("confirmedCommandIds").notNull(),
@@ -89,9 +89,9 @@ export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
 // ============================================================================
 
 export const user_auth = mysqlTable("user_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
+  passwordHash: text("passwordHash"),
   role: text("role").notNull().default("user"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -104,7 +104,7 @@ export const user_auth = mysqlTable("user_auth", {
 ])
 
 export const session_auth = mysqlTable("session_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: datetime("expiresAt").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -126,7 +126,7 @@ export const session_auth = mysqlTable("session_auth", {
 ])
 
 export const organization_auth = mysqlTable("organization_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   name: text("name").notNull(),
   slug: text("slug").notNull(),
   logoUrl: text("logoUrl"),
@@ -148,7 +148,7 @@ export const organization_auth = mysqlTable("organization_auth", {
 ])
 
 export const organizationMember_auth = mysqlTable("organizationMember_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   userId: bigint("userId", { mode: "number" }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -172,7 +172,7 @@ export const organizationMember_auth = mysqlTable("organizationMember_auth", {
 ])
 
 export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   memberId: bigint("memberId", { mode: "number" }).notNull(),
   role: text("role").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -190,7 +190,7 @@ export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_au
 ])
 
 export const organizationInvitation_auth = mysqlTable("organizationInvitation_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   email: text("email").notNull(),
   roles: json("roles").notNull(),
@@ -219,6 +219,59 @@ export const organizationInvitation_auth = mysqlTable("organizationInvitation_au
   index("idx_organizationInvitation_idx_org_invitation_email_sta22e04868").on(table.email, table.status)
 ])
 
+export const oauthAccount_auth = mysqlTable("oauthAccount_auth", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  provider: text("provider").notNull(),
+  providerAccountId: text("providerAccountId").notNull(),
+  email: text("email"),
+  emailVerified: boolean("emailVerified").notNull().default(false),
+  image: text("image"),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  tokenType: text("tokenType"),
+  tokenExpiresAt: datetime("tokenExpiresAt"),
+  scopes: json("scopes"),
+  rawProfile: json("rawProfile"),
+  createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
+  _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+  _version: int("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthAccount_user_oauthAccountUser_auth_94d5cb9b"
+  }),
+  uniqueIndex("uidx_oauthAccount_idx_oauth_account_provider_account_au229618a4").on(table.provider, table.providerAccountId),
+  index("idx_oauthAccount_idx_oauth_account_user_auth_98049852").on(table.userId),
+  index("idx_oauthAccount_idx_oauth_account_provider_auth_7425dccd").on(table.provider)
+])
+
+export const oauthState_auth = mysqlTable("oauthState_auth", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  provider: text("provider").notNull(),
+  state: text("state").notNull(),
+  codeVerifier: text("codeVerifier"),
+  redirectUri: text("redirectUri"),
+  returnTo: text("returnTo"),
+  linkUserId: bigint("linkUserId", { mode: "number" }),
+  createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  expiresAt: datetime("expiresAt").notNull(),
+  _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+  _version: int("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.linkUserId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthState_user_oauthStateLinkUser_auth_2659bef7"
+  }),
+  uniqueIndex("uidx_oauthState_idx_oauth_state_state_auth_f65e8ad2").on(table.state),
+  index("idx_oauthState_idx_oauth_state_provider_auth_2c66010f").on(table.provider),
+  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt)
+])
+
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
     relationName: "session_user"
@@ -231,6 +284,12 @@ export const user_authRelations = relations(user_auth, ({ many }) => ({
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
     relationName: "organizationInvitation_user"
+  }),
+  oauthAccountList: many(oauthAccount_auth, {
+    relationName: "oauthAccount_user"
+  }),
+  oauthStateList: many(oauthState_auth, {
+    relationName: "oauthState_user"
   })
 }));
 
@@ -301,6 +360,22 @@ export const organizationInvitation_authRelations = relations(organizationInvita
   })
 }));
 
+export const oauthAccount_authRelations = relations(oauthAccount_auth, ({ one }) => ({
+  oauthAccountUser: one(user_auth, {
+    relationName: "oauthAccount_user",
+    fields: [oauthAccount_auth.userId],
+    references: [user_auth._internalId]
+  })
+}));
+
+export const oauthState_authRelations = relations(oauthState_auth, ({ one }) => ({
+  oauthStateLinkUser: one(user_auth, {
+    relationName: "oauthState_user",
+    fields: [oauthState_auth.linkUserId],
+    references: [user_auth._internalId]
+  })
+}));
+
 export const auth_schema = {
   user_auth: user_auth,
   user_authRelations: user_authRelations,
@@ -326,7 +401,15 @@ export const auth_schema = {
   organizationInvitation_authRelations: organizationInvitation_authRelations,
   organizationInvitation: organizationInvitation_auth,
   organizationInvitationRelations: organizationInvitation_authRelations,
-  schemaVersion: 16
+  oauthAccount_auth: oauthAccount_auth,
+  oauthAccount_authRelations: oauthAccount_authRelations,
+  oauthAccount: oauthAccount_auth,
+  oauthAccountRelations: oauthAccount_authRelations,
+  oauthState_auth: oauthState_auth,
+  oauthState_authRelations: oauthState_authRelations,
+  oauthState: oauthState_auth,
+  oauthStateRelations: oauthState_authRelations,
+  schemaVersion: 21
 }
 
 // ============================================================================
@@ -334,7 +417,7 @@ export const auth_schema = {
 // ============================================================================
 
 export const comment_comment = mysqlTable("comment_comment", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -377,7 +460,7 @@ export const comment_schema = {
 // ============================================================================
 
 export const upvote_upvote = mysqlTable("upvote_upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
   rating: int("rating").notNull(),
@@ -390,7 +473,7 @@ export const upvote_upvote = mysqlTable("upvote_upvote", {
 ])
 
 export const upvote_total_upvote = mysqlTable("upvote_total_upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: int("total").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -412,7 +495,7 @@ export const upvote_schema = {
 // ============================================================================
 
 export const workflow_instance_workflows = mysqlTable("workflow_instance_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -432,7 +515,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: int("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
@@ -464,7 +547,7 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
 ])
 
 export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: int("runNumber").notNull(),
   actor: text("actor").notNull().default("user"),

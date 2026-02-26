@@ -110,6 +110,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
   };
 
   return {
+    /**
+     * Create a new organization and creator membership.
+     */
     createOrganization: function (this: AuthServiceContext, input: CreateOrganizationInput) {
       const normalizedSlug = normalizeOrganizationSlug(input.slug);
       if (!normalizedSlug) {
@@ -245,6 +248,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .build();
     },
 
+    /**
+     * Fetch an organization by id, excluding deleted records.
+     */
     getOrganizationById: function (this: AuthServiceContext, organizationId: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -272,6 +278,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .build();
     },
 
+    /**
+     * Fetch an organization by slug, excluding deleted records.
+     */
     getOrganizationBySlug: function (this: AuthServiceContext, slug: string) {
       const normalizedSlug = normalizeOrganizationSlug(slug);
       if (!normalizedSlug) {
@@ -306,6 +315,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .build();
     },
 
+    /**
+     * Update organization fields with permission checks.
+     */
     updateOrganization: function (
       this: AuthServiceContext,
       organizationId: string,
@@ -426,6 +438,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .build();
     },
 
+    /**
+     * Soft-delete an organization with permission checks.
+     */
     deleteOrganization: function (
       this: AuthServiceContext,
       organizationId: string,
@@ -499,6 +514,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .build();
     },
 
+    /**
+     * List organizations for a user with cursor-based pagination.
+     */
     getOrganizationsForUser: function (
       this: AuthServiceContext,
       params: { userId: string; pageSize: number; cursor?: Cursor },

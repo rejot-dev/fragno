@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
 
@@ -7,7 +7,7 @@ import { relations } from "drizzle-orm"
 // ============================================================================
 
 export const fragno_db_settings = pgTable("fragno_db_settings", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   key: text("key").notNull(),
   value: text("value").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -17,7 +17,7 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 ])
 
 export const fragno_hooks = pgTable("fragno_hooks", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   namespace: text("namespace").notNull(),
   hookName: text("hookName").notNull(),
   payload: json("payload").notNull(),
@@ -38,7 +38,7 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 ])
 
 export const fragno_db_outbox = pgTable("fragno_db_outbox", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: json("payload").notNull(),
@@ -52,7 +52,7 @@ export const fragno_db_outbox = pgTable("fragno_db_outbox", {
 ])
 
 export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   entryVersionstamp: text("entryVersionstamp").notNull(),
   mutationVersionstamp: text("mutationVersionstamp").notNull(),
   uowId: text("uowId").notNull(),
@@ -70,7 +70,7 @@ export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", 
 ])
 
 export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   requestId: text("requestId").notNull(),
   status: text("status").notNull(),
   confirmedCommandIds: json("confirmedCommandIds").notNull(),
@@ -91,9 +91,9 @@ export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
 const schema_auth = pgSchema("auth");
 
 export const user_auth = schema_auth.table("user", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
+  passwordHash: text("passwordHash"),
   role: text("role").notNull().default("user"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -106,7 +106,7 @@ export const user_auth = schema_auth.table("user", {
 ])
 
 export const session_auth = schema_auth.table("session", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -128,7 +128,7 @@ export const session_auth = schema_auth.table("session", {
 ])
 
 export const organization_auth = schema_auth.table("organization", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   name: text("name").notNull(),
   slug: text("slug").notNull(),
   logoUrl: text("logoUrl"),
@@ -150,7 +150,7 @@ export const organization_auth = schema_auth.table("organization", {
 ])
 
 export const organizationMember_auth = schema_auth.table("organizationMember", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   userId: bigint("userId", { mode: "number" }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -174,7 +174,7 @@ export const organizationMember_auth = schema_auth.table("organizationMember", {
 ])
 
 export const organizationMemberRole_auth = schema_auth.table("organizationMemberRole", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   memberId: bigint("memberId", { mode: "number" }).notNull(),
   role: text("role").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -192,7 +192,7 @@ export const organizationMemberRole_auth = schema_auth.table("organizationMember
 ])
 
 export const organizationInvitation_auth = schema_auth.table("organizationInvitation", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   email: text("email").notNull(),
   roles: json("roles").notNull(),
@@ -221,6 +221,59 @@ export const organizationInvitation_auth = schema_auth.table("organizationInvita
   index("idx_org_invitation_email_status").on(table.email, table.status)
 ])
 
+export const oauthAccount_auth = schema_auth.table("oauthAccount", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  provider: text("provider").notNull(),
+  providerAccountId: text("providerAccountId").notNull(),
+  email: text("email"),
+  emailVerified: boolean("emailVerified").notNull().default(false),
+  image: text("image"),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  tokenType: text("tokenType"),
+  tokenExpiresAt: timestamp("tokenExpiresAt"),
+  scopes: json("scopes"),
+  rawProfile: json("rawProfile"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthAccount_user_oauthAccountUser"
+  }),
+  uniqueIndex("idx_oauth_account_provider_account").on(table.provider, table.providerAccountId),
+  index("idx_oauth_account_user").on(table.userId),
+  index("idx_oauth_account_provider").on(table.provider)
+])
+
+export const oauthState_auth = schema_auth.table("oauthState", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  provider: text("provider").notNull(),
+  state: text("state").notNull(),
+  codeVerifier: text("codeVerifier"),
+  redirectUri: text("redirectUri"),
+  returnTo: text("returnTo"),
+  linkUserId: bigint("linkUserId", { mode: "number" }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.linkUserId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthState_user_oauthStateLinkUser"
+  }),
+  uniqueIndex("idx_oauth_state_state").on(table.state),
+  index("idx_oauth_state_provider").on(table.provider),
+  index("idx_oauth_state_expiresAt").on(table.expiresAt)
+])
+
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
     relationName: "session_user"
@@ -233,6 +286,12 @@ export const user_authRelations = relations(user_auth, ({ many }) => ({
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
     relationName: "organizationInvitation_user"
+  }),
+  oauthAccountList: many(oauthAccount_auth, {
+    relationName: "oauthAccount_user"
+  }),
+  oauthStateList: many(oauthState_auth, {
+    relationName: "oauthState_user"
   })
 }));
 
@@ -303,6 +362,22 @@ export const organizationInvitation_authRelations = relations(organizationInvita
   })
 }));
 
+export const oauthAccount_authRelations = relations(oauthAccount_auth, ({ one }) => ({
+  oauthAccountUser: one(user_auth, {
+    relationName: "oauthAccount_user",
+    fields: [oauthAccount_auth.userId],
+    references: [user_auth._internalId]
+  })
+}));
+
+export const oauthState_authRelations = relations(oauthState_auth, ({ one }) => ({
+  oauthStateLinkUser: one(user_auth, {
+    relationName: "oauthState_user",
+    fields: [oauthState_auth.linkUserId],
+    references: [user_auth._internalId]
+  })
+}));
+
 export const auth_schema = {
   user_auth: user_auth,
   user_authRelations: user_authRelations,
@@ -328,7 +403,15 @@ export const auth_schema = {
   organizationInvitation_authRelations: organizationInvitation_authRelations,
   organizationInvitation: organizationInvitation_auth,
   organizationInvitationRelations: organizationInvitation_authRelations,
-  schemaVersion: 16
+  oauthAccount_auth: oauthAccount_auth,
+  oauthAccount_authRelations: oauthAccount_authRelations,
+  oauthAccount: oauthAccount_auth,
+  oauthAccountRelations: oauthAccount_authRelations,
+  oauthState_auth: oauthState_auth,
+  oauthState_authRelations: oauthState_authRelations,
+  oauthState: oauthState_auth,
+  oauthStateRelations: oauthState_authRelations,
+  schemaVersion: 21
 }
 
 // ============================================================================
@@ -338,7 +421,7 @@ export const auth_schema = {
 const schema_comment = pgSchema("comment");
 
 export const comment_comment = schema_comment.table("comment", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -383,7 +466,7 @@ export const comment_schema = {
 const schema_upvote = pgSchema("upvote");
 
 export const upvote_upvote = schema_upvote.table("upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
   rating: integer("rating").notNull(),
@@ -396,7 +479,7 @@ export const upvote_upvote = schema_upvote.table("upvote", {
 ])
 
 export const upvote_total_upvote = schema_upvote.table("upvote_total", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -420,7 +503,7 @@ export const upvote_schema = {
 const schema_workflows = pgSchema("workflows");
 
 export const workflow_instance_workflows = schema_workflows.table("workflow_instance", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -440,7 +523,7 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
 ])
 
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
@@ -472,7 +555,7 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
 ])
 
 export const workflow_event_workflows = schema_workflows.table("workflow_event", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: integer("runNumber").notNull(),
   actor: text("actor").notNull().default("user"),

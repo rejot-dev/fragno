@@ -45,9 +45,15 @@ export function assertOrganizationServices(
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
+    /**
+     * Build a Set-Cookie header value for the session id.
+     */
     buildSessionCookie: function (sessionId: string): string {
       return buildSetCookieHeader(sessionId, cookieOptions);
     },
+    /**
+     * Create a session for a user, rejecting banned or missing users.
+     */
     createSession: function (this: AuthServiceContext, userId: string) {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
@@ -92,6 +98,9 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         })
         .build();
     },
+    /**
+     * Validate a session and return user info or null when invalid.
+     */
     validateSession: function (this: AuthServiceContext, sessionId: string) {
       const now = new Date();
       return this.serviceTx(authSchema)
@@ -129,6 +138,9 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         })
         .build();
     },
+    /**
+     * Invalidate a session and emit session invalidation hooks.
+     */
     invalidateSession: function (this: AuthServiceContext, sessionId: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -167,6 +179,9 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         })
         .build();
     },
+    /**
+     * Resolve a session from request headers for sign-in checks.
+     */
     getSession: function (this: AuthServiceContext, headers: Headers) {
       const sessionId = extractSessionId(headers);
       const now = new Date();

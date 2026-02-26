@@ -96,7 +96,7 @@ export const fragno_db_sync_requests = sqliteTable("fragno_db_sync_requests", {
 export const user_auth = sqliteTable("user_auth", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
+  passwordHash: text("passwordHash"),
   role: text("role").notNull().default("user"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
@@ -230,6 +230,61 @@ export const organizationInvitation_auth = sqliteTable("organizationInvitation_a
   uniqueIndex("uidx_organizationInvitation_idx_organizationInvitation_df000ec5").on(table.id)
 ])
 
+export const oauthAccount_auth = sqliteTable("oauthAccount_auth", {
+  id: text("id").notNull().unique().$defaultFn(() => createId()),
+  userId: integer("userId").notNull(),
+  provider: text("provider").notNull(),
+  providerAccountId: text("providerAccountId").notNull(),
+  email: text("email"),
+  emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
+  image: text("image"),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  tokenType: text("tokenType"),
+  tokenExpiresAt: integer("tokenExpiresAt", { mode: "timestamp" }),
+  scopes: text("scopes", { mode: "json" }),
+  rawProfile: text("rawProfile", { mode: "json" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthAccount_user_oauthAccountUser_auth_94d5cb9b"
+  }),
+  uniqueIndex("uidx_oauthAccount_idx_oauth_account_provider_account_au229618a4").on(table.provider, table.providerAccountId),
+  index("idx_oauthAccount_idx_oauth_account_user_auth_98049852").on(table.userId),
+  index("idx_oauthAccount_idx_oauth_account_provider_auth_7425dccd").on(table.provider),
+  uniqueIndex("uidx_oauthAccount_idx_oauthAccount_external_id_auth_f7e2ea16").on(table.id)
+])
+
+export const oauthState_auth = sqliteTable("oauthState_auth", {
+  id: text("id").notNull().unique().$defaultFn(() => createId()),
+  provider: text("provider").notNull(),
+  state: text("state").notNull(),
+  codeVerifier: text("codeVerifier"),
+  redirectUri: text("redirectUri"),
+  returnTo: text("returnTo"),
+  linkUserId: integer("linkUserId"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+  _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.linkUserId],
+    foreignColumns: [user_auth._internalId],
+    name: "fk_oauthState_user_oauthStateLinkUser_auth_2659bef7"
+  }),
+  uniqueIndex("uidx_oauthState_idx_oauth_state_state_auth_f65e8ad2").on(table.state),
+  index("idx_oauthState_idx_oauth_state_provider_auth_2c66010f").on(table.provider),
+  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt),
+  uniqueIndex("uidx_oauthState_idx_oauthState_external_id_auth_39cc1eff").on(table.id)
+])
+
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
     relationName: "session_user"
@@ -242,6 +297,12 @@ export const user_authRelations = relations(user_auth, ({ many }) => ({
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
     relationName: "organizationInvitation_user"
+  }),
+  oauthAccountList: many(oauthAccount_auth, {
+    relationName: "oauthAccount_user"
+  }),
+  oauthStateList: many(oauthState_auth, {
+    relationName: "oauthState_user"
   })
 }));
 
@@ -312,6 +373,22 @@ export const organizationInvitation_authRelations = relations(organizationInvita
   })
 }));
 
+export const oauthAccount_authRelations = relations(oauthAccount_auth, ({ one }) => ({
+  oauthAccountUser: one(user_auth, {
+    relationName: "oauthAccount_user",
+    fields: [oauthAccount_auth.userId],
+    references: [user_auth._internalId]
+  })
+}));
+
+export const oauthState_authRelations = relations(oauthState_auth, ({ one }) => ({
+  oauthStateLinkUser: one(user_auth, {
+    relationName: "oauthState_user",
+    fields: [oauthState_auth.linkUserId],
+    references: [user_auth._internalId]
+  })
+}));
+
 export const auth_schema = {
   user_auth: user_auth,
   user_authRelations: user_authRelations,
@@ -337,7 +414,15 @@ export const auth_schema = {
   organizationInvitation_authRelations: organizationInvitation_authRelations,
   organizationInvitation: organizationInvitation_auth,
   organizationInvitationRelations: organizationInvitation_authRelations,
-  schemaVersion: 16
+  oauthAccount_auth: oauthAccount_auth,
+  oauthAccount_authRelations: oauthAccount_authRelations,
+  oauthAccount: oauthAccount_auth,
+  oauthAccountRelations: oauthAccount_authRelations,
+  oauthState_auth: oauthState_auth,
+  oauthState_authRelations: oauthState_authRelations,
+  oauthState: oauthState_auth,
+  oauthStateRelations: oauthState_authRelations,
+  schemaVersion: 21
 }
 
 // ============================================================================

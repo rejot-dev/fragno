@@ -128,6 +128,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
   const limits = options.organizationConfig?.limits;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   return {
+    /**
+     * Fetch a member record for a user within an organization.
+     */
     getOrganizationMemberByUser: function (
       this: AuthServiceContext,
       params: { organizationId: string; userId: string },
@@ -157,6 +160,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * Create an organization member with permission checks.
+     */
     createOrganizationMember: function (this: AuthServiceContext, input: CreateMemberInput) {
       const roles = normalizeRoleNames(input.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
       const now = new Date();
@@ -264,6 +270,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * Add a role to a member with permission checks.
+     */
     createOrganizationMemberRole: function (
       this: AuthServiceContext,
       params: {
@@ -398,6 +407,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * Remove a role from a member with permission checks.
+     */
     removeOrganizationMemberRole: function (
       this: AuthServiceContext,
       params: {
@@ -527,6 +539,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * Replace a member's roles with a normalized set.
+     */
     updateOrganizationMemberRoles: function (
       this: AuthServiceContext,
       params: {
@@ -652,6 +667,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * Remove a member from an organization with permission checks.
+     */
     removeOrganizationMember: function (
       this: AuthServiceContext,
       params: {
@@ -765,6 +783,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * List organization members with cursor-based pagination.
+     */
     listOrganizationMembers: function (
       this: AuthServiceContext,
       params: { organizationId: string; pageSize: number; cursor?: Cursor },
@@ -816,6 +837,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * List roles for a single organization member.
+     */
     listOrganizationMemberRoles: function (this: AuthServiceContext, memberId: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -829,6 +853,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
 
+    /**
+     * List roles for multiple organization members.
+     */
     listOrganizationMemberRolesForMembers: function (
       this: AuthServiceContext,
       memberIds: readonly string[],

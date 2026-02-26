@@ -1,0 +1,95 @@
+---
+title: OAuth
+description: Configure OAuth providers and complete the login flow.
+icon: KeyRound
+---
+
+## Overview
+
+The Auth fragment supports OAuth providers like GitHub. When enabled, it exposes two routes:
+
+- `GET /oauth/:provider/authorize` to generate the provider authorization URL
+- `GET /oauth/:provider/callback` to exchange the code, create a session, and set the cookie
+
+OAuth is disabled unless you configure providers in the fragment config.
+
+## Configure providers
+
+```ts
+import { createAuthFragment, github } from "@fragno-dev/auth";
+
+export const authFragment = createAuthFragment(
+  {
+    oauth: {
+      defaultRedirectUri: "https://your-app.com/api/auth/oauth/github/callback",
+      providers: {
+        github: github({
+          clientId: process.env.GITHUB_CLIENT_ID!,
+          clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        }),
+      },
+    },
+  },
+  fragnoConfig,
+);
+```
+
+Notes:
+
+- `defaultRedirectUri` is used when the provider does not specify `redirectURI`.
+- You can override per provider with `redirectURI`.
+- `linkByEmail` defaults to `true` and links OAuth accounts to existing users by email.
+- `tokenStorage` controls what gets stored on the OAuth account: `"none"`, `"refresh"`, or `"all"`.
+
+## Client flow
+
+```ts
+const { oauth } = createAuthFragmentClients();
+const { url } = await oauth.getAuthorizationUrl({
+  provider: "github",
+  returnTo: "/app",
+});
+
+window.location.assign(url);
+```
+
+When the user finishes the provider flow, the callback route:
+
+- validates the code
+- creates or links a user
+- sets the session cookie
+- redirects to `returnTo` if provided
+
+`returnTo` must be a relative path starting with `/` and is sanitized server-side.
+
+## GitHub OAuth
+
+1. Create a GitHub OAuth App.
+2. Set the callback URL to your fragment callback route.
+3. Start the flow from your UI and let the server callback set the session cookie.
+
+Example button:
+
+```ts
+const handleGithubLogin = async () => {
+  const { url } = await authClient.oauth.getAuthorizationUrl({
+    provider: "github",
+    returnTo: "/app",
+  });
+  window.location.assign(url);
+};
+```
+
+## Linking a provider to an existing user
+
+If a user is already signed in, you can link an OAuth provider to their account:
+
+```ts
+const { url } = await authClient.oauth.getAuthorizationUrl({
+  provider: "github",
+  link: true,
+});
+window.location.assign(url);
+```
+
+This requires a valid session cookie on the authorize request.

@@ -3,5 +3,5 @@
   "description": "Authentication fragment",
   "icon": "Shield",
   "root": true,
-  "pages": ["index", "organizations"]
+  "pages": ["index", "oauth", "organizations"]
 }

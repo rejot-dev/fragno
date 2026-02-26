@@ -29,7 +29,9 @@ describe("organization routes", async () => {
     const passwordHash = await hashPassword("password");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createUser(resolvedEmail, passwordHash)])
+        .withServiceCalls(() => [
+          fragment.services.createUserUnvalidated(resolvedEmail, passwordHash),
+        ])
         .execute();
     });
 
