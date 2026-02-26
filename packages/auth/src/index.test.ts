@@ -50,7 +50,7 @@ describe("auth-fragment", async () => {
     const [adminUser] = await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
-          fragment.services.createUser("admin@test.com", passwordHash, "admin"),
+          fragment.services.createUserUnvalidated("admin@test.com", passwordHash, "admin"),
         ])
         .execute();
     });
@@ -148,7 +148,7 @@ describe("auth-fragment", async () => {
       const [otherUser] = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.createUser("other-owner@test.com", otherPassword),
+            fragment.services.createUserUnvalidated("other-owner@test.com", otherPassword),
           ])
           .execute();
       });
@@ -247,7 +247,7 @@ describe("auth-fragment", async () => {
 
       const [bannedUser] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+          .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
           .execute();
       });
 
@@ -368,7 +368,7 @@ describe("auth-fragment", async () => {
       const passwordHash = await hashPassword("cookiepassword123");
       const [user] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+          .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
           .execute();
       });
 
@@ -404,7 +404,7 @@ describe("auth-fragment", async () => {
       const passwordHash = await hashPassword("rolepassword123");
       const [user] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+          .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
           .execute();
       });
 
@@ -429,7 +429,7 @@ describe("auth-fragment", async () => {
       const passwordHash = await hashPassword("password123");
       const [user] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createUser(email, passwordHash)])
+          .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
           .execute();
       });
 
@@ -455,7 +455,7 @@ describe("auth-fragment", async () => {
       const [owner] = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.createUser("active-owner@test.com", ownerPassword),
+            fragment.services.createUserUnvalidated("active-owner@test.com", ownerPassword),
           ])
           .execute();
       });
@@ -479,7 +479,7 @@ describe("auth-fragment", async () => {
       const [outsider] = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.createUser("active-outsider@test.com", outsiderPassword),
+            fragment.services.createUserUnvalidated("active-outsider@test.com", outsiderPassword),
           ])
           .execute();
       });
@@ -517,7 +517,7 @@ describe("auth-fragment", async () => {
       const [user] = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.createUser("hooks-user@test.com", passwordHash, "user"),
+            fragment.services.createUserUnvalidated("hooks-user@test.com", passwordHash, "user"),
           ])
           .execute();
       });
@@ -611,6 +611,54 @@ describe("auth-fragment", async () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe("auth-fragment email/password disabled", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          emailAndPassword: {
+            enabled: false,
+          },
+        })
+        .withRoutes([userActionsRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("blocks email/password sign-up when disabled", async () => {
+    const response = await fragment.callRoute("POST", "/sign-up", {
+      body: {
+        email: "disabled@test.com",
+        password: "password",
+      },
+    });
+
+    assert(response.type === "error");
+    expect(response.error.code).toBe("email_password_disabled");
+    expect(response.status).toBe(403);
+  });
+
+  it("blocks email/password sign-in when disabled", async () => {
+    const response = await fragment.callRoute("POST", "/sign-in", {
+      body: {
+        email: "disabled@test.com",
+        password: "password",
+      },
+    });
+
+    assert(response.type === "error");
+    expect(response.error.code).toBe("email_password_disabled");
+    expect(response.status).toBe(403);
   });
 });
 
@@ -751,5 +799,72 @@ describe("auth-fragment auto-create organizations", async () => {
     expect(meResponse.data.activeOrganization?.organization.id).toBe(
       meResponse.data.organizations[0]?.organization.id ?? null,
     );
+  });
+});
+
+describe("auth-fragment beforeCreateUser hook", async () => {
+  const blockedDomain = "blocked.test";
+  const hookCalls: string[] = [];
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          beforeCreateUser: ({ email }) => {
+            hookCalls.push(email);
+            if (email.endsWith(`@${blockedDomain}`)) {
+              throw new Error("blocked_domain");
+            }
+          },
+        })
+        .withRoutes([]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("invokes beforeCreateUser and blocks matching domains", async () => {
+    const passwordHash = await hashPassword("hookspassword123");
+    await expect(
+      test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUserUnvalidated(`user@${blockedDomain}`, passwordHash, "user"),
+          ])
+          .execute();
+      }),
+    ).rejects.toThrow(/blocked_domain/);
+  });
+
+  it("blocks sign-up flows when beforeCreateUser throws", async () => {
+    const passwordHash = await hashPassword("hookspassword789");
+    await expect(
+      test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.signUpWithSession(`blocked@${blockedDomain}`, passwordHash),
+          ])
+          .execute();
+      }),
+    ).rejects.toThrow(/blocked_domain/);
+  });
+
+  it("allows user creation when hook passes", async () => {
+    const passwordHash = await hashPassword("hookspassword456");
+    const [user] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createUserUnvalidated("allowed@test.com", passwordHash),
+        ])
+        .execute();
+    });
+
+    expect(user.email).toBe("allowed@test.com");
+    expect(hookCalls).toContain("allowed@test.com");
   });
 });

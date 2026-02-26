@@ -11,7 +11,13 @@ import { createOrganizationServices } from "./organization/organization-services
 import { organizationRoutesFactory } from "./organization/routes";
 import { createOAuthServices } from "./oauth/oauth-services";
 import { oauthRoutesFactory } from "./oauth/routes";
-import type { AuthHooks, AuthHooksMap, SessionHookPayload, UserHookPayload } from "./hooks";
+import type {
+  AuthHooks,
+  AuthHooksMap,
+  BeforeCreateUserHook,
+  SessionHookPayload,
+  UserHookPayload,
+} from "./hooks";
 import type {
   DefaultOrganizationRole,
   OrganizationConfig,
@@ -35,7 +41,11 @@ import type { AuthOAuthConfig } from "./oauth/types";
 export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
   cookieOptions?: CookieOptions;
   hooks?: AuthHooks;
+  beforeCreateUser?: BeforeCreateUserHook;
   organizations?: OrganizationConfig<TRole> | false;
+  emailAndPassword?: {
+    enabled?: boolean;
+  };
   oauth?: AuthOAuthConfig;
 }
 
@@ -124,7 +134,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       : undefined;
 
     return defineService({
-      ...createUserServices(autoCreateOptions),
+      ...createUserServices(autoCreateOptions, config.beforeCreateUser),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
       ...createOrganizationServices({
@@ -140,6 +150,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       ...createOAuthServices({
         oauth: config.oauth,
         autoCreateOptions,
+        beforeCreateUser: config.beforeCreateUser,
       }),
     });
   })
@@ -466,7 +477,14 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
-export type { AuthHooks, SessionHookPayload, UserHookPayload, SessionSummary } from "./hooks";
+export type {
+  AuthHooks,
+  BeforeCreateUserHook,
+  BeforeCreateUserPayload,
+  SessionHookPayload,
+  UserHookPayload,
+  SessionSummary,
+} from "./hooks";
 export type { UserSummary } from "./types";
 export type { AuthOAuthConfig, OAuthProvider, OAuth2Tokens, OAuth2UserInfo } from "./oauth/types";
 export type { GithubOAuthClient } from "./oauth/providers/github/client";

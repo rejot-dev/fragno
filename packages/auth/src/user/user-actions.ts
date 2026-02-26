@@ -5,68 +5,84 @@ import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import type { authFragmentDefinition } from "..";
-import type { AuthHooksMap } from "../hooks";
+import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
-export function createUserServices(options?: AutoCreateOrganizationOptions) {
+export function createUserServices(
+  options?: AutoCreateOrganizationOptions,
+  beforeCreateUser?: BeforeCreateUserHook,
+) {
+  const runBeforeCreateUser = (email: string, role: "user" | "admin") => {
+    beforeCreateUser?.({ email, role });
+  };
+
+  const createUserUnvalidated = function (
+    this: AuthServiceContext,
+    email: string,
+    passwordHash: string,
+    role: "user" | "admin" = "user",
+    autoCreateOptions?: AutoCreateOrganizationOptions,
+  ) {
+    return this.serviceTx(authSchema)
+      .mutate(({ uow }) => {
+        runBeforeCreateUser(email, role);
+        const now = new Date();
+        const id = uow.create("user", {
+          email,
+          passwordHash,
+          role,
+        });
+        const userSummary = mapUserSummary({
+          id: id.valueOf(),
+          email,
+          role,
+          bannedAt: null,
+        });
+
+        const autoOrganization = createAutoOrganization(uow, {
+          userId: id.valueOf(),
+          email,
+          now,
+          options: autoCreateOptions ?? options,
+        });
+
+        uow.triggerHook("onUserCreated", {
+          user: userSummary,
+          actor: null,
+        });
+
+        if (autoOrganization) {
+          uow.triggerHook("onOrganizationCreated", {
+            organization: autoOrganization.organization,
+            actor: userSummary,
+          });
+          uow.triggerHook("onMemberAdded", {
+            organization: autoOrganization.organization,
+            member: autoOrganization.member,
+            actor: userSummary,
+          });
+        }
+
+        return {
+          id: id.valueOf(),
+          email,
+          role,
+        };
+      })
+      .build();
+  };
+
   return {
-    createUser: function (
-      this: AuthServiceContext,
-      email: string,
-      passwordHash: string,
-      role: "user" | "admin" = "user",
-      autoCreateOptions?: AutoCreateOrganizationOptions,
-    ) {
-      return this.serviceTx(authSchema)
-        .mutate(({ uow }) => {
-          const now = new Date();
-          const id = uow.create("user", {
-            email,
-            passwordHash,
-            role,
-          });
-          const userSummary = mapUserSummary({
-            id: id.valueOf(),
-            email,
-            role,
-            bannedAt: null,
-          });
-
-          const autoOrganization = createAutoOrganization(uow, {
-            userId: id.valueOf(),
-            email,
-            now,
-            options: autoCreateOptions ?? options,
-          });
-
-          uow.triggerHook("onUserCreated", {
-            user: userSummary,
-            actor: null,
-          });
-
-          if (autoOrganization) {
-            uow.triggerHook("onOrganizationCreated", {
-              organization: autoOrganization.organization,
-              actor: userSummary,
-            });
-            uow.triggerHook("onMemberAdded", {
-              organization: autoOrganization.organization,
-              member: autoOrganization.member,
-              actor: userSummary,
-            });
-          }
-
-          return {
-            id: id.valueOf(),
-            email,
-            role,
-          };
-        })
-        .build();
-    },
+    /**
+     * Create a user without email uniqueness checks or session creation.
+     */
+    createUserUnvalidated,
+    /**
+     * Fetch a user by email with password hash metadata.
+     */
     getUserByEmail: function (this: AuthServiceContext, email: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -86,6 +102,9 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
         )
         .build();
     },
+    /**
+     * Update a user's role without session enforcement.
+     */
     updateUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -109,6 +128,9 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
         })
         .build();
     },
+    /**
+     * Update a user's password hash without session enforcement.
+     */
     updateUserPassword: function (this: AuthServiceContext, userId: string, passwordHash: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -132,6 +154,9 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
         })
         .build();
     },
+    /**
+     * Create a user and session for email/password sign-up.
+     */
     signUpWithSession: function (
       this: AuthServiceContext,
       email: string,
@@ -153,6 +178,7 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
           }
 
           const now = new Date();
+          runBeforeCreateUser(email, "user");
 
           const userId = uow.create("user", {
             email,
@@ -215,6 +241,9 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
         })
         .build();
     },
+    /**
+     * Update a user's role with admin session enforcement.
+     */
     updateUserRoleWithSession: function (
       this: AuthServiceContext,
       sessionId: string,
@@ -269,6 +298,9 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
         })
         .build();
     },
+    /**
+     * Change the current session user's password.
+     */
     changePasswordWithSession: function (
       this: AuthServiceContext,
       sessionId: string,
@@ -313,6 +345,8 @@ export function createUserServices(options?: AutoCreateOrganizationOptions) {
 
 export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services, config }) => {
+    const emailAndPasswordEnabled = config.emailAndPassword?.enabled !== false;
+
     return [
       defineRoute({
         method: "PATCH",
@@ -363,8 +397,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           email: z.string(),
           role: z.enum(["user", "admin"]),
         }),
-        errorCodes: ["email_already_exists", "invalid_input"],
+        errorCodes: ["email_already_exists", "invalid_input", "email_password_disabled"],
         handler: async function ({ input }, { json, error }) {
+          if (!emailAndPasswordEnabled) {
+            return error(
+              { message: "Email/password auth is disabled", code: "email_password_disabled" },
+              403,
+            );
+          }
+
           const { email, password } = await input.valid();
 
           const passwordHash = await hashPassword(password);
@@ -409,8 +450,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           email: z.string(),
           role: z.enum(["user", "admin"]),
         }),
-        errorCodes: ["invalid_credentials", "user_banned"],
+        errorCodes: ["invalid_credentials", "user_banned", "email_password_disabled"],
         handler: async function ({ input }, { json, error }) {
+          if (!emailAndPasswordEnabled) {
+            return error(
+              { message: "Email/password auth is disabled", code: "email_password_disabled" },
+              403,
+            );
+          }
+
           const { email, password } = await input.valid();
 
           // Get user by email

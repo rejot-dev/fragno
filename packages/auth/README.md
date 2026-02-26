@@ -109,6 +109,7 @@ OAuth:
 - `cookieOptions`: `httpOnly`, `secure`, `sameSite`, `maxAge`, `path`
 - `hooks`: `onUserCreated`, `onSessionCreated`, `onOrganizationCreated`, and more
 - `organizations`: `false` to disable or an organization config object
+- `emailAndPassword`: `{ enabled?: boolean }` to toggle email/password routes
 - `oauth`: providers and OAuth settings
 
 Organization config fields:
