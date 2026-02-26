@@ -7,7 +7,7 @@ import { sql, relations } from "drizzle-orm"
 // ============================================================================
 
 export const fragno_db_settings = mysqlTable("fragno_db_settings", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   key: text("key").notNull(),
   value: text("value").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -17,7 +17,7 @@ export const fragno_db_settings = mysqlTable("fragno_db_settings", {
 ])
 
 export const fragno_hooks = mysqlTable("fragno_hooks", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   namespace: text("namespace").notNull(),
   hookName: text("hookName").notNull(),
   payload: json("payload").notNull(),
@@ -38,7 +38,7 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
 ])
 
 export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: json("payload").notNull(),
@@ -52,7 +52,7 @@ export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
 ])
 
 export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   entryVersionstamp: text("entryVersionstamp").notNull(),
   mutationVersionstamp: text("mutationVersionstamp").notNull(),
   uowId: text("uowId").notNull(),
@@ -70,7 +70,7 @@ export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations
 ])
 
 export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   requestId: text("requestId").notNull(),
   status: text("status").notNull(),
   confirmedCommandIds: json("confirmedCommandIds").notNull(),
@@ -89,7 +89,7 @@ export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
 // ============================================================================
 
 export const user_auth = mysqlTable("user_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
   role: text("role").notNull().default("user"),
@@ -104,7 +104,7 @@ export const user_auth = mysqlTable("user_auth", {
 ])
 
 export const session_auth = mysqlTable("session_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: datetime("expiresAt").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -126,7 +126,7 @@ export const session_auth = mysqlTable("session_auth", {
 ])
 
 export const organization_auth = mysqlTable("organization_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   name: text("name").notNull(),
   slug: text("slug").notNull(),
   logoUrl: text("logoUrl"),
@@ -148,7 +148,7 @@ export const organization_auth = mysqlTable("organization_auth", {
 ])
 
 export const organizationMember_auth = mysqlTable("organizationMember_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   userId: bigint("userId", { mode: "number" }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -172,7 +172,7 @@ export const organizationMember_auth = mysqlTable("organizationMember_auth", {
 ])
 
 export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   memberId: bigint("memberId", { mode: "number" }).notNull(),
   role: text("role").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -190,7 +190,7 @@ export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_au
 ])
 
 export const organizationInvitation_auth = mysqlTable("organizationInvitation_auth", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
   email: text("email").notNull(),
   roles: json("roles").notNull(),
@@ -334,7 +334,7 @@ export const auth_schema = {
 // ============================================================================
 
 export const comment_comment = mysqlTable("comment_comment", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -377,7 +377,7 @@ export const comment_schema = {
 // ============================================================================
 
 export const upvote_upvote = mysqlTable("upvote_upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
   rating: int("rating").notNull(),
@@ -390,7 +390,7 @@ export const upvote_upvote = mysqlTable("upvote_upvote", {
 ])
 
 export const upvote_total_upvote = mysqlTable("upvote_total_upvote", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: int("total").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -412,7 +412,7 @@ export const upvote_schema = {
 // ============================================================================
 
 export const workflow_instance_workflows = mysqlTable("workflow_instance_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -432,7 +432,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: int("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
@@ -464,7 +464,7 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
 ])
 
 export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
-  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: int("runNumber").notNull(),
   actor: text("actor").notNull().default("user"),

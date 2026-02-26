@@ -24,6 +24,7 @@ export function createWorkflowsFragment<TRegistry extends WorkflowsRegistry>(
 export { workflowsFragmentDefinition };
 export { workflowsRoutesFactory };
 export { workflowsSchema };
+export type { WorkflowsHistory, WorkflowsHistoryEvent, WorkflowsHistoryStep } from "./definition";
 export { defineWorkflow } from "./workflow";
 export type { WorkflowDefinition } from "./workflow";
 export * from "./workflow";

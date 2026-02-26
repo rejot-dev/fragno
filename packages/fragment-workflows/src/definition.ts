@@ -85,7 +85,7 @@ type WorkflowEventRecord = {
   consumedByStepKey: string | null;
 };
 
-type WorkflowStepHistoryEntry = {
+export type WorkflowsHistoryStep = {
   id: string;
   runNumber: number;
   stepKey: string;
@@ -104,7 +104,7 @@ type WorkflowStepHistoryEntry = {
   updatedAt: Date;
 };
 
-type WorkflowEventHistoryEntry = {
+export type WorkflowsHistoryEvent = {
   id: string;
   runNumber: number;
   type: string;
@@ -112,6 +112,12 @@ type WorkflowEventHistoryEntry = {
   createdAt: Date;
   deliveredAt: Date | null;
   consumedByStepKey: string | null;
+};
+
+export type WorkflowsHistory = {
+  runNumber: number;
+  steps: WorkflowsHistoryStep[];
+  events: WorkflowsHistoryEvent[];
 };
 
 type ListInstancesParams = {
@@ -196,7 +202,7 @@ function buildCurrentStepSummary(step: WorkflowStepRecord): WorkflowInstanceCurr
   };
 }
 
-function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowStepHistoryEntry {
+function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowsHistoryStep {
   const error =
     step.errorName || step.errorMessage
       ? {
@@ -225,7 +231,7 @@ function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowStepHistoryEnt
   };
 }
 
-function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowEventHistoryEntry {
+function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowsHistoryEvent {
   return {
     id: event.id.toString(),
     runNumber: event.runNumber,
