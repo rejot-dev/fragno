@@ -1,5 +1,5 @@
 import { test, describe, expect, beforeEach, vi, assert, beforeAll } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { mailingListFragmentDefinition } from "./definition";
 import { instantiate } from "@fragno-dev/core";
 import { mailingListSchema } from "./schema";
@@ -20,16 +20,6 @@ describe("Mailing List Fragment", async () => {
     .build();
 
   const { services, fragment } = fragments["mailing-list"];
-
-  const waitForOnSubscribe = async (email: string) => {
-    const start = Date.now();
-    while (
-      !onSubscribeSpy.mock.calls.some((call) => call[0] === email) &&
-      Date.now() - start < 1000
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  };
 
   // Reset database before each test for isolation
   beforeEach(async () => {
@@ -169,7 +159,7 @@ describe("Mailing List Fragment", async () => {
           alreadySubscribed: false,
         });
 
-        await waitForOnSubscribe("test@example.com");
+        await drainDurableHooks(fragment);
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
 
         const result = await fragments["mailing-list"].db.find("subscriber", (b) =>
