@@ -20,6 +20,14 @@ export default [
     route("forms/form-builder.json", "routes/forms/shadcn-registry.ts"),
   ]),
 
+  route("backoffice/login", "routes/backoffice/login.tsx"),
+  layout("layouts/backoffice-layout.tsx", [
+    route("backoffice", "routes/backoffice/dashboard.tsx"),
+    route("backoffice/organisations", "routes/backoffice/organisations.tsx"),
+    route("backoffice/users", "routes/backoffice/users.tsx"),
+    route("backoffice/settings", "routes/backoffice/settings.tsx"),
+  ]),
+
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),
   route("og-image", "routes/og-image/og-image-page.tsx"),
 
