@@ -1,14 +1,14 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 
-import type { LofiMutation } from "../types";
 import { stripShardField } from "../system-columns";
+import type { LofiMutation } from "../types";
 
 export function outboxMutationsToUowOperations(
   mutations: LofiMutation[],
   schemaMap: Record<string, AnySchema>,
 ): MutationOperation<AnySchema>[] {
-  const shardMetadata = { shard: null, shardScope: "scoped" as const };
+  const shardMetadata = { shard: null, shardScope: "scoped" as const, policyWhere: null };
 
   return mutations.map((mutation) => {
     const schema = schemaMap[mutation.schema];

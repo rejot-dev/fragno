@@ -1,13 +1,17 @@
-import { PGlite } from "@electric-sql/pglite";
-import SQLite from "better-sqlite3";
-import { KyselyPGlite } from "kysely-pglite";
-import { SqliteDialect } from "kysely";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { SqlAdapter, type UnitOfWorkConfig } from "./generic-sql-adapter";
-import { BetterSQLite3DriverConfig, PGLiteDriverConfig } from "./driver-config";
-import { column, idColumn, schema } from "../../schema/create";
+
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
+import { KyselyPGlite } from "kysely-pglite";
+
+import { PGlite } from "@electric-sql/pglite";
+
 import { internalSchema } from "../../fragments/internal-fragment";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
+import { column, idColumn, schema } from "../../schema/create";
 import type { ShardScope } from "../../sharding";
+import { BetterSQLite3DriverConfig, PGLiteDriverConfig } from "./driver-config";
+import { SqlAdapter, type UnitOfWorkConfig } from "./generic-sql-adapter";
 
 const globalUniqueSchema = schema("unique_global", (s) =>
   s.addTable("users", (t) =>
@@ -98,9 +102,16 @@ adapters.forEach(({ name, createAdapter }) => {
     };
 
     const makeUowConfig = (): UnitOfWorkConfig => ({
-      shardingStrategy: { mode: "row" },
-      getShard: () => currentShard,
-      getShardScope: () => currentShardScope,
+      queryPolicies: [
+        {
+          policy: createShardQueryPolicy({
+            shardingStrategy: { mode: "row" },
+            getShard: () => currentShard,
+            getShardScope: () => currentShardScope,
+          }),
+          getContext: () => ({}),
+        },
+      ],
     });
 
     async function createUser(

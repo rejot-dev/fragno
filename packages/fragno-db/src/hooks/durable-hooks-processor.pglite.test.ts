@@ -61,6 +61,10 @@ describe("durable hooks with pglite", () => {
         .build();
 
       const processor = createDurableHooksProcessor(fragment);
+      expect(processor).not.toBeNull();
+      if (!processor) {
+        throw new Error("Expected durable hooks processor to be configured.");
+      }
       const hookId = "hook-id-duplicate";
 
       const triggerHook = async () => {

@@ -1,4 +1,6 @@
 import { FragnoApiError } from "@fragno-dev/core/api";
+import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
+
 import type {
   RequestThisContext,
   FragnoPublicConfig,
@@ -6,7 +8,6 @@ import type {
   FragnoRouteConfig,
   BoundServices,
 } from "@fragno-dev/core";
-import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
@@ -44,6 +45,7 @@ import {
   type ExecuteTxOptions,
   type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
+import { createShardQueryPolicy } from "./query/unit-of-work/query-policies";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type { AnySchema } from "./schema/create";
 import { GLOBAL_SHARD_SENTINEL, type ShardScope, type ShardingStrategy } from "./sharding";
@@ -874,11 +876,19 @@ export class DatabaseFragmentDefinitionBuilder<
 
       // Create implicit dependencies
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const shardPolicy = createShardQueryPolicy({
+        shardingStrategy,
+        getShard: shardContext.get,
+        getShardScope: shardContext.getScope,
+      });
       const createUow = () =>
         dbContext.db.createUnitOfWork(undefined, {
-          shardingStrategy,
-          getShard: shardContext.get,
-          getShardScope: shardContext.getScope,
+          queryPolicies: [
+            {
+              policy: shardPolicy,
+              getContext: () => ({}),
+            },
+          ],
         });
       const implicitDeps: ImplicitDatabaseDependencies = {
         databaseAdapter: dbContext.databaseAdapter,
@@ -1065,7 +1075,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TPrivateServices,
     TNewHooks,
     DatabaseServiceContext<TNewHooks>,
-    THandlerThisContext,
+    DatabaseHandlerContext<TNewHooks>,
     TInternalRoutes
   > {
     const defineHook = <TPayload>(
@@ -1105,7 +1115,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TPrivateServices,
       TNewHooks,
       DatabaseServiceContext<TNewHooks>,
-      THandlerThisContext,
+      DatabaseHandlerContext<TNewHooks>,
       TInternalRoutes
     >;
 
@@ -1298,6 +1308,11 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const shardPolicy = createShardQueryPolicy({
+        shardingStrategy,
+        getShard: shardContext.get,
+        getShardScope: shardContext.getScope,
+      });
       const implicitDeps: ImplicitDatabaseDependencies = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
@@ -1305,9 +1320,12 @@ export class DatabaseFragmentDefinitionBuilder<
         shardContext,
         createUnitOfWork: () =>
           dbContext.db.createUnitOfWork(undefined, {
-            shardingStrategy,
-            getShard: shardContext.get,
-            getShardScope: shardContext.getScope,
+            queryPolicies: [
+              {
+                policy: shardPolicy,
+                getContext: () => ({}),
+              },
+            ],
           }),
       };
 
@@ -1340,10 +1358,18 @@ export class DatabaseFragmentDefinitionBuilder<
         const shardContext = createShardContextHelpers(
           dbContextForStorage.databaseAdapter.contextStorage,
         );
-        const uow: IUnitOfWork = dbContextForStorage.db.createBaseUnitOfWork(undefined, {
+        const shardPolicy = createShardQueryPolicy({
           shardingStrategy,
           getShard: shardContext.get,
           getShardScope: shardContext.getScope,
+        });
+        const uow: IUnitOfWork = dbContextForStorage.db.createBaseUnitOfWork(undefined, {
+          queryPolicies: [
+            {
+              policy: shardPolicy,
+              getContext: () => ({}),
+            },
+          ],
         });
 
         return { uow, shard: null, shardScope: "scoped" };
@@ -1404,6 +1430,11 @@ export class DatabaseFragmentDefinitionBuilder<
       );
       const hookStorage = dbContextForHooks.databaseAdapter.contextStorage;
       const hookShardContext = createShardContextHelpers(hookStorage);
+      const hookShardPolicy = createShardQueryPolicy({
+        shardingStrategy: hookShardingStrategy,
+        getShard: hookShardContext.get,
+        getShardScope: hookShardContext.getScope,
+      });
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: context.services
           ? this.#hooksFactory({
@@ -1438,9 +1469,12 @@ export class DatabaseFragmentDefinitionBuilder<
               ...execOptions,
               createUnitOfWork: () => {
                 const uow = dbContextForHooks.db.createBaseUnitOfWork(undefined, {
-                  shardingStrategy: hookShardingStrategy,
-                  getShard: hookShardContext.get,
-                  getShardScope: hookShardContext.getScope,
+                  queryPolicies: [
+                    {
+                      policy: hookShardPolicy,
+                      getContext: () => ({}),
+                    },
+                  ],
                 });
                 uow.registerSchema(
                   hooksConfig.internalFragment.$internal.deps.schema,

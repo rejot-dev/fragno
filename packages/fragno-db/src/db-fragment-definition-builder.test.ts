@@ -8,7 +8,7 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 
-import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
@@ -653,7 +653,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       deps.createUnitOfWork();
       const call = mockDb.createUnitOfWork.mock.calls[callCount];
 
-      expect(call?.[1]?.shardingStrategy).toEqual(strategy);
+      expect(call?.[1]?.queryPolicies?.[0]?.policy.name).toEqual("sharding");
     });
   });
 
@@ -1145,6 +1145,37 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
   });
 
   describe("serviceTx hooks propagation", () => {
+    it("should type handlerTx for route handlers with provided hooks", () => {
+      type TestHooks = {
+        onUserCreated: HookFn<{ email: string }>;
+      };
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag-route-hooks"))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onUserCreated: defineHook(function (_payload: { email: string }) {}),
+        }))
+        .build();
+
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
+        defineRoute({
+          method: "POST",
+          path: "/users",
+          handler: async function (_request, { json }) {
+            await this.handlerTx()
+              .mutate(({ forSchema }) => {
+                const uow = forSchema(testSchema);
+                uow.triggerHook("onUserCreated", { email: "test@example.com" });
+              })
+              .execute();
+
+            return json({ ok: true });
+          },
+        }),
+      ]);
+
+      expect(routes).toBeDefined();
+    });
+
     it("should pass hooks to createServiceTxBuilder", () => {
       const mockAdapter = createMockAdapter();
 
@@ -1419,6 +1450,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           () =>
             ({
               uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+              shard: null,
+              shardScope: "scoped",
               [requestWaitUntilSymbol]: waitUntilSpy,
             }) as DatabaseContextStorage,
           async () => {

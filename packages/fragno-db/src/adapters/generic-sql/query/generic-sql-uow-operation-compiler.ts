@@ -1,6 +1,5 @@
 import type { CompiledQuery } from "kysely";
 
-import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import { buildCondition } from "../../../query/condition-builder";
 import type { Condition } from "../../../query/condition-builder";
@@ -11,8 +10,7 @@ import type {
   MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
-import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
-import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../../sharding";
+import type { AnyColumn, AnySchema } from "../../../schema/create";
 import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { DriverConfig } from "../driver-config";
 import { createColdKysely } from "../migration/cold-kysely";
@@ -21,6 +19,7 @@ import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
 import { QueryTreeSQLCompiler } from "./query-tree-sql-compiler";
 import { SQLQueryCompiler } from "./sql-query-compiler";
+
 /**
  * Generic SQL UOW Operation Compiler.
  *
@@ -74,58 +73,6 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     );
   }
 
-  private shouldApplyShardFilter(
-    shardingStrategy: ShardingStrategy | undefined,
-    shardScope: ShardScope,
-    shardFilterExempt?: boolean,
-  ): boolean {
-    return shardingStrategy?.mode === "row" && shardScope !== "global" && !shardFilterExempt;
-  }
-
-  private shouldApplyJoinShardFilter(
-    shardingStrategy: ShardingStrategy | undefined,
-    shardScope: ShardScope,
-    shardFilterExempt?: boolean,
-  ): boolean {
-    return this.shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt);
-  }
-
-  private buildShardCondition(table: AnyTable, shard: string | null): Condition {
-    const shardColumn = table.columns["_shard"];
-    if (!shardColumn) {
-      throw new Error(`Missing _shard column on table "${table.name}".`);
-    }
-    return { type: "compare", a: shardColumn, operator: "=", b: resolveShardValue(shard) };
-  }
-
-  private applyJoinShardFilters(joins: any[], shard: string | null): any[] {
-    return joins.map((join) => {
-      if (join.options === false) {
-        return join;
-      }
-
-      const targetTable = join.relation.table;
-      let where = join.options.where;
-
-      if (targetTable.name !== SETTINGS_TABLE_NAME) {
-        const shardCondition = this.buildShardCondition(targetTable, shard);
-        where = where ? { type: "and", items: [where, shardCondition] } : shardCondition;
-      }
-
-      const nested = join.options.join
-        ? this.applyJoinShardFilters(join.options.join, shard)
-        : undefined;
-
-      return {
-        ...join,
-        options: {
-          ...join.options,
-          where,
-          join: nested,
-        },
-      };
-    });
-  }
   override compileCount(
     op: RetrievalOperation<AnySchema> & { type: "count" },
   ): CompiledQuery | null {
@@ -143,11 +90,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
-      const shardCondition = this.buildShardCondition(op.table, op.shard);
+    if (op.policyWhere) {
       conditions = conditions
-        ? { type: "and", items: [conditions, shardCondition] }
-        : shardCondition;
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
     }
 
     return sqlCompiler.compileCount(op.table, { where: conditions });
@@ -170,10 +116,20 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     if (queryTree) {
       const queryTreeCompiler = this.getQueryTreeCompiler(op.schema, op.namespace);
-      return queryTreeCompiler.compile(queryTree, {
-        readTracking: op.readTracking,
-        withCursor: op.withCursor,
-      });
+      return queryTreeCompiler.compile(
+        {
+          ...queryTree,
+          where: queryTree.where
+            ? op.policyWhere
+              ? { type: "and", items: [queryTree.where, op.policyWhere] }
+              : queryTree.where
+            : (op.policyWhere ?? undefined),
+        },
+        {
+          readTracking: op.readTracking,
+          withCursor: op.withCursor,
+        },
+      );
     }
 
     // Get index columns for ordering and cursor pagination
@@ -239,11 +195,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       }
     }
 
-    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
-      const shardCondition = this.buildShardCondition(op.table, op.shard);
+    if (op.policyWhere) {
       combinedWhere = combinedWhere
-        ? { type: "and", items: [combinedWhere, shardCondition] }
-        : shardCondition;
+        ? { type: "and", items: [combinedWhere, op.policyWhere] }
+        : op.policyWhere;
     }
 
     // For cursor pagination, fetch one extra item to determine if there's a next page
@@ -251,19 +206,12 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     // When we have joins, use the query builder directly
     if (join && join.length > 0) {
-      const joinWithShardFilters = this.shouldApplyJoinShardFilter(
-        op.shardingStrategy,
-        op.shardScope,
-        op.shardFilterExempt,
-      )
-        ? this.applyJoinShardFilters(join, op.shard)
-        : join;
       return sqlCompiler.compileFindMany(op.table, {
         select: (findManyOptions.select ?? true) as AnySelectClause,
         where: combinedWhere,
         orderBy,
         limit: effectiveLimit,
-        join: joinWithShardFilters,
+        join,
         readTracking: op.readTracking,
       });
     }
@@ -327,11 +275,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
 
-    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
-      const shardCondition = this.buildShardCondition(table, op.shard);
+    if (op.policyWhere) {
       conditions = conditions
-        ? { type: "and", items: [conditions, shardCondition] }
-        : shardCondition;
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
     }
 
     // Determine if we should use RETURNING-based checking
@@ -382,11 +329,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
 
-    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
-      const shardCondition = this.buildShardCondition(table, op.shard);
+    if (op.policyWhere) {
       conditions = conditions
-        ? { type: "and", items: [conditions, shardCondition] }
-        : shardCondition;
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
     }
 
     // Determine if we should use RETURNING-based checking
@@ -430,9 +376,8 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       throw new Error("Condition is a boolean, but should be a condition object.");
     }
 
-    if (this.shouldApplyShardFilter(op.shardingStrategy, op.shardScope, op.shardFilterExempt)) {
-      const shardCondition = this.buildShardCondition(table, op.shard);
-      condition = { type: "and", items: [condition, shardCondition] };
+    if (op.policyWhere) {
+      condition = { type: "and", items: [condition, op.policyWhere] };
     }
 
     return {
