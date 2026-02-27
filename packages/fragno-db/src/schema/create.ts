@@ -156,9 +156,27 @@ type TableInsertValuesFromColumns<TColumns extends Record<string, AnyColumn>> = 
     PickNotNullable<RawInsertValuesFromColumns<TColumns>>
 >;
 
-export type TableInsertValues<T extends AnyTable> = TableInsertValuesFromColumns<T["columns"]>;
+export type TableInsertValues<T extends AnyTable> = TableInsertValuesFromColumns<
+  StripSystemColumns<T["columns"]>
+>;
 
 export type TableUnknownKeysMode = "strip" | "strict";
+
+export type SystemColumnName = "_internalId" | "_version" | "_shard";
+
+type SystemColumns = {
+  _internalId: InternalIdColumn<null, bigint>;
+  _version: VersionColumn<null, number>;
+  _shard: Column<"varchar(128)", string, string>;
+};
+
+export type WithSystemColumns<TColumns extends Record<string, AnyColumn>> =
+  TColumns & SystemColumns;
+
+export type StripSystemColumns<TColumns extends Record<string, AnyColumn>> = Omit<
+  TColumns,
+  SystemColumnName
+>;
 
 export type TableValidationOptions = {
   unknownKeys?: TableUnknownKeysMode;
@@ -677,7 +695,7 @@ type RelationType = "one" | "many";
 export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
-  TIndexes extends Record<string, Index> = Record<string, Index>,
+  TIndexes extends Record<string, Index> = {},
 > {
   #name: string;
   #columns: TColumns;
@@ -786,7 +804,7 @@ export class TableBuilder<
    */
   createIndex<
     TIndexName extends string,
-    const TColumnNames extends readonly (string & keyof TColumns)[],
+    const TColumnNames extends readonly (string & keyof WithSystemColumns<TColumns>)[],
   >(
     name: TIndexName,
     columns: TColumnNames,
@@ -794,7 +812,11 @@ export class TableBuilder<
   ): TableBuilder<
     TColumns,
     TRelations,
-    TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
+    TIndexes &
+      Record<
+        TIndexName,
+        Index<ColumnsToTuple<WithSystemColumns<TColumns>, TColumnNames>, TColumnNames>
+      >
   > {
     const cols = columns.map((colName) => {
       let resolvedColumn = this.#columns[colName] as TColumns[string & keyof TColumns] | undefined;
@@ -822,7 +844,11 @@ export class TableBuilder<
     return this as unknown as TableBuilder<
       TColumns,
       TRelations,
-      TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
+      TIndexes &
+        Record<
+          TIndexName,
+          Index<ColumnsToTuple<WithSystemColumns<TColumns>, TColumnNames>, TColumnNames>
+        >
     >;
   }
 
@@ -1129,11 +1155,11 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     TTableName extends string,
     TColumns extends Record<string, AnyColumn>,
     TRelations extends Record<string, AnyRelation>,
-    TIndexes extends Record<string, Index> = Record<string, Index>,
+    TIndexes extends Record<string, Index> = {},
   >(
     name: TTableName,
     callback: (
-      builder: TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>,
+      builder: TableBuilder<{}, Record<string, AnyRelation>, {}>,
     ) => TableBuilder<TColumns, TRelations, TIndexes>,
   ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>> {
     this.#version++;
@@ -1142,9 +1168,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
     }
 
-    const tableBuilder = new TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>(
-      name,
-    );
+    const tableBuilder = new TableBuilder<{}, Record<string, AnyRelation>, {}>(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
     const indexNames = result.getIndexes().map((idx) => idx.name);
@@ -1190,7 +1214,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       subOperations.push({
         type: "add-column",
         columnName: "_shard",
-        column: builtTable.columns["_shard"],
+        column: cloneColumn(builtTable.columns["_shard"]),
       });
     }
 
@@ -1378,14 +1402,14 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     TTableName extends string & keyof TTables,
     TNewColumns extends Record<string, AnyColumn>,
     TNewRelations extends Record<string, AnyRelation>,
-    TNewIndexes extends Record<string, Index> = Record<string, Index>,
+    TNewIndexes extends Record<string, Index> = TTables[TTableName]["indexes"],
   >(
     tableName: TTableName,
     callback: (
       builder: TableBuilder<
         TTables[TTableName]["columns"],
         TTables[TTableName]["relations"],
-        Record<string, Index>
+        TTables[TTableName]["indexes"]
       >,
     ) => TableBuilder<TNewColumns, TNewRelations, TNewIndexes>,
   ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewRelations, TNewIndexes>> {
@@ -1414,7 +1438,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       tableBuilder as TableBuilder<
         TTables[TTableName]["columns"],
         TTables[TTableName]["relations"],
-        Record<string, Index>
+        TTables[TTableName]["indexes"]
       >,
     );
     const newTable = resultBuilder.build();

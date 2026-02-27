@@ -30,6 +30,7 @@ import {
   UnitOfWork,
   type UnitOfWorkConfig,
   type FindBuilder,
+  type QueryPolicyEntry,
 } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
 import {
@@ -38,6 +39,7 @@ import {
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
   #indexName?: string;
@@ -147,13 +149,66 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
+    const shardPolicy = createShardQueryPolicy({
+      shardingStrategy: undefined,
+      getShard: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
+      getShardScope: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shardScope : "scoped",
+    });
+
+    const baseUowConfig: UnitOfWorkConfig = {
+      queryPolicies: [
+        {
+          policy: shardPolicy,
+          getContext: () => ({}),
+        },
+      ],
+    };
+
+    const mergeUowConfigs = (
+      base?: UnitOfWorkConfig,
+      override?: UnitOfWorkConfig,
+    ): UnitOfWorkConfig | undefined => {
+      if (!base && !override) {
+        return undefined;
+      }
+
+      const merged: UnitOfWorkConfig = {
+        ...base,
+        ...override,
+      };
+
+      const mergedPolicies: QueryPolicyEntry[] = [...(base?.queryPolicies ?? [])];
+      if (override?.queryPolicies && override.queryPolicies.length > 0) {
+        const indexByName = new Map<string, number>();
+        for (let i = 0; i < mergedPolicies.length; i += 1) {
+          indexByName.set(mergedPolicies[i]!.policy.name, i);
+        }
+        for (const policy of override.queryPolicies) {
+          const existingIndex = indexByName.get(policy.policy.name);
+          if (existingIndex === undefined) {
+            indexByName.set(policy.policy.name, mergedPolicies.length);
+            mergedPolicies.push(policy);
+          } else {
+            mergedPolicies[existingIndex] = policy;
+          }
+        }
+      }
+      if (mergedPolicies.length > 0) {
+        merged.queryPolicies = mergedPolicies;
+      }
+
+      return merged;
+    };
+
     const createBaseUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
       new UnitOfWork(
         compiler,
         executor,
         decoder,
         opts?.name,
-        opts?.config,
+        mergeUowConfigs(baseUowConfig, opts?.config),
         this.#schemaNamespaceMap,
       );
 

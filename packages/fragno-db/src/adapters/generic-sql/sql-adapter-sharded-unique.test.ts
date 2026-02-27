@@ -8,6 +8,7 @@ import { BetterSQLite3DriverConfig, PGLiteDriverConfig } from "./driver-config";
 import { column, idColumn, schema } from "../../schema/create";
 import { internalSchema } from "../../fragments/internal-fragment";
 import type { ShardScope } from "../../sharding";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 
 const globalUniqueSchema = schema("unique_global", (s) =>
   s.addTable("users", (t) =>
@@ -98,9 +99,16 @@ adapters.forEach(({ name, createAdapter }) => {
     };
 
     const makeUowConfig = (): UnitOfWorkConfig => ({
-      shardingStrategy: { mode: "row" },
-      getShard: () => currentShard,
-      getShardScope: () => currentShardScope,
+      queryPolicies: [
+        {
+          policy: createShardQueryPolicy({
+            shardingStrategy: { mode: "row" },
+            getShard: () => currentShard,
+            getShardScope: () => currentShardScope,
+          }),
+          getContext: () => ({}),
+        },
+      ],
     });
 
     async function createUser(

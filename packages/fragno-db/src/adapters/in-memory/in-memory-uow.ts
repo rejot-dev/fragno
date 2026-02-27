@@ -51,7 +51,7 @@ import { resolveReferenceSubqueries } from "./reference-resolution";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { compareNormalizedValues } from "./value-comparison";
 import type { NamingResolver } from "../../naming/sql-naming";
-import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../sharding";
+import { resolveShardValue } from "../../sharding";
 
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
@@ -148,75 +148,19 @@ const selectRow = (
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
 
-const shouldApplyShardFilter = (
-  shardingStrategy: ShardingStrategy | undefined,
-  shardScope: ShardScope,
-  shardFilterExempt?: boolean,
-): boolean =>
-  shardingStrategy?.mode === "row" && shardScope !== "global" && shardFilterExempt !== true;
-
-const isAdapterScopedTable = (table: AnyTable): boolean => table.name === SETTINGS_TABLE_NAME;
-
-const getShardColumn = (table: AnyTable): AnyTable["columns"][string] => {
-  const shardColumn = table.columns["_shard"];
-  if (!shardColumn) {
-    throw new Error(`Missing _shard column on table "${table.name}".`);
-  }
-  return shardColumn;
-};
-
-const buildShardCondition = (
-  table: AnyTable,
-  shard: string | null,
-  shardingStrategy: ShardingStrategy | undefined,
-  shardScope: ShardScope,
-  shardFilterExempt?: boolean,
-): Condition | null => {
-  if (!shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt)) {
-    return null;
-  }
-
-  const shardColumn = getShardColumn(table);
-  return { type: "compare", a: shardColumn, operator: "=", b: resolveShardValue(shard) };
-};
-
-const mergeConditions = (
-  base: Condition | boolean | undefined,
-  shardCondition: Condition | null,
-): Condition | boolean | undefined => {
-  if (!shardCondition) {
-    return base;
-  }
-  if (base === undefined) {
-    return shardCondition;
-  }
-  if (base === true) {
-    return shardCondition;
-  }
-  if (base === false) {
-    return false;
-  }
-  return { type: "and", items: [base, shardCondition] };
-};
-
-const matchesShardFilter = (
+const matchesPolicyWhere = (
+  policyWhere: Condition | null | undefined,
   table: AnyTable,
   row: InMemoryRow,
-  shard: string | null,
-  shardingStrategy: ShardingStrategy | undefined,
-  shardScope: ShardScope,
-  shardFilterExempt: boolean | undefined,
+  namespaceStore: InMemoryNamespaceStore,
   resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): boolean => {
-  if (!shouldApplyShardFilter(shardingStrategy, shardScope, shardFilterExempt)) {
+  if (!policyWhere) {
     return true;
   }
 
-  const shardColumn = getShardColumn(table);
-  const shardColumnName = getPhysicalColumnName(table, shardColumn.name, resolver);
-  const value = row[shardColumnName];
-
-  return value === resolveShardValue(shard);
+  return evaluateCondition(policyWhere, table, row, namespaceStore, resolver, now);
 };
 
 const prefixSelection = (
@@ -316,9 +260,6 @@ const findJoinMatches = (
   parentTable: AnyTable,
   join: CompiledJoin,
   namespaceStore: InMemoryNamespaceStore,
-  shard: string | null,
-  shardingStrategy: ShardingStrategy | undefined,
-  shardScope: ShardScope,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
 ): InMemoryRow[] => {
@@ -334,20 +275,6 @@ const findJoinMatches = (
   assertOrderByIndexOnly(targetTable, options.orderBy, resolver);
 
   for (const row of targetStore.rows.values()) {
-    if (
-      !matchesShardFilter(
-        targetTable,
-        row,
-        shard,
-        shardingStrategy,
-        shardScope,
-        isAdapterScopedTable(targetTable),
-        resolver,
-      )
-    ) {
-      continue;
-    }
-
     let matchesJoin = true;
 
     for (const [left, right] of relation.on) {
@@ -410,9 +337,6 @@ const applyJoins = (
   parentTable: AnyTable,
   joins: CompiledJoin[] | undefined,
   namespaceStore: InMemoryNamespaceStore,
-  shard: string | null,
-  shardingStrategy: ShardingStrategy | undefined,
-  shardScope: ShardScope,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   parentPath = "",
@@ -432,17 +356,7 @@ const applyJoins = (
     const nextOutputs: InMemoryRow[] = [];
 
     for (const currentOutput of outputs) {
-      const matches = findJoinMatches(
-        parentRow,
-        parentTable,
-        join,
-        namespaceStore,
-        shard,
-        shardingStrategy,
-        shardScope,
-        resolver,
-        now,
-      );
+      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore, resolver, now);
 
       if (matches.length === 0) {
         nextOutputs.push(currentOutput);
@@ -467,9 +381,6 @@ const applyJoins = (
               join.relation.table,
               join.options.join,
               namespaceStore,
-              shard,
-              shardingStrategy,
-              shardScope,
               resolver,
               now,
               relationPath,
@@ -804,18 +715,10 @@ const findRows = (
     return [];
   }
 
-  const shardCondition = buildShardCondition(
-    table,
-    op.shard,
-    op.shardingStrategy,
-    op.shardScope,
-    op.shardFilterExempt,
-  );
-  const condition = mergeConditions(whereResult === true ? undefined : whereResult, shardCondition);
-  if (condition === false) {
-    return [];
+  let condition: Condition | undefined = whereResult === true ? undefined : whereResult;
+  if (op.policyWhere) {
+    condition = condition ? { type: "and", items: [condition, op.policyWhere] } : op.policyWhere;
   }
-  const normalizedCondition = condition === true ? undefined : condition;
   const results: InMemoryRow[] = [];
 
   for (const entry of entries) {
@@ -823,10 +726,7 @@ const findRows = (
     if (!row) {
       continue;
     }
-    if (
-      normalizedCondition &&
-      !evaluateCondition(normalizedCondition, table, row, namespaceStore, resolver, now)
-    ) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
       continue;
     }
 
@@ -844,9 +744,6 @@ const findRows = (
         table,
         op.options.joins,
         namespaceStore,
-        op.shard,
-        op.shardingStrategy,
-        op.shardScope,
         resolver,
         now,
       );
@@ -884,25 +781,14 @@ const countRows = (
     return 0;
   }
 
-  const shardCondition = buildShardCondition(
-    table,
-    op.shard,
-    op.shardingStrategy,
-    op.shardScope,
-    op.shardFilterExempt,
-  );
-  const condition = mergeConditions(whereResult === true ? undefined : whereResult, shardCondition);
-  if (condition === false) {
-    return 0;
+  let condition: Condition | undefined = whereResult === true ? undefined : whereResult;
+  if (op.policyWhere) {
+    condition = condition ? { type: "and", items: [condition, op.policyWhere] } : op.policyWhere;
   }
-  const normalizedCondition = condition === true ? undefined : condition;
   let count = 0;
 
   for (const row of tableStore.rows.values()) {
-    if (
-      normalizedCondition &&
-      !evaluateCondition(normalizedCondition, table, row, namespaceStore, resolver, now)
-    ) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
       continue;
     }
     count += 1;
@@ -1019,14 +905,13 @@ const updateRow = (
     return null;
   }
   if (
-    !matchesShardFilter(
+    !matchesPolicyWhere(
+      op.policyWhere,
       table,
       existing.row,
-      op.shard,
-      op.shardingStrategy,
-      op.shardScope,
-      op.shardFilterExempt,
+      namespaceStore,
       resolver,
+      options.clock.now,
     )
   ) {
     if (versionToCheck !== undefined) {
@@ -1117,14 +1002,13 @@ const deleteRow = (
     return null;
   }
   if (
-    !matchesShardFilter(
+    !matchesPolicyWhere(
+      op.policyWhere,
       table,
       existing.row,
-      op.shard,
-      op.shardingStrategy,
-      op.shardScope,
-      op.shardFilterExempt,
+      namespaceStore,
       resolver,
+      options.clock.now,
     )
   ) {
     if (versionToCheck !== undefined) {
@@ -1176,22 +1060,16 @@ const deleteRow = (
 
 const checkRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "check" }>,
+  namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
   table: AnyTable,
   resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): void => {
   const existing = findRowByExternalId(tableStore, table, op.id.externalId, resolver);
   if (
     !existing ||
-    !matchesShardFilter(
-      table,
-      existing.row,
-      op.shard,
-      op.shardingStrategy,
-      op.shardScope,
-      op.shardFilterExempt,
-      resolver,
-    )
+    !matchesPolicyWhere(op.policyWhere, table, existing.row, namespaceStore, resolver, now)
   ) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" not found.`);
   }
@@ -1271,10 +1149,7 @@ const reserveOutboxVersion = (
       id: externalId,
       checkVersion: false,
       set: { value: next.toString() },
-      shard: null,
-      shardScope: "global",
-      shardingStrategy: undefined,
-      shardFilterExempt: true,
+      policyWhere: null,
     };
     const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
     return { version: next, rollback: rollback ?? (() => {}) };
@@ -1287,10 +1162,7 @@ const reserveOutboxVersion = (
     table: settingsTable.name,
     values: { key: OUTBOX_VERSION_KEY, value: "0", _shard: resolveShardValue(null) },
     generatedExternalId: options.idGenerator(),
-    shard: null,
-    shardScope: "global",
-    shardingStrategy: undefined,
-    shardFilterExempt: true,
+    policyWhere: null,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1397,10 +1269,7 @@ const insertOutboxRow = (
       ...(payload.refMap ? { refMap: payload.refMap } : {}),
     },
     generatedExternalId: options.idGenerator(),
-    shard: payload.shard ?? null,
-    shardScope: "scoped",
-    shardingStrategy: undefined,
-    shardFilterExempt: false,
+    policyWhere: null,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1466,10 +1335,7 @@ const insertOutboxMutationRows = (
           _shard: resolveShardValue(payload.shard),
         },
         generatedExternalId: options.idGenerator(),
-        shard: payload.shard ?? null,
-        shardScope: "scoped",
-        shardingStrategy: undefined,
-        shardFilterExempt: false,
+        policyWhere: null,
       };
 
       const previousInternalId = tableStore.nextInternalId;
@@ -1677,7 +1543,7 @@ export const createInMemoryUowExecutor = (
             throw new Error(`Invalid table name ${operation.table}.`);
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
-          checkRow(operation, tableStore, table, resolver);
+          checkRow(operation, namespaceStore, tableStore, table, resolver, options.clock.now);
           continue;
         }
 

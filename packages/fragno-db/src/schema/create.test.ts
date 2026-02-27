@@ -58,13 +58,16 @@ describe("create", () => {
     });
 
     const userTable = userSchema.tables.users;
-    expect(userTable.columns["_internalId"]).toBeDefined();
-    expect(userTable.columns["_version"]).toBeDefined();
-    expect(userTable.columns["_shard"]).toBeDefined();
-    expect(userTable.columns["_internalId"].isHidden).toBe(true);
-    expect(userTable.columns["_version"].isHidden).toBe(true);
-    expect(userTable.columns["_shard"].isHidden).toBe(true);
-    expect(userTable.columns["_shard"].isNullable).toBe(false);
+    const internalIdCol = userTable.getColumnByName("_internalId");
+    const versionCol = userTable.getColumnByName("_version");
+    const shardCol = userTable.getColumnByName("_shard");
+    expect(internalIdCol).toBeDefined();
+    expect(versionCol).toBeDefined();
+    expect(shardCol).toBeDefined();
+    expect(internalIdCol!.isHidden).toBe(true);
+    expect(versionCol!.isHidden).toBe(true);
+    expect(shardCol!.isHidden).toBe(true);
+    expect(shardCol!.isNullable).toBe(false);
 
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     const addColumnOps = addTableOps[0].operations.filter((op) => op.type === "add-column");
@@ -587,9 +590,13 @@ describe("create", () => {
     expect(usersTable.indexes["idx_name_unique"].columnNames).toEqual(["name"]);
     expect(usersTable.indexes["idx_name_unique"].unique).toBe(true);
 
-    expect(usersTable.indexes["idx_users_shard"]).toBeDefined();
-    expect(usersTable.indexes["idx_users_shard"].columnNames).toEqual(["_shard"]);
-    expect(usersTable.indexes["idx_users_shard"].unique).toBe(false);
+    const usersIndexes = usersTable.indexes as Record<
+      string,
+      { columnNames: readonly string[]; unique: boolean }
+    >;
+    expect(usersIndexes["idx_users_shard"]).toBeDefined();
+    expect(usersIndexes["idx_users_shard"].columnNames).toEqual(["_shard"]);
+    expect(usersIndexes["idx_users_shard"].unique).toBe(false);
   });
 
   it("should not duplicate existing indexes when altering a table", () => {
@@ -674,7 +681,8 @@ describe("create", () => {
     expect(usersTable.indexes["idx_email"]).toBeDefined();
     expect(usersTable.indexes["idx_name"]).toBeDefined();
     expect(usersTable.indexes["idx_age"]).toBeDefined();
-    expect(usersTable.indexes["idx_users_shard"]).toBeDefined();
+    const usersIndexes = usersTable.indexes as Record<string, unknown>;
+    expect(usersIndexes["idx_users_shard"]).toBeDefined();
   });
 
   it("Simple user table types", () => {

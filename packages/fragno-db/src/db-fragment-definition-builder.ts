@@ -3,6 +3,7 @@ import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
 import { GLOBAL_SHARD_SENTINEL, type ShardScope, type ShardingStrategy } from "./sharding";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
+import { createShardQueryPolicy } from "./query/unit-of-work/query-policies";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
@@ -662,11 +663,19 @@ export class DatabaseFragmentDefinitionBuilder<
 
       // Create implicit dependencies
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const shardPolicy = createShardQueryPolicy({
+        shardingStrategy,
+        getShard: shardContext.get,
+        getShardScope: shardContext.getScope,
+      });
       const createUow = () =>
         dbContext.db.createUnitOfWork(undefined, {
-          shardingStrategy,
-          getShard: shardContext.get,
-          getShardScope: shardContext.getScope,
+          queryPolicies: [
+            {
+              policy: shardPolicy,
+              getContext: () => ({}),
+            },
+          ],
         });
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
@@ -1086,6 +1095,11 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const shardContext = createShardContextHelpers(dbContext.databaseAdapter.contextStorage);
+      const shardPolicy = createShardQueryPolicy({
+        shardingStrategy,
+        getShard: shardContext.get,
+        getShardScope: shardContext.getScope,
+      });
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
@@ -1093,9 +1107,12 @@ export class DatabaseFragmentDefinitionBuilder<
         shardContext,
         createUnitOfWork: () =>
           dbContext.db.createUnitOfWork(undefined, {
-            shardingStrategy,
-            getShard: shardContext.get,
-            getShardScope: shardContext.getScope,
+            queryPolicies: [
+              {
+                policy: shardPolicy,
+                getContext: () => ({}),
+              },
+            ],
           }),
       };
 
@@ -1128,10 +1145,18 @@ export class DatabaseFragmentDefinitionBuilder<
         const shardContext = createShardContextHelpers(
           dbContextForStorage.databaseAdapter.contextStorage,
         );
-        const uow: IUnitOfWork = dbContextForStorage.db.createBaseUnitOfWork(undefined, {
+        const shardPolicy = createShardQueryPolicy({
           shardingStrategy,
           getShard: shardContext.get,
           getShardScope: shardContext.getScope,
+        });
+        const uow: IUnitOfWork = dbContextForStorage.db.createBaseUnitOfWork(undefined, {
+          queryPolicies: [
+            {
+              policy: shardPolicy,
+              getContext: () => ({}),
+            },
+          ],
         });
 
         return { uow, shard: null, shardScope: "scoped" };
@@ -1190,6 +1215,11 @@ export class DatabaseFragmentDefinitionBuilder<
       );
       const hookStorage = dbContextForHooks.databaseAdapter.contextStorage;
       const hookShardContext = createShardContextHelpers(hookStorage);
+      const hookShardPolicy = createShardQueryPolicy({
+        shardingStrategy: hookShardingStrategy,
+        getShard: hookShardContext.get,
+        getShardScope: hookShardContext.getScope,
+      });
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: context.services
           ? this.#hooksFactory({
@@ -1216,9 +1246,12 @@ export class DatabaseFragmentDefinitionBuilder<
             ...execOptions,
             createUnitOfWork: () => {
               const uow = dbContextForHooks.db.createBaseUnitOfWork(undefined, {
-                shardingStrategy: hookShardingStrategy,
-                getShard: hookShardContext.get,
-                getShardScope: hookShardContext.getScope,
+                queryPolicies: [
+                  {
+                    policy: hookShardPolicy,
+                    getContext: () => ({}),
+                  },
+                ],
               });
               uow.registerSchema(
                 hooksConfig.internalFragment.$internal.deps.schema,

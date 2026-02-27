@@ -37,15 +37,14 @@ import {
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
-import type { ShardScope, ShardingStrategy } from "../../sharding";
+import type { QueryPolicyEntry } from "../../query/unit-of-work/unit-of-work";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
-  shardingStrategy?: ShardingStrategy;
-  getShard?: () => string | null;
-  getShardScope?: () => ShardScope;
+  queryPolicies?: QueryPolicyEntry[];
 }
 
 export interface SqlAdapterOptions {
@@ -204,6 +203,24 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         createNamingResolver(schemaForResolver, namespaceForResolver, this.namingStrategy),
     );
 
+    const shardPolicy = createShardQueryPolicy({
+      shardingStrategy: undefined,
+      getShard: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
+      getShardScope: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shardScope : "scoped",
+    });
+    const shardPolicyEntry = { policy: shardPolicy, getContext: () => ({}) };
+
+    const uowConfig =
+      this.uowConfig &&
+      this.uowConfig.queryPolicies?.some((entry) => entry.policy.name === "sharding")
+        ? this.uowConfig
+        : {
+            ...this.uowConfig,
+            queryPolicies: [...(this.uowConfig?.queryPolicies ?? []), shardPolicyEntry],
+          };
+
     const factory: UnitOfWorkFactory = {
       compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
       executor: createExecutor(this.#driver, this.driverConfig, {
@@ -215,7 +232,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
           this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
       }),
       decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver),
-      uowConfig: this.uowConfig,
+      uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };
 

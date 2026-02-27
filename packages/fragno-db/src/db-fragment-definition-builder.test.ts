@@ -646,7 +646,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       deps.createUnitOfWork();
       const call = mockDb.createUnitOfWork.mock.calls[callCount];
 
-      expect(call?.[1]?.shardingStrategy).toEqual(strategy);
+      expect(call?.[1]?.queryPolicies?.[0]?.policy.name).toEqual("sharding");
     });
   });
 

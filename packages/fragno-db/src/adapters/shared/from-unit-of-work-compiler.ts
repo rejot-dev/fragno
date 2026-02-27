@@ -15,13 +15,13 @@ import type {
   UOWDecoder,
   UOWExecutor,
   UOWInstrumentation,
+  QueryPolicyEntry,
   ValidIndexName,
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
-import type { ShardScope, ShardingStrategy } from "../../sharding";
 
 /**
  * Configuration options for creating a Unit of Work with generic SQL
@@ -38,9 +38,7 @@ export interface UnitOfWorkConfig {
    */
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
-  shardingStrategy?: ShardingStrategy;
-  getShard?: () => string | null;
-  getShardScope?: () => ShardScope;
+  queryPolicies?: QueryPolicyEntry[];
 }
 
 /**
@@ -173,18 +171,54 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     };
   }
 
+  function mergeUowConfigs(
+    base?: UnitOfWorkConfig,
+    override?: UnitOfWorkConfig,
+  ): UnitOfWorkConfig | undefined {
+    if (!base && !override) {
+      return undefined;
+    }
+
+    const merged: UnitOfWorkConfig = {
+      ...base,
+      ...override,
+    };
+
+    const mergedPolicies: QueryPolicyEntry[] = [...(base?.queryPolicies ?? [])];
+    if (override?.queryPolicies && override.queryPolicies.length > 0) {
+      const indexByName = new Map<string, number>();
+      for (let i = 0; i < mergedPolicies.length; i += 1) {
+        indexByName.set(mergedPolicies[i]!.policy.name, i);
+      }
+      for (const policy of override.queryPolicies) {
+        const existingIndex = indexByName.get(policy.policy.name);
+        if (existingIndex === undefined) {
+          indexByName.set(policy.policy.name, mergedPolicies.length);
+          mergedPolicies.push(policy);
+        } else {
+          mergedPolicies[existingIndex] = policy;
+        }
+      }
+    }
+    if (mergedPolicies.length > 0) {
+      merged.queryPolicies = mergedPolicies;
+    }
+
+    return merged;
+  }
+
   function createBaseUow(opts: { name?: string; config?: UnitOfWorkConfig }) {
     return new UnitOfWork(
       compiler,
       executor,
       decoder,
       opts.name,
-      normalizeUowConfig(opts.config),
+      normalizeUowConfig(mergeUowConfigs(uowConfig, opts.config)),
       schemaNamespaceMap,
     );
   }
 
-  function createUOW(opts: { name?: string; config?: UnitOfWorkConfig }) {
+  function createUOW(opts: { name?: string; config?: UnitOfWorkConfig } = {}) {
     return createBaseUow(opts).forSchema(schema);
   }
 
@@ -211,7 +245,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
       Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
     >[]
   > {
-    const uow = createUOW({ config: uowConfig });
+    const uow = createUOW();
     if (builderFn) {
       uow.find(tableName, builderFn);
     } else {
@@ -237,7 +271,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
       >
     >
   > {
-    const uow = createUOW({ config: uowConfig }).findWithCursor(tableName, builderFn);
+    const uow = createUOW().findWithCursor(tableName, builderFn);
     const [result] = await uow.executeRetrieve();
     // Result from findWithCursor is always a CursorResult - the UOW decoder handles the conversion
     return result as CursorResult<
@@ -268,7 +302,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     ExtractJoinOut<TBuilderResult>,
     Extract<ExtractSelect<TBuilderResult>, SelectClause<T["tables"][TableName]>>
   > | null> {
-    const uow = createUOW({ config: uowConfig });
+    const uow = createUOW();
     if (builderFn) {
       uow.find(tableName, (b) => {
         builderFn(b);
@@ -292,7 +326,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     findFirst,
 
     async create(tableName, values) {
-      const uow = createUOW({ config: uowConfig });
+      const uow = createUOW();
       uow.create(tableName, values);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -308,7 +342,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     },
 
     async createMany(tableName, valuesArray) {
-      const uow = createUOW({ config: uowConfig });
+      const uow = createUOW();
       for (const values of valuesArray) {
         uow.create(tableName, values);
       }
@@ -321,7 +355,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     },
 
     async update(tableName, id, builderFn) {
-      const uow = createUOW({ config: uowConfig });
+      const uow = createUOW();
       uow.update(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -347,7 +381,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
         throw new Error("set() must be called in updateMany");
       }
 
-      const findUow = createUOW({ config: uowConfig });
+      const findUow = createUOW();
       findUow.find(tableName, (b) => {
         // Condition might be null or undefined, only pass if defined and not null
         if (condition !== undefined && condition !== null) {
@@ -363,7 +397,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
         return;
       }
 
-      const updateUow = createUOW({ config: uowConfig });
+      const updateUow = createUOW();
       for (const record of records) {
         if (!hasIdField(record)) {
           throw new Error("Record missing id field");
@@ -377,7 +411,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     },
 
     async delete(tableName, id, builderFn?) {
-      const uow = createUOW({ config: uowConfig });
+      const uow = createUOW();
       uow.delete(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -386,7 +420,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     },
 
     async deleteMany(tableName, builderFn) {
-      const findUow = createUOW({ config: uowConfig });
+      const findUow = createUOW();
       findUow.find(tableName, builderFn);
       const [records]: unknown[][] = await findUow.executeRetrieve();
 
@@ -394,7 +428,7 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
         return;
       }
 
-      const deleteUow = createUOW({ config: uowConfig });
+      const deleteUow = createUOW();
       for (const record of records) {
         if (!hasIdField(record)) {
           throw new Error("Record missing id field");
@@ -410,20 +444,14 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
     createUnitOfWork(name, nestedUowConfig) {
       return createUOW({
         name,
-        config: {
-          ...uowConfig,
-          ...nestedUowConfig,
-        },
+        config: nestedUowConfig,
       });
     },
 
     createBaseUnitOfWork(name, nestedUowConfig) {
       return createBaseUow({
         name,
-        config: {
-          ...uowConfig,
-          ...nestedUowConfig,
-        },
+        config: nestedUowConfig,
       });
     },
   };

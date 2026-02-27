@@ -1,7 +1,9 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { JoinFindBuilder, UnitOfWork } from "./unit-of-work";
+import type { QueryPolicySchemaContext } from "./unit-of-work";
 import type { FragnoId, FragnoReference } from "../../schema/create";
+import type { Condition } from "../condition-builder";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -232,5 +234,32 @@ describe("UnitOfWork type tests", () => {
 
     expectTypeOf<PostTitle>().toEqualTypeOf<string>();
     expectTypeOf<Author>().toEqualTypeOf<{ name: string }>();
+  });
+
+  it("QueryPolicy schema helpers are table-specific and index-restricted", () => {
+    const policyCtx = null as unknown as QueryPolicySchemaContext<typeof testSchema>;
+    type IndexedCols =
+      (typeof testSchema.tables.users.indexes)[keyof typeof testSchema.tables.users.indexes]["columnNames"][number];
+    type IndexKeys = keyof typeof testSchema.tables.users.indexes;
+    expectTypeOf<IndexKeys>().toEqualTypeOf<"idx_email" | "idx_name">();
+
+    if (Math.random() > 1) {
+      const usersTable: typeof testSchema.tables.users = policyCtx.table("users");
+      const postsTable: typeof testSchema.tables.posts = policyCtx.table("posts");
+      const commentsTable: typeof testSchema.tables.comments = policyCtx.table("comments");
+      void usersTable;
+      void postsTable;
+      void commentsTable;
+      type InvalidTable = "nope" extends keyof typeof testSchema.tables ? true : false;
+      expectTypeOf<InvalidTable>().toEqualTypeOf<false>();
+
+      const whereResult: Condition | null = policyCtx.where("users", (eb) => {
+        expectTypeOf(eb).parameter(0).toEqualTypeOf<IndexedCols>();
+        // @ts-expect-error "age" is not indexed
+        eb("age", "=", 1);
+        return eb("email", "=", "test@example.com");
+      });
+      void whereResult;
+    }
   });
 });

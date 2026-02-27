@@ -3,7 +3,8 @@ import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-comp
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
 import { Cursor } from "../../../query/cursor";
-import { GLOBAL_SHARD_SENTINEL } from "../../../sharding";
+import { GLOBAL_SHARD_SENTINEL, resolveShardValue } from "../../../sharding";
+import type { Condition } from "../../../query/condition-builder";
 
 // Test schema with indexes
 const testSchema = schema("test", (s) => {
@@ -136,18 +137,26 @@ const customIdSchema = schema("customid", (s) => {
 
 describe("GenericSQLUOWOperationCompiler", () => {
   const driverConfig = new BetterSQLite3DriverConfig();
-  const shardDefaults = {
-    shard: null,
-    shardScope: "scoped",
-    shardingStrategy: undefined,
-    shardFilterExempt: false,
+  const policyDefaults = {
+    policyWhere: null,
   } as const;
+
+  const buildShardPolicyWhere = (
+    table: (typeof testSchema)["tables"][keyof (typeof testSchema)["tables"]],
+    shard: string | null,
+  ): Condition => {
+    const shardColumn = table.getColumnByName("_shard");
+    if (!shardColumn) {
+      throw new Error(`Missing _shard column on table "${table.name}".`);
+    }
+    return { type: "compare", a: shardColumn, operator: "=", b: resolveShardValue(shard) };
+  };
 
   test("compileCount operation", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileCount({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "count",
       schema: testSchema,
       table: testSchema.tables.users,
@@ -165,7 +174,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileCount({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "count",
       schema: testSchema,
       table: testSchema.tables.users,
@@ -186,7 +195,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileFind({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "find",
       schema: testSchema,
       table: testSchema.tables.users,
@@ -208,7 +217,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileCreate({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "create",
       schema: testSchema,
       table: "users",
@@ -231,7 +240,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileUpdate({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "update",
       schema: testSchema,
       table: "users",
@@ -253,7 +262,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileUpdate({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "update",
       schema: testSchema,
       table: "users",
@@ -275,7 +284,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileDelete({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "delete",
       schema: testSchema,
       table: "users",
@@ -292,7 +301,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileCheck({
-      ...shardDefaults,
+      ...policyDefaults,
       type: "check",
       schema: testSchema,
       table: "users",
@@ -306,18 +315,17 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.expectedReturnedRows).toBe(1);
   });
 
-  describe("shard filters", () => {
-    const shardRowDefaults = {
-      ...shardDefaults,
-      shard: "tenant-a",
-      shardingStrategy: { mode: "row" } as const,
-    };
+  describe("policy filters", () => {
+    const withShardPolicy = (shard: string | null) => ({
+      ...policyDefaults,
+      policyWhere: buildShardPolicyWhere(testSchema.tables.users, shard),
+    });
 
-    test("compileCount applies shard filter", () => {
+    test("compileCount applies policy where", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCount({
-        ...shardRowDefaults,
+        ...withShardPolicy("tenant-a"),
         type: "count",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -333,12 +341,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
       );
     });
 
-    test("compileFind applies shard filter with null shard", () => {
+    test("compileFind applies policy where with null shard", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardRowDefaults,
-        shard: null,
+        ...withShardPolicy(null),
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -357,11 +364,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.parameters[0]).toBe(GLOBAL_SHARD_SENTINEL);
     });
 
-    test("compileUpdate applies shard filter", () => {
+    test("compileUpdate applies policy where", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileUpdate({
-        ...shardRowDefaults,
+        ...withShardPolicy("tenant-a"),
         type: "update",
         schema: testSchema,
         table: "users",
@@ -378,11 +385,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
       );
     });
 
-    test("compileCheck applies shard filter", () => {
+    test("compileCheck applies policy where", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCheck({
-        ...shardRowDefaults,
+        ...withShardPolicy("tenant-a"),
         type: "check",
         schema: testSchema,
         table: "users",
@@ -395,12 +402,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
       );
     });
 
-    test("compileFind skips shard filter for global scope", () => {
+    test("compileFind skips policy where when not provided", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardRowDefaults,
-        shardScope: "global",
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -417,25 +423,6 @@ describe("GenericSQLUOWOperationCompiler", () => {
         `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
-
-    test("compileCount skips shard filter when shardFilterExempt", () => {
-      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
-
-      const result = compiler.compileCount({
-        ...shardRowDefaults,
-        shardFilterExempt: true,
-        type: "count",
-        schema: testSchema,
-        table: testSchema.tables.users,
-        indexName: "primary",
-        options: {
-          useIndex: "primary",
-        },
-      });
-
-      expect(result).not.toBeNull();
-      expect(result!.sql).toMatchInlineSnapshot(`"select count(*) as "count" from "users""`);
-    });
   });
 
   describe("compileCreate - dialect differences", () => {
@@ -443,7 +430,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(new NodePostgresDriverConfig());
 
       const result = compiler.compileCreate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "create",
         schema: testSchema,
         table: "users",
@@ -464,7 +451,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(new BetterSQLite3DriverConfig());
 
       const result = compiler.compileCreate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "create",
         schema: testSchema,
         table: "users",
@@ -487,7 +474,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCreate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "create",
         schema: testSchema,
         table: "posts",
@@ -509,7 +496,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCreate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "create",
         schema: testSchema,
         table: "posts",
@@ -535,7 +522,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileUpdate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "update",
         schema: testSchema,
         table: "posts",
@@ -556,7 +543,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileUpdate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "update",
         schema: testSchema,
         table: "posts",
@@ -579,7 +566,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileUpdate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "update",
         schema: testSchema,
         table: "users",
@@ -604,7 +591,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileDelete({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "delete",
         schema: testSchema,
         table: "users",
@@ -625,7 +612,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -647,7 +634,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -670,7 +657,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -695,7 +682,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCreate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "create",
         schema: customIdSchema,
         table: "products",
@@ -716,7 +703,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.products,
@@ -738,7 +725,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.products,
@@ -761,7 +748,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileUpdate({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "update",
         schema: customIdSchema,
         table: "products",
@@ -782,7 +769,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.orders,
@@ -807,7 +794,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -829,7 +816,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -853,7 +840,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -875,7 +862,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -900,7 +887,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -922,7 +909,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -944,7 +931,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -976,7 +963,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       });
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1007,7 +994,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       });
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1038,7 +1025,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       });
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1066,7 +1053,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1089,7 +1076,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1113,7 +1100,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1143,7 +1130,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1163,7 +1150,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1186,7 +1173,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileCount({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "count",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1206,7 +1193,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1230,7 +1217,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1256,7 +1243,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1285,9 +1272,8 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
-        shard: "tenant-a",
-        shardingStrategy: { mode: "row" },
+        ...policyDefaults,
+        policyWhere: buildShardPolicyWhere(testSchema.tables.posts, "tenant-a"),
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1300,6 +1286,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
               relation: testSchema.tables.posts.relations.author,
               options: {
                 select: ["name", "email"],
+                where: buildShardPolicyWhere(testSchema.tables.users, "tenant-a"),
               },
             },
           ],
@@ -1317,7 +1304,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1346,7 +1333,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.comments,
@@ -1381,7 +1368,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
@@ -1411,7 +1398,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const usersTable = testSchema.tables.users;
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1448,7 +1435,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const usersTable = testSchema.tables.users;
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1494,7 +1481,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1523,7 +1510,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1553,7 +1540,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const usersTable = testSchema.tables.users;
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.posts,
@@ -1589,7 +1576,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.comments,
@@ -1624,7 +1611,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: testSchema,
         table: testSchema.tables.post_tags,
@@ -1661,7 +1648,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.product_categories,
@@ -1697,7 +1684,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const productsTable = customIdSchema.tables.products;
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.product_categories,
@@ -1733,7 +1720,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.product_categories,
@@ -1762,7 +1749,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
       const result = compiler.compileFind({
-        ...shardDefaults,
+        ...policyDefaults,
         type: "find",
         schema: customIdSchema,
         table: customIdSchema.tables.product_categories,

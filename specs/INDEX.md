@@ -26,6 +26,8 @@ Format:
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
 - [Fragno DB Sharding — Spec](./spec-db-sharding.md) — Server-only sharding strategy, hidden shard
   column, UOW shard filtering, and shard-scoped outbox/sync behavior.
+- [Fragno DB Query Policies — Spec](./spec-db-query-policies.md) — Generic UOW query policy pipeline
+  for reusable filters (permissions, soft-delete) and write-time injections.
 - [Fragno Lofi Submit + Conflict Detection — Spec](./spec-lofi-submit.md) — Client submit endpoint,
   conflict detection via outbox mutation log, and optimistic overlay rebase semantics.
 - [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./spec-prisma-adapter.md) —

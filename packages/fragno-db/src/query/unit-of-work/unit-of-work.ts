@@ -18,14 +18,12 @@ import type {
   ExtractSelect,
   ExtractJoinOut,
 } from "../simple-query-interface";
-import { buildCondition } from "../condition-builder";
+import { buildCondition, createIndexedBuilder } from "../condition-builder";
 import type { CompiledJoin } from "../orm/orm";
 import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import type { Prettify } from "../../util/types";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
-import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../../sharding";
-import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -47,17 +45,29 @@ export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];
 
 type RemoveEmptyObject<T> = T extends object ? (keyof T extends never ? never : T) : never;
 
-type ExtractJoinBuilderSelect<T> =
-  T extends JoinFindBuilder<infer _Table, infer TSelect, infer _JoinOut> ? TSelect : true;
+type ExtractJoinBuilderSelectFor<TTable extends AnyTable, T> =
+  T extends JoinFindBuilder<TTable, infer TSelect, infer _JoinOut> ? TSelect : true;
 
-type ExtractJoinBuilderOut<T> =
-  T extends JoinFindBuilder<infer _Table, infer _Select, infer TJoinOut> ? TJoinOut : {};
+type ExtractJoinBuilderOutFor<TTable extends AnyTable, T> =
+  T extends JoinFindBuilder<TTable, infer _Select, infer TJoinOut> ? TJoinOut : {};
+
+type KnownKeys<T> = {
+  [K in keyof T]: string extends K
+    ? never
+    : number extends K
+      ? never
+      : symbol extends K
+        ? never
+        : K;
+}[keyof T];
 
 /**
  * Extract all indexed column names from a table's indexes
  */
 type IndexedColumns<TIndexes extends Record<string, Index>> = TIndexes[keyof TIndexes] extends Index
-  ? IndexColumns<TIndexes[keyof TIndexes]>
+  ? [KnownKeys<TIndexes>] extends [never]
+    ? IndexColumns<TIndexes[keyof TIndexes]>
+    : IndexColumns<TIndexes[KnownKeys<TIndexes>]>
   : never;
 
 type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
@@ -99,6 +109,116 @@ export type IndexedConditionBuilder<TTable extends AnyTable> = ConditionBuilder<
 >;
 
 /**
+ * Unit-of-work operation types that can be targeted by query policies.
+ */
+export type QueryPolicyOperation = "find" | "count" | "create" | "update" | "delete" | "check";
+
+/**
+ * Schema-scoped helpers for authoring policy conditions.
+ */
+export type QueryPolicySchemaContext<S extends AnySchema> = {
+  /**
+   * The concrete schema instance passed to forSchema().
+   */
+  schema: S;
+  /**
+   * Lookup a typed table by name.
+   */
+  table: <TName extends keyof S["tables"] & string>(name: TName) => S["tables"][TName];
+  /**
+   * Build a condition using only indexed columns for the given table.
+   *
+   * Notes:
+   * - Returning `true` from the builder maps to `null` (no policy condition).
+   * - Returning `false` throws; use `assertContext()` to deny access instead.
+   */
+  where: <TName extends keyof S["tables"] & string>(
+    table: TName,
+    builder: (eb: IndexedConditionBuilder<S["tables"][TName]>) => Condition | boolean,
+  ) => Condition | null;
+};
+
+/**
+ * Runtime context passed to query policy hooks.
+ */
+export type QueryPolicyContext<TCtx> = {
+  /**
+   * User-provided context from the policy initializer.
+   */
+  ctx: TCtx;
+  /**
+   * Current operation type.
+   */
+  opType: QueryPolicyOperation;
+  /**
+   * Schema currently targeted by the operation.
+   */
+  schema: AnySchema;
+  /**
+   * Namespace used by the schema (if any).
+   */
+  namespace?: string | null;
+  /**
+   * Table targeted by the operation.
+   */
+  table: AnyTable;
+  /**
+   * Helper for building typed, index-restricted conditions for a schema.
+   */
+  forSchema: <S extends AnySchema>(schema: S) => QueryPolicySchemaContext<S>;
+};
+
+/**
+ * Policy hooks applied to UOW operations.
+ */
+export type QueryPolicy<TCtx = unknown> = {
+  /**
+   * Stable identifier used for merge/override behavior.
+   */
+  name: string;
+  /**
+   * Skip policy execution when this returns false.
+   */
+  appliesTo?: (ctx: QueryPolicyContext<TCtx>) => boolean;
+  /**
+   * Validate context before applying policy; throw to deny access.
+   */
+  assertContext?: (ctx: QueryPolicyContext<TCtx>) => void;
+  /**
+   * Transform values for create operations. Return the full values object
+   * that should be persisted (e.g., inject tenant or shard columns).
+   */
+  mutateCreate?: (
+    ctx: QueryPolicyContext<TCtx>,
+    values: Record<string, unknown>,
+  ) => Record<string, unknown>;
+  /**
+   * Extra condition applied to the base table for reads/mutations.
+   */
+  extraWhere?: (ctx: QueryPolicyContext<TCtx>) => Condition | null;
+  /**
+   * Extra condition applied to joined tables in retrieval queries.
+   */
+  extraJoinWhere?: (ctx: QueryPolicyContext<TCtx>) => Condition | null;
+};
+
+/**
+ * Policy entry paired with a context initializer.
+ */
+export type QueryPolicyEntry<TCtx = unknown> = {
+  /**
+   * Policy definition.
+   */
+  policy: QueryPolicy<TCtx>;
+  /**
+   * Compute context for this policy. Called per operation.
+   */
+  getContext: () => TCtx;
+};
+
+type QueryPolicyContextBase<TCtx> = Omit<QueryPolicyContext<TCtx>, "table" | "ctx">;
+
+/**
  * ConditionBuilder restricted to columns in a specific index.
  */
 type IndexSpecificConditionBuilder<
@@ -112,6 +232,54 @@ type IndexSpecificConditionBuilder<
 export type ValidIndexName<TTable extends AnyTable> =
   | "primary"
   | (string & keyof TTable["indexes"]);
+
+const getIndexedColumnNames = (table: AnyTable): Set<string> => {
+  const indexedColumns = new Set<string>();
+  for (const index of Object.values(table.indexes)) {
+    for (const columnName of index.columnNames) {
+      indexedColumns.add(String(columnName));
+    }
+  }
+  return indexedColumns;
+};
+
+const createPolicySchemaContext = <S extends AnySchema>(schema: S): QueryPolicySchemaContext<S> => {
+  const table = <TName extends keyof S["tables"] & string>(name: TName): S["tables"][TName] => {
+    return schema.tables[name] as S["tables"][TName];
+  };
+
+  const where = <TName extends keyof S["tables"] & string>(
+    tableName: TName,
+    builder: (eb: IndexedConditionBuilder<S["tables"][TName]>) => Condition | boolean,
+  ): Condition | null => {
+    const targetTable = table(tableName);
+    if (!targetTable) {
+      throw new Error(`Unknown table "${String(tableName)}" in query policy where().`);
+    }
+    const indexedColumnNames = getIndexedColumnNames(targetTable);
+    const conditionBuilder = createIndexedBuilder(
+      targetTable.columns,
+      indexedColumnNames,
+    ) as IndexedConditionBuilder<S["tables"][TName]>;
+    const result = builder(conditionBuilder);
+    if (result === true) {
+      return null;
+    }
+    if (result === false) {
+      throw new Error(
+        `Query policy condition for table "${targetTable.name}" resolved to false. ` +
+          `Use assertContext() to deny access.`,
+      );
+    }
+    return result;
+  };
+
+  return {
+    schema,
+    table,
+    where,
+  };
+};
 
 /**
  * Find options for Unit of Work (internal, used after builder finalization)
@@ -162,11 +330,8 @@ type FindOptions<
  */
 export type UOWState = "building-retrieval" | "building-mutation" | "executed";
 
-type UOWShardMetadata = {
-  shard: string | null;
-  shardScope: ShardScope;
-  shardingStrategy?: ShardingStrategy;
-  shardFilterExempt?: boolean;
+type UOWPolicyMetadata = {
+  policyWhere: Condition | null;
 };
 
 /**
@@ -199,7 +364,7 @@ type RetrievalOperationInput<
 export type RetrievalOperation<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
-> = RetrievalOperationInput<TSchema, TTable> & UOWShardMetadata;
+> = RetrievalOperationInput<TSchema, TTable> & UOWPolicyMetadata;
 
 /**
  * Mutation operations - write operations in the second phase
@@ -244,7 +409,7 @@ type MutationOperationInput<
 export type MutationOperation<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
-> = MutationOperationInput<TSchema, TTable> & UOWShardMetadata;
+> = MutationOperationInput<TSchema, TTable> & UOWPolicyMetadata;
 
 /**
  * Compiled mutation with metadata for execution
@@ -863,8 +1028,8 @@ export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
           [P in K]: MapRelationType<
             SelectResult<
               TTargetTable,
-              ExtractJoinBuilderOut<ReturnType<TBuilderFn>>,
-              ExtractJoinBuilderSelect<ReturnType<TBuilderFn>>
+              ExtractJoinBuilderOutFor<TTargetTable, ReturnType<TBuilderFn>>,
+              ExtractJoinBuilderSelectFor<TTargetTable, ReturnType<TBuilderFn>>
             >
           >[TRelationType];
         }
@@ -1068,9 +1233,7 @@ export interface UnitOfWorkConfig {
   idempotencyKey?: string;
   instrumentation?: UOWInstrumentation;
   instrumentationFinalizer?: UOWInstrumentationFinalizer;
-  shardingStrategy?: ShardingStrategy;
-  getShard?: () => string | null;
-  getShardScope?: () => ShardScope;
+  queryPolicies?: QueryPolicyEntry[];
 }
 
 function isUowInstrumentationInjection(value: unknown): value is UOWInstrumentationInjection {
@@ -1311,6 +1474,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #name?: string;
   #config?: UnitOfWorkConfig;
   #idempotencyKey: string;
+  #queryPolicies: QueryPolicyEntry[];
 
   #state: UOWState = "building-retrieval";
 
@@ -1356,38 +1520,119 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#name = name;
     this.#config = config;
     this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
+    this.#queryPolicies = config?.queryPolicies ?? [];
   }
 
-  #getShardContext(): {
-    shard: string | null;
-    shardScope: ShardScope;
-    shardingStrategy?: ShardingStrategy;
-  } {
+  #createPolicyContextBase(
+    opType: QueryPolicyOperation,
+    schema: AnySchema,
+    namespace: string | null | undefined,
+  ): QueryPolicyContextBase<unknown> {
     return {
-      shard: this.#config?.getShard?.() ?? null,
-      shardScope: this.#config?.getShardScope?.() ?? "scoped",
-      shardingStrategy: this.#config?.shardingStrategy,
+      opType,
+      schema,
+      namespace,
+      forSchema: createPolicySchemaContext,
     };
   }
 
-  #isAdapterScopedTable(tableName: string): boolean {
-    return tableName === SETTINGS_TABLE_NAME;
+  #resolvePolicyContexts(): Array<{ policy: QueryPolicy<unknown>; ctx: unknown }> {
+    if (this.#queryPolicies.length === 0) {
+      return [];
+    }
+    return this.#queryPolicies.map((entry) => ({
+      policy: entry.policy as QueryPolicy<unknown>,
+      ctx: entry.getContext(),
+    }));
   }
 
-  #assertShardRequired(shardContext: {
-    shard: string | null;
-    shardScope: ShardScope;
-    shardingStrategy?: ShardingStrategy;
-  }): void {
-    if (
-      shardContext.shardingStrategy?.mode === "adapter" &&
-      shardContext.shardScope !== "global" &&
-      shardContext.shard === null
-    ) {
-      throw new Error(
-        'Shard must be set when shardingStrategy mode is "adapter" unless shardScope is "global".',
-      );
+  #applyQueryPoliciesToTable(
+    policyBase: QueryPolicyContextBase<unknown>,
+    policyContexts: Array<{ policy: QueryPolicy<unknown>; ctx: unknown }>,
+    table: AnyTable,
+    values?: Record<string, unknown>,
+  ): { policyWhere: Condition | null; values?: Record<string, unknown> } {
+    if (policyContexts.length === 0) {
+      return { policyWhere: null, values };
     }
+
+    let policyWhere: Condition | null = null;
+    let nextValues = values;
+
+    for (const { policy, ctx } of policyContexts) {
+      const policyContext: QueryPolicyContext<unknown> = { ...policyBase, table, ctx };
+      if (policy.appliesTo && !policy.appliesTo(policyContext)) {
+        continue;
+      }
+
+      policy.assertContext?.(policyContext);
+
+      if (policyBase.opType === "create" && nextValues && policy.mutateCreate) {
+        nextValues = policy.mutateCreate(policyContext, nextValues);
+      }
+
+      const extraWhere = policy.extraWhere?.(policyContext) ?? null;
+      if (extraWhere) {
+        policyWhere = policyWhere ? { type: "and", items: [policyWhere, extraWhere] } : extraWhere;
+      }
+    }
+
+    return { policyWhere, values: nextValues };
+  }
+
+  #applyQueryPoliciesToJoins(
+    joins: CompiledJoin[] | undefined,
+    policyBase: QueryPolicyContextBase<unknown>,
+    policyContexts: Array<{ policy: QueryPolicy<unknown>; ctx: unknown }>,
+  ): CompiledJoin[] | undefined {
+    if (!joins || joins.length === 0 || policyContexts.length === 0) {
+      return joins;
+    }
+
+    return joins.map((join) => {
+      if (join.options === false) {
+        return join;
+      }
+
+      let joinPolicyWhere: Condition | null = null;
+
+      for (const { policy, ctx } of policyContexts) {
+        const policyContext: QueryPolicyContext<unknown> = {
+          ...policyBase,
+          table: join.relation.table,
+          ctx,
+        };
+        if (policy.appliesTo && !policy.appliesTo(policyContext)) {
+          continue;
+        }
+        policy.assertContext?.(policyContext);
+        const extraJoinWhere = policy.extraJoinWhere?.(policyContext) ?? null;
+        if (extraJoinWhere) {
+          joinPolicyWhere = joinPolicyWhere
+            ? { type: "and", items: [joinPolicyWhere, extraJoinWhere] }
+            : extraJoinWhere;
+        }
+      }
+
+      const mergedWhere: Condition | undefined = joinPolicyWhere
+        ? join.options.where
+          ? ({ type: "and", items: [join.options.where, joinPolicyWhere] } as Condition)
+          : joinPolicyWhere
+        : join.options.where;
+
+      const nested = join.options.join
+        ? this.#applyQueryPoliciesToJoins(join.options.join, policyBase, policyContexts)
+        : join.options.join;
+
+      return {
+        ...join,
+        options: {
+          ...join.options,
+          where: mergedWhere,
+          join: nested,
+        },
+      };
+    });
   }
 
   #createInstrumentationContext(phase: UOWInstrumentationPhase): UOWInstrumentationContext {
@@ -1842,14 +2087,20 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         `Cannot add retrieval operation in state ${this.state}. Must be in building-retrieval state.`,
       );
     }
-    const shardContext = this.#getShardContext();
-    this.#assertShardRequired(shardContext);
+    const policyBase = this.#createPolicyContextBase(op.type, op.schema, op.namespace);
+    const policyContexts = this.#resolvePolicyContexts();
+    const { policyWhere } = this.#applyQueryPoliciesToTable(policyBase, policyContexts, op.table);
+    const options =
+      op.type === "find" && op.options.joins
+        ? {
+            ...op.options,
+            joins: this.#applyQueryPoliciesToJoins(op.options.joins, policyBase, policyContexts),
+          }
+        : op.options;
     this.#retrievalOps.push({
       ...op,
-      shard: shardContext.shard,
-      shardScope: shardContext.shardScope,
-      shardingStrategy: shardContext.shardingStrategy,
-      shardFilterExempt: this.#isAdapterScopedTable(op.table.name),
+      options: options as RetrievalOperationInput<AnySchema>["options"],
+      policyWhere,
     });
     return this.#retrievalOps.length - 1;
   }
@@ -1862,33 +2113,31 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     if (this.state === "executed") {
       throw new Error(`Cannot add mutation operation in executed state.`);
     }
-    const shardContext = this.#getShardContext();
-    this.#assertShardRequired(shardContext);
-    let updatedOp = op;
+    const table = op.schema.tables[op.table];
+    if (!table) {
+      throw new Error(`Unknown table "${op.table}" in mutation operation.`);
+    }
 
+    const policyBase = this.#createPolicyContextBase(op.type, op.schema, op.namespace);
+    const policyContexts = this.#resolvePolicyContexts();
+    const policyResult = this.#applyQueryPoliciesToTable(
+      policyBase,
+      policyContexts,
+      table,
+      op.type === "create" ? (op.values as Record<string, unknown>) : undefined,
+    );
+
+    let updatedOp = op;
     if (op.type === "create") {
-      const values = op.values as Record<string, unknown>;
-      const hasShard = Object.prototype.hasOwnProperty.call(values, "_shard");
-      if (shardContext.shardingStrategy && hasShard) {
-        throw new Error("Cannot set _shard explicitly. It is managed by the shard context.");
-      }
-      if (!hasShard) {
-        updatedOp = {
-          ...op,
-          values: {
-            ...(op.values as Record<string, unknown>),
-            _shard: resolveShardValue(shardContext.shard),
-          },
-        } as MutationOperationInput<AnySchema>;
-      }
+      updatedOp = {
+        ...op,
+        values: (policyResult.values ?? op.values) as TableToInsertValues<typeof table>,
+      };
     }
 
     this.#mutationOps.push({
       ...updatedOp,
-      shard: shardContext.shard,
-      shardScope: shardContext.shardScope,
-      shardingStrategy: shardContext.shardingStrategy,
-      shardFilterExempt: this.#isAdapterScopedTable(updatedOp.table),
+      policyWhere: policyResult.policyWhere,
     });
   }
 
