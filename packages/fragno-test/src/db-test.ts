@@ -35,6 +35,17 @@ type FragmentFactoryContext = {
   test: BaseTestContext & AdapterContext<SupportedAdapter>;
 };
 
+const disableAutoSchedule = <TOptions extends FragnoPublicConfig>(options: TOptions) => {
+  const durableHooks = (options as { durableHooks?: Record<string, unknown> }).durableHooks ?? {};
+  return {
+    ...options,
+    durableHooks: {
+      ...durableHooks,
+      autoSchedule: false,
+    },
+  };
+};
+
 type FragmentFactoryResult =
   | FragmentInstantiationBuilder<
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -747,9 +758,10 @@ export class DatabaseFragmentsTestBuilder<
     };
 
     const mergeBuilderOptions = (options: unknown) => {
-      const resolvedOptions = (options ?? {}) as Record<string, unknown>;
+      const resolvedOptions = disableAutoSchedule((options ?? {}) as FragnoPublicConfig);
+      const resolvedOptionsRecord = resolvedOptions as unknown as Record<string, unknown>;
       const merged = {
-        ...resolvedOptions,
+        ...resolvedOptionsRecord,
         databaseAdapter: adapter,
       } as Record<string, unknown>;
       const guardOption = resolveDbRoundtripGuardOption(resolvedOptions);
