@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@base-ui/react": "^1.2.0",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/forms": "workspace:*",
     "@fragno-dev/fragment-mailing-list": "workspace:*",
