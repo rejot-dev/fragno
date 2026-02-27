@@ -1,19 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { CompiledJoin } from "../../query/find-options";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 import {
   UnitOfWork,
   type RetrievalOperation,
   type UnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
-import {
-  column,
-  getTableRelations,
-  idColumn,
-  referenceColumn,
-  schema,
-  type AnySchema,
-} from "../../schema/create";
+import { column, getTableRelations, idColumn, referenceColumn, schema } from "../../schema/create";
+import { InMemoryAdapter } from "./in-memory-adapter";
 import {
   createInMemoryUowCompiler,
   createInMemoryUowExecutor,
@@ -48,6 +43,23 @@ const joinSchema = schema("join", (s) =>
 const shardSchema = schema("shard", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
+
+const createShardPolicyConfig = (options: {
+  shardingStrategy?: { mode: "row" } | { mode: "adapter"; identifier: string };
+  shard: string | null;
+  shardScope?: "scoped" | "global";
+}): UnitOfWorkConfig => ({
+  queryPolicies: [
+    {
+      policy: createShardQueryPolicy({
+        shardingStrategy: options.shardingStrategy,
+        getShard: () => options.shard,
+        getShardScope: () => options.shardScope ?? "scoped",
+      }),
+      getContext: () => ({}),
+    },
+  ],
+});
 
 const createHarness = () => {
   const store = createInMemoryStore();
@@ -132,10 +144,7 @@ describe("in-memory uow retrieval", () => {
         pageSize: undefined,
         joins: [join],
       },
-      shard: null,
-      shardScope: "scoped",
-      shardingStrategy: undefined,
-      shardFilterExempt: false,
+      policyWhere: null,
     } satisfies RetrievalOperation<typeof joinSchema>;
 
     await expect(executor.executeRetrievalPhase([op])).rejects.toThrow(
@@ -369,33 +378,21 @@ describe("in-memory uow retrieval", () => {
     const { createUow } = createShardHarness();
     const shardingStrategy = { mode: "row" } as const;
 
-    const createShardA = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-    });
+    const createShardA = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-a" }));
     createShardA.create("users", { id: "user-a", name: "Ada" });
     await createShardA.executeMutations();
 
-    const createShardB = createUow({
-      shardingStrategy,
-      getShard: () => "shard-b",
-    });
+    const createShardB = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-b" }));
     createShardB.create("users", { id: "user-b", name: "Bea" });
     await createShardB.executeMutations();
 
-    const findShardA = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-    });
+    const findShardA = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-a" }));
     findShardA.find("users", (b) => b.whereIndex("primary"));
     const findResults = (await findShardA.executeRetrieve()) as unknown[];
     const names = (findResults[0] as { name: string }[]).map((row) => row.name);
     expect(names).toEqual(["Ada"]);
 
-    const countShardB = createUow({
-      shardingStrategy,
-      getShard: () => "shard-b",
-    });
+    const countShardB = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-b" }));
     countShardB.find("users", (b) => b.whereIndex("primary").selectCount());
     const countResults = (await countShardB.executeRetrieve()) as unknown[];
     expect(countResults[0]).toBe(1);
@@ -405,25 +402,21 @@ describe("in-memory uow retrieval", () => {
     const { createUow } = createShardHarness();
     const shardingStrategy = { mode: "row" } as const;
 
-    const createShardA = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-    });
+    const createShardA = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-a" }));
     createShardA.create("users", { id: "user-a", name: "Ada" });
     await createShardA.executeMutations();
 
-    const createShardB = createUow({
-      shardingStrategy,
-      getShard: () => "shard-b",
-    });
+    const createShardB = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-b" }));
     createShardB.create("users", { id: "user-b", name: "Bea" });
     await createShardB.executeMutations();
 
-    const globalFind = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-      getShardScope: () => "global",
-    });
+    const globalFind = createUow(
+      createShardPolicyConfig({
+        shardingStrategy,
+        shard: "shard-a",
+        shardScope: "global",
+      }),
+    );
     globalFind.find("users", (b) => b.whereIndex("primary"));
     const results = (await globalFind.executeRetrieve()) as unknown[];
     expect(results[0]).toHaveLength(2);
@@ -433,10 +426,7 @@ describe("in-memory uow retrieval", () => {
     const { createUow } = createJoinShardHarness();
     const shardingStrategy = { mode: "row" } as const;
 
-    const createShardB = createUow({
-      shardingStrategy,
-      getShard: () => "shard-b",
-    });
+    const createShardB = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-b" }));
     createShardB.create("users", {
       id: "user-b",
       name: "Bea",
@@ -444,10 +434,7 @@ describe("in-memory uow retrieval", () => {
     });
     await createShardB.executeMutations();
 
-    const createShardA = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-    });
+    const createShardA = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-a" }));
     createShardA.create("users", {
       id: "user-a",
       name: "Ada",
@@ -465,12 +452,13 @@ describe("in-memory uow retrieval", () => {
     });
     await createShardA.executeMutations();
 
-    const findShardA = createUow({
-      shardingStrategy,
-      getShard: () => "shard-a",
-    });
-    findShardA.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => jb.author((builder) => builder.select(["name"]))),
+    const findShardA = createUow(createShardPolicyConfig({ shardingStrategy, shard: "shard-a" }));
+    findShardA.find("posts", (q) =>
+      q
+        .whereIndex("primary")
+        .joinOne("author", "users", (author) =>
+          author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))).select(["name"]),
+        ),
     );
     const results = (await findShardA.executeRetrieve()) as unknown[];
     const rows = results[0] as Array<{ title: string; author?: { name: string } }>;
@@ -479,6 +467,6 @@ describe("in-memory uow retrieval", () => {
     const crossShard = rows.find((row) => row.title === "Cross");
 
     expect(sameShard?.author?.name).toBe("Ada");
-    expect(crossShard?.author).toBeUndefined();
+    expect(crossShard?.author).toBeNull();
   });
 });

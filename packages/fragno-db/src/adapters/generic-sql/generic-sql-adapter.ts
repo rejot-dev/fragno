@@ -2,11 +2,13 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 
 import { FragnoDatabase } from "../../fragno-database";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+import type { SystemMigration } from "../../migration-engine/system-migrations";
 import {
   createNamingResolver,
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 import type {
   CompiledMutation,
   UOWExecutor,
@@ -14,6 +16,7 @@ import type {
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
+import type { QueryPolicyEntry } from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
 import { sql } from "../../sql-driver/sql";
 import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
@@ -38,16 +41,11 @@ import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operatio
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import { UnitOfWorkDecoder } from "./uow-decoder";
-import type { ShardScope, ShardingStrategy } from "../../sharding";
-import type { SystemMigration } from "../../migration-engine/system-migrations";
-
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
-  shardingStrategy?: ShardingStrategy;
-  getShard?: () => string | null;
-  getShardScope?: () => ShardScope;
+  queryPolicies?: QueryPolicyEntry[];
 }
 
 export interface SqlAdapterOptions {
@@ -260,12 +258,54 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     );
     const decoder = new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode);
 
+    const shardPolicy = createShardQueryPolicy({
+      shardingStrategy: undefined,
+      getShard: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
+      getShardScope: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shardScope : "scoped",
+    });
+    const shardPolicyEntry: QueryPolicyEntry = { policy: shardPolicy, getContext: () => ({}) };
+
+    const mergedQueryPolicies = [...(this.uowConfig?.queryPolicies ?? [])];
+    if (config?.queryPolicies && config.queryPolicies.length > 0) {
+      const indexByName = new Map<string, number>();
+      for (let i = 0; i < mergedQueryPolicies.length; i += 1) {
+        indexByName.set(mergedQueryPolicies[i]!.policy.name, i);
+      }
+
+      for (const policy of config.queryPolicies) {
+        const existingIndex = indexByName.get(policy.policy.name);
+        if (existingIndex === undefined) {
+          indexByName.set(policy.policy.name, mergedQueryPolicies.length);
+          mergedQueryPolicies.push(policy);
+        } else {
+          mergedQueryPolicies[existingIndex] = policy;
+        }
+      }
+    }
+
+    const normalizedConfig = this.#normalizeUowConfig({
+      ...this.uowConfig,
+      ...config,
+      queryPolicies: mergedQueryPolicies.length > 0 ? mergedQueryPolicies : undefined,
+    });
+    const hasShardPolicy = normalizedConfig?.queryPolicies?.some(
+      (entry) => entry.policy.name === "sharding",
+    );
+    const mergedConfig = hasShardPolicy
+      ? normalizedConfig
+      : {
+          ...normalizedConfig,
+          queryPolicies: [...(normalizedConfig?.queryPolicies ?? []), shardPolicyEntry],
+        };
+
     return new UnitOfWork(
       compiler,
       executor,
       decoder,
       name,
-      this.#normalizeUowConfig({ ...this.uowConfig, ...config }),
+      mergedConfig,
       this.#schemaNamespaceMap,
     );
   }

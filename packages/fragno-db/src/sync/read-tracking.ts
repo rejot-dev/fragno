@@ -25,6 +25,42 @@ export type ReadScope = {
   joins?: CompiledJoin[];
 };
 
+type ReadWhereClause = RetrievalOperation<AnySchema>["options"]["where"];
+type ReadConditionInput = ReadWhereClause | Condition | undefined;
+
+const buildScopedCondition = (
+  table: AnyTable,
+  where: ReadConditionInput,
+  policyWhere: Condition | null,
+): Condition | undefined | false => {
+  let baseCondition: Condition | boolean | undefined;
+  if (typeof where === "function") {
+    baseCondition = buildCondition(table.columns, where);
+  } else {
+    baseCondition = where;
+  }
+
+  if (baseCondition === false) {
+    return false;
+  }
+
+  if (policyWhere) {
+    if (baseCondition === undefined || baseCondition === true) {
+      return policyWhere;
+    }
+    return {
+      type: "and",
+      items: [baseCondition, policyWhere],
+    };
+  }
+
+  if (baseCondition === true) {
+    return undefined;
+  }
+
+  return baseCondition;
+};
+
 const isCursorResult = (value: unknown): value is CursorResult<unknown> => {
   if (!value || typeof value !== "object") {
     return false;
@@ -222,9 +258,7 @@ export const collectReadScopes = (
     const schemaName = op.namespace ?? "";
 
     if (op.type === "count") {
-      const condition = op.options.where
-        ? buildCondition(op.table.columns, op.options.where)
-        : undefined;
+      const condition = buildScopedCondition(op.table, op.options.where, op.policyWhere ?? null);
 
       if (condition === false) {
         continue;
@@ -234,17 +268,17 @@ export const collectReadScopes = (
         schema: schemaName,
         table: op.table,
         indexName: op.indexName,
-        condition: condition === true ? undefined : condition,
+        condition,
       });
       continue;
     }
 
     if (op.type === "find") {
-      const condition = op.options.queryTree
-        ? op.options.queryTree.where
-        : op.options.where
-          ? buildCondition(op.table.columns, op.options.where)
-          : undefined;
+      const condition = buildScopedCondition(
+        op.table,
+        op.options.queryTree?.where ?? op.options.where,
+        op.policyWhere ?? null,
+      );
 
       if (condition === false) {
         continue;
@@ -254,7 +288,7 @@ export const collectReadScopes = (
         schema: schemaName,
         table: op.table,
         indexName: op.indexName,
-        condition: condition === true ? undefined : condition,
+        condition,
         joins: op.options.joins,
       });
     }
