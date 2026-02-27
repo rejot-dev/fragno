@@ -178,6 +178,11 @@ export type DurableHooksProcessingOptions = {
    */
   stuckProcessingTimeoutMinutes?: StuckHookProcessingTimeoutMinutes;
   /**
+   * Automatically schedule hook processing after successful mutations.
+   * Defaults to true. Set false to disable auto scheduling (manual drain only).
+   */
+  autoSchedule?: boolean;
+  /**
    * Called when stuck processing hooks are detected and re-queued.
    * Invoked after the hooks are moved back to `pending`.
    */

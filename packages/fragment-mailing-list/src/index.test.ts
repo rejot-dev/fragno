@@ -1,5 +1,5 @@
 import { test, describe, expect, beforeEach, vi, assert, beforeAll } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { mailingListFragmentDefinition } from "./definition";
 import { instantiate } from "@fragno-dev/core";
 import { mailingListSchema } from "./schema";
@@ -169,6 +169,7 @@ describe("Mailing List Fragment", async () => {
           alreadySubscribed: false,
         });
 
+        await drainDurableHooks(fragment);
         await waitForOnSubscribe("test@example.com");
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
 
