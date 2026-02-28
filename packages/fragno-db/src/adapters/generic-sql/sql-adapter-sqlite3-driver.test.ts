@@ -13,6 +13,7 @@ import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { BetterSQLite3DriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
 import { internalSchema } from "../../fragments/internal-fragment";
+import { createNamingResolver, suffixNamingStrategy } from "../../naming/sql-naming";
 
 describe("SqlAdapter with better-sqlite3", () => {
   const testSchema = schema("test", (s) => {
@@ -909,5 +910,64 @@ describe("SqlAdapter with better-sqlite3", () => {
 
     const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created SQLite");
     expect(conflictPosts).toHaveLength(0);
+  });
+});
+
+describe("SQLite recreate-table foreign keys", () => {
+  it("keeps foreign keys pointing at the original table after recreation", async () => {
+    const database = new SQLite(":memory:");
+    const dialect = new SqliteDialect({ database });
+    const driver = new SqlDriverAdapter(dialect);
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+
+    const fkSchema = schema("fk_test", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("sessions", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("userId", referenceColumn());
+        })
+        .addReference("sessionUser", {
+          type: "one",
+          from: { table: "sessions", column: "userId" },
+          to: { table: "users", column: "id" },
+        })
+        .alterTable("users", (t) => {
+          return t.alterColumn("name").nullable();
+        });
+    });
+
+    const namespace = "fk_test";
+    const resolver = createNamingResolver(fkSchema, namespace, suffixNamingStrategy);
+    const usersTable = resolver.getTableName("users");
+    const sessionsTable = resolver.getTableName("sessions");
+
+    const migrations = adapter.prepareMigrations(fkSchema, namespace);
+    const beforeRecreateVersion = fkSchema.version - 1;
+
+    try {
+      await migrations.executeWithDriver(driver, 0, beforeRecreateVersion, {
+        updateVersionInMigration: false,
+      });
+      await migrations.executeWithDriver(driver, beforeRecreateVersion, fkSchema.version, {
+        updateVersionInMigration: false,
+      });
+
+      const fkRows = database
+        .prepare(`PRAGMA foreign_key_list("${sessionsTable}")`)
+        .all() as Array<{ table: string }>;
+
+      expect(fkRows.length).toBeGreaterThan(0);
+      for (const row of fkRows) {
+        expect(row.table).toBe(usersTable);
+        expect(row.table).not.toContain("__fragno_tmp_");
+      }
+    } finally {
+      await driver.destroy();
+    }
   });
 });

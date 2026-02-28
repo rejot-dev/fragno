@@ -775,13 +775,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       PRAGMA foreign_keys = OFF;
 
-      alter table "users_nullable" rename to "users_nullable__fragno_tmp_414fdd";
+      create table "users_nullable__fragno_tmp_414fdd" ("id" text not null unique, "name" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
 
-      create table "users_nullable" ("id" text not null unique, "name" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
+      insert into "users_nullable__fragno_tmp_414fdd" ("id", "name", "_internalId", "_version") select "id", "name", "_internalId", "_version" from "users_nullable";
 
-      insert into "users_nullable" ("id", "name", "_internalId", "_version") select "id", "name", "_internalId", "_version" from "users_nullable__fragno_tmp_414fdd";
+      drop table "users_nullable";
 
-      drop table "users_nullable__fragno_tmp_414fdd";
+      alter table "users_nullable__fragno_tmp_414fdd" rename to "users_nullable";
 
       PRAGMA foreign_keys = ON;"
     `);

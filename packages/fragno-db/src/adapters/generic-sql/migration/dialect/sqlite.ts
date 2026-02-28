@@ -264,42 +264,14 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     resolver?: NamingResolver,
   ): CompiledQuery {
     const tableName = this.getTableName(operation.name, resolver);
-    let builder: CreateTableBuilderAny = this.getSchemaBuilder(resolver).createTable(tableName);
-
-    // Add columns
-    for (const col of operation.columns) {
-      const columnName = this.getColumnName(col.name, operation.name, resolver);
-      builder = builder.addColumn(
-        columnName,
-        sql.raw(this.getDBType(col)),
-        (b: ColumnDefinitionBuilder) => this.buildColumn(col, b),
-      );
-    }
-
-    // Add inline foreign keys from metadata
     const metadata = operation.metadata as SqliteCreateTableMetadata | undefined;
-    if (metadata?.inlineForeignKeys) {
-      for (const fk of metadata.inlineForeignKeys) {
-        builder = builder.addForeignKeyConstraint(
-          this.getForeignKeyName(fk.name, operation.name, fk.referencedTable, resolver),
-          fk.columns.map((columnName) => this.getColumnName(columnName, operation.name, resolver)),
-          this.getTableName(fk.referencedTable, resolver),
-          fk.referencedColumns.map((columnName) =>
-            this.getColumnName(columnName, fk.referencedTable, resolver),
-          ),
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (cb: any) => cb.onUpdate("restrict").onDelete("restrict"),
-        );
-      }
-    }
-
-    const compiled = builder.compile();
-    // SQLite constraint names are ignored by Drizzle migrations; strip them for parity.
-    const sqlText = compiled.sql.replace(/\bconstraint\s+"[^"]+"\s+foreign key\b/gi, "foreign key");
-    return {
-      ...compiled,
-      sql: sqlText,
-    };
+    return this.compileCreateTableForName(
+      tableName,
+      operation.name,
+      operation.columns,
+      metadata,
+      resolver,
+    );
   }
 
   /**
@@ -379,19 +351,16 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     queries.push(this.compileRaw(sql.raw("PRAGMA foreign_keys = OFF")));
 
     queries.push(
-      this.getSchemaBuilder(resolver).alterTable(tableName).renameTo(tempTableName).compile(),
+      this.compileCreateTableForName(
+        tempTableName,
+        logicalTableName,
+        recreate.columns,
+        {
+          inlineForeignKeys: recreate.foreignKeys,
+        },
+        resolver,
+      ),
     );
-
-    const createTableOp: MigrationOperation = {
-      type: "create-table",
-      name: logicalTableName,
-      columns: recreate.columns,
-      metadata: {
-        inlineForeignKeys: recreate.foreignKeys,
-      } satisfies SqliteCreateTableMetadata,
-    };
-
-    queries.push(this.compileCreateTable(createTableOp, resolver));
 
     const copyColumns = normalizeCopyColumns(recreate.copyColumns);
     if (copyColumns.length > 0) {
@@ -404,13 +373,16 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       const targetList = sql.join(targetRefs);
       const sourceList = sql.join(sourceRefs);
       queries.push(
-        sql`insert into ${sql.ref(tableName)} (${targetList}) select ${sourceList} from ${sql.ref(
-          tempTableName,
+        sql`insert into ${sql.ref(tempTableName)} (${targetList}) select ${sourceList} from ${sql.ref(
+          tableName,
         )}`.compile(this.db),
       );
     }
 
-    queries.push(this.getSchemaBuilder(resolver).dropTable(tempTableName).compile());
+    queries.push(this.getSchemaBuilder(resolver).dropTable(tableName).compile());
+    queries.push(
+      this.getSchemaBuilder(resolver).alterTable(tempTableName).renameTo(tableName).compile(),
+    );
 
     for (const index of recreate.indexes) {
       const compiled = this.compileAddIndex(
@@ -433,5 +405,49 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     queries.push(this.compileRaw(sql.raw("PRAGMA foreign_keys = ON")));
 
     return queries;
+  }
+
+  private compileCreateTableForName(
+    physicalTableName: string,
+    logicalTableName: string,
+    columns: ColumnInfo[],
+    metadata: SqliteCreateTableMetadata | undefined,
+    resolver?: NamingResolver,
+  ): CompiledQuery {
+    let builder: CreateTableBuilderAny =
+      this.getSchemaBuilder(resolver).createTable(physicalTableName);
+
+    for (const col of columns) {
+      const columnName = this.getColumnName(col.name, logicalTableName, resolver);
+      builder = builder.addColumn(
+        columnName,
+        sql.raw(this.getDBType(col)),
+        (b: ColumnDefinitionBuilder) => this.buildColumn(col, b),
+      );
+    }
+
+    if (metadata?.inlineForeignKeys) {
+      for (const fk of metadata.inlineForeignKeys) {
+        builder = builder.addForeignKeyConstraint(
+          this.getForeignKeyName(fk.name, logicalTableName, fk.referencedTable, resolver),
+          fk.columns.map((columnName) =>
+            this.getColumnName(columnName, logicalTableName, resolver),
+          ),
+          this.getTableName(fk.referencedTable, resolver),
+          fk.referencedColumns.map((columnName) =>
+            this.getColumnName(columnName, fk.referencedTable, resolver),
+          ),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (cb: any) => cb.onUpdate("restrict").onDelete("restrict"),
+        );
+      }
+    }
+
+    const compiled = builder.compile();
+    const sqlText = compiled.sql.replace(/\bconstraint\s+"[^"]+"\s+foreign key\b/gi, "foreign key");
+    return {
+      ...compiled,
+      sql: sqlText,
+    };
   }
 }
