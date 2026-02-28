@@ -1502,6 +1502,139 @@ describe("SQLiteSQLGenerator", () => {
       }
     });
 
+    it("should preserve create-table metadata when merging inline foreign keys", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "posts",
+          columns: [
+            { name: "id", type: "integer", isNullable: false, role: "internal-id" },
+            { name: "author_id", type: "integer", isNullable: false, role: "reference" },
+            { name: "org_id", type: "integer", isNullable: false, role: "reference" },
+          ],
+          metadata: {
+            preserve: "keep",
+            inlineForeignKeys: [
+              {
+                name: "posts_orgs_org_fk",
+                columns: ["org_id"],
+                referencedTable: "orgs",
+                referencedColumns: ["id"],
+              },
+            ],
+          },
+        },
+        {
+          type: "add-foreign-key",
+          table: "posts",
+          value: {
+            name: "posts_users_author_fk",
+            columns: ["author_id"],
+            referencedTable: "users",
+            referencedColumns: ["id"],
+          },
+        },
+      ];
+
+      const preprocessed = generator.preprocess(operations);
+
+      expect(preprocessed).toHaveLength(2);
+      expect(preprocessed[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
+      expect(preprocessed[1]).toMatchObject({
+        type: "create-table",
+        name: "posts",
+      });
+
+      if (preprocessed[1].type === "create-table") {
+        const metadata = preprocessed[1].metadata as {
+          preserve?: string;
+          inlineForeignKeys?: {
+            name: string;
+            columns: string[];
+            referencedTable: string;
+            referencedColumns: string[];
+          }[];
+        };
+        expect(metadata?.preserve).toBe("keep");
+        expect(metadata?.inlineForeignKeys).toHaveLength(2);
+        expect(metadata?.inlineForeignKeys?.[0].name).toBe("posts_orgs_org_fk");
+        expect(metadata?.inlineForeignKeys?.[1].name).toBe("posts_users_author_fk");
+      }
+    });
+
+    it("should lift FK columns from alter-table into create-table", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "session",
+          columns: [
+            { name: "id", type: "integer", isNullable: false, role: "internal-id" },
+            { name: "user_id", type: "integer", isNullable: false, role: "reference" },
+          ],
+        },
+        {
+          type: "alter-table",
+          name: "session",
+          value: [
+            {
+              type: "create-column",
+              value: {
+                name: "active_org_id",
+                type: "integer",
+                isNullable: true,
+                role: "reference",
+              },
+            },
+          ],
+        },
+        {
+          type: "create-table",
+          name: "organization",
+          columns: [{ name: "id", type: "integer", isNullable: false, role: "internal-id" }],
+        },
+        {
+          type: "add-foreign-key",
+          table: "session",
+          value: {
+            name: "session_org_fk",
+            columns: ["active_org_id"],
+            referencedTable: "organization",
+            referencedColumns: ["id"],
+          },
+        },
+      ];
+
+      const preprocessed = generator.preprocess(operations);
+
+      expect(preprocessed).toHaveLength(3);
+      expect(preprocessed.some((op) => op.type === "alter-table")).toBe(false);
+
+      const sessionOp = preprocessed[1];
+      expect(sessionOp).toMatchObject({
+        type: "create-table",
+        name: "session",
+      });
+
+      if (sessionOp.type === "create-table") {
+        expect(sessionOp.columns.some((col) => col.name === "active_org_id")).toBe(true);
+        const metadata = sessionOp.metadata as {
+          inlineForeignKeys?: {
+            name: string;
+            columns: string[];
+            referencedTable: string;
+            referencedColumns: string[];
+          }[];
+        };
+        expect(metadata?.inlineForeignKeys).toHaveLength(1);
+        expect(metadata?.inlineForeignKeys?.[0]).toMatchObject({
+          name: "session_org_fk",
+          columns: ["active_org_id"],
+          referencedTable: "organization",
+          referencedColumns: ["id"],
+        });
+      }
+    });
+
     it("should generate SQL with inline foreign key constraints", () => {
       const operations: MigrationOperation[] = [
         {
