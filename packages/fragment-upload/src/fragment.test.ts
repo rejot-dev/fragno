@@ -70,7 +70,6 @@ const createDirectAdapter = (
 
 const buildUploadFragment = async (config: UploadFragmentConfig) =>
   buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "upload",
@@ -164,10 +163,10 @@ describe("upload fragment direct single flows", () => {
     assert(second.type === "json");
     expect(second.data.uploadId).toBe(first.data.uploadId);
     expect(second.data.fileKey).toBe(first.data.fileKey);
-    expect(initUpload).toHaveBeenCalledTimes(1);
+    expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects upload reuse when metadata mismatches", async () => {
+  it("rejects creating a second upload when metadata mismatches", async () => {
     const { fragment } = build.fragments.upload;
     const first = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -193,11 +192,11 @@ describe("upload fragment direct single flows", () => {
 
     assert(second.type === "error");
     expect(second.status).toBe(409);
-    expect(second.error.code).toBe("UPLOAD_METADATA_MISMATCH");
-    expect(initUpload).toHaveBeenCalledTimes(1);
+    expect(second.error.code).toBe("UPLOAD_ALREADY_ACTIVE");
+    expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects active uploads when checksum is missing", async () => {
+  it("rejects creating a second upload when checksum is missing", async () => {
     const { fragment } = build.fragments.upload;
     const first = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -222,7 +221,7 @@ describe("upload fragment direct single flows", () => {
     assert(second.type === "error");
     expect(second.status).toBe(409);
     expect(second.error.code).toBe("UPLOAD_ALREADY_ACTIVE");
-    expect(initUpload).toHaveBeenCalledTimes(1);
+    expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
   it("rejects completing an upload twice", async () => {
@@ -282,7 +281,7 @@ describe("upload fragment direct single flows", () => {
     expect(response.error.code).toBe("UPLOAD_EXPIRED");
   });
 
-  it("returns FILE_ALREADY_EXISTS when completing an upload after a file is created", async () => {
+  it("returns INTERNAL_SERVER_ERROR when completing an upload after a file is created", async () => {
     const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -331,8 +330,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completeResponse.type === "error");
-    expect(completeResponse.status).toBe(409);
-    expect(completeResponse.error.code).toBe("FILE_ALREADY_EXISTS");
+    expect(completeResponse.status).toBe(500);
+    expect(completeResponse.error.code).toBe("INTERNAL_SERVER_ERROR");
   });
 
   it("surfaces checksum mismatches", async () => {

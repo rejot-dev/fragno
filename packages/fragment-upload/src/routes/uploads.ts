@@ -92,6 +92,27 @@ type ErrorFn<Code extends string> = Parameters<
   FragnoRouteConfig<"GET", "/__error", undefined, undefined, Code>["handler"]
 >[1]["error"];
 
+const rejectInactiveUpload = (
+  upload: { status: UploadStatus; expiresAt: Date },
+  error: ErrorFn<UploadErrorCode>,
+): Response | null => {
+  const now = Date.now();
+
+  if (upload.status === "completed") {
+    return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" }, 409);
+  }
+
+  if (upload.status === "expired" || upload.expiresAt.getTime() <= now) {
+    return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" }, 410);
+  }
+
+  if (upload.status === "aborted" || upload.status === "failed") {
+    return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
+  }
+
+  return null;
+};
+
 const handleServiceError = <Code extends UploadErrorCode>(
   err: unknown,
   error: ErrorFn<Code>,
@@ -170,21 +191,6 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               keyParts: payload.keyParts,
               fileKey: payload.fileKey,
             });
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
-
-          try {
-            const existing = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.checkUploadAvailability(payload, { allowIdempotentReuse: true }),
-              ])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-
-            if (existing) {
-              return json(existing);
-            }
           } catch (err) {
             return handleServiceError(err, error);
           }
@@ -334,6 +340,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           try {
+            // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
@@ -440,18 +447,18 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           try {
+            // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            const existingFile = await this.handlerTx()
-              .withServiceCalls(() => [services.findFileByKey(upload.fileKey)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-
-            if (existingFile) {
-              return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" }, 409);
+            const inactiveResponse = rejectInactiveUpload(
+              { status: upload.status as UploadStatus, expiresAt: upload.expiresAt },
+              error,
+            );
+            if (inactiveResponse) {
+              return inactiveResponse;
             }
 
             let finalizeResult: { sizeBytes?: bigint } | undefined;
@@ -483,9 +490,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
 
             const completed = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadComplete(
-                  upload.id.toString(),
-                  upload.fileKey,
+                services.markUploadCompleteFromSnapshot(
+                  upload,
                   finalizeResult?.sizeBytes ? { sizeBytes: finalizeResult.sizeBytes } : undefined,
                 ),
               ])
@@ -507,6 +513,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         handler: async function ({ pathParams }, { json, error }) {
           const resolvedConfig = getResolvedConfig();
           try {
+            // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
@@ -523,7 +530,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             }
 
             await this.handlerTx()
-              .withServiceCalls(() => [services.markUploadAborted(upload.id.toString())])
+              .withServiceCalls(() => [services.markUploadAbortedFromSnapshot(upload)])
               .execute();
 
             return json({ ok: true });
@@ -543,6 +550,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
           const { pathParams } = context;
           const resolvedConfig = getResolvedConfig();
           try {
+            // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
@@ -552,13 +560,12 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
             }
 
-            const existingFile = await this.handlerTx()
-              .withServiceCalls(() => [services.findFileByKey(upload.fileKey)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-
-            if (existingFile) {
-              return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" }, 409);
+            const inactiveResponse = rejectInactiveUpload(
+              { status: upload.status as UploadStatus, expiresAt: upload.expiresAt },
+              error,
+            );
+            if (inactiveResponse) {
+              return inactiveResponse;
             }
 
             if (!resolvedConfig.storage.writeStream) {
@@ -576,8 +583,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             } catch {
               await this.handlerTx()
                 .withServiceCalls(() => [
-                  services.markUploadFailed(
-                    upload.id.toString(),
+                  services.markUploadFailedFromSnapshot(
+                    upload,
                     "STORAGE_ERROR",
                     "Storage upload failed",
                   ),
@@ -588,9 +595,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
 
             const completed = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadComplete(
-                  upload.id.toString(),
-                  upload.fileKey,
+                services.markUploadCompleteFromSnapshot(
+                  upload,
                   result?.sizeBytes ? { sizeBytes: result.sizeBytes } : undefined,
                 ),
               ])

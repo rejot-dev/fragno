@@ -225,16 +225,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           };
 
           try {
-            await this.handlerTx()
-              .withServiceCalls(() => [
-                services.checkUploadAvailability(createInput, { allowIdempotentReuse: false }),
-              ])
-              .execute();
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
-
-          try {
             storageInit = await resolvedConfig.storage.initUpload({
               fileKey: resolvedKey.fileKey,
               fileKeyParts: resolvedKey.fileKeyParts,
@@ -262,26 +252,8 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
           }
 
-          let created;
           try {
-            created = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.createUploadRecord({
-                  ...createInput,
-                  storageInit,
-                  allowIdempotentReuse: false,
-                }),
-              ])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-          } catch (err) {
-            return handleServiceError(err, error);
-          }
-
-          const createdUpload = created.result;
-
-          try {
-            if (createdUpload.strategy === "proxy") {
+            if (storageInit.strategy === "proxy") {
               if (!resolvedConfig.storage.writeStream) {
                 throw new Error("STORAGE_ERROR");
               }
@@ -291,7 +263,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 contentType,
                 sizeBytes: BigInt(file.size),
               });
-            } else if (createdUpload.strategy === "direct-single") {
+            } else if (storageInit.strategy === "direct-single") {
               if (!storageInit.uploadUrl) {
                 throw new Error("STORAGE_ERROR");
               }
@@ -317,11 +289,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           } catch {
             await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadFailed(
-                  createdUpload.uploadId,
-                  "STORAGE_ERROR",
-                  "Storage upload failed",
-                ),
+                services.createFailedUpload({
+                  ...createInput,
+                  storageInit,
+                  errorCode: "STORAGE_ERROR",
+                  errorMessage: "Storage upload failed",
+                }),
               ])
               .execute();
             return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
@@ -330,8 +303,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           try {
             const completed = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadComplete(createdUpload.uploadId, createdUpload.fileKey, {
-                  sizeBytes: BigInt(file.size),
+                services.createCompletedUpload({
+                  ...createInput,
+                  storageInit,
+                  completedSizeBytes: BigInt(file.size),
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
