@@ -48,6 +48,25 @@ const nullableSchema = schema("nullable", (s) => {
 
 const resolver = createNamingResolver(testSchema, "test", suffixNamingStrategy);
 const nullableResolver = createNamingResolver(nullableSchema, "nullable", suffixNamingStrategy);
+const fkLaterSchema = schema("fk_later", (s) => {
+  return s
+    .addTable("users", (t) => {
+      return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+    })
+    .addTable("posts", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("title", column("string"))
+        .addColumn("authorId", referenceColumn());
+    })
+    .addReference("author", {
+      type: "one",
+      from: { table: "posts", column: "authorId" },
+      to: { table: "users", column: "id" },
+    });
+});
+
+const fkLaterResolver = createNamingResolver(fkLaterSchema, "fk_later", suffixNamingStrategy);
 
 describe("PreparedMigrations - PostgreSQL", () => {
   const coldKysely = createColdKysely("postgresql");
@@ -697,6 +716,19 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
     `);
+  });
+
+  test("SQLite: adding FK after table creation throws", () => {
+    const prepared = createPreparedMigrations({
+      schema: fkLaterSchema,
+      namespace: "fk_later",
+      database: "sqlite",
+      resolver: fkLaterResolver,
+    });
+
+    expect(() =>
+      prepared.getSQL(2, fkLaterSchema.version, { updateVersionInMigration: false }),
+    ).toThrow("SQLite doesn't support modifying foreign keys");
   });
 
   test("MySQL: migration 0 -> 4 with FK checks disabled", () => {
