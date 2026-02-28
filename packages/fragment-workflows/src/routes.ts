@@ -2,6 +2,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 import { z } from "zod";
 import { workflowsFragmentDefinition } from "./definition";
+import { workflowsSchema } from "./schema";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
 
 const identifierSchema = z
@@ -141,6 +142,14 @@ const parseCursor = (cursorParam: string | undefined) => {
   } catch {
     return undefined;
   }
+};
+
+const resolveInstanceStatus = (status: string): InstanceStatus["status"] => {
+  const parsed = instanceStatusSchema.safeParse(status);
+  if (!parsed.success) {
+    throw new Error(`INSTANCE_STATUS_INVALID:${status}`);
+  }
+  return parsed.data;
 };
 
 export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).create(
@@ -360,6 +369,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          if (!getWorkflowNames(config.workflows).includes(workflowName)) {
+            return errorResponder(
+              { message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" },
+              404,
+            );
+          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
@@ -368,28 +383,77 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const { details, meta } = await this.handlerTx()
-              .withServiceCalls(
-                () =>
-                  [
-                    services.getInstanceStatus(workflowName, instanceId),
-                    services.getInstanceMetadata(workflowName, instanceId),
-                  ] as const,
+            const { details, meta, currentStep } = await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(workflowsSchema)
+                  .findFirst("workflow_instance", (b) =>
+                    b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                      eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+                    ),
+                  )
+                  .findWithCursor("workflow_step", (b) =>
+                    b
+                      .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                        eb("instanceRef", "=", instanceId),
+                      )
+                      .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc")
+                      .pageSize(1),
+                  ),
               )
-              .transform(({ serviceResult: [detailsResult, metaResult] }) => ({
-                details: detailsResult,
-                meta: metaResult,
-              }))
-              .execute();
+              .transformRetrieve(([instance, steps]) => {
+                if (!instance) {
+                  throw new Error("INSTANCE_NOT_FOUND");
+                }
 
-            const currentStep = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.getInstanceCurrentStep({
-                  instanceId,
-                  runNumber: meta.runNumber,
-                }),
-              ])
-              .transform(({ serviceResult: [result] }) => result)
+                const status = resolveInstanceStatus(instance.status);
+                const error =
+                  instance.errorName || instance.errorMessage
+                    ? {
+                        name: instance.errorName ?? "Error",
+                        message: instance.errorMessage ?? "",
+                      }
+                    : undefined;
+                const details = {
+                  status,
+                  error,
+                  output: instance.output ?? undefined,
+                };
+                const meta = {
+                  workflowName: instance.workflowName,
+                  runNumber: instance.runNumber,
+                  params: instance.params ?? {},
+                  createdAt: instance.createdAt,
+                  updatedAt: instance.updatedAt,
+                  startedAt: instance.startedAt,
+                  completedAt: instance.completedAt,
+                };
+
+                const latestStep = steps.items[0];
+                const currentStep =
+                  latestStep && latestStep.runNumber === instance.runNumber
+                    ? {
+                        stepKey: latestStep.stepKey,
+                        name: latestStep.name,
+                        type: latestStep.type,
+                        status: latestStep.status,
+                        attempts: latestStep.attempts,
+                        maxAttempts: latestStep.maxAttempts,
+                        timeoutMs: latestStep.timeoutMs,
+                        nextRetryAt: latestStep.nextRetryAt,
+                        wakeAt: latestStep.wakeAt,
+                        waitEventType: latestStep.waitEventType,
+                        error:
+                          latestStep.errorName || latestStep.errorMessage
+                            ? {
+                                name: latestStep.errorName ?? "Error",
+                                message: latestStep.errorMessage ?? "",
+                              }
+                            : undefined,
+                      }
+                    : undefined;
+
+                return { details, meta, currentStep };
+              })
               .execute();
 
             return json({ id: instanceId, details, meta: { ...meta, currentStep } });
