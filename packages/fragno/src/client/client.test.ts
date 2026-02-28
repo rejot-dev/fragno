@@ -1325,6 +1325,32 @@ describe("createMutator", () => {
     expect(result).toBeUndefined();
   });
 
+  test("body is optional when inputSchema allows undefined", async () => {
+    const testFragment = defineFragment("test-fragment").build();
+    const testRoutes = [
+      defineRoute({
+        method: "POST",
+        path: "/sign-out",
+        inputSchema: z.object({ sessionId: z.string().optional() }).optional(),
+        outputSchema: z.object({ success: z.boolean() }),
+        handler: async (_ctx, { empty }) => empty(),
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      return new Response(null, { status: 204 });
+    });
+
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
+    const signOut = cb.createMutator("POST", "/sign-out");
+
+    const result = await signOut.mutateQuery({});
+    expect(result).toBeUndefined();
+
+    const storeResult = await signOut.mutatorStore.mutate({});
+    expect(storeResult).toBeUndefined();
+  });
+
   test("should send octet-stream body without wrapping", async () => {
     const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
