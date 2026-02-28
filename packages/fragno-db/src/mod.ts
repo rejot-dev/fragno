@@ -123,6 +123,7 @@ export {
   HandlerTxBuilder,
   createServiceTxBuilder,
   createHandlerTxBuilder,
+  serviceCalls,
   type TxResult,
   // Builder context types
   type HandlerTxContext,

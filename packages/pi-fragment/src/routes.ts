@@ -1,4 +1,5 @@
 import { defineRoutes } from "@fragno-dev/core";
+import { serviceCalls } from "@fragno-dev/db";
 import { createId } from "@fragno-dev/db/id";
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 import { z } from "zod";
@@ -17,7 +18,6 @@ import type {
   PiTurnSummary,
   PiWorkflowHistoryStep,
   PiWorkflowsHistoryPage,
-  PiWorkflowsInstanceStatus,
 } from "./pi/types";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -296,18 +296,14 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                     runNumber,
                   }),
                 );
-                return [
+                return serviceCalls(
                   workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
                   workflowsService.getInstanceRunNumber(workflowName, workflowInstanceId),
                   ...historyCalls,
-                ];
+                );
               })
               .mutate(({ forSchema, serviceIntermediateResult }) => {
-                const [workflowStatus] = serviceIntermediateResult as [
-                  PiWorkflowsInstanceStatus,
-                  number,
-                  ...PiWorkflowsHistoryPage[],
-                ];
+                const [workflowStatus] = serviceIntermediateResult;
                 const uow = forSchema(piSchema);
                 uow.update("session", sessionRow.id, (b) =>
                   b
@@ -319,11 +315,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 );
               })
               .transform(({ serviceResult }) => {
-                const [workflowStatus, runNumber, ...historyPages] = serviceResult as [
-                  PiWorkflowsInstanceStatus,
-                  number,
-                  ...PiWorkflowsHistoryPage[],
-                ];
+                const [workflowStatus, runNumber, ...historyPages] = serviceResult;
 
                 const maxRunNumber = Number.isFinite(runNumber)
                   ? Math.max(0, Math.min(MAX_HISTORY_RUNS, runNumber))
@@ -432,20 +424,18 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             }
 
             const result = await this.handlerTx()
-              .withServiceCalls(() => [
-                workflowsService.sendEvent(workflowName, workflowInstanceId, {
-                  type: "user_message",
-                  payload,
-                }),
-                workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
-                workflowsService.getInstanceRunNumber(workflowName, workflowInstanceId),
-              ])
+              .withServiceCalls(() =>
+                serviceCalls(
+                  workflowsService.sendEvent(workflowName, workflowInstanceId, {
+                    type: "user_message",
+                    payload,
+                  }),
+                  workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
+                  workflowsService.getInstanceRunNumber(workflowName, workflowInstanceId),
+                ),
+              )
               .mutate(({ forSchema, serviceIntermediateResult }) => {
-                const [, workflowStatus] = serviceIntermediateResult as [
-                  unknown,
-                  PiWorkflowsInstanceStatus,
-                  number,
-                ];
+                const [, workflowStatus] = serviceIntermediateResult;
                 const updates: {
                   updatedAt: Date;
                   steeringMode?: "all" | "one-at-a-time";
@@ -461,11 +451,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 uow.update("session", sessionRow.id, (b) => b.set(updates).check());
               })
               .transform(({ serviceResult }) => {
-                const [, workflowStatus, runNumber] = serviceResult as [
-                  unknown,
-                  PiWorkflowsInstanceStatus,
-                  number,
-                ];
+                const [, workflowStatus, runNumber] = serviceResult;
                 return { workflowStatus, runNumber };
               })
               .execute();
