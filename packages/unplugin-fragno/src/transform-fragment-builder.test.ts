@@ -203,6 +203,60 @@ describe("Fragment builder transformation", () => {
     });
   });
 
+  describe("provideHooks", () => {
+    test("ssr:false - removes provideHooks from chain", () => {
+      const source = dedent`
+        import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+        
+        const fragment = defineFragment("test")
+          .provideHooks(({ defineHook }) => ({
+            onEvent: defineHook(async () => {
+              await doWork();
+            })
+          }))
+          .build();
+      `;
+
+      const result = transform(source, "", { ssr: false });
+      expect(result.code).not.toContain("provideHooks");
+      expect(result.code).not.toContain("defineHook");
+      expect(result.code).not.toContain("doWork");
+      expect(result.code).toMatchInlineSnapshot(`
+        "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+        const fragment = defineFragment("test").build();"
+      `);
+    });
+
+    test("ssr:true - keeps provideHooks", () => {
+      const source = dedent`
+        import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+        
+        const fragment = defineFragment("test")
+          .provideHooks(({ defineHook }) => ({
+            onEvent: defineHook(async () => {
+              await doWork();
+            })
+          }))
+          .build();
+      `;
+
+      const result = transform(source, "", { ssr: true });
+      expect(result.code).toContain("provideHooks");
+      expect(result.code).toContain("defineHook");
+      expect(result.code).toContain("doWork");
+      expect(result.code).toMatchInlineSnapshot(`
+        "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+        const fragment = defineFragment("test").provideHooks(({
+          defineHook
+        }) => ({
+          onEvent: defineHook(async () => {
+            await doWork();
+          })
+        })).build();"
+      `);
+    });
+  });
+
   describe("extend", () => {
     test("ssr:false - strips callback", () => {
       const source = dedent`

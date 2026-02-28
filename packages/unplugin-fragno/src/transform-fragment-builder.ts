@@ -18,6 +18,7 @@ const BUILDER_METHODS_WITH_CALLBACKS = [
   "withExternalRequestStorage",
   "withRequestThisContext",
   "extend",
+  "provideHooks",
 ];
 
 /**
@@ -115,6 +116,14 @@ const isChainedFromDefineFragmentCall = (path: NodePath<t.CallExpression>): bool
  * Strip callback arguments from builder methods and replace with no-op callback
  */
 const stripCallbackArguments = (path: NodePath<t.CallExpression>, methodName: string): void => {
+  if (methodName === "provideHooks") {
+    const { callee } = path.node;
+    if (t.isMemberExpression(callee) && t.isExpression(callee.object)) {
+      path.replaceWith(callee.object);
+    }
+    return;
+  }
+
   // Create a no-op arrow function: () => {}
   const noopCallback = t.arrowFunctionExpression([], t.blockStatement([]));
 
