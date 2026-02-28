@@ -22,10 +22,12 @@ export default [
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   layout("layouts/backoffice-layout.tsx", [
-    route("backoffice", "routes/backoffice/dashboard.tsx"),
-    route("backoffice/organisations", "routes/backoffice/organisations.tsx"),
-    route("backoffice/users", "routes/backoffice/users.tsx"),
-    route("backoffice/settings", "routes/backoffice/settings.tsx"),
+    ...prefix("backoffice", [
+      index("routes/backoffice/dashboard.tsx"),
+      route("organisations", "routes/backoffice/organisations.tsx"),
+      route("users", "routes/backoffice/users.tsx"),
+      route("settings", "routes/backoffice/settings.tsx"),
+    ]),
   ]),
 
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),

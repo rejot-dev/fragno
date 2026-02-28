@@ -50,7 +50,9 @@ export default function BackofficeUsers() {
             <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
               Active roster
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">28 contributors</h2>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
+              {USERS.length} contributors
+            </h2>
           </div>
           <div className="flex flex-wrap gap-2">
             {["Invite", "Access map", "Export"].map((label) => (
@@ -69,10 +71,18 @@ export default function BackofficeUsers() {
           <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
             <thead className="bg-[var(--bo-panel-2)] text-left">
               <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Role</th>
-                <th className="px-3 py-2">Organisation</th>
-                <th className="px-3 py-2">Status</th>
+                <th scope="col" className="px-3 py-2">
+                  Name
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Role
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Organisation
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">

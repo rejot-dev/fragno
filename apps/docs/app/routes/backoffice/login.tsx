@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
@@ -49,6 +49,10 @@ export default function BackofficeLogin() {
       setAuthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
       setAuthPending(false);
     }
+  };
+
+  const handleRequestSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
   };
 
   return (
@@ -107,39 +111,43 @@ export default function BackofficeLogin() {
                   GitHub access is required for release approvals.
                 </p>
               )}
-              <div className="border-t border-[color:var(--bo-border)] pt-4">
-                <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-                  Request access
-                </p>
-                <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                  Accounts are approved in batches to keep audits crisp.
-                </p>
-              </div>
-              <FormField label="Work email" hint="Use a team address for faster approval.">
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="team@fragno.dev"
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
-                />
-              </FormField>
-              <FormField label="Role" hint="Share the release or docs role you own.">
-                <input
-                  type="text"
-                  name="role"
-                  placeholder="Engineering lead"
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
-                />
-              </FormField>
-              <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                >
-                  Submit request
-                </button>
-                <span className="text-xs text-[var(--bo-muted-2)]">Reviewed within 24 hours.</span>
-              </div>
+              <form onSubmit={handleRequestSubmit} className="space-y-3">
+                <div className="border-t border-[color:var(--bo-border)] pt-4">
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                    Request access
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--bo-muted)]">
+                    Accounts are approved in batches to keep audits crisp.
+                  </p>
+                </div>
+                <FormField label="Work email" hint="Use a team address for faster approval.">
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="team@fragno.dev"
+                    className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  />
+                </FormField>
+                <FormField label="Role" hint="Share the release or docs role you own.">
+                  <input
+                    type="text"
+                    name="role"
+                    placeholder="Engineering lead"
+                    className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  />
+                </FormField>
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="submit"
+                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                  >
+                    Submit request
+                  </button>
+                  <span className="text-xs text-[var(--bo-muted-2)]">
+                    Reviewed within 24 hours.
+                  </span>
+                </div>
+              </form>
             </div>
           </FormContainer>
         </div>

@@ -18,6 +18,15 @@ export function WizardStepper({
   onStepChange?: (step: number) => void;
 }) {
   const totalSteps = steps.length;
+  if (totalSteps === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+          No steps available.
+        </div>
+      </div>
+    );
+  }
   const clampedStep = totalSteps === 0 ? 0 : Math.min(Math.max(currentStep, 0), totalSteps - 1);
   const progressValue = totalSteps === 0 ? 0 : Math.round(((clampedStep + 1) / totalSteps) * 100);
   const activeValue = String(clampedStep);

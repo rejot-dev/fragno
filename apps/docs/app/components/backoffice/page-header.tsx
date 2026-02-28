@@ -7,18 +7,20 @@ export function BackofficePageHeader({
   breadcrumbs,
   actions,
   eyebrow,
+  showSidebarTrigger = true,
 }: {
   title: string;
   description?: string;
   breadcrumbs: BreadcrumbItem[];
   actions?: ReactNode;
   eyebrow?: string;
+  showSidebarTrigger?: boolean;
 }) {
   return (
     <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-3">
-          <BackofficeBreadcrumbs items={breadcrumbs} />
+          <BackofficeBreadcrumbs items={breadcrumbs} showSidebarTrigger={showSidebarTrigger} />
           <div className="space-y-2">
             {eyebrow ? (
               <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
