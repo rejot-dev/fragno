@@ -63,6 +63,18 @@ When the user finishes the provider flow, the callback route:
 
 `returnTo` must be a relative path starting with `/` and is sanitized server-side.
 
+## Proxying auth routes
+
+If you forward `/api/auth/*` to another worker or Durable Object with `fetch`, make sure redirects
+are **not** auto-followed. The callback returns a `302` with `Set-Cookie` and `Location` headers,
+and the browser needs to receive that redirect directly.
+
+```ts
+const proxyRequest = new Request(request, { redirect: "manual" });
+const response = await authDo.fetch(proxyRequest);
+return new Response(response.body, response);
+```
+
 ## GitHub OAuth
 
 1. Create a GitHub OAuth App.

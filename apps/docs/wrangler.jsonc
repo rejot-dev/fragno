@@ -58,6 +58,10 @@
         "name": "FORMS",
         "class_name": "Forms",
       },
+      {
+        "name": "AUTH",
+        "class_name": "Auth",
+      },
     ],
   },
   /**
@@ -72,6 +76,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["Forms"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["Auth"],
     },
   ],
   "rules": [

@@ -1,11 +1,21 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { FormContainer, FormField } from "@/components/backoffice";
+import { authClient } from "@/fragno/auth-client";
+import { getAuthMe } from "@/fragno/auth-server";
+import type { Route } from "./+types/login";
 import "../../backoffice.css";
 
-export function loader() {
+export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
     throw new Response("Not Found", { status: 404 });
   }
+
+  const me = await getAuthMe(request, context);
+  if (me?.user) {
+    return Response.redirect(new URL("/backoffice", request.url), 302);
+  }
+
   return null;
 }
 
@@ -17,6 +27,30 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authPending, setAuthPending] = useState(false);
+
+  const handleGithubSignIn = async () => {
+    setAuthPending(true);
+    setAuthError(null);
+
+    try {
+      const result = await authClient.oauth.getAuthorizationUrl({
+        provider: "github",
+        returnTo: "/backoffice",
+      });
+
+      if (!result?.url) {
+        throw new Error("GitHub authorization URL is missing.");
+      }
+
+      window.location.assign(result.url);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
+      setAuthPending(false);
+    }
+  };
+
   return (
     <div
       data-backoffice-root
@@ -53,11 +87,34 @@ export default function BackofficeLogin() {
 
         <div className="w-full max-w-md">
           <FormContainer
-            title="Request access"
-            description="Accounts are approved in batches to keep audits and review queues crisp."
+            title="Sign in"
+            description="Connect your GitHub account to access the backoffice."
             eyebrow="Access"
           >
-            <form className="space-y-3">
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleGithubSignIn}
+                disabled={authPending}
+                className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+              >
+                {authPending ? "Redirecting…" : "Continue with GitHub"}
+              </button>
+              {authError ? (
+                <p className="text-xs text-red-400">{authError}</p>
+              ) : (
+                <p className="text-xs text-[var(--bo-muted-2)]">
+                  GitHub access is required for release approvals.
+                </p>
+              )}
+              <div className="border-t border-[color:var(--bo-border)] pt-4">
+                <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                  Request access
+                </p>
+                <p className="mt-1 text-xs text-[var(--bo-muted)]">
+                  Accounts are approved in batches to keep audits crisp.
+                </p>
+              </div>
               <FormField label="Work email" hint="Use a team address for faster approval.">
                 <input
                   type="email"
@@ -83,7 +140,7 @@ export default function BackofficeLogin() {
                 </button>
                 <span className="text-xs text-[var(--bo-muted-2)]">Reviewed within 24 hours.</span>
               </div>
-            </form>
+            </div>
           </FormContainer>
         </div>
       </div>
