@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
+    "@fragno-dev/auth": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/forms": "workspace:*",
     "@fragno-dev/fragment-mailing-list": "workspace:*",
