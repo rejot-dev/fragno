@@ -14,6 +14,7 @@ import {
   type FragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core";
+import { FragnoApiError } from "@fragno-dev/core/api";
 import {
   createServiceTxBuilder,
   createHandlerTxBuilder,
@@ -104,6 +105,13 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter?: DatabaseAdapter<any>;
   /**
+   * Optional guard to limit database roundtrips per request (primarily for tests).
+   * When enabled, retrieve-only and mutate-only handlerTx().execute() calls are
+   * counted separately (one of each by default).
+   * Applied only for route handlers (not inContext).
+   */
+  dbRoundtripGuard?: boolean | DbRoundtripGuardConfig;
+  /**
    * Optional outbox configuration for this fragment.
    */
   outbox?: {
@@ -119,6 +127,18 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
    * When omitted, defaults to a sanitized version of schema.name.
    */
   databaseNamespace?: string | null;
+};
+
+/**
+ * Configuration for limiting database roundtrips per request.
+ */
+export type DbRoundtripGuardConfig = {
+  /**
+   * Maximum allowed retrieve-only and mutate-only handlerTx().execute() calls per request.
+   * Each type is tracked separately.
+   * Defaults to 1 when the guard is enabled.
+   */
+  maxRoundtrips?: number;
 };
 
 /**
@@ -264,6 +284,119 @@ function resolveDatabaseNamespace<TSchema extends AnySchema>(
 function resolveMountRoute(name: string, mountRoute?: string): string {
   const resolved = mountRoute ?? `/api/${name}`;
   return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
+}
+
+const dbRoundtripGuardStateSymbol = Symbol("fragno-db-roundtrip-guard");
+const requestSourceSymbol = Symbol.for("fragno-request-source");
+const requestRouteSymbol = Symbol.for("fragno-request-route");
+const roundtripGuardDocsUrl = "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno";
+
+type DbRoundtripGuardState = {
+  retrieveCount: number;
+  mutateCount: number;
+  maxRoundtrips: number;
+};
+
+type AnyHandlerTxBuilder = HandlerTxBuilder<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any
+>;
+
+function wrapHandlerTxBuilderWithRoundtripGuard<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TBuilder extends HandlerTxBuilder<any, any, any, any, any, any, any, any, any, any>,
+>(builder: TBuilder, onExecute: () => void): TBuilder {
+  const wrappedBuilders = new WeakSet<AnyHandlerTxBuilder>();
+
+  const applyExecuteGuard = (target: TBuilder): TBuilder => {
+    if (wrappedBuilders.has(target)) {
+      return target;
+    }
+    wrappedBuilders.add(target);
+    const execute = target.execute.bind(target);
+    target.execute = () => {
+      onExecute();
+      return execute();
+    };
+    return target;
+  };
+
+  const wrap = (target: TBuilder): TBuilder => {
+    const guarded = applyExecuteGuard(target);
+    return new Proxy(guarded, {
+      get(obj, prop, receiver) {
+        const value = Reflect.get(obj, prop, receiver);
+        if (typeof value !== "function") {
+          return value;
+        }
+        if (prop === "execute") {
+          return value;
+        }
+        return (...args: unknown[]) => {
+          const result = value.apply(obj, args);
+          if (result instanceof HandlerTxBuilder) {
+            return wrap(result as TBuilder);
+          }
+          return result;
+        };
+      },
+    }) as TBuilder;
+  };
+
+  return wrap(builder);
+}
+
+function resolveDbRoundtripGuard(
+  options: FragnoPublicConfigWithDatabase,
+): DbRoundtripGuardState | null {
+  const guard = options.dbRoundtripGuard;
+  if (!guard) {
+    return null;
+  }
+
+  if (guard === true) {
+    return { retrieveCount: 0, mutateCount: 0, maxRoundtrips: 1 };
+  }
+
+  return { retrieveCount: 0, mutateCount: 0, maxRoundtrips: guard.maxRoundtrips ?? 1 };
+}
+
+function getDbRoundtripGuardState(
+  storage: DatabaseContextStorage,
+  guard: DbRoundtripGuardState,
+): DbRoundtripGuardState {
+  const storageWithGuard = storage as DatabaseContextStorage & {
+    [dbRoundtripGuardStateSymbol]?: DbRoundtripGuardState;
+  };
+  if (!storageWithGuard[dbRoundtripGuardStateSymbol]) {
+    storageWithGuard[dbRoundtripGuardStateSymbol] = { ...guard };
+  } else {
+    storageWithGuard[dbRoundtripGuardStateSymbol]!.maxRoundtrips = guard.maxRoundtrips;
+  }
+  return storageWithGuard[dbRoundtripGuardStateSymbol]!;
+}
+
+function isRouteRequest(storage: DatabaseContextStorage): boolean {
+  const source = (storage as Record<symbol, unknown>)[requestSourceSymbol];
+  return source === "route";
 }
 
 /**
@@ -973,9 +1106,70 @@ export class DatabaseFragmentDefinitionBuilder<
 
         const userOnBeforeMutate = execOptions?.onBeforeMutate;
         const userOnAfterMutate = execOptions?.onAfterMutate;
+        const userOnAfterRetrieve = execOptions?.onAfterRetrieve;
         const planMode = execOptions?.planMode ?? false;
+        const roundtripGuard = isRouteRequest(currentStorage)
+          ? resolveDbRoundtripGuard(options)
+          : null;
+        const roundtripState = roundtripGuard
+          ? getDbRoundtripGuardState(currentStorage, roundtripGuard)
+          : null;
+        const routeInfo = (
+          currentStorage as DatabaseContextStorage & {
+            [requestRouteSymbol]?: { method?: string; path?: string };
+          }
+        )[requestRouteSymbol];
+        const routeLabel =
+          routeInfo && routeInfo.method && routeInfo.path
+            ? `${routeInfo.method} ${routeInfo.path}`
+            : null;
+        const routeSuffix = routeLabel ? ` (route: ${routeLabel})` : "";
+        const buildRoundtripError = (kind: "retrieve" | "mutate") =>
+          new FragnoApiError(
+            {
+              message:
+                `[fragno-db] Fragment "${baseDef.name}" executed more than ` +
+                `${roundtripState?.maxRoundtrips ?? 1} ${kind} ` +
+                `database roundtrip(s) in a single request${routeSuffix}. ` +
+                "Combine reads/writes into one handlerTx() or increase dbRoundtripGuard. " +
+                `See ${roundtripGuardDocsUrl}`,
+              code: "DB_ROUNDTRIP_LIMIT_EXCEEDED",
+            },
+            500,
+          );
+        const roundtripExecutionState = roundtripState
+          ? { countedRetrieve: false, countedMutate: false }
+          : null;
 
-        return createHandlerTxBuilder<THooks>({
+        const resetRoundtripExecutionState = () => {
+          if (!roundtripExecutionState) {
+            return;
+          }
+          roundtripExecutionState.countedRetrieve = false;
+          roundtripExecutionState.countedMutate = false;
+        };
+
+        const guardOnAfterRetrieve = roundtripState
+          ? async (uow: IUnitOfWork, results: unknown[]) => {
+              if (
+                roundtripExecutionState &&
+                !roundtripExecutionState.countedRetrieve &&
+                uow.getRetrievalOperations().length > 0
+              ) {
+                roundtripExecutionState.countedRetrieve = true;
+                roundtripState.retrieveCount += 1;
+                if (roundtripState.retrieveCount > roundtripState.maxRoundtrips) {
+                  throw buildRoundtripError("retrieve");
+                }
+              }
+
+              if (userOnAfterRetrieve) {
+                await userOnAfterRetrieve(uow, results);
+              }
+            }
+          : userOnAfterRetrieve;
+
+        const builder = createHandlerTxBuilder<THooks>({
           ...execOptions,
           createUnitOfWork: () => {
             currentStorage.uow.reset();
@@ -994,7 +1188,20 @@ export class DatabaseFragmentDefinitionBuilder<
             if (userOnBeforeMutate) {
               userOnBeforeMutate(uow);
             }
+            if (
+              roundtripState &&
+              roundtripExecutionState &&
+              !roundtripExecutionState.countedMutate &&
+              uow.getMutationOperations().length > 0
+            ) {
+              roundtripExecutionState.countedMutate = true;
+              roundtripState.mutateCount += 1;
+              if (roundtripState.mutateCount > roundtripState.maxRoundtrips) {
+                throw buildRoundtripError("mutate");
+              }
+            }
           },
+          onAfterRetrieve: guardOnAfterRetrieve,
           onAfterMutate: async (uow) => {
             if (hooksConfig?.scheduler && !planMode) {
               void hooksConfig.scheduler.schedule().catch((error) => {
@@ -1030,6 +1237,16 @@ export class DatabaseFragmentDefinitionBuilder<
             }
           },
         });
+
+        if (roundtripState) {
+          const guardedBuilder = wrapHandlerTxBuilderWithRoundtripGuard(
+            builder,
+            resetRoundtripExecutionState,
+          );
+          return guardedBuilder;
+        }
+
+        return builder;
       }
 
       function callServices<

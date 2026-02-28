@@ -14,6 +14,7 @@ describe("upload file routes", async () => {
   const storage = createFilesystemStorageAdapter({ rootDir });
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "upload",

@@ -9,6 +9,7 @@ describe("uploadSchema", async () => {
   const definition = defineFragment("upload-test").extend(withDatabase(uploadSchema)).build();
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment("upload-test", instantiate(definition))
     .build();
