@@ -1,5 +1,11 @@
 # @fragno-dev/node
 
+## 0.0.9
+
+### Patch Changes
+
+- 4d141f8: fix: remove development exports from published packages
+
 ## 0.0.8
 
 ### Patch Changes

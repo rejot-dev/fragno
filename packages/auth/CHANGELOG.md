@@ -1,5 +1,57 @@
 # @fragno-dev/auth
 
+## 0.0.15
+
+### Patch Changes
+
+- 89f2bf0: feat: expand hook payloads, enforce banned users, add active org in sessions
+- d686da9: feat: add oauth flow, schema, and docs for auth fragment
+- 68b0f76: feat: add organization client hooks and /me response types
+- 09424e3: fix: honor org role defaults, allow clearing org fields, and hide deleted orgs
+- 57c5777: feat: add auth/org hooks and organization config wiring
+- 99935b8: feat: add organization routes and enrich /me payload with org data
+- 4bcb53f: feat: add organization tables and active org session field to auth schema
+- d1962d2: fix: use Web Crypto helpers and widen OAuth provider typing
+- 4d141f8: fix: remove development exports from published packages
+- 3e0b6a3: fix(auth): enforce organization permissions, limits, and last-owner guards
+- 973cea4: feat: allow disabling email/password auth routes
+- Updated dependencies [8a96998]
+- Updated dependencies [3e2ff94]
+- Updated dependencies [f34d7d7]
+- Updated dependencies [4d141f8]
+- Updated dependencies [c8841b5]
+- Updated dependencies [ae54a60]
+- Updated dependencies [7dd7055]
+- Updated dependencies [e178bf4]
+- Updated dependencies [d2f68ba]
+- Updated dependencies [d395ad2]
+- Updated dependencies [bfdd4b1]
+- Updated dependencies [3ffa711]
+- Updated dependencies [e559425]
+- Updated dependencies [14e00b1]
+- Updated dependencies [95cdf95]
+- Updated dependencies [eabdb9c]
+- Updated dependencies [9eeba53]
+- Updated dependencies [49a9f4f]
+- Updated dependencies [dcba383]
+- Updated dependencies [c895c07]
+- Updated dependencies [ed4b4a0]
+- Updated dependencies [2ae432c]
+- Updated dependencies [ad2ef56]
+- Updated dependencies [0f9b7ef]
+- Updated dependencies [6d043ea]
+- Updated dependencies [fe55a13]
+- Updated dependencies [01fc2cb]
+- Updated dependencies [f4aedad]
+- Updated dependencies [00f2631]
+- Updated dependencies [0a6c8da]
+- Updated dependencies [7a40517]
+- Updated dependencies [91a2ac0]
+- Updated dependencies [7bda0b2]
+- Updated dependencies [c115600]
+  - @fragno-dev/db@0.4.0
+  - @fragno-dev/core@0.2.1
+
 ## 0.0.14
 
 ### Patch Changes

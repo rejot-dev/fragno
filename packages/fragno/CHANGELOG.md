@@ -1,5 +1,19 @@
 # @fragno-dev/core
 
+## 0.2.1
+
+### Patch Changes
+
+- 3e2ff94: feat: register schemas via adapter registry and mount internal routes
+- f34d7d7: fix: ensure cross-schema durable hook enqueuing works reliably
+- 4d141f8: fix: remove development exports from published packages
+- c8841b5: feat: add callServices helper with implicit request context
+- 9eeba53: feat: add internal fragment describe metadata and adapter identity
+- 2ae432c: fix: allow optional request bodies when input schema allows undefined
+- 0f9b7ef: refactor: replace linked fragments with internal routes
+- f4aedad: feat: add createRouteCaller helper for custom fetch targets
+- 7bda0b2: feat(db): add sync command registry, registration, and sync entrypoint
+
 ## 0.2.0
 
 ### Minor Changes
