@@ -20,10 +20,13 @@ export interface OAuth2UserInfo {
   [key: string]: unknown;
 }
 
-export interface OAuthProvider<
-  TProfile extends object = Record<string, unknown>,
-  TOptions extends object = Partial<ProviderOptions<TProfile>>,
-> {
+export type OAuthProviderOptionsBase = {
+  redirectURI?: string;
+  disableImplicitSignUp?: boolean;
+  disableSignUp?: boolean;
+};
+
+export interface OAuthProvider<TProfile extends object = Record<string, unknown>> {
   id: string;
   name: string;
   createAuthorizationURL: (data: {
@@ -59,8 +62,10 @@ export interface OAuthProvider<
   verifyIdToken?: (token: string, nonce?: string) => Promise<boolean>;
   disableImplicitSignUp?: boolean;
   disableSignUp?: boolean;
-  options?: TOptions;
+  options?: OAuthProviderOptionsBase;
 }
+
+export type AnyOAuthProvider = OAuthProvider<object>;
 
 export type ProviderOptions<Profile extends object = Record<string, unknown>> = {
   clientId?: string;
@@ -107,7 +112,7 @@ export type ProviderOptions<Profile extends object = Record<string, unknown>> = 
 };
 
 export interface AuthOAuthConfig {
-  providers: Record<string, OAuthProvider>;
+  providers: Record<string, AnyOAuthProvider>;
   defaultRedirectUri?: string;
   stateTtlMs?: number;
   linkByEmail?: boolean;

@@ -1,18 +1,10 @@
-import { randomBytes } from "node:crypto";
-import type { AuthOAuthConfig, OAuth2Tokens, OAuthProvider } from "./types";
-
-const base64UrlEncode = (input: Uint8Array): string => {
-  return Buffer.from(input)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-};
+import { bytesToBase64Url, randomBytes } from "../utils/crypto";
+import type { AnyOAuthProvider, AuthOAuthConfig, OAuth2Tokens } from "./types";
 
 export const DEFAULT_STATE_TTL_MS = 10 * 60 * 1000;
 
 export const createOAuthState = (bytes = 32): string => {
-  return base64UrlEncode(randomBytes(bytes));
+  return bytesToBase64Url(randomBytes(bytes));
 };
 
 export const createAuthorizationURL = (params: {
@@ -167,7 +159,7 @@ export const parseOAuthTokenResponse = async (
   };
 };
 
-export const normalizeOAuthProvider = (provider: OAuthProvider): OAuthProvider => {
+export const normalizeOAuthProvider = (provider: AnyOAuthProvider): AnyOAuthProvider => {
   const providerOptions = provider.options;
   if (!providerOptions) {
     return provider;
@@ -198,7 +190,7 @@ export const normalizeOAuthConfig = (config?: AuthOAuthConfig): AuthOAuthConfig 
 
   const entries = Object.entries(config.providers);
   let changed = false;
-  const normalizedProviders: Record<string, OAuthProvider> = {};
+  const normalizedProviders: Record<string, AnyOAuthProvider> = {};
 
   for (const [key, provider] of entries) {
     const normalized = normalizeOAuthProvider(provider);

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { bytesToHex, randomBytes } from "../utils/crypto";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
@@ -168,7 +168,7 @@ export function createOrganizationInvitationServices(
     ) {
       const roles = normalizeRoleNames(input.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
       const now = new Date();
-      const token = randomBytes(32).toString("hex");
+      const token = bytesToHex(randomBytes(32));
       const actorMemberId = input.actorMemberId;
       const expiresAt = buildExpiresAt({
         ...input,

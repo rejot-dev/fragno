@@ -486,7 +486,13 @@ export type {
   SessionSummary,
 } from "./hooks";
 export type { UserSummary } from "./types";
-export type { AuthOAuthConfig, OAuthProvider, OAuth2Tokens, OAuth2UserInfo } from "./oauth/types";
+export type {
+  AnyOAuthProvider,
+  AuthOAuthConfig,
+  OAuthProvider,
+  OAuth2Tokens,
+  OAuth2UserInfo,
+} from "./oauth/types";
 export type { GithubOAuthClient } from "./oauth/providers/github/client";
 export type { GithubEmail, GithubProfile } from "./oauth/providers/github/github";
 export { createGithubOAuthClient, github } from "./oauth/providers/github/github";
