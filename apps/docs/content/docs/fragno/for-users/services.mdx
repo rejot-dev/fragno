@@ -119,6 +119,25 @@ fragment.callRouteRaw(method, path, options?): Promise<Response>
 **Type Safety:** The method and path parameters are strongly typed based on the fragment's available
 routes. TypeScript will provide autocomplete and type checking for the path and options.
 
+### Calling Routes Through a Custom Fetch Target
+
+If the fragment runs behind a custom `fetch` target (for example, a Cloudflare Durable Object), use
+`createRouteCaller` to build a typed route caller without direct access to the fragment instance.
+
+```typescript
+import type { AuthFragment } from "@/fragno/auth";
+import { createRouteCaller } from "@fragno-dev/core/api";
+
+const callAuthRoute = createRouteCaller<AuthFragment>({
+  baseUrl: request.url,
+  mountRoute: "/api/auth",
+  baseHeaders: request.headers,
+  fetch: authStub.fetch.bind(authStub),
+});
+
+const response = await callAuthRoute("GET", "/me");
+```
+
 <Callout type="info">
   Unlike services, both `callRoute()` and `callRouteRaw()` validate input using the route's schema.
   Use `callRoute()` for a parsed, typed result; use `callRouteRaw()` when you need the raw

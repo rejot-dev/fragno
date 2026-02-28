@@ -217,6 +217,29 @@ The request flow is:
 Migrations run automatically in the DO constructor via `blockConcurrencyWhile`, so the schema is
 always up to date before the first request is processed.
 
+## Extras: Calling DO-Hosted Routes
+
+When a fragment runs inside a Durable Object, your app typically only has a DO stub (`fetch`) and
+not a fragment instance. Use `createRouteCaller` to build a typed caller that mirrors
+`fragment.callRoute()` but targets the Durable Object.
+
+```typescript title="app/fragno/auth-server.ts"
+import type { AuthFragment } from "@/fragno/auth";
+import { createRouteCaller } from "@fragno-dev/core/api";
+
+const callAuthRoute = createRouteCaller<AuthFragment>({
+  baseUrl: request.url,
+  mountRoute: "/api/auth",
+  baseHeaders: request.headers,
+  fetch: authStub.fetch.bind(authStub),
+});
+
+const response = await callAuthRoute("GET", "/me");
+```
+
+`createRouteCaller` handles path params, query params, headers, request bodies, and Fragno response
+parsing (including `jsonStream`).
+
 ## Next Steps
 
 - [Database Adapter](/docs/fragno/for-users/database-fragments/database-adapter) — all available
