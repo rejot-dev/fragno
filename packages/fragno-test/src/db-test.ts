@@ -14,7 +14,7 @@ import {
   type AdapterContext,
   type SchemaConfig,
 } from "./adapters";
-import type { DatabaseAdapter } from "@fragno-dev/db";
+import type { DatabaseAdapter, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { BaseTestContext } from ".";
 import { drainDurableHooks } from "./durable-hooks";
@@ -346,6 +346,7 @@ export class DatabaseFragmentsTestBuilder<
 > {
   #adapter?: SupportedAdapter;
   #fragments: FragmentConfigMap = new Map();
+  #dbRoundtripGuard?: FragnoPublicConfigWithDatabase["dbRoundtripGuard"] = true;
 
   /**
    * Set the test adapter configuration
@@ -355,6 +356,17 @@ export class DatabaseFragmentsTestBuilder<
   ): DatabaseFragmentsTestBuilder<TFragments, TNewAdapter, TFirstFragmentThisContext> {
     this.#adapter = adapter;
     return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  /**
+   * Opt out of the default roundtrip guard (enabled by default), or override its configuration.
+   * Useful for allowing multi-roundtrip routes in tests.
+   */
+  withDbRoundtripGuard(
+    guard: FragnoPublicConfigWithDatabase["dbRoundtripGuard"] = false,
+  ): DatabaseFragmentsTestBuilder<TFragments, TAdapter, TFirstFragmentThisContext> {
+    this.#dbRoundtripGuard = guard;
+    return this;
   }
 
   /**
@@ -723,6 +735,30 @@ export class DatabaseFragmentsTestBuilder<
 
     const { testContext, adapter } = await createAdapter(adapterConfig, schemaConfigs);
 
+    const resolveDbRoundtripGuardOption = (options: unknown) => {
+      if (options && typeof options === "object") {
+        if (Object.prototype.hasOwnProperty.call(options, "dbRoundtripGuard")) {
+          return (options as { dbRoundtripGuard?: unknown }).dbRoundtripGuard as
+            | FragnoPublicConfigWithDatabase["dbRoundtripGuard"]
+            | undefined;
+        }
+      }
+      return this.#dbRoundtripGuard;
+    };
+
+    const mergeBuilderOptions = (options: unknown) => {
+      const resolvedOptions = (options ?? {}) as Record<string, unknown>;
+      const merged = {
+        ...resolvedOptions,
+        databaseAdapter: adapter,
+      } as Record<string, unknown>;
+      const guardOption = resolveDbRoundtripGuardOption(resolvedOptions);
+      if (guardOption !== undefined) {
+        merged["dbRoundtripGuard"] = guardOption;
+      }
+      return merged;
+    };
+
     // Helper to create fragments with service wiring
     const createFragments = () => {
       const resolveBuilderConfig = (builder: AnyFragmentBuilderConfig["builder"]) => ({
@@ -773,10 +809,7 @@ export class DatabaseFragmentsTestBuilder<
 
         if (usesBuilder) {
           const resolvedBuilderConfig = builderConfig ?? plan.builderConfig!;
-          const mergedOptions = {
-            ...resolvedBuilderConfig.options,
-            databaseAdapter: adapter,
-          };
+          const mergedOptions = mergeBuilderOptions(resolvedBuilderConfig.options);
 
           fragment = resolvedBuilderConfig.builder.withOptions(mergedOptions).build();
           builderConfigs.set(plan.name, resolvedBuilderConfig);
@@ -856,10 +889,7 @@ export class DatabaseFragmentsTestBuilder<
         }
 
         // Merge builder options with database adapter
-        const mergedOptions = {
-          ...builderConfig.options,
-          databaseAdapter: adapter,
-        };
+        const mergedOptions = mergeBuilderOptions(builderConfig.options);
 
         // Rebuild the fragment with service implementations using the builder
         const fragment = builderConfig.builder

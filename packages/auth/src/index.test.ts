@@ -27,6 +27,7 @@ const preOrganizationSchemaVersion = (() => {
 
 describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -616,6 +617,7 @@ describe("auth-fragment", async () => {
 
 describe("auth-fragment email/password disabled", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -669,6 +671,7 @@ describe("auth-fragment organization upgrades", async () => {
   );
 
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite", databasePath })
     .withFragment(
       "auth",
@@ -759,6 +762,7 @@ describe("auth-fragment organization upgrades", async () => {
 
 describe("auth-fragment auto-create organizations", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -806,6 +810,7 @@ describe("auth-fragment beforeCreateUser hook", async () => {
   const blockedDomain = "blocked.test";
   const hookCalls: string[] = [];
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",

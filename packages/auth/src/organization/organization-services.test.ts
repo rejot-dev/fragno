@@ -6,6 +6,7 @@ import { hashPassword } from "../user/password";
 
 describe("organization services", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment("auth", instantiate(authFragmentDefinition))
     .build();
@@ -892,6 +893,7 @@ describe("organization services", async () => {
 
 describe("organization service role defaults", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1009,6 +1011,7 @@ describe("organization service role defaults", async () => {
 
 describe("organization service limits", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",

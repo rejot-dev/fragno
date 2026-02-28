@@ -32,6 +32,17 @@ import { recordTraceEvent } from "../internal/trace-context";
 // Re-export types needed by consumers
 export type { BoundServices };
 
+const requestSourceSymbol = Symbol.for("fragno-request-source");
+const requestRouteSymbol = Symbol.for("fragno-request-route");
+
+type RequestRouteInfo = {
+  method: HTTPMethod;
+  path: string;
+  mountRoute?: string;
+  fullPath?: string;
+};
+type RequestSource = "route" | "context";
+
 type InternalRoutePrefix = "/_internal";
 
 type JoinInternalRoutePath<TPath extends string> = TPath extends "" | "/"
@@ -368,9 +379,21 @@ export class FragnoInstantiatedFragment<
    * This is a shared helper used by inContext(), handler(), and callRouteRaw().
    * @private
    */
-  #withRequestStorage<T>(callback: () => T): T;
-  #withRequestStorage<T>(callback: () => Promise<T>): Promise<T>;
-  #withRequestStorage<T>(callback: () => T | Promise<T>): T | Promise<T> {
+  #withRequestStorage<T>(
+    callback: () => T,
+    source?: RequestSource,
+    routeInfo?: RequestRouteInfo,
+  ): T;
+  #withRequestStorage<T>(
+    callback: () => Promise<T>,
+    source?: RequestSource,
+    routeInfo?: RequestRouteInfo,
+  ): Promise<T>;
+  #withRequestStorage<T>(
+    callback: () => T | Promise<T>,
+    source: RequestSource = "context",
+    routeInfo?: RequestRouteInfo,
+  ): T | Promise<T> {
     if (!this.#serviceThisContext && !this.#handlerThisContext) {
       // No request context configured - just run callback directly
       return callback();
@@ -380,6 +403,13 @@ export class FragnoInstantiatedFragment<
     const storageData = this.#createRequestStorage
       ? this.#createRequestStorage()
       : ({} as TRequestStorage);
+    if (storageData && typeof storageData === "object") {
+      const metadataTarget = storageData as Record<symbol, unknown>;
+      metadataTarget[requestSourceSymbol] = source;
+      if (routeInfo) {
+        metadataTarget[requestRouteSymbol] = routeInfo;
+      }
+    }
     return this.#contextStorage.run(storageData, callback);
   }
 
@@ -407,9 +437,9 @@ export class FragnoInstantiatedFragment<
     // Always use handler context for inContext - it has full capabilities
     if (this.#handlerThisContext) {
       const boundCallback = callback.bind(this.#handlerThisContext);
-      return this.#withRequestStorage(boundCallback);
+      return this.#withRequestStorage(boundCallback, "context");
     }
-    return this.#withRequestStorage(callback);
+    return this.#withRequestStorage(callback, "context");
   }
 
   /**
@@ -448,7 +478,7 @@ export class FragnoInstantiatedFragment<
 
     const result = this.#contextStorage.hasStore()
       ? await execute()
-      : await this.#withRequestStorage(execute);
+      : await this.#withRequestStorage(execute, "context");
 
     if (callWasArray) {
       return result as ExtractServiceCallResultsOrSingle<TServiceCalls>;
@@ -643,6 +673,17 @@ export class FragnoInstantiatedFragment<
       headers: new Headers(req.headers),
     });
 
+    const fullRoutePath =
+      this.#mountRoute && this.#mountRoute !== "/"
+        ? `${this.#mountRoute}${routeConfig.path}`
+        : routeConfig.path;
+    const routeInfo: RequestRouteInfo = {
+      method: routeConfig.method,
+      path: routeConfig.path,
+      mountRoute: this.#mountRoute,
+      fullPath: fullRoutePath,
+    };
+
     // Execute middleware and handler
     const executeRequest = async (): Promise<Response> => {
       // Parent middleware execution
@@ -656,7 +697,7 @@ export class FragnoInstantiatedFragment<
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeRequest);
+    return this.#withRequestStorage(executeRequest, "route", routeInfo);
   }
 
   /**
@@ -742,6 +783,17 @@ export class FragnoInstantiatedFragment<
     // Construct RequestOutputContext
     const outputContext = new RequestOutputContext(route.outputSchema);
 
+    const fullRoutePath =
+      this.#mountRoute && this.#mountRoute !== "/"
+        ? `${this.#mountRoute}${route.path}`
+        : route.path;
+    const routeInfo: RequestRouteInfo = {
+      method: route.method,
+      path: route.path,
+      mountRoute: this.#mountRoute,
+      fullPath: fullRoutePath,
+    };
+
     // Execute handler
     const executeHandler = async (): Promise<Response> => {
       try {
@@ -763,7 +815,7 @@ export class FragnoInstantiatedFragment<
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeHandler);
+    return this.#withRequestStorage(executeHandler, "route", routeInfo);
   }
 
   /**

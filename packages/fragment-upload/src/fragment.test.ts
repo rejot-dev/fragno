@@ -70,6 +70,7 @@ const createDirectAdapter = (
 
 const buildUploadFragment = async (config: UploadFragmentConfig) =>
   buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "upload",

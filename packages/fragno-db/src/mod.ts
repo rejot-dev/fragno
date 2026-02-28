@@ -86,6 +86,7 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
 
 export {
   DatabaseFragmentDefinitionBuilder,
+  type DbRoundtripGuardConfig,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
   type DatabaseServiceContext,

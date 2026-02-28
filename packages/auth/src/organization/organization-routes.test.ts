@@ -9,6 +9,7 @@ import { hashPassword } from "../user/password";
 
 describe("organization routes", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
