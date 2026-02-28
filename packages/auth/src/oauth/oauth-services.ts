@@ -1,7 +1,7 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import { authSchema } from "../schema";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
-import type { AuthOAuthConfig, OAuth2Tokens, OAuth2UserInfo, OAuthProvider } from "./types";
+import type { AnyOAuthProvider, AuthOAuthConfig, OAuth2Tokens, OAuth2UserInfo } from "./types";
 import { createOAuthState, DEFAULT_STATE_TTL_MS, normalizeOAuthConfig } from "./utils";
 import { mapUserSummary } from "../user/summary";
 import {
@@ -183,7 +183,7 @@ export function createOAuthServices(options: {
         tokens: OAuth2Tokens;
         userInfo: OAuth2UserInfo;
         rawProfile: Record<string, unknown> | null;
-        provider?: OAuthProvider;
+        provider?: AnyOAuthProvider;
         requestSignUp?: boolean;
       },
     ) {

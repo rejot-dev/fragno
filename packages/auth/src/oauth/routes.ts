@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { authFragmentDefinition } from "..";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import { normalizeOAuthConfig } from "./utils";
-import type { OAuthProvider } from "./types";
+import type { AnyOAuthProvider } from "./types";
 
 const parseScopes = (value: string | null): string[] | undefined => {
   if (!value) {
@@ -17,7 +17,7 @@ const parseScopes = (value: string | null): string[] | undefined => {
 };
 
 const resolveRedirectUri = (
-  provider: OAuthProvider | undefined,
+  provider: AnyOAuthProvider | undefined,
   fallback?: string,
 ): string | null => {
   const providerRedirect = provider?.options?.redirectURI;
@@ -55,7 +55,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
 
           const providerId = pathParams.provider;
-          const provider = oauthConfig.providers[providerId] as OAuthProvider | undefined;
+          const provider = oauthConfig.providers[providerId];
           if (!provider) {
             return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
           }
@@ -130,7 +130,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
 
           const providerId = pathParams.provider;
-          const provider = oauthConfig.providers[providerId] as OAuthProvider | undefined;
+          const provider = oauthConfig.providers[providerId];
           if (!provider) {
             return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
           }
