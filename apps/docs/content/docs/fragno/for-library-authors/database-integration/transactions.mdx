@@ -34,6 +34,30 @@ The `handlerTx()` builder:
 - chains `.retrieve()`, `.mutate()`, `.withServiceCalls()` to compose operations
 - ends with `.execute()` to run the transaction
 
+### Preserve Tuple Types With `serviceCalls()`
+
+When you build service calls dynamically (e.g. `Array.from(...)` + spread), TypeScript widens the
+tuple and you lose precise types for `serviceResult` / `serviceIntermediateResult`. Use
+`serviceCalls(...)` to preserve tuple inference:
+
+```typescript
+import { serviceCalls } from "@fragno-dev/db";
+
+const historyCalls = Array.from({ length: 3 }, (_, runNumber) =>
+  services.listHistory({ workflowName, instanceId, runNumber }),
+);
+
+const [status, runNumber, ...history] = await this.handlerTx()
+  .withServiceCalls(() =>
+    serviceCalls(
+      services.getInstanceStatus(workflowName, instanceId),
+      services.getInstanceRunNumber(workflowName, instanceId),
+      ...historyCalls,
+    ),
+  )
+  .execute();
+```
+
 ## Services: define reusable operations
 
 Services define database operations using `this.serviceTx(schema)`, returning a `TxResult` that

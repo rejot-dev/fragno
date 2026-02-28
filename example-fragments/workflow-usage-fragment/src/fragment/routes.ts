@@ -1,4 +1,5 @@
 import { defineRoutes } from "@fragno-dev/core";
+import { serviceCalls } from "@fragno-dev/db";
 import { createId } from "@fragno-dev/db/id";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import type { InstanceStatus } from "@fragno-dev/workflows";
@@ -240,13 +241,15 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
 
           try {
             const result = await this.handlerTx()
-              .withServiceCalls(() => [
-                workflowsService.getInstanceStatus(INTERNAL_WORKFLOW_NAME, sessionId),
-                workflowsService.listHistory({
-                  workflowName: INTERNAL_WORKFLOW_NAME,
-                  instanceId: sessionId,
-                }),
-              ])
+              .withServiceCalls(() =>
+                serviceCalls(
+                  workflowsService.getInstanceStatus(INTERNAL_WORKFLOW_NAME, sessionId),
+                  workflowsService.listHistory({
+                    workflowName: INTERNAL_WORKFLOW_NAME,
+                    instanceId: sessionId,
+                  }),
+                ),
+              )
               .retrieve(({ forSchema }) => {
                 const uow = forSchema(workflowUsageSchema);
                 return uow.findFirst("session", (b) =>
@@ -257,10 +260,7 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
                 if (!sessionRow) {
                   return;
                 }
-                const [workflowStatus] = serviceIntermediateResult as unknown as [
-                  InstanceStatus,
-                  unknown,
-                ];
+                const [workflowStatus] = serviceIntermediateResult;
                 const uow = forSchema(workflowUsageSchema);
                 uow.update("session", sessionRow.id, (b) =>
                   b
@@ -279,14 +279,7 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
                     404,
                   );
                 }
-                const [workflowStatus, history] = serviceResult as [
-                  InstanceStatus,
-                  {
-                    runNumber: number;
-                    steps: { name: string; result: unknown }[];
-                    events: unknown[];
-                  },
-                ];
+                const [workflowStatus, history] = serviceResult;
                 return { sessionRow, workflowStatus, history };
               })
               .execute();
@@ -338,12 +331,14 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
 
           try {
             const result = await this.handlerTx()
-              .withServiceCalls(() => [
-                workflowsService.sendEvent(INTERNAL_WORKFLOW_NAME, sessionId, {
-                  type: values.type,
-                  payload: values.payload,
-                }),
-              ])
+              .withServiceCalls(() =>
+                serviceCalls(
+                  workflowsService.sendEvent(INTERNAL_WORKFLOW_NAME, sessionId, {
+                    type: values.type,
+                    payload: values.payload,
+                  }),
+                ),
+              )
               .retrieve(({ forSchema }) => {
                 const uow = forSchema(workflowUsageSchema);
                 return uow.findFirst("session", (b) =>
@@ -354,12 +349,15 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
                 if (!sessionRow) {
                   return;
                 }
-                const [workflowStatus] = serviceIntermediateResult as unknown as [InstanceStatus];
+                const [[instance]] = serviceIntermediateResult;
+                if (!instance) {
+                  return;
+                }
                 const uow = forSchema(workflowUsageSchema);
                 uow.update("session", sessionRow.id, (b) =>
                   b
                     .set({
-                      status: workflowStatus.status,
+                      status: instance.status,
                       updatedAt: new Date(),
                     })
                     .check(),
@@ -373,7 +371,7 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
                     404,
                   );
                 }
-                const [workflowStatus] = serviceResult as [InstanceStatus];
+                const [workflowStatus] = serviceResult;
                 return { workflowStatus };
               })
               .execute();

@@ -11,6 +11,7 @@ import {
   createServiceTxBuilder,
   createHandlerTxBuilder,
   isTxResult,
+  serviceCalls,
   ConcurrencyConflictError,
 } from "./execute-unit-of-work";
 import { prepareHookMutations } from "../../hooks/hooks";
@@ -841,6 +842,72 @@ describe("Unified Tx API", () => {
       expect(result.finalDepCode).toBe("ABC123");
       expect(result.extraWasUndefined).toBe(true);
       expect(result.finalDepUserId).toBeInstanceOf(FragnoId);
+    });
+
+    it("should preserve tuple inference for dynamic serviceCalls using helper", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+
+      type UserData = { id: FragnoId; email: string };
+      type Stats = { count: number };
+      type HistoryEntry = { page: number };
+
+      const getUser = () =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(({ uow }): UserData => {
+            const userId = uow.create("users", {
+              email: "user@example.com",
+              name: "User",
+              balance: 0,
+            });
+            return { id: userId, email: "user@example.com" };
+          })
+          .build();
+
+      const getStats = () =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate((): Stats => ({ count: 42 }))
+          .build();
+
+      const listHistory = (page: number) =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate((): HistoryEntry => ({ page }))
+          .build();
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .withServiceCalls(() => {
+          const historyCalls = Array.from({ length: 2 }, (_, idx) => listHistory(idx + 1));
+          return serviceCalls(getUser(), getStats(), ...historyCalls);
+        })
+        .mutate(({ serviceIntermediateResult }) => {
+          const [user, stats, ...history] = serviceIntermediateResult;
+
+          expectTypeOf(user).toEqualTypeOf<UserData>();
+          expectTypeOf(stats).toEqualTypeOf<Stats>();
+          expectTypeOf(history).items.toEqualTypeOf<HistoryEntry>();
+
+          return {
+            userId: user.id,
+            count: stats.count,
+            pages: history.map((entry) => entry.page),
+          };
+        })
+        .execute();
+
+      expect(result.count).toBe(42);
+      expect(result.pages).toEqual([1, 2]);
+      expect(result.userId).toBeInstanceOf(FragnoId);
     });
 
     it("should retry on concurrency conflict", async () => {

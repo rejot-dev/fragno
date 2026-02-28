@@ -13,6 +13,7 @@ import {
   ServiceTxBuilder,
   HandlerTxBuilder,
   type TxResult,
+  serviceCalls,
   type ServiceBuilderMutateContext,
   type HandlerBuilderMutateContext,
   type BuilderTransformContextWithMutate,
@@ -550,6 +551,76 @@ describe("HandlerTxBuilder type inference", () => {
 
       expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
         readonly [{ user: { id: string } }]
+      >();
+    });
+
+    it("widens serviceIntermediateResult when serviceCalls is a non-tuple array", () => {
+      type Status = { status: string };
+      type HistoryPage = { runNumber: number };
+      type StatusCall = TxResult<Status, Status>;
+      type RunNumberCall = TxResult<number, number>;
+      type HistoryCall = TxResult<HistoryPage, HistoryPage>;
+
+      // When serviceCalls are built dynamically (e.g. Array.from + spread),
+      // the tuple shape is lost and results widen to a union array.
+      type ServiceCalls = readonly (StatusCall | RunNumberCall | HistoryCall)[];
+
+      type Builder = HandlerTxBuilder<
+        ServiceCalls,
+        [],
+        [],
+        unknown,
+        unknown,
+        false,
+        false,
+        true, // HasMutate
+        false,
+        {}
+      >;
+
+      type MutateParam = Parameters<Builder["mutate"]>[0];
+      type MutateCtx = Parameters<MutateParam>[0];
+
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
+        readonly (Status | number | HistoryPage)[]
+      >();
+    });
+
+    it("preserves tuple inference for dynamic serviceCalls when using helper", () => {
+      type Status = { status: string };
+      type HistoryPage = { runNumber: number };
+      type StatusCall = TxResult<Status, Status>;
+      type RunNumberCall = TxResult<number, number>;
+      type HistoryCall = TxResult<HistoryPage, HistoryPage>;
+
+      const statusCall = null as unknown as StatusCall;
+      const runNumberCall = null as unknown as RunNumberCall;
+      const historyCalls = [] as HistoryCall[];
+
+      const calls = serviceCalls(statusCall, runNumberCall, ...historyCalls);
+
+      expectTypeOf<typeof calls>().toEqualTypeOf<
+        readonly [StatusCall, RunNumberCall, ...HistoryCall[]]
+      >();
+
+      type Builder = HandlerTxBuilder<
+        typeof calls,
+        [],
+        [],
+        unknown,
+        unknown,
+        false,
+        false,
+        true, // HasMutate
+        false,
+        {}
+      >;
+
+      type MutateParam = Parameters<Builder["mutate"]>[0];
+      type MutateCtx = Parameters<MutateParam>[0];
+
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
+        readonly [Status, number, ...HistoryPage[]]
       >();
     });
   });

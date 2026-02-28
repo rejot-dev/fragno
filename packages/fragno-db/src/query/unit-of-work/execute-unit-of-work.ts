@@ -59,6 +59,26 @@ export type ExtractServiceFinalResults<T extends readonly unknown[]> = {
 };
 
 /**
+ * Helper to preserve tuple inference for service calls, especially with spreads.
+ *
+ * @example
+ * ```ts
+ * const historyCalls = Array.from({ length: 3 }, () => svc.listHistory(...));
+ * return serviceCalls(
+ *   svc.getInstanceStatus(...),
+ *   svc.getInstanceRunNumber(...),
+ *   ...historyCalls,
+ * );
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function serviceCalls<const T extends readonly (TxResult<any, any> | undefined)[]>(
+  ...calls: T
+): T {
+  return calls;
+}
+
+/**
  * Context passed to mutate callback for service methods
  */
 export interface ServiceTxMutateContext<
