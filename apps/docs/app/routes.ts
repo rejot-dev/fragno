@@ -35,6 +35,7 @@ export default [
     route("search", "routes/api/search.ts"),
     route("markdown/*", "routes/api/markdown.ts"),
     route("forms/*", "routes/api/forms.ts"),
+    route("auth/*", "routes/api/auth.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;
