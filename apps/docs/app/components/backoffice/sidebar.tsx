@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
+import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
 import { Menu } from "@base-ui/react/menu";
 import { NavigationMenu } from "@base-ui/react/navigation-menu";
 import { Separator } from "@base-ui/react/separator";
@@ -21,10 +22,41 @@ type BackofficeSidebarProps = {
 };
 
 export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
+  return (
+    <>
+      <aside className="relative hidden min-w-0 shrink-0 border-r border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-4 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-72">
+        <BackofficeSidebarContent me={me} isLoading={isLoading} />
+      </aside>
+
+      <Drawer.Portal>
+        <Drawer.Backdrop
+          data-backoffice-root
+          className="fixed inset-0 z-40 bg-[rgba(var(--bo-overlay),0.96)] backdrop-blur-[1px] transition-opacity duration-200 ease-out data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 lg:hidden"
+        />
+        <Drawer.Viewport className="fixed inset-0 z-50 flex lg:hidden">
+          <Drawer.Popup
+            data-backoffice-root
+            className="h-full w-screen translate-x-[var(--drawer-swipe-movement-x,0px)] border-r border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-4 text-[var(--bo-fg)] shadow-[0_20px_50px_rgba(15,23,42,0.25)] transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full sm:w-[min(88vw,20rem)] dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
+          >
+            <Drawer.Content className="h-full">
+              <BackofficeSidebarContent me={me} isLoading={isLoading} showClose />
+            </Drawer.Content>
+          </Drawer.Popup>
+        </Drawer.Viewport>
+      </Drawer.Portal>
+    </>
+  );
+}
+
+function BackofficeSidebarContent({
+  me,
+  isLoading,
+  showClose = false,
+}: BackofficeSidebarProps & { showClose?: boolean }) {
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
 
   return (
-    <aside className="relative w-full shrink-0 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-4 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
+    <>
       <div className="flex h-full min-h-0 flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
@@ -33,17 +65,22 @@ export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
             </p>
             <p className="text-lg font-semibold text-[var(--bo-fg)]">Backoffice</p>
           </div>
-          <span className="border border-[color:var(--bo-border)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-            beta
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="border border-[color:var(--bo-border)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              beta
+            </span>
+            {showClose ? (
+              <Drawer.Close className="border border-[color:var(--bo-border)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]">
+                Close
+              </Drawer.Close>
+            ) : null}
+          </div>
         </div>
 
         <Separator className="h-px w-full bg-[var(--bo-border)]" />
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="space-y-4 pb-4">
-            <BackofficeUserCard portalContainer={portalContainer} me={me} isLoading={isLoading} />
-
+        <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+          <div className="flex min-h-full flex-col gap-4 pb-4">
             <BackofficeSidebarSection title="Navigation">
               <NavigationMenu.Root>
                 <NavigationMenu.List className="space-y-2">
@@ -52,10 +89,6 @@ export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
                   ))}
                 </NavigationMenu.List>
               </NavigationMenu.Root>
-            </BackofficeSidebarSection>
-
-            <BackofficeSidebarSection title="Theme">
-              <BackofficeThemeToggle />
             </BackofficeSidebarSection>
 
             <BackofficeSidebarSection title="Shortcuts">
@@ -73,18 +106,18 @@ export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
               </div>
             </BackofficeSidebarSection>
 
-            <Link
-              to="/backoffice/login"
-              className="inline-flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Switch workspace
-              <span className="text-[10px] text-[var(--bo-muted-2)]">Demo</span>
-            </Link>
+            <div className="mt-auto space-y-4">
+              <BackofficeSidebarSection title="Theme">
+                <BackofficeThemeToggle />
+              </BackofficeSidebarSection>
+
+              <BackofficeUserCard portalContainer={portalContainer} me={me} isLoading={isLoading} />
+            </div>
           </div>
         </div>
       </div>
       <div ref={setPortalContainer} />
-    </aside>
+    </>
   );
 }
 
@@ -202,12 +235,6 @@ function BackofficeUserCard({
           <p className="text-xs text-[var(--bo-muted-2)]">{user.email}</p>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-          Role
-        </span>
-        <span className="text-sm font-semibold text-[var(--bo-fg)]">{user.role}</span>
-      </div>
 
       {organizations.length > 0 ? (
         <Menu.Root modal={false}>
@@ -260,13 +287,6 @@ function BackofficeUserCard({
           No organisations yet
         </div>
       )}
-
-      <div className="mt-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-        Active workspace
-        <span className="ml-2 text-sm font-semibold text-[var(--bo-fg)]">
-          {activeOrganization?.name ?? "Personal"}
-        </span>
-      </div>
       <button
         type="button"
         onClick={async () => {
@@ -290,20 +310,7 @@ function BackofficeThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const [choice, setChoice] = useState<"light" | "dark" | "system">("system");
 
-  useEffect(() => {
-    setMounted(true);
-    if (typeof window === "undefined") {
-      return;
-    }
-    const stored = window.localStorage.getItem("theme");
-    if (stored === "light" || stored === "dark" || stored === "system") {
-      setChoice(stored);
-      return;
-    }
-    setChoice("system");
-  }, []);
-
-  const updateTheme = (nextTheme: "light" | "dark" | "system") => {
+  const updateTheme = useCallback((nextTheme: "light" | "dark" | "system") => {
     setChoice(nextTheme);
     if (typeof window === "undefined") {
       return;
@@ -328,7 +335,19 @@ function BackofficeThemeToggle() {
     } catch {
       // ignore
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("theme");
+    const nextChoice =
+      stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+    setChoice(nextChoice);
+    updateTheme(nextChoice);
+  }, [updateTheme]);
 
   return (
     <div

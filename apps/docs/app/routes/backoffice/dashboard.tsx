@@ -25,6 +25,8 @@ const STEPS = [
   },
 ];
 
+const REQUEST_TYPES = ["Release review", "Docs proof", "Schema diff", "Partner handoff"];
+
 export function meta() {
   return [
     { title: "Backoffice Dashboard" },
@@ -145,21 +147,21 @@ export default function BackofficeDashboard() {
                   Request type
                 </span>
                 <div className="grid gap-2">
-                  {["Release review", "Docs proof", "Schema diff", "Partner handoff"].map(
-                    (label) => (
-                      <label
-                        key={label}
-                        className="flex items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]"
-                      >
-                        <span>{label}</span>
-                        <input
-                          type="radio"
-                          name="request-type"
-                          className="h-4 w-4 accent-[var(--bo-accent)]"
-                        />
-                      </label>
-                    ),
-                  )}
+                  {REQUEST_TYPES.map((label, index) => (
+                    <label
+                      key={label}
+                      className="flex items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]"
+                    >
+                      <span>{label}</span>
+                      <input
+                        type="radio"
+                        name="request-type"
+                        value={label}
+                        defaultChecked={index === 0}
+                        className="h-4 w-4 accent-[var(--bo-accent)]"
+                      />
+                    </label>
+                  ))}
                 </div>
               </label>
               <label className="block space-y-2 text-sm">
