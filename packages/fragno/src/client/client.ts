@@ -152,6 +152,31 @@ function prepareRequestBody(
   };
 }
 
+async function schemaAllowsUndefined(schema: StandardSchemaV1): Promise<boolean> {
+  try {
+    const result = await schema["~standard"].validate(undefined);
+    return !result.issues;
+  } catch {
+    return false;
+  }
+}
+
+async function assertBodyProvided(
+  body: unknown,
+  inputSchema: StandardSchemaV1 | undefined,
+  errorMessage: string,
+): Promise<void> {
+  if (typeof body !== "undefined" || inputSchema === undefined) {
+    return;
+  }
+
+  if (await schemaAllowsUndefined(inputSchema)) {
+    return;
+  }
+
+  throw new Error(errorMessage);
+}
+
 /**
  * Merge request headers from multiple sources.
  * Returns undefined if there are no headers to merge.
@@ -1149,9 +1174,7 @@ export class ClientBuilder<
           query?: Record<string, string>;
         };
 
-        if (typeof body === "undefined" && route.inputSchema !== undefined) {
-          throw new Error("Body is required.");
-        }
+        await assertBodyProvided(body, route.inputSchema, "Body is required.");
 
         const response = await executeMutateQuery({ body, path, query });
 
@@ -1220,9 +1243,7 @@ export class ClientBuilder<
         query?: Record<string, string>;
       };
 
-      if (typeof body === "undefined" && route.inputSchema !== undefined) {
-        throw new Error("Body is required for mutateQuery");
-      }
+      await assertBodyProvided(body, route.inputSchema, "Body is required for mutateQuery");
 
       const response = await executeMutateQuery({ body, path, query });
 
