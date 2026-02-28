@@ -270,6 +270,9 @@ function areInverseRelations(one: Relation, many: Relation): boolean {
   if (one.type !== "one" || many.type !== "many") {
     return false;
   }
+  if (one.foreignKey === false || many.foreignKey === false) {
+    return false;
+  }
   if (one.referencer !== many.table || one.table !== many.referencer) {
     return false;
   }
@@ -283,6 +286,9 @@ function findMatchingManyRelation(one: Relation): Relation | undefined {
     if (relation.type !== "many") {
       continue;
     }
+    if (relation.foreignKey === false) {
+      continue;
+    }
     if (areInverseRelations(one, relation)) {
       return relation;
     }
@@ -293,6 +299,9 @@ function findMatchingManyRelation(one: Relation): Relation | undefined {
 function findMatchingOneRelation(many: Relation): Relation | undefined {
   for (const relation of Object.values(many.table.relations)) {
     if (relation.type !== "one") {
+      continue;
+    }
+    if (relation.foreignKey === false) {
       continue;
     }
     if (areInverseRelations(relation, many)) {
@@ -366,6 +375,9 @@ function generateRelationFields(
     if (relation.type !== "one") {
       continue;
     }
+    if (relation.foreignKey === false) {
+      continue;
+    }
 
     const fieldName = getRelationFieldName(relation.name, usedNames);
     usedNames.add(fieldName);
@@ -399,6 +411,9 @@ function generateRelationFields(
     if (relation.type !== "many") {
       continue;
     }
+    if (relation.foreignKey === false) {
+      continue;
+    }
 
     const matchingOne = findMatchingOneRelation(relation);
     const relationName = matchingOne
@@ -420,7 +435,7 @@ function generateRelationFields(
   const inverseCandidates: Relation[] = [];
   for (const sourceTable of fieldNameByTableColumn.keys()) {
     for (const rel of Object.values(sourceTable.relations)) {
-      if (rel.type === "one" && rel.table === table) {
+      if (rel.type === "one" && rel.table === table && rel.foreignKey !== false) {
         inverseCandidates.push(rel);
       }
     }

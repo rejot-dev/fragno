@@ -30,6 +30,21 @@ export function fullSQLName(column: AnyColumn, resolver?: NamingResolver): strin
   return `${tableName}.${columnName}`;
 }
 
+function fullSQLNameWithAlias(
+  column: AnyColumn,
+  resolver?: NamingResolver,
+  table?: AnyTable,
+  tableAlias?: string,
+): string {
+  if (table && tableAlias && column.tableName === table.name) {
+    const columnName = resolver
+      ? resolver.getColumnName(column.tableName, column.name)
+      : column.name;
+    return `${tableAlias}.${columnName}`;
+  }
+  return fullSQLName(column, resolver);
+}
+
 /**
  * Builds a WHERE clause expression from a Condition tree.
  *
@@ -52,6 +67,7 @@ export function buildWhere(
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
   table?: AnyTable,
+  tableAlias?: string,
 ): AnyExpressionWrapper {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
 
@@ -72,8 +88,9 @@ export function buildWhere(
         // Handle reference columns specially
         if (typeof val === "string") {
           // String external ID - create subquery to lookup internal ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
+          const relation = Object.values(table.relations).find(
+            (rel) =>
+              rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;
@@ -102,8 +119,9 @@ export function buildWhere(
           val = val.internalId;
         } else if (val instanceof FragnoId && val.internalId === undefined) {
           // FragnoId without internal ID - create subquery using external ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
+          const relation = Object.values(table.relations).find(
+            (rel) =>
+              rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;
@@ -150,67 +168,74 @@ export function buildWhere(
         v = "like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
+            ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
             : `%${val}%`;
         break;
       case "not contains":
         v = "not like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
+            ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
             : `%${val}%`;
         break;
       case "starts with":
         v = "like";
         rhs =
           val instanceof Column
-            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            ? sql`concat(${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
             : `${val}%`;
         break;
       case "not starts with":
         v = "not like";
         rhs =
           val instanceof Column
-            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            ? sql`concat(${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
             : `${val}%`;
         break;
       case "ends with":
         v = "like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))})`
             : `%${val}`;
         break;
       case "not ends with":
         v = "not like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))})`
             : `%${val}`;
         break;
       default:
         v = op;
-        rhs = val instanceof Column ? eb.ref(fullSQLName(val, resolver)) : val;
+        rhs =
+          val instanceof Column
+            ? eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))
+            : val;
     }
 
-    return eb(fullSQLName(left, resolver), v, rhs);
+    return eb(fullSQLNameWithAlias(left, resolver, table, tableAlias), v, rhs);
   }
 
   // Nested conditions
   if (condition.type === "and") {
     return eb.and(
       condition.items.map((v) =>
-        buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table),
+        buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table, tableAlias),
       ),
     );
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, resolver, table));
+    return eb.not(
+      buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, resolver, table, tableAlias),
+    );
   }
 
   return eb.or(
-    condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table)),
+    condition.items.map((v) =>
+      buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table, tableAlias),
+    ),
   );
 }
 

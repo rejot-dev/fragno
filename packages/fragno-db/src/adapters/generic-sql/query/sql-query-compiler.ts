@@ -153,7 +153,12 @@ export abstract class SQLQueryCompiler {
   /**
    * Build WHERE clause from a condition tree.
    */
-  protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
+  protected buildWhereClause(
+    condition: Condition,
+    eb: AnyExpressionBuilder,
+    table: AnyTable,
+    tableAlias?: string,
+  ) {
     return buildWhere(
       condition,
       eb,
@@ -161,6 +166,7 @@ export abstract class SQLQueryCompiler {
       this.sqliteStorageMode,
       this.resolver,
       table,
+      tableAlias,
     );
   }
 
@@ -214,7 +220,10 @@ export abstract class SQLQueryCompiler {
             // Foreign keys always use internal IDs
             // If the relation references an external ID column (any name), translate to "_internalId"
             const rightCol = targetTable.columns[right];
-            const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
+            const actualRight =
+              relation.foreignKey !== false && rightCol?.role === "external-id"
+                ? "_internalId"
+                : right;
 
             conditions.push(
               eb(
@@ -239,7 +248,7 @@ export abstract class SQLQueryCompiler {
           }
 
           if (joinOptions.where) {
-            conditions.push(this.buildWhereClause(joinOptions.where, eb, targetTable));
+            conditions.push(this.buildWhereClause(joinOptions.where, eb, targetTable, joinName));
           }
 
           return eb.and(conditions);

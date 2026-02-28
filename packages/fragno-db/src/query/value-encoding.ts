@@ -156,8 +156,8 @@ export function encodeValues(
         }
 
         if (needsSubquery) {
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === k),
+          const relation = Object.values(table.relations).find(
+            (rel) => rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === k),
           );
           if (relation) {
             result[physicalColumnName] = new ReferenceSubquery(
