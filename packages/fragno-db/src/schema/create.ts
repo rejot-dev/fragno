@@ -66,6 +66,7 @@ export type SchemaOperation =
         type: "one" | "many";
         from: { table: string; column: string };
         to: { table: string; column: string };
+        foreignKey?: boolean;
       };
     };
 
@@ -87,11 +88,18 @@ class RelationInit<
   referencedTable: TTables[TTableName];
   referencer: AnyTable;
   on: [string, string][] = [];
+  foreignKey: boolean;
 
-  constructor(type: TRelationType, referencedTable: TTables[TTableName], referencer: AnyTable) {
+  constructor(
+    type: TRelationType,
+    referencedTable: TTables[TTableName],
+    referencer: AnyTable,
+    options?: { foreignKey?: boolean },
+  ) {
     this.type = type;
     this.referencedTable = referencedTable;
     this.referencer = referencer;
+    this.foreignKey = options?.foreignKey ?? true;
   }
 }
 
@@ -120,6 +128,7 @@ export class ExplicitRelationInit<
       referencer: this.referencer,
       table: this.referencedTable,
       type: this.type,
+      foreignKey: this.foreignKey,
     };
   }
 }
@@ -131,6 +140,7 @@ export interface Relation<
   id: string;
   name: string;
   type: TRelationType;
+  foreignKey?: boolean;
 
   table: TTable;
   referencer: AnyTable;
@@ -1038,6 +1048,18 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     this.#indexNames.add(name);
   }
 
+  #isJoinColumnIndexed(table: AnyTable, columnName: string): boolean {
+    const idColumnName = table.getIdColumn().name;
+    const internalIdColumnName = table.getInternalIdColumn().name;
+    if (columnName === idColumnName || columnName === internalIdColumnName) {
+      return true;
+    }
+
+    return Object.values(table.indexes).some((index) =>
+      index.columnNames.some((name) => name === columnName),
+    );
+  }
+
   /**
    * Add an existing schema to this builder.
    * Merges tables and operations from the provided schema.
@@ -1211,6 +1233,14 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    *   from: { table: "users", column: "invitedBy" },
    *   to: { table: "users", column: "id" },
    * })
+   *
+   * // Join-only relation (no foreign key)
+   * .addReference("invitedUser", {
+   *   type: "one",
+   *   from: { table: "invitations", column: "email" },
+   *   to: { table: "users", column: "email" },
+   *   foreignKey: false,
+   * })
    * ```
    */
   addReference<
@@ -1230,6 +1260,11 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         table: TToTableName;
         column: keyof TTables[TToTableName]["columns"];
       };
+      /**
+       * When false, defines a join-only relation without foreign key migrations
+       * and without coercing `id` to `_internalId`.
+       */
+      foreignKey?: boolean;
     },
   ): SchemaBuilder<
     UpdateTableRelations<TTables, TFromTableName, TReferenceName, TToTableName, TRelationType>
@@ -1252,10 +1287,12 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     const columnName = config.from.column as string;
     const targetColumnName = config.to.column as string;
+    const foreignKey = config.foreignKey !== false;
 
     // Foreign keys always reference internal IDs, not external IDs
     // If user specifies "id", translate to "_internalId" for the actual FK
-    const actualTargetColumnName = targetColumnName === "id" ? "_internalId" : targetColumnName;
+    const actualTargetColumnName =
+      foreignKey && targetColumnName === "id" ? "_internalId" : targetColumnName;
 
     const column = table.columns[columnName];
     const referencedColumn = referencedTable.columns[actualTargetColumnName];
@@ -1278,8 +1315,23 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       );
     }
 
+    if (!foreignKey) {
+      const missingIndexes: string[] = [];
+      if (!this.#isJoinColumnIndexed(table, columnName)) {
+        missingIndexes.push(`${table.name}.${columnName}`);
+      }
+      if (!this.#isJoinColumnIndexed(referencedTable, actualTargetColumnName)) {
+        missingIndexes.push(`${referencedTable.name}.${actualTargetColumnName}`);
+      }
+      if (missingIndexes.length > 0) {
+        throw new Error(
+          `Join-only relation "${referenceName}" requires indexed join columns: ${missingIndexes.join(", ")}.`,
+        );
+      }
+    }
+
     // Create the relation (use the user-facing column name for the relation)
-    const init = new ExplicitRelationInit(config.type, referencedTable, table);
+    const init = new ExplicitRelationInit(config.type, referencedTable, table, { foreignKey });
     init.on.push([columnName, targetColumnName]);
     const relation = init.init(referenceName);
 
@@ -1295,6 +1347,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         type: config.type,
         from: { table: config.from.table, column: columnName },
         to: { table: config.to.table, column: actualTargetColumnName },
+        foreignKey,
       },
     });
 
