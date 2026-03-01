@@ -14,7 +14,10 @@ import type {
   FragnoPublicConfigWithDatabase,
   ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
-import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
+import {
+  getSchemaVersionFromDatabase,
+  getInternalMigrationVersionFromDatabase,
+} from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 
 export type { DatabaseAdapter, CursorResult };
@@ -245,22 +248,31 @@ export async function migrate<TSchema extends AnySchema>(
     internalFragment,
     internalNamespace,
   );
+  const internalMigrationVersion = await getInternalMigrationVersionFromDatabase(
+    internalFragment,
+    internalNamespace,
+  );
 
-  // Migrate internal fragment if needed
-  if (internalCurrentVersion < internalSchema.version) {
-    const internalMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
-    await internalMigrations.execute(internalCurrentVersion, internalSchema.version);
+  if (internalCurrentVersion > internalSchema.version) {
+    throw new Error(
+      `Cannot migrate internal settings backwards: current version (${internalCurrentVersion}) > target version (${internalSchema.version})`,
+    );
   }
+
+  const internalMigrations = adapter.prepareMigrations(internalSchema, internalNamespace);
+  await internalMigrations.execute(internalCurrentVersion, internalSchema.version, {
+    internalFromVersion: internalMigrationVersion,
+  });
 
   // Step 2: Get current database version for this fragment's namespace
   const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespace);
+  const internalFromVersion = await getInternalMigrationVersionFromDatabase(
+    internalFragment,
+    namespace,
+  );
 
   // Step 3: Run the migration from current version to target version
   const targetVersion = schema.version;
-
-  if (currentVersion === targetVersion) {
-    return;
-  }
 
   if (currentVersion > targetVersion) {
     throw new Error(
@@ -269,5 +281,7 @@ export async function migrate<TSchema extends AnySchema>(
   }
 
   const migrations = adapter.prepareMigrations(schema, namespace);
-  await migrations.execute(currentVersion, targetVersion);
+  await migrations.execute(currentVersion, targetVersion, {
+    internalFromVersion,
+  });
 }

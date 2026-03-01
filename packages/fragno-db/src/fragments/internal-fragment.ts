@@ -13,6 +13,7 @@ import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow, type DbNow } from "../query/db-now";
 import {
   internalSchema,
+  INTERNAL_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
@@ -62,7 +63,7 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export { internalSchema, INTERNAL_MIGRATION_VERSION_KEY, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
@@ -555,29 +556,34 @@ export type InternalFragmentInstance = InstantiatedFragmentFromDefinition<
   typeof internalFragmentDef
 >;
 
+const SCHEMA_VERSION_KEY = "schema_version";
+
+async function readNumericSetting(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+  key: string,
+): Promise<number | undefined> {
+  const setting = await fragment.inContext(async function () {
+    return await this.handlerTx()
+      .withServiceCalls(() => [fragment.services.settingsService.get(namespace, key)] as const)
+      .transform(({ serviceResult: [result] }) => result)
+      .execute();
+  });
+
+  if (!setting) {
+    return undefined;
+  }
+
+  const parsed = parseInt(setting.value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 export async function getSchemaVersionFromDatabase(
   fragment: InternalFragmentInstance,
   namespace: string,
 ): Promise<number> {
   try {
-    const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
-      const setting = await fragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () =>
-              [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-      if (!setting) {
-        return undefined;
-      }
-      const parsed = parseInt(setting.value, 10);
-      return Number.isNaN(parsed) ? undefined : parsed;
-    };
-
-    const primary = await readSchemaVersion(namespace);
+    const primary = await readNumericSetting(fragment, namespace, SCHEMA_VERSION_KEY);
     if (primary !== undefined) {
       return primary;
     }
@@ -587,13 +593,25 @@ export async function getSchemaVersionFromDatabase(
     const legacyNamespace =
       namespace === "" ? internalSchema.name : namespace === internalSchema.name ? "" : null;
     if (legacyNamespace !== null) {
-      const legacy = await readSchemaVersion(legacyNamespace);
+      const legacy = await readNumericSetting(fragment, legacyNamespace, SCHEMA_VERSION_KEY);
       if (legacy !== undefined) {
         return legacy;
       }
     }
 
     return 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function getInternalMigrationVersionFromDatabase(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+): Promise<number> {
+  try {
+    const value = await readNumericSetting(fragment, namespace, INTERNAL_MIGRATION_VERSION_KEY);
+    return value ?? 0;
   } catch {
     return 0;
   }
