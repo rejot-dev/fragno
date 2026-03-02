@@ -62,10 +62,10 @@ export default function BackofficeOrganisationTelegramLayout({
   }, [initialConfigError, initialConfigState, orgId]);
 
   let activeTab: TelegramTab = "configuration";
-  const currentPath = matches[matches.length - 1]?.pathname || "";
-  if (currentPath.endsWith("/messages")) {
+  const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
+  if (currentPath.includes("/telegram/messages")) {
     activeTab = "messages";
-  } else if (currentPath.endsWith("/configuration")) {
+  } else if (currentPath.includes("/configuration")) {
     activeTab = "configuration";
   }
 
