@@ -147,10 +147,27 @@ const joinOnlySchema = schema("joinonly", (s) => {
         .addColumn("email", column("string"))
         .createIndex("idx_inv_email", ["email"]);
     })
+    .addTable("memberships", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("userId", referenceColumn())
+        .createIndex("idx_memberships_user", ["userId"]);
+    })
     .addReference("invitedUser", {
       type: "one",
       from: { table: "invitations", column: "email" },
       to: { table: "users", column: "email" },
+      foreignKey: false,
+    })
+    .addReference("membershipUser", {
+      type: "one",
+      from: { table: "memberships", column: "userId" },
+      to: { table: "users", column: "id" },
+    })
+    .addReference("memberships", {
+      type: "many",
+      from: { table: "users", column: "id" },
+      to: { table: "memberships", column: "userId" },
       foreignKey: false,
     });
 });
@@ -1146,6 +1163,34 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
         `"select "invitedUser"."email" as "invitedUser:email", "invitedUser"."_internalId" as "invitedUser:_internalId", "invitedUser"."_version" as "invitedUser:_version", "invitations"."id" as "id", "invitations"."_internalId" as "_internalId", "invitations"."_version" as "_version" from "invitations" left join "users" as "invitedUser" on "invitations"."email" = "invitedUser"."email""`,
+      );
+    });
+
+    test("should coerce left-side id for join-only relations", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: joinOnlySchema,
+        table: joinOnlySchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: ["id"],
+          joins: [
+            {
+              relation: joinOnlySchema.tables.users.relations.memberships,
+              options: {
+                select: ["id"],
+              },
+            },
+          ],
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "memberships"."id" as "memberships:id", "memberships"."_internalId" as "memberships:_internalId", "memberships"."_version" as "memberships:_version", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" left join "memberships" as "memberships" on "users"."_internalId" = "memberships"."userId""`,
       );
     });
 

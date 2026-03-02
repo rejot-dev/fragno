@@ -220,6 +220,17 @@ and index both join columns:
 ```
 
 Join-only relations do not generate foreign key migrations or schema relations for Prisma/Drizzle.
+When a join-only relation uses a table's `id` column, Fragno coerces it to `_internalId` so you can
+define inverse relations without `_internalId` casts:
+
+```typescript
+.addReference("memberships", {
+  type: "many",
+  from: { table: "users", column: "id" }, // coerced to _internalId
+  to: { table: "memberships", column: "userId" },
+  foreignKey: false,
+})
+```
 
 ## Schema Evolution
 

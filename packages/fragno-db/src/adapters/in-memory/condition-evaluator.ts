@@ -42,8 +42,8 @@ const resolveReferenceValue = (
       throw new Error("In-memory condition evaluation requires a namespace store.");
     }
 
-    const relation = Object.values(table.relations).find(
-      (rel) => rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === column.name),
+    const relation = Object.values(table.relations).find((rel) =>
+      rel.on.some(([localCol]) => localCol === column.name),
     );
     if (!relation) {
       throw new Error(`Missing relation for reference column "${column.name}".`);

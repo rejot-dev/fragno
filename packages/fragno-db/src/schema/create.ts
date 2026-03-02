@@ -1048,6 +1048,19 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     this.#indexNames.add(name);
   }
 
+  #rebindRelations(tableName: string, newTable: AnyTable): void {
+    for (const table of Object.values(this.#tables)) {
+      for (const relation of Object.values(table.relations)) {
+        if (relation.table.name === tableName) {
+          relation.table = newTable;
+        }
+        if (relation.referencer.name === tableName) {
+          relation.referencer = newTable;
+        }
+      }
+    }
+  }
+
   #isJoinColumnIndexed(table: AnyTable, columnName: string): boolean {
     const idColumnName = table.getIdColumn().name;
     const internalIdColumnName = table.getInternalIdColumn().name;
@@ -1261,8 +1274,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         column: keyof TTables[TToTableName]["columns"];
       };
       /**
-       * When false, defines a join-only relation without foreign key migrations
-       * and without coercing `id` to `_internalId`.
+       * When false, defines a join-only relation without foreign key migrations.
+       * References to `id` still coerce to `_internalId` (including left-side `id` for join-only).
        */
       foreignKey?: boolean;
     },
@@ -1289,10 +1302,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const targetColumnName = config.to.column as string;
     const foreignKey = config.foreignKey !== false;
 
-    // Foreign keys always reference internal IDs, not external IDs
-    // If user specifies "id", translate to "_internalId" for the actual FK
-    const actualTargetColumnName =
-      foreignKey && targetColumnName === "id" ? "_internalId" : targetColumnName;
+    // References to `id` always target the internal ID column.
+    const actualTargetColumnName = targetColumnName === "id" ? "_internalId" : targetColumnName;
 
     const column = table.columns[columnName];
     const referencedColumn = referencedTable.columns[actualTargetColumnName];
@@ -1330,9 +1341,13 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       }
     }
 
-    // Create the relation (use the user-facing column name for the relation)
+    // Join-only relations treat external IDs as internal IDs on the left side.
+    const actualFromColumnName =
+      !foreignKey && column.role === "external-id" ? table.getInternalIdColumn().name : columnName;
+
+    // Create the relation (use user-facing right-side column name)
     const init = new ExplicitRelationInit(config.type, referencedTable, table, { foreignKey });
-    init.on.push([columnName, targetColumnName]);
+    init.on.push([actualFromColumnName, targetColumnName]);
     const relation = init.init(referenceName);
 
     // Add relation to the table
@@ -1345,7 +1360,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       referenceName,
       config: {
         type: config.type,
-        from: { table: config.from.table, column: columnName },
+        from: { table: config.from.table, column: actualFromColumnName },
         to: { table: config.to.table, column: actualTargetColumnName },
         foreignKey,
       },
@@ -1486,6 +1501,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     // Update table reference in schema
     this.#tables[tableName] = newTable as unknown as TTables[TTableName];
+    this.#rebindRelations(tableName, newTable as unknown as AnyTable);
     for (const idx of resultBuilder.getIndexes()) {
       if (!existingIndexes.has(idx.name)) {
         this.#indexNames.add(idx.name);
