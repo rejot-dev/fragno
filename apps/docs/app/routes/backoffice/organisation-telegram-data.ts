@@ -124,3 +124,45 @@ export async function fetchTelegramChatMessages(
     };
   }
 }
+
+export async function sendTelegramChatMessage(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  chatId: string,
+  payload: {
+    text: string;
+    parseMode?: "MarkdownV2" | "Markdown" | "HTML";
+    disableWebPagePreview?: boolean;
+    replyToMessageId?: number;
+  },
+) {
+  try {
+    const callRoute = createTelegramRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/chats/:chatId/send", {
+      pathParams: { chatId },
+      body: payload,
+    });
+
+    if (response.type === "json") {
+      return { message: response.data as TelegramMessageSummary, error: null };
+    }
+
+    if (response.type === "error") {
+      return {
+        message: null as TelegramMessageSummary | null,
+        error: response.error.message,
+      };
+    }
+
+    return {
+      message: null as TelegramMessageSummary | null,
+      error: `Failed to send message (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      message: null as TelegramMessageSummary | null,
+      error: error instanceof Error ? error.message : "Failed to send message.",
+    };
+  }
+}
