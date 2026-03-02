@@ -26,6 +26,7 @@
     "@fragno-dev/forms": "workspace:*",
     "@fragno-dev/fragment-mailing-list": "workspace:*",
     "@fragno-dev/jsonforms-shadcn-renderers": "workspace:*",
+    "@fragno-dev/telegram-fragment": "workspace:*",
     "@jsonforms/core": "^3.7.0",
     "@jsonforms/react": "^3.7.0",
     "@marsidev/react-turnstile": "^1.4.1",

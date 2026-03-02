@@ -3,6 +3,7 @@ import type { MailingList } from "workers/mailing-list.do";
 import { CloudflareContext } from "./cloudflare-context";
 import type { Forms } from "workers/forms.do";
 import type { Auth } from "workers/auth.do";
+import type { Telegram } from "workers/telegram.do";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
@@ -46,4 +47,17 @@ export function getAuthDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.AUTH.get(env.AUTH.idFromName(AUTH_SINGLETON_ID));
+}
+
+/**
+ * Helper to get the Telegram Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getTelegramDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Telegram> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
 }

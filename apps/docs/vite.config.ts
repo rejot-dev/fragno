@@ -32,6 +32,9 @@ export default defineConfig(() => {
     optimizeDeps: {
       include: ["hast-util-to-jsx-runtime"],
     },
+    server: {
+      allowedHosts: ["local-wilco.recivo.email"],
+    },
   };
 });
 
