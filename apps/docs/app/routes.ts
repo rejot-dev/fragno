@@ -25,6 +25,11 @@ export default [
     ...prefix("backoffice", [
       index("routes/backoffice/dashboard.tsx"),
       route("organisations", "routes/backoffice/organisations.tsx"),
+      route("organisations/:orgId/telegram", "routes/backoffice/organisation-telegram-layout.tsx", [
+        index("routes/backoffice/organisation-telegram-index.tsx"),
+        route("configuration", "routes/backoffice/organisation-telegram-configuration.tsx"),
+        route("messages", "routes/backoffice/organisation-telegram-messages.tsx"),
+      ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
     ]),
@@ -38,6 +43,7 @@ export default [
     route("markdown/*", "routes/api/markdown.ts"),
     route("forms/*", "routes/api/forms.ts"),
     route("auth/*", "routes/api/auth.ts"),
+    route("telegram/:orgId/*", "routes/api/telegram.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;

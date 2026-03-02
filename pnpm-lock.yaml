@@ -104,6 +104,9 @@ importers:
       '@fragno-dev/jsonforms-shadcn-renderers':
         specifier: workspace:*
         version: link:../../packages/jsonforms-shadcn-renderers
+      '@fragno-dev/telegram-fragment':
+        specifier: workspace:*
+        version: link:../../packages/telegram-fragment
       '@jsonforms/core':
         specifier: ^3.7.0
         version: 3.7.0
