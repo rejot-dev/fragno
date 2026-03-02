@@ -88,9 +88,8 @@ export function buildWhere(
         // Handle reference columns specially
         if (typeof val === "string") {
           // String external ID - create subquery to lookup internal ID
-          const relation = Object.values(table.relations).find(
-            (rel) =>
-              rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === left.name),
+          const relation = Object.values(table.relations).find((rel) =>
+            rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;
@@ -119,9 +118,8 @@ export function buildWhere(
           val = val.internalId;
         } else if (val instanceof FragnoId && val.internalId === undefined) {
           // FragnoId without internal ID - create subquery using external ID
-          const relation = Object.values(table.relations).find(
-            (rel) =>
-              rel.foreignKey !== false && rel.on.some(([localCol]) => localCol === left.name),
+          const relation = Object.values(table.relations).find((rel) =>
+            rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;

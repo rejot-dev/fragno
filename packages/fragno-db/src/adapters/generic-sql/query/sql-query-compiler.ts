@@ -217,20 +217,24 @@ export abstract class SQLQueryCompiler {
         b.on((eb) => {
           const conditions = [];
           for (const [left, right] of relation.on) {
+            const leftCol = parentTable.columns[left];
+            const actualLeft =
+              leftCol?.role === "external-id" ? parentTable.getInternalIdColumn().name : left;
+            const actualLeftCol = parentTable.columns[actualLeft];
             // Foreign keys always use internal IDs
             // If the relation references an external ID column (any name), translate to "_internalId"
             const rightCol = targetTable.columns[right];
-            const actualRight =
-              relation.foreignKey !== false && rightCol?.role === "external-id"
-                ? "_internalId"
-                : right;
+            const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
 
             conditions.push(
               eb(
                 `${parentTableName}.${
                   this.resolver
-                    ? this.resolver.getColumnName(parentTable.name, parentTable.columns[left].name)
-                    : parentTable.columns[left].name
+                    ? this.resolver.getColumnName(
+                        parentTable.name,
+                        actualLeftCol ? actualLeftCol.name : parentTable.columns[left].name,
+                      )
+                    : (actualLeftCol ?? parentTable.columns[left]).name
                 }`,
                 "=",
                 eb.ref(

@@ -297,6 +297,27 @@ describe("create", () => {
     expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
   });
 
+  it("should coerce external-id target columns to _internalId in addReference operations", () => {
+    const catalogSchema = schema("catalog", (s) => {
+      return s
+        .addTable("products", (t) => {
+          return t.addColumn("productId", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("orders", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("productRef", referenceColumn());
+        })
+        .addReference("product", {
+          type: "one",
+          from: { table: "orders", column: "productRef" },
+          to: { table: "products", column: "productId" },
+        });
+    });
+
+    const addReferenceOps = catalogSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.to).toEqual({ table: "products", column: "_internalId" });
+  });
+
   it("should support join-only references with foreignKey:false", () => {
     const userSchema = schema("user", (s) => {
       return s
@@ -330,6 +351,59 @@ describe("create", () => {
     expect(addReferenceOps).toHaveLength(1);
     expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "email" });
     expect(addReferenceOps[0].config.foreignKey).toBe(false);
+  });
+
+  it("should coerce id to _internalId for join-only references", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("sessions", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .createIndex("idx_sessions_user", ["userId"]);
+        })
+        .addReference("sessionUser", {
+          type: "one",
+          from: { table: "sessions", column: "userId" },
+          to: { table: "users", column: "id" },
+          foreignKey: false,
+        });
+    });
+
+    const addReferenceOps = userSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
+  });
+
+  it("should coerce left-side id to _internalId for join-only references", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("memberships", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .createIndex("idx_memberships_user", ["userId"]);
+        })
+        .addReference("memberships", {
+          type: "many",
+          from: { table: "users", column: "id" },
+          to: { table: "memberships", column: "userId" },
+          foreignKey: false,
+        });
+    });
+
+    const addReferenceOps = userSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.from).toEqual({ table: "users", column: "_internalId" });
+
+    const userRelation = userSchema.tables.users.relations["memberships"];
+    expect(userRelation.on).toEqual([["_internalId", "userId"]]);
   });
 
   it("should require indexes for join-only references", () => {
