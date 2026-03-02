@@ -28,7 +28,10 @@ export default [
       route("organisations/:orgId/telegram", "routes/backoffice/organisation-telegram-layout.tsx", [
         index("routes/backoffice/organisation-telegram-index.tsx"),
         route("configuration", "routes/backoffice/organisation-telegram-configuration.tsx"),
-        route("messages", "routes/backoffice/organisation-telegram-messages.tsx"),
+        route("messages", "routes/backoffice/organisation-telegram-messages.tsx", [
+          index("routes/backoffice/organisation-telegram-messages-index.tsx"),
+          route(":chatId", "routes/backoffice/organisation-telegram-message-thread.tsx"),
+        ]),
       ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),

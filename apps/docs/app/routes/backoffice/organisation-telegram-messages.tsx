@@ -1,20 +1,19 @@
-import { Form, redirect, useLoaderData } from "react-router";
-import type { TelegramChatSummary, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
+import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
 import type { Route } from "./+types/organisation-telegram-messages";
-import {
-  fetchTelegramChatMessages,
-  fetchTelegramChats,
-  fetchTelegramConfig,
-} from "./organisation-telegram-data";
-import { formatTimestamp } from "./organisation-telegram-shared";
+import { fetchTelegramChats, fetchTelegramConfig } from "./organisation-telegram-data";
+import type { TelegramLayoutContext } from "./organisation-telegram-shared";
 
 type TelegramMessagesLoaderData = {
   configError: string | null;
   chatsError: string | null;
-  messagesError: string | null;
+  chats: TelegramChatSummary[];
+};
+
+export type TelegramMessagesOutletContext = {
   chats: TelegramChatSummary[];
   selectedChatId: string | null;
-  messages: TelegramMessageSummary[];
+  basePath: string;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -27,10 +26,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     return {
       configError,
       chatsError: null,
-      messagesError: null,
       chats: [],
-      selectedChatId: null,
-      messages: [],
     } satisfies TelegramMessagesLoaderData;
   }
 
@@ -43,70 +39,24 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     return {
       configError: null,
       chatsError,
-      messagesError: null,
       chats: [],
-      selectedChatId: null,
-      messages: [],
     } satisfies TelegramMessagesLoaderData;
-  }
-
-  const url = new URL(request.url);
-  const requestedChatId = url.searchParams.get("chatId");
-  let selectedChatId = requestedChatId;
-
-  if (chats.length > 0 && (!selectedChatId || !chats.some((chat) => chat.id === selectedChatId))) {
-    selectedChatId = chats[0]?.id ?? null;
-    if (selectedChatId) {
-      url.searchParams.set("chatId", selectedChatId);
-      return redirect(`${url.pathname}${url.search}`);
-    }
-  }
-
-  let messages: TelegramMessageSummary[] = [];
-  let messagesError: string | null = null;
-
-  if (selectedChatId) {
-    const messageResult = await fetchTelegramChatMessages(
-      request,
-      context,
-      params.orgId,
-      selectedChatId,
-      { order: "asc", pageSize: 50 },
-    );
-    messages = messageResult.messages;
-    messagesError = messageResult.messagesError;
   }
 
   return {
     configError: null,
     chatsError: null,
-    messagesError,
     chats,
-    selectedChatId: selectedChatId ?? null,
-    messages,
   } satisfies TelegramMessagesLoaderData;
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const formData = await request.formData();
-  const chatId = formData.get("chatId");
-
-  if (typeof chatId !== "string" || !chatId) {
-    return redirect(`/backoffice/organisations/${params.orgId}/telegram/messages`);
-  }
-
-  const url = new URL(`/backoffice/organisations/${params.orgId}/telegram/messages`, request.url);
-  url.searchParams.set("chatId", chatId);
-  return redirect(`${url.pathname}${url.search}`);
-}
-
-export default function BackofficeOrganisationTelegramMessages() {
-  const { chats, selectedChatId, messages, configError, chatsError, messagesError } =
-    useLoaderData<typeof loader>();
+export default function BackofficeOrganisationTelegramMessagesLayout() {
+  const { chats, configError, chatsError } = useLoaderData<typeof loader>();
+  const { orgId } = useOutletContext<TelegramLayoutContext>();
+  const { chatId } = useParams();
+  const selectedChatId = chatId ?? null;
+  const basePath = `/backoffice/organisations/${orgId}/telegram/messages`;
+  const isDetailRoute = Boolean(selectedChatId);
 
   if (configError) {
     return (
@@ -128,11 +78,14 @@ export default function BackofficeOrganisationTelegramMessages() {
     );
   }
 
-  const selectedChat = chats.find((chat) => chat.id === selectedChatId) ?? null;
+  const listVisibility = isDetailRoute ? "hidden lg:block" : "block";
+  const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   return (
     <section className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <div
+        className={`${listVisibility} border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+      >
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
@@ -150,105 +103,44 @@ export default function BackofficeOrganisationTelegramMessages() {
             const title = chat.title || chat.username || `Chat ${chat.id}`;
             const isSelected = chat.id === selectedChatId;
             return (
-              <Form key={chat.id} method="post" className="w-full">
-                <button
-                  type="submit"
-                  name="chatId"
-                  value={chat.id}
-                  className={
-                    isSelected
-                      ? "w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
-                      : "w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)]"
-                  }
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--bo-fg)]">{title}</p>
-                      <p className="text-xs text-[var(--bo-muted-2)]">
-                        {chat.type} · {chat.id}
-                      </p>
-                    </div>
-                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
-                      {chat.isForum ? "Forum" : chat.type}
-                    </span>
+              <Link
+                key={chat.id}
+                to={`${basePath}/${chat.id}`}
+                aria-current={isSelected ? "page" : undefined}
+                className={
+                  isSelected
+                    ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
+                    : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)]"
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--bo-fg)]">{title}</p>
+                    <p className="text-xs text-[var(--bo-muted-2)]">
+                      {chat.type} · {chat.id}
+                    </p>
                   </div>
-                </button>
-              </Form>
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
+                    {chat.isForum ? "Forum" : chat.type}
+                  </span>
+                </div>
+              </Link>
             );
           })}
         </div>
       </div>
 
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-        {selectedChat ? (
-          <ChatMessages
-            chatId={selectedChat.id}
-            chatTitle={selectedChat.title || selectedChat.username || selectedChat.id}
-            messages={messages}
-            messagesError={messagesError}
-          />
-        ) : (
-          <div className="text-sm text-[var(--bo-muted)]">Select a chat to read messages.</div>
-        )}
+      <div
+        className={`${detailVisibility} border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+      >
+        <Outlet
+          context={{
+            chats,
+            selectedChatId,
+            basePath,
+          }}
+        />
       </div>
     </section>
-  );
-}
-
-function ChatMessages({
-  chatId,
-  chatTitle,
-  messages,
-  messagesError,
-}: {
-  chatId: string;
-  chatTitle: string;
-  messages: TelegramMessageSummary[];
-  messagesError: string | null;
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">Messages</p>
-        <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{chatTitle}</h3>
-        <p className="text-xs text-[var(--bo-muted-2)]">Chat ID: {chatId}</p>
-      </div>
-
-      <div className="backoffice-scroll max-h-[420px] space-y-2 overflow-y-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-        {messagesError ? (
-          <div className="text-sm text-red-500">{messagesError}</div>
-        ) : messages.length > 0 ? (
-          messages.map((message) => {
-            const author =
-              message.fromUser?.username ||
-              message.fromUser?.firstName ||
-              message.fromUser?.id ||
-              "Unknown";
-            const content = message.text ?? "(Non-text message)";
-            return (
-              <div
-                key={message.id}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-[var(--bo-fg)]">{author}</p>
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-                    {formatTimestamp(message.sentAt)}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-[var(--bo-muted)]">{content}</p>
-                {message.commandName ? (
-                  <span className="mt-2 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
-                    /{message.commandName}
-                  </span>
-                ) : null}
-              </div>
-            );
-          })
-        ) : (
-          <div className="text-sm text-[var(--bo-muted)]">No messages in this chat yet.</div>
-        )}
-      </div>
-    </div>
   );
 }
