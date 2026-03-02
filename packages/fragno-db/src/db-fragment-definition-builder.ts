@@ -977,6 +977,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const namespaceKey = namespace ?? this.#schema.name;
       const durableHooksOptions = context.options.durableHooks;
+      const autoSchedule = durableHooksOptions?.autoSchedule !== false;
       const baseAdapter = resolveDatabaseAdapter(context.options, this.#schema);
       const hookAdapter = baseAdapter.getHookProcessingAdapter?.() ?? baseAdapter;
       const hookOptions =
@@ -1032,7 +1033,7 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             },
             onAfterMutate: async (uow) => {
-              if (!planMode) {
+              if (!planMode && autoSchedule) {
                 void hooksConfig.scheduler?.schedule().catch((error) => {
                   console.error("Durable hooks processing failed", error);
                 });
@@ -1072,6 +1073,7 @@ export class DatabaseFragmentDefinitionBuilder<
     >(({ storage, config, options, deps }) => {
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options, deps });
+      const autoSchedule = options.durableHooks?.autoSchedule !== false;
       const registryResolver = this.#registryResolver;
       const databaseAdapter =
         (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter ??
@@ -1203,7 +1205,7 @@ export class DatabaseFragmentDefinitionBuilder<
           },
           onAfterRetrieve: guardOnAfterRetrieve,
           onAfterMutate: async (uow) => {
-            if (hooksConfig?.scheduler && !planMode) {
+            if (hooksConfig?.scheduler && !planMode && autoSchedule) {
               void hooksConfig.scheduler.schedule().catch((error) => {
                 console.error("Durable hooks processing failed", error);
               });

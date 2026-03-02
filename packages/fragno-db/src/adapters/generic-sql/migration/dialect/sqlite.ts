@@ -181,6 +181,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
 
     const result: MigrationOperation[] = [];
     const createTableIndices = new Map<string, number>();
+    const alterTableIndices = new Map<string, number[]>();
     const foreignKeysByTable = new Map<
       string,
       Extract<MigrationOperation, { type: "add-foreign-key" }>[]
@@ -191,6 +192,15 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       if (op.type === "create-table") {
         createTableIndices.set(op.name, result.length);
         result.push(op);
+      } else if (op.type === "alter-table") {
+        const index = result.length;
+        result.push(op);
+        const existing = alterTableIndices.get(op.name);
+        if (existing) {
+          existing.push(index);
+        } else {
+          alterTableIndices.set(op.name, [index]);
+        }
       } else if (op.type === "add-foreign-key") {
         if (!foreignKeysByTable.has(op.table)) {
           foreignKeysByTable.set(op.table, []);
@@ -201,6 +211,36 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       }
     }
 
+    const extractCreateColumn = (tableName: string, columnName: string): ColumnInfo | undefined => {
+      const indices = alterTableIndices.get(tableName);
+      if (!indices) {
+        return undefined;
+      }
+
+      for (const index of indices) {
+        const operation = result[index];
+        if (!operation || operation.type !== "alter-table") {
+          continue;
+        }
+
+        let extracted: ColumnInfo | undefined;
+        const nextValue = operation.value.filter((columnOp) => {
+          if (columnOp.type === "create-column" && columnOp.value.name === columnName) {
+            extracted = columnOp.value;
+            return false;
+          }
+          return true;
+        });
+
+        if (extracted) {
+          operation.value = nextValue;
+          return extracted;
+        }
+      }
+
+      return undefined;
+    };
+
     // Second pass: attach foreign keys as metadata to create-table ops
     for (const [tableName, fkOps] of foreignKeysByTable.entries()) {
       const createTableIdx = createTableIndices.get(tableName);
@@ -208,13 +248,42 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       if (createTableIdx !== undefined) {
         const createOp = result[createTableIdx];
         if (createOp.type === "create-table") {
+          const columnNames = new Set(createOp.columns.map((column) => column.name));
+          const missingColumns = new Set<string>();
+
+          for (const fkOp of fkOps) {
+            for (const columnName of fkOp.value.columns) {
+              if (!columnNames.has(columnName)) {
+                missingColumns.add(columnName);
+              }
+            }
+          }
+
+          if (missingColumns.size > 0) {
+            for (const columnName of Array.from(missingColumns)) {
+              const column = extractCreateColumn(tableName, columnName);
+              if (column) {
+                createOp.columns.push(column);
+                columnNames.add(columnName);
+                missingColumns.delete(columnName);
+              }
+            }
+          }
+
+          if (missingColumns.size > 0) {
+            throw new Error(
+              `SQLite FK preprocessing failed for "${tableName}": missing column(s) ${Array.from(
+                missingColumns,
+              ).join(", ")} required by foreign keys.`,
+            );
+          }
+
+          const existingInline = (createOp.metadata as SqliteCreateTableMetadata | undefined)
+            ?.inlineForeignKeys;
           const metadata: SqliteCreateTableMetadata = {
-            inlineForeignKeys: fkOps.map((fkOp) => fkOp.value),
+            inlineForeignKeys: [...(existingInline ?? []), ...fkOps.map((fkOp) => fkOp.value)],
           };
-          result[createTableIdx] = {
-            ...createOp,
-            metadata,
-          };
+          result[createTableIdx] = { ...createOp, metadata };
         }
       } else {
         // Table already exists - keep add-foreign-key operations (will throw error during compile)
@@ -223,7 +292,13 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     }
 
     // Add pragma at the beginning for deferred foreign key checking
-    return [{ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" }, ...result];
+    const pruned = result.filter((op) => {
+      if (op.type !== "alter-table") {
+        return true;
+      }
+      return op.value.length > 0;
+    });
+    return [{ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" }, ...pruned];
   }
 
   override applyAutoIncrement(builder: ColumnDefinitionBuilder): ColumnDefinitionBuilder {

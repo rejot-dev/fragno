@@ -1,31 +1,6 @@
+import { Link } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
-
-const ORGS = [
-  {
-    name: "Fragno Labs",
-    plan: "Studio",
-    members: "18 members",
-    activity: "Release train active",
-  },
-  {
-    name: "DocWorks",
-    plan: "Workspace",
-    members: "7 members",
-    activity: "Docs refresh sprint",
-  },
-  {
-    name: "Orbit Partners",
-    plan: "Sandbox",
-    members: "4 members",
-    activity: "Integration prototyping",
-  },
-  {
-    name: "Cobalt Guild",
-    plan: "Enterprise",
-    members: "29 members",
-    activity: "Compliance review",
-  },
-];
+import { ORGANISATIONS } from "./organisations.data";
 
 export function meta() {
   return [
@@ -45,9 +20,9 @@ export default function BackofficeOrganisations() {
       />
 
       <section className="grid gap-3 md:grid-cols-2">
-        {ORGS.map((org) => (
+        {ORGANISATIONS.map((org) => (
           <div
-            key={org.name}
+            key={org.id}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
           >
             <div className="flex items-center justify-between">
@@ -76,6 +51,12 @@ export default function BackofficeOrganisations() {
               </p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                to={`/backoffice/organisations/${org.id}/telegram`}
+                className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              >
+                Telegram
+              </Link>
               {["Members", "Permissions", "Roadmap"].map((label) => (
                 <button
                   key={label}

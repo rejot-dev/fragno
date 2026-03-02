@@ -111,7 +111,6 @@ export class DurableObjectDialect implements Dialect {
 
 class DurableObjectDriver implements Driver {
   #config: DODialectConfig;
-  #connection: DOConnection | null = null;
 
   constructor(config: DODialectConfig) {
     this.#config = config;
@@ -120,11 +119,7 @@ class DurableObjectDriver implements Driver {
   async init(): Promise<void> {}
 
   async acquireConnection(): Promise<DatabaseConnection> {
-    // Ensure only one connection exists
-    if (!this.#connection) {
-      this.#connection = new DOConnection(this.#config);
-    }
-    return this.#connection;
+    return new DOConnection(this.#config);
   }
 
   async beginTransaction(conn: DOConnection): Promise<void> {
@@ -140,11 +135,11 @@ class DurableObjectDriver implements Driver {
   }
 
   async releaseConnection(_conn: DOConnection): Promise<void> {
-    this.#connection = null;
+    // No-op
   }
 
   async destroy(): Promise<void> {
-    this.#connection = null;
+    // No-op
   }
 }
 
