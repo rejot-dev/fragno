@@ -5,6 +5,7 @@ import type { TelegramFragmentConfig, TelegramHooksMap } from "./types";
 import { createProcessIncomingUpdateOps, createTelegramServices } from "./services";
 import { createTelegramApi } from "./telegram-api";
 import { parseTelegramUpdate } from "./telegram-utils";
+import { createCommandHandlerApi } from "./command-handler-api";
 
 export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>(
   "telegram-fragment",
@@ -54,6 +55,7 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
           return;
         }
 
+        const handlerApi = createCommandHandlerApi(api, this.handlerTx);
         await definition.handler({
           updateId: result.updateId,
           idempotencyKey: this.idempotencyKey,
@@ -66,7 +68,7 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
             args: result.command.args,
             raw: result.command.raw,
           },
-          api,
+          api: handlerApi,
           handlerTx: this.handlerTx,
         });
       }),

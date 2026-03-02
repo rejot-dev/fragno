@@ -6,6 +6,8 @@ import { telegramRoutesFactory } from "./routes";
 import type { TelegramUpdate } from "./types";
 import { createTelegram, defineCommand } from "./types";
 
+global.fetch = vi.fn();
+
 const webhookSecret = "secret-token";
 
 const baseUpdate: TelegramUpdate = {
@@ -42,6 +44,7 @@ describe("telegram-fragment", async () => {
   const onCommandMatched = vi.fn();
   const onChatMemberUpdated = vi.fn();
   const commandHandler = vi.fn();
+  let sendOnCommand = false;
 
   const telegramConfig = createTelegram({
     botToken: "test-token",
@@ -59,6 +62,9 @@ describe("telegram-fragment", async () => {
         scopes: ["private", "group", "supergroup"],
         handler: async (ctx) => {
           commandHandler(ctx.command.name);
+          if (sendOnCommand) {
+            await ctx.api.sendMessage({ chat_id: ctx.chat.id, text: "pong" });
+          }
         },
       }),
     )
@@ -82,6 +88,8 @@ describe("telegram-fragment", async () => {
     onCommandMatched.mockClear();
     onChatMemberUpdated.mockClear();
     commandHandler.mockClear();
+    sendOnCommand = false;
+    vi.mocked(global.fetch).mockReset();
   });
 
   test("webhook validates secret", async () => {
@@ -200,5 +208,109 @@ describe("telegram-fragment", async () => {
     await drainDurableHooks(fragment);
 
     expect(commandHandler).toHaveBeenCalledTimes(1);
+  });
+
+  test("persists outgoing messages for send/edit routes", async () => {
+    const sentMessage = {
+      message_id: 60,
+      date: 1_710_000_100,
+      text: "Hello from bot",
+      chat: {
+        id: 123,
+        type: "group",
+        title: "Test Chat",
+      },
+      from: {
+        id: 999,
+        is_bot: true,
+        first_name: "TestBot",
+        username: "test_bot",
+      },
+    };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, result: sentMessage }),
+    } as Response);
+
+    const sendResponse = await fragment.callRoute("POST", "/chats/:chatId/send", {
+      pathParams: { chatId: "123" },
+      body: { text: "Hello from bot" },
+    });
+
+    expect(sendResponse.type).toBe("json");
+
+    const storedAfterSend = await fragments.telegram.db.find("message", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(storedAfterSend).toHaveLength(1);
+    expect(storedAfterSend[0]?.text).toBe("Hello from bot");
+    expect(onMessageReceived).not.toHaveBeenCalled();
+
+    const editedMessage = {
+      ...sentMessage,
+      text: "Edited text",
+      edit_date: sentMessage.date + 10,
+    };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, result: editedMessage }),
+    } as Response);
+
+    const editResponse = await fragment.callRoute(
+      "POST",
+      "/chats/:chatId/messages/:messageId/edit",
+      {
+        pathParams: { chatId: "123", messageId: "60" },
+        body: { text: "Edited text" },
+      },
+    );
+
+    expect(editResponse.type).toBe("json");
+
+    const storedAfterEdit = await fragments.telegram.db.find("message", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(storedAfterEdit).toHaveLength(1);
+    expect(storedAfterEdit[0]?.text).toBe("Edited text");
+    expect(storedAfterEdit[0]?.editedAt).not.toBeNull();
+  });
+
+  test("persists outgoing messages sent via command handler api", async () => {
+    sendOnCommand = true;
+
+    const outgoingMessage = {
+      message_id: 61,
+      date: baseUpdate.message!.date + 5,
+      text: "pong",
+      chat: baseUpdate.message!.chat,
+      from: {
+        id: 999,
+        is_bot: true,
+        first_name: "TestBot",
+        username: "test_bot",
+      },
+    };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, result: outgoingMessage }),
+    } as Response);
+
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: baseUpdate,
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
+    expect(messages).toHaveLength(2);
+    expect(messages.map((message) => message.id.toString())).toContain("123:61");
   });
 });
