@@ -4,6 +4,7 @@ import type { TypedUnitOfWork } from "@fragno-dev/db/unit-of-work";
 import { telegramSchema } from "./schema";
 import {
   telegramMessageSchema,
+  type TelegramMessage,
   type TelegramChatMemberHookPayload,
   type TelegramChatMemberSummary,
   type TelegramChatSummary,
@@ -13,6 +14,7 @@ import {
   type TelegramMessageHookPayload,
   type TelegramMessageSummary,
   type TelegramUpdate,
+  type TelegramUpdateType,
   type TelegramUserSummary,
 } from "./types";
 import {
@@ -214,6 +216,19 @@ type TelegramProcessUow = TypedUnitOfWork<
   TelegramHooksMap
 >;
 
+type UpsertOutgoingMessageRetrieveResult = [
+  TelegramChatRecord[],
+  TelegramUserRecord[],
+  TelegramMessageRecord | null,
+];
+
+type TelegramOutgoingUow = TypedUnitOfWork<
+  typeof telegramSchema,
+  UpsertOutgoingMessageRetrieveResult,
+  unknown,
+  TelegramHooksMap
+>;
+
 export type ProcessIncomingUpdateOps =
   | { kind: "ignored"; updateId: number }
   | {
@@ -329,11 +344,33 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
       new Set(Array.from(membershipMap.keys()).map((userId) => buildChatMemberId(chatId, userId))),
     );
 
-    const chatsForUpsert = [message.chat, senderChat].filter(Boolean) as Array<typeof message.chat>;
+    const chatsForUpsert: Array<typeof message.chat> = [];
+    const seenChatIds = new Set<string>();
+    for (const chat of [message.chat, senderChat]) {
+      if (!chat) {
+        continue;
+      }
+      const id = String(chat.id);
+      if (seenChatIds.has(id)) {
+        continue;
+      }
+      seenChatIds.add(id);
+      chatsForUpsert.push(chat);
+    }
 
-    const usersForUpsert = [fromUser, ...newMembers, message.left_chat_member]
-      .filter(Boolean)
-      .map((user) => user as NonNullable<typeof fromUser>);
+    const usersForUpsert: Array<NonNullable<typeof fromUser>> = [];
+    const seenUserIds = new Set<string>();
+    for (const user of [fromUser, ...newMembers, message.left_chat_member]) {
+      if (!user) {
+        continue;
+      }
+      const id = String(user.id);
+      if (seenUserIds.has(id)) {
+        continue;
+      }
+      seenUserIds.add(id);
+      usersForUpsert.push(user as NonNullable<typeof fromUser>);
+    }
 
     return {
       kind: "message",
@@ -627,9 +664,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
                 updatedAt: now,
               });
 
-        const commandBindings = chatSummary.commandBindings
-          ? parseCommandBindings(chatSummary.commandBindings)
-          : {};
+        const commandBindings = chatSummary.commandBindings ?? {};
 
         let commandResult: {
           name: string;
@@ -698,6 +733,134 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
         } satisfies ProcessIncomingUpdateResult;
       },
     };
+  };
+};
+
+export type UpsertOutgoingMessageOps = {
+  retrieve: (uow: TelegramBaseUow) => TelegramOutgoingUow;
+  mutate: (input: {
+    uow: TelegramBaseUow;
+    retrieveResult: UpsertOutgoingMessageRetrieveResult;
+  }) => void;
+};
+
+export const createUpsertOutgoingMessageOps = (input: {
+  message: TelegramMessage;
+  messageType: TelegramUpdateType;
+}): UpsertOutgoingMessageOps => {
+  const { message, messageType } = input;
+  const chatId = String(message.chat.id);
+  const senderChatId = message.sender_chat ? String(message.sender_chat.id) : null;
+  const fromUser = message.from ?? null;
+  const fromUserId = fromUser ? String(fromUser.id) : null;
+  const messageId = buildMessageId(chatId, message.message_id);
+  const replyToMessageId = message.reply_to_message
+    ? buildMessageId(chatId, message.reply_to_message.message_id)
+    : null;
+  const sentAt = new Date(message.date * 1000);
+  const editedAt = message.edit_date ? new Date(message.edit_date * 1000) : null;
+
+  const chatIds = Array.from(new Set([chatId, senderChatId].filter(Boolean) as string[]));
+
+  return {
+    retrieve: (uow) =>
+      uow
+        .find("chat", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "in", chatIds.length ? chatIds : [missingId])),
+        )
+        .find("user", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "in", fromUserId ? [fromUserId] : [missingId])),
+        )
+        .findFirst("message", (b) => b.whereIndex("primary", (eb) => eb("id", "=", messageId))),
+    mutate: ({ uow, retrieveResult: [existingChats, existingUsers, existingMessage] }) => {
+      const now = new Date();
+      const chatById = new Map(existingChats.map((chat) => [chat.id.valueOf(), chat] as const));
+      const userById = new Map(existingUsers.map((user) => [user.id.valueOf(), user] as const));
+
+      const chatsForUpsert = [message.chat, message.sender_chat].filter(Boolean) as Array<
+        typeof message.chat
+      >;
+      for (const chat of chatsForUpsert) {
+        const id = String(chat.id);
+        const existing = chatById.get(id);
+        if (!existing) {
+          uow.create("chat", {
+            id,
+            type: chat.type,
+            title: chat.title ?? null,
+            username: chat.username ?? null,
+            isForum: chat.is_forum ?? false,
+            commandBindings: null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        } else {
+          uow.update("chat", existing.id, (b) =>
+            b
+              .set({
+                type: chat.type,
+                title: chat.title ?? null,
+                username: chat.username ?? null,
+                isForum: chat.is_forum ?? false,
+                updatedAt: now,
+              })
+              .check(),
+          );
+        }
+      }
+
+      if (fromUser) {
+        const id = String(fromUser.id);
+        const existing = userById.get(id);
+        if (!existing) {
+          uow.create("user", {
+            id,
+            username: fromUser.username ?? null,
+            firstName: fromUser.first_name,
+            lastName: fromUser.last_name ?? null,
+            isBot: fromUser.is_bot ?? false,
+            languageCode: fromUser.language_code ?? null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        } else {
+          uow.update("user", existing.id, (b) =>
+            b
+              .set({
+                username: fromUser.username ?? null,
+                firstName: fromUser.first_name,
+                lastName: fromUser.last_name ?? null,
+                isBot: fromUser.is_bot ?? false,
+                languageCode: fromUser.language_code ?? null,
+                updatedAt: now,
+              })
+              .check(),
+          );
+        }
+      }
+
+      const messagePayload = {
+        chatId,
+        fromUserId,
+        senderChatId,
+        replyToMessageId,
+        messageType,
+        text: message.text ?? null,
+        payload: message,
+        sentAt,
+        editedAt,
+        commandName: null,
+      };
+
+      if (!existingMessage) {
+        uow.create("message", {
+          id: messageId,
+          ...messagePayload,
+        });
+      } else {
+        uow.update("message", existingMessage.id, (b) => b.set(messagePayload).check());
+      }
+    },
   };
 };
 
@@ -838,6 +1001,20 @@ export const createTelegramServices = (config: TelegramFragmentConfig) => {
           cursor: messages.cursor,
           hasNextPage: messages.hasNextPage,
         }))
+        .build();
+    },
+
+    upsertOutgoingMessage: function (
+      this: ServiceContext,
+      input: {
+        message: TelegramMessage;
+        messageType: TelegramUpdateType;
+      },
+    ) {
+      const ops = createUpsertOutgoingMessageOps(input);
+      return this.serviceTx(telegramSchema)
+        .retrieve(ops.retrieve)
+        .mutate(({ uow, retrieveResult }) => ops.mutate({ uow, retrieveResult }))
         .build();
     },
   };

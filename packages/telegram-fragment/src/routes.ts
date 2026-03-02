@@ -435,6 +435,18 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
 
           const message = result.result;
 
+          await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.upsertOutgoingMessage({
+                    message,
+                    messageType: "message",
+                  }),
+                ] as const,
+            )
+            .execute();
+
           return json({
             id: `${message.chat.id}:${message.message_id}`,
             chatId: String(message.chat.id),
@@ -496,6 +508,18 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
           }
 
           const message = result.result;
+
+          await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.upsertOutgoingMessage({
+                    message,
+                    messageType: "edited_message",
+                  }),
+                ] as const,
+            )
+            .execute();
 
           return json({
             id: `${message.chat.id}:${message.message_id}`,
