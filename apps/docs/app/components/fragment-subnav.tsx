@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 
 const fragments = [
   { id: "stripe", label: "Stripe", href: "/fragments/stripe", dot: "bg-violet-500/80" },
+  { id: "telegram", label: "Telegram", href: "/fragments/telegram", dot: "bg-teal-500/80" },
   { id: "forms", label: "Forms", href: "/fragments/forms", dot: "bg-sky-500/80" },
   { id: "workflows", label: "Workflows", href: "/fragments/workflows", dot: "bg-amber-500/80" },
   { id: "upload", label: "Uploads", href: "/fragments/upload", dot: "bg-cyan-500/80" },

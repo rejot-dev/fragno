@@ -84,8 +84,8 @@ function Hero() {
             Integrate full-stack libraries in minutes
           </h1>
           <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
-            Drop in auth, billing, forms, or workflows without stitching backend routes, database
-            tables, and frontend hooks by hand.
+            Drop in auth, billing, forms, workflows, or Telegram bots without stitching backend
+            routes, database tables, and frontend hooks by hand.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
@@ -179,7 +179,7 @@ function UserFlow() {
 }
 
 type ShowcaseItem = {
-  id: "auth" | "stripe" | "upload" | "forms" | "workflows";
+  id: "auth" | "stripe" | "upload" | "forms" | "workflows" | "telegram";
   label: string;
   title: ReactNode;
   titlePlain: string;
@@ -225,6 +225,34 @@ const showcaseItems: ShowcaseItem[] = [
     dotClass: "bg-violet-500/70 dark:bg-violet-400/70",
     ctaClass: "bg-violet-600 hover:bg-violet-700",
     activeRing: "ring-violet-500/30 dark:ring-violet-400/30",
+  },
+  {
+    id: "telegram",
+    label: "Messaging",
+    title: (
+      <>
+        <span className="bg-linear-to-r from-teal-600 to-sky-500 bg-clip-text text-transparent dark:from-teal-400 dark:to-sky-300">
+          Telegram
+        </span>{" "}
+        Bots
+      </>
+    ),
+    titlePlain: "Telegram Bots",
+    summary: "Commands, chats, and message history.",
+    description: "Durable webhooks, command registry, and a full chat data model.",
+    installCommand: "npm install @fragno-dev/telegram-fragment @fragno-dev/db",
+    details: [
+      "Durable webhook intake with retries.",
+      "Command registry + per-chat bindings.",
+      "Chat, member, and message tracking.",
+    ],
+    href: "/fragments/telegram",
+    docsHref: "/docs/telegram",
+    cta: "Telegram Overview",
+    glowClass: "bg-teal-500/10 dark:bg-teal-400/15",
+    dotClass: "bg-teal-500/70 dark:bg-teal-400/70",
+    ctaClass: "bg-teal-600 hover:bg-teal-700",
+    activeRing: "ring-teal-500/30 dark:ring-teal-400/30",
   },
   {
     id: "forms",
@@ -404,45 +432,61 @@ function FragmentShowcase() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {showcaseItems.map((item) => {
-            const isActive = item.id === activeId;
+        <div className="relative">
+          <div className="flex h-[420px] flex-col gap-3 overflow-y-auto pr-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {showcaseItems.map((item) => {
+              const isActive = item.id === activeId;
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveId(item.id)}
-                aria-pressed={isActive}
-                className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-white/10 dark:bg-slate-950/60 ${
-                  isActive ? `ring-2 ${item.activeRing}` : ""
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
-                        {item.label}
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveId(item.id)}
+                  aria-pressed={isActive}
+                  className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-white/10 dark:bg-slate-950/60 ${
+                    isActive ? `ring-2 ring-inset ${item.activeRing}` : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                          {item.label}
+                        </p>
+                        {item.comingSoon && (
+                          <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                            Coming soon
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                        {item.titlePlain}
                       </p>
-                      {item.comingSoon && (
-                        <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                          Coming soon
-                        </span>
-                      )}
+                      <p className="text-fd-muted-foreground text-sm">{item.summary}</p>
                     </div>
-                    <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {item.titlePlain}
-                    </p>
-                    <p className="text-fd-muted-foreground text-sm">{item.summary}</p>
+                    <span
+                      className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full ${item.dotClass}`}
+                      aria-hidden
+                    />
                   </div>
-                  <span
-                    className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full ${item.dotClass}`}
-                    aria-hidden
-                  />
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            aria-hidden
+            className="bg-linear-to-b pointer-events-none absolute inset-x-0 top-0 h-10 from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
+          />
+          <div
+            aria-hidden
+            className="bg-linear-to-t pointer-events-none absolute inset-x-0 bottom-0 h-14 from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-4 right-4 inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-300"
+          >
+            Scroll
+          </div>
         </div>
       </div>
     </section>

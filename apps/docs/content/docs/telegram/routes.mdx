@@ -1,0 +1,36 @@
+---
+title: Routes
+description: HTTP endpoints exposed by the Telegram fragment
+icon: FileBraces
+---
+
+## Webhook
+
+- `POST /telegram/webhook`
+
+## Commands
+
+- `GET /commands`
+- `POST /commands/bind`
+
+## Chats
+
+- `GET /chats`
+- `GET /chats/:chatId`
+- `GET /chats/:chatId/messages`
+- `POST /chats/:chatId/actions`
+- `POST /chats/:chatId/send`
+- `POST /chats/:chatId/messages/:messageId/edit`
+
+## Client hooks
+
+The fragment exposes typed hooks via `createTelegramFragmentClients` and framework wrappers:
+
+- `useCommands`
+- `useBindCommand`
+- `useChats`
+- `useChat`
+- `useChatMessages`
+- `useChatAction`
+- `useSendMessage`
+- `useEditMessage`

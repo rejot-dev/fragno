@@ -1,0 +1,54 @@
+---
+title: Commands
+description: Register bot commands and manage their scopes
+icon: Terminal
+---
+
+## Define commands
+
+Commands live alongside your fragment configuration. Each command has a name, optional description,
+scopes, and a handler with typed context.
+
+```ts title="lib/telegram.ts"
+import { createTelegram, defineCommand } from "@fragno-dev/telegram-fragment";
+
+const telegramConfig = createTelegram({
+  botToken: process.env.TELEGRAM_BOT_TOKEN!,
+  webhookSecretToken: process.env.TELEGRAM_WEBHOOK_SECRET!,
+})
+  .command(
+    defineCommand("status", {
+      description: "Show the current status",
+      scopes: ["private", "group"],
+      handler: async ({ api, chat }) => {
+        await api.sendMessage({
+          chat_id: chat.id,
+          text: "All systems nominal",
+        });
+      },
+    }),
+  )
+  .build();
+```
+
+If `scopes` is omitted, commands default to `private`, `group`, `supergroup`, and `channel`.
+
+## Bind or disable per chat
+
+Use the `/commands/bind` endpoint or the client hook to enable, disable, or restrict a command for
+specific chats.
+
+```ts title="components/bind.ts"
+const { mutate: bindCommand } = telegramClient.useBindCommand();
+
+await bindCommand({
+  body: {
+    chatId: "123",
+    commandName: "status",
+    enabled: true,
+    scopes: ["private"],
+  },
+});
+```
+
+Bindings are stored on the chat record and merged with the command defaults at runtime.

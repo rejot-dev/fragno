@@ -6,6 +6,7 @@ export default [
     route("authors", "routes/authors.tsx"),
     route("fragments", "routes/fragments.tsx"),
     route("fragments/stripe", "routes/stripe.tsx"),
+    route("fragments/telegram", "routes/telegram.tsx"),
     route("fragments/workflows", "routes/workflows.tsx"),
     route("fragments/upload", "routes/upload.tsx"),
     route("fragments/auth", "routes/auth.tsx"),
