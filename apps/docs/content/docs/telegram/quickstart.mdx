@@ -1,0 +1,95 @@
+---
+title: Quickstart
+description: Install and configure the Telegram fragment
+icon: Album
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Prerequisites
+
+- A Telegram bot token (via BotFather)
+- A webhook secret token
+- A database configured with `@fragno-dev/db`
+
+## Install
+
+```npm
+npm install @fragno-dev/telegram-fragment @fragno-dev/db
+```
+
+## Configure the fragment
+
+Create a fragment instance with your bot credentials and commands.
+
+```ts title="lib/telegram.ts"
+import {
+  createTelegramFragment,
+  createTelegram,
+  defineCommand,
+} from "@fragno-dev/telegram-fragment";
+
+const telegramConfig = createTelegram({
+  botToken: process.env.TELEGRAM_BOT_TOKEN!,
+  webhookSecretToken: process.env.TELEGRAM_WEBHOOK_SECRET!,
+  botUsername: "my_bot",
+  hooks: {
+    onMessageReceived: async ({ messageId, chatId }) => {
+      console.log("Message", messageId, "in", chatId);
+    },
+  },
+})
+  .command(
+    defineCommand("ping", {
+      description: "Ping the bot",
+      scopes: ["private", "group", "supergroup"],
+      handler: async ({ api, chat }) => {
+        await api.sendMessage({ chat_id: chat.id, text: "pong" });
+      },
+    }),
+  )
+  .build();
+
+export const telegramFragment = createTelegramFragment(telegramConfig, {
+  databaseAdapter: "drizzle-pglite",
+});
+```
+
+## Mount the routes
+
+Mount the fragment handlers in your app. The webhook lives at `POST /telegram/webhook`.
+
+```ts title="routes/telegram.ts"
+import { telegramFragment } from "@/lib/telegram";
+
+export const handlers = telegramFragment.handlersFor("react-router");
+export const action = handlers.action;
+export const loader = handlers.loader;
+```
+
+## Set the Telegram webhook
+
+Point Telegram to your webhook route and include the secret token header.
+
+```bash
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=https://your.app/telegram/webhook" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+```
+
+<Callout type="info">
+  Telegram will send the <code>X-Telegram-Bot-Api-Secret-Token</code> header on each update. The
+  fragment verifies this token before accepting a webhook event.
+</Callout>
+
+## Create a client
+
+Use the framework-specific client to access typed hooks.
+
+```ts title="lib/telegram-client.ts"
+import { createTelegramFragmentClient } from "@fragno-dev/telegram-fragment/react";
+
+export const telegramClient = createTelegramFragmentClient();
+```
+
+Now you can query chats, messages, and send replies from the UI.

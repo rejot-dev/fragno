@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Lightbulb, ClipboardList, Workflow, Upload } from "lucide-react";
+import { Lightbulb, ClipboardList, Workflow, Upload, Send } from "lucide-react";
 import { Stripe } from "@/components/logos/stripe";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import type { ReactNode } from "react";
@@ -75,6 +75,12 @@ export default function DocsIndexPage() {
             icon={<Stripe className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Stripe Fragment"
             description="Batteries included integration for Stripe Subscriptions"
+          />
+          <DocCard
+            href="/docs/telegram"
+            icon={<Send className="size-6 text-gray-700 dark:text-gray-300" />}
+            title="Telegram Fragment"
+            description="Webhook-ready Telegram bots with commands and chat history"
           />
           <DocCard
             href="/docs/workflows"

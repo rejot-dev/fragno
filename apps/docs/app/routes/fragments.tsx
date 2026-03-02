@@ -8,7 +8,7 @@ export function meta() {
     {
       name: "description",
       content:
-        "Explore Fragno first-party fragments for billing, forms, workflows, uploads, and more.",
+        "Explore Fragno first-party fragments for billing, forms, workflows, messaging, uploads, and more.",
     },
   ];
 }
@@ -16,7 +16,7 @@ export function meta() {
 type FragmentStatus = "available" | "coming";
 
 type FragmentCard = {
-  id: "stripe" | "forms" | "workflows" | "upload" | "auth";
+  id: "stripe" | "forms" | "workflows" | "upload" | "auth" | "telegram";
   name: string;
   category: string;
   description: string;
@@ -46,6 +46,23 @@ const fragments: FragmentCard[] = [
     ],
     accentText: "text-violet-600 dark:text-violet-300",
     accentDot: "bg-violet-500/80 dark:bg-violet-400/80",
+  },
+  {
+    id: "telegram",
+    name: "Telegram Bots",
+    category: "Messaging",
+    description: "Durable webhooks, command registry, and chat history for Telegram bots.",
+    status: "available",
+    href: "/fragments/telegram",
+    docsHref: "/docs/telegram",
+    install: "npm install @fragno-dev/telegram-fragment @fragno-dev/db",
+    highlights: [
+      "Command registry + per-chat bindings",
+      "Chat, member, and message persistence",
+      "Typed hooks for sending messages",
+    ],
+    accentText: "text-teal-600 dark:text-teal-300",
+    accentDot: "bg-teal-500/80 dark:bg-teal-400/80",
   },
   {
     id: "forms",

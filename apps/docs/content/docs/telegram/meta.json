@@ -1,0 +1,17 @@
+{
+  "title": "Telegram",
+  "description": "Telegram Fragment",
+  "icon": "Send",
+  "root": true,
+  "pages": [
+    "index",
+    "quickstart",
+    "---Webhook---",
+    "webhook",
+    "hooks",
+    "---Commands---",
+    "commands",
+    "---API---",
+    "routes"
+  ]
+}

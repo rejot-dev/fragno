@@ -1,0 +1,36 @@
+---
+title: Hooks
+description: React to Telegram updates with durable hooks
+icon: Hammer
+---
+
+## Available hooks
+
+- `onMessageReceived`: fires for new messages, edited messages, and channel posts
+- `onCommandMatched`: fires when a message matches a registered command
+- `onChatMemberUpdated`: fires when membership changes are detected
+
+## Example
+
+```ts title="lib/telegram.ts"
+import { createTelegram } from "@fragno-dev/telegram-fragment";
+
+const telegramConfig = createTelegram({
+  botToken: process.env.TELEGRAM_BOT_TOKEN!,
+  webhookSecretToken: process.env.TELEGRAM_WEBHOOK_SECRET!,
+  hooks: {
+    onMessageReceived: async ({ chatId, messageId, text }) => {
+      console.log("Message", messageId, "in", chatId, text);
+    },
+    onCommandMatched: async ({ commandName, args }) => {
+      console.log("Command", commandName, args);
+    },
+    onChatMemberUpdated: async ({ chatId, userId, status, joinedAt, leftAt }) => {
+      console.log("Chat member", userId, "in", chatId, status, joinedAt, leftAt);
+    },
+  },
+}).build();
+```
+
+Hooks run inside a durable transaction context so you can safely enqueue work or write to your own
+models without reprocessing duplicate updates.

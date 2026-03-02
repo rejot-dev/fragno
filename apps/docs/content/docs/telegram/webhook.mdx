@@ -1,0 +1,31 @@
+---
+title: Webhook
+description: Secure and verify Telegram updates
+icon: ShieldCheck
+---
+
+## Webhook endpoint
+
+The fragment exposes a webhook at:
+
+- `POST /telegram/webhook`
+
+Telegram must send the `X-Telegram-Bot-Api-Secret-Token` header. The fragment rejects updates that
+miss the header or include a mismatched value.
+
+```bash
+curl -X POST https://your.app/telegram/webhook \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $WEBHOOK_SECRET" \
+  -d @update.json
+```
+
+## Idempotency and retries
+
+Updates are stored as durable hooks keyed by the Telegram `update_id`. If Telegram retries the same
+update, the fragment responds with `ok: true` and skips duplicate inserts.
+
+## Payload
+
+The webhook accepts standard Telegram update payloads (message, edited_message, channel_post). Any
+additional fields are preserved in the raw payload stored with the message record.

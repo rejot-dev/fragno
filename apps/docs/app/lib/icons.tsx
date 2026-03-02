@@ -20,6 +20,7 @@ import {
   Hammer,
   ListChecks,
   KeyRound,
+  Send,
 } from "lucide-react";
 
 /**
@@ -50,4 +51,5 @@ export const iconComponents = {
   Hammer,
   ListChecks,
   KeyRound,
+  Send,
 } as const;
