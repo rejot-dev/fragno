@@ -445,6 +445,38 @@ describe("generatePrismaSchema", () => {
     `);
   });
 
+  it("should skip join-only relations in Prisma output", () => {
+    const joinOnlySchema = schema("joinonly", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_users_email", ["email"]);
+        })
+        .addTable("invitations", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_inv_email", ["email"]);
+        })
+        .addReference("invitedUser", {
+          type: "one",
+          from: { table: "invitations", column: "email" },
+          to: { table: "users", column: "email" },
+          foreignKey: false,
+        });
+    });
+
+    const generated = generatePrismaSchema(
+      [{ namespace: "joinonly", schema: joinOnlySchema }],
+      "sqlite",
+      { sqliteStorageMode: sqliteStoragePrisma },
+    );
+
+    expect(generated).not.toContain("@relation(");
+  });
+
   it("should generate PostgreSQL (PGLite) Prisma schema", () => {
     const generated = generatePrismaSchema(
       [

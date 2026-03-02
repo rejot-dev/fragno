@@ -153,7 +153,12 @@ export abstract class SQLQueryCompiler {
   /**
    * Build WHERE clause from a condition tree.
    */
-  protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
+  protected buildWhereClause(
+    condition: Condition,
+    eb: AnyExpressionBuilder,
+    table: AnyTable,
+    tableAlias?: string,
+  ) {
     return buildWhere(
       condition,
       eb,
@@ -161,6 +166,7 @@ export abstract class SQLQueryCompiler {
       this.sqliteStorageMode,
       this.resolver,
       table,
+      tableAlias,
     );
   }
 
@@ -211,6 +217,10 @@ export abstract class SQLQueryCompiler {
         b.on((eb) => {
           const conditions = [];
           for (const [left, right] of relation.on) {
+            const leftCol = parentTable.columns[left];
+            const actualLeft =
+              leftCol?.role === "external-id" ? parentTable.getInternalIdColumn().name : left;
+            const actualLeftCol = parentTable.columns[actualLeft];
             // Foreign keys always use internal IDs
             // If the relation references an external ID column (any name), translate to "_internalId"
             const rightCol = targetTable.columns[right];
@@ -220,8 +230,11 @@ export abstract class SQLQueryCompiler {
               eb(
                 `${parentTableName}.${
                   this.resolver
-                    ? this.resolver.getColumnName(parentTable.name, parentTable.columns[left].name)
-                    : parentTable.columns[left].name
+                    ? this.resolver.getColumnName(
+                        parentTable.name,
+                        actualLeftCol ? actualLeftCol.name : parentTable.columns[left].name,
+                      )
+                    : (actualLeftCol ?? parentTable.columns[left]).name
                 }`,
                 "=",
                 eb.ref(
@@ -239,7 +252,7 @@ export abstract class SQLQueryCompiler {
           }
 
           if (joinOptions.where) {
-            conditions.push(this.buildWhereClause(joinOptions.where, eb, targetTable));
+            conditions.push(this.buildWhereClause(joinOptions.where, eb, targetTable, joinName));
           }
 
           return eb.and(conditions);

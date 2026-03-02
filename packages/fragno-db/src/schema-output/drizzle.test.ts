@@ -806,6 +806,38 @@ describe("generateDrizzleSchema", () => {
     });
   });
 
+  it("should skip join-only relations in schema output", () => {
+    const joinOnlySchema = schema("joinonly", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_users_email", ["email"]);
+        })
+        .addTable("invitations", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_inv_email", ["email"]);
+        })
+        .addReference("invitedUser", {
+          type: "one",
+          from: { table: "invitations", column: "email" },
+          to: { table: "users", column: "email" },
+          foreignKey: false,
+        });
+    });
+
+    const generated = generateDrizzleSchema(
+      [{ namespace: "test", schema: joinOnlySchema }],
+      "postgresql",
+    );
+
+    expect(generated).not.toContain("foreignKey(");
+    expect(generated).not.toContain("relations(");
+  });
+
   describe("self-referencing foreign keys", () => {
     const selfRefSchema = schema("selfref", (s) => {
       return s

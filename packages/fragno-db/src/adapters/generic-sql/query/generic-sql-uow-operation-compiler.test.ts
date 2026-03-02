@@ -133,6 +133,45 @@ const customIdSchema = schema("customid", (s) => {
     });
 });
 
+const joinOnlySchema = schema("joinonly", (s) => {
+  return s
+    .addTable("users", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("email", column("string"))
+        .createIndex("idx_users_email", ["email"]);
+    })
+    .addTable("invitations", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("email", column("string"))
+        .createIndex("idx_inv_email", ["email"]);
+    })
+    .addTable("memberships", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("userId", referenceColumn())
+        .createIndex("idx_memberships_user", ["userId"]);
+    })
+    .addReference("invitedUser", {
+      type: "one",
+      from: { table: "invitations", column: "email" },
+      to: { table: "users", column: "email" },
+      foreignKey: false,
+    })
+    .addReference("membershipUser", {
+      type: "one",
+      from: { table: "memberships", column: "userId" },
+      to: { table: "users", column: "id" },
+    })
+    .addReference("memberships", {
+      type: "many",
+      from: { table: "users", column: "id" },
+      to: { table: "memberships", column: "userId" },
+      foreignKey: false,
+    });
+});
+
 describe("GenericSQLUOWOperationCompiler", () => {
   const driverConfig = new BetterSQLite3DriverConfig();
 
@@ -1099,6 +1138,62 @@ describe("GenericSQLUOWOperationCompiler", () => {
       );
     });
 
+    test("should compile join-only relation without internal id coercion", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: joinOnlySchema,
+        table: joinOnlySchema.tables.invitations,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: ["id"],
+          joins: [
+            {
+              relation: joinOnlySchema.tables.invitations.relations.invitedUser,
+              options: {
+                select: ["email"],
+              },
+            },
+          ],
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "invitedUser"."email" as "invitedUser:email", "invitedUser"."_internalId" as "invitedUser:_internalId", "invitedUser"."_version" as "invitedUser:_version", "invitations"."id" as "id", "invitations"."_internalId" as "_internalId", "invitations"."_version" as "_version" from "invitations" left join "users" as "invitedUser" on "invitations"."email" = "invitedUser"."email""`,
+      );
+    });
+
+    test("should coerce left-side id for join-only relations", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: joinOnlySchema,
+        table: joinOnlySchema.tables.users,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: ["id"],
+          joins: [
+            {
+              relation: joinOnlySchema.tables.users.relations.memberships,
+              options: {
+                select: ["id"],
+              },
+            },
+          ],
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "memberships"."id" as "memberships:id", "memberships"."_internalId" as "memberships:_internalId", "memberships"."_version" as "memberships:_version", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" left join "memberships" as "memberships" on "users"."_internalId" = "memberships"."userId""`,
+      );
+    });
+
     test("should compile join with specific column selection", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
@@ -1220,7 +1315,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "users"."name" like ?)"`,
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."name" like ?)"`,
       );
       expect(result!.parameters).toEqual(["%john%"]);
     });
@@ -1267,7 +1362,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and ("users"."name" like ? and "users"."isActive" = ?))"`,
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and ("author"."name" like ? and "author"."isActive" = ?))"`,
       );
     });
 
@@ -1358,7 +1453,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "users"."id" = ?)"`,
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "author"."id" = ?)"`,
       );
       expect(result!.parameters).toEqual(["user-123"]);
     });
@@ -1498,7 +1593,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on ("product_categories"."prodRef" = "product"."_internalId" and "products"."productId" = ?)"`,
+        `"select "product"."productId" as "product:productId", "product"."name" as "product:name", "product"."_internalId" as "product:_internalId", "product"."_version" as "product:_version", "product_categories"."id" as "id", "product_categories"."_internalId" as "_internalId", "product_categories"."_version" as "_version" from "product_categories" left join "products" as "product" on ("product_categories"."prodRef" = "product"."_internalId" and "product"."productId" = ?)"`,
       );
       expect(result!.parameters).toEqual(["prod-456"]);
     });

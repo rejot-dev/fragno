@@ -193,6 +193,45 @@ in separate tables outside your control, so no foreign key constraint is needed.
 You may also chose not to have any external references in your schema. The user can define their own
 association table in their application's schema.
 
+### Join-Only Relations (No Foreign Keys)
+
+If you want to define joins on non-FK columns (like external IDs or emails), use `foreignKey: false`
+and index both join columns:
+
+```typescript
+.addTable("users", (t) => {
+  return t
+    .addColumn("id", idColumn())
+    .addColumn("email", column("string"))
+    .createIndex("idx_users_email", ["email"]);
+})
+.addTable("invitations", (t) => {
+  return t
+    .addColumn("id", idColumn())
+    .addColumn("email", column("string"))
+    .createIndex("idx_inv_email", ["email"]);
+})
+.addReference("invitedUser", {
+  type: "one",
+  from: { table: "invitations", column: "email" },
+  to: { table: "users", column: "email" },
+  foreignKey: false,
+})
+```
+
+Join-only relations do not generate foreign key migrations or schema relations for Prisma/Drizzle.
+When a join-only relation uses a table's `id` column, Fragno coerces it to `_internalId` so you can
+define inverse relations without `_internalId` casts:
+
+```typescript
+.addReference("memberships", {
+  type: "many",
+  from: { table: "users", column: "id" }, // coerced to _internalId
+  to: { table: "memberships", column: "userId" },
+  foreignKey: false,
+})
+```
+
 ## Schema Evolution
 
 Fragno uses an **append-only log** approach where every schema change is recorded as an operation.

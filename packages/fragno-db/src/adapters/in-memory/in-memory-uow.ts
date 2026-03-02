@@ -272,20 +272,26 @@ const findJoinMatches = (
         throw new Error(`Column "${right}" not found on table "${targetTable.name}".`);
       }
 
+      const actualLeft = leftColumn.role === "external-id" ? "_internalId" : left;
+      const actualLeftColumn = parentTable.columns[actualLeft];
+      if (!actualLeftColumn) {
+        throw new Error(`Column "${actualLeft}" not found on table "${parentTable.name}".`);
+      }
+
       const actualRight = rightColumn.role === "external-id" ? "_internalId" : right;
       const actualRightColumn = targetTable.columns[actualRight];
       if (!actualRightColumn) {
         throw new Error(`Column "${actualRight}" not found on table "${targetTable.name}".`);
       }
 
-      const leftValue = parentRow[getPhysicalColumnName(parentTable, left, resolver)];
+      const leftValue = parentRow[getPhysicalColumnName(parentTable, actualLeft, resolver)];
       const rightValue = row[getPhysicalColumnName(targetTable, actualRight, resolver)];
       if (isNullish(leftValue) || isNullish(rightValue)) {
         matchesJoin = false;
         break;
       }
 
-      const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
+      const leftNormalized = normalizeIndexValue(leftValue, actualLeftColumn);
       const rightNormalized = normalizeIndexValue(rightValue, actualRightColumn);
       if (compareNormalizedValues(leftNormalized, rightNormalized) !== 0) {
         matchesJoin = false;

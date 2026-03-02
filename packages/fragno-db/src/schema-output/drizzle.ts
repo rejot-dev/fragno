@@ -369,7 +369,7 @@ function generateForeignKeys(
   for (const relation of Object.values(table.relations)) {
     // Only "one" relations generate foreign keys
     // "many" relations don't have foreign keys (they're on the other side)
-    if (relation.type === "many") {
+    if (relation.type === "many" || relation.foreignKey === false) {
       continue;
     }
 
@@ -380,7 +380,7 @@ function generateForeignKeys(
     for (const [localCol, refCol] of relation.on) {
       columns.push(`table.${localCol}`);
       // Foreign keys always reference internal IDs
-      const actualRefCol = refCol === "id" ? "_internalId" : refCol;
+      const actualRefCol = refCol !== "id" ? refCol : "_internalId";
       // For self-referencing foreign keys, use table parameter instead of table constant
       if (isSelfReference) {
         foreignColumns.push(`table.${actualRefCol}`);
@@ -524,6 +524,9 @@ function generateRelation(
 
   // Generate explicit relations defined on this table
   for (const relation of Object.values(table.relations)) {
+    if (relation.foreignKey === false) {
+      continue;
+    }
     const options: string[] = [`relationName: "${relation.id}"`];
 
     // Track which relation types are used
@@ -547,7 +550,7 @@ function generateRelation(
       for (const [left, right] of relation.on) {
         fields.push(`${tableRef}.${left}`);
         // Relations reference internal IDs
-        const actualRight = right === "id" ? "_internalId" : right;
+        const actualRight = right !== "id" ? right : "_internalId";
         references.push(`${relatedTableRef}.${actualRight}`);
       }
 
@@ -571,7 +574,7 @@ function generateRelation(
   if (inverseRelations && inverseRelations.length > 0) {
     for (const { fromTable, relation } of inverseRelations) {
       // Only generate inverse for "one" relations (they become "many" on this side)
-      if (relation.type === "one") {
+      if (relation.type === "one" && relation.foreignKey !== false) {
         hasMany = true;
 
         // Use sanitized TypeScript export name for identifier reference
@@ -739,6 +742,9 @@ export function generateDrizzleSchema(
     const inverseRelations = new Map<string, Array<{ fromTable: AnyTable; relation: Relation }>>();
     for (const table of Object.values(schema.tables)) {
       for (const relation of Object.values(table.relations)) {
+        if (relation.foreignKey === false) {
+          continue;
+        }
         // Track this relation as an inverse on the target table
         const targetTableName = relation.table.name;
         if (!inverseRelations.has(targetTableName)) {

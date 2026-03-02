@@ -116,6 +116,37 @@ describe("generateMigrationFromSchema", () => {
     }
   });
 
+  it("should skip add-foreign-key operation for join-only references", () => {
+    const mySchema = schema("my", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_users_email", ["email"]);
+        })
+        .addTable("invitations", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_inv_email", ["email"]);
+        })
+        .addReference("invitedUser", {
+          type: "one",
+          from: { table: "invitations", column: "email" },
+          to: { table: "users", column: "email" },
+          foreignKey: false,
+        });
+    });
+
+    // Version 0 -> 1: users table
+    // Version 1 -> 2: invitations table
+    // Version 2 -> 3: join-only relation (no FK)
+    const operations = generateMigrationFromSchema(mySchema, 2, 3);
+
+    expect(operations).toHaveLength(0);
+  });
+
   it("should generate add-index operation for indexes added via alterTable", () => {
     const mySchema = schema("my", (s) => {
       return s

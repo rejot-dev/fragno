@@ -34,6 +34,7 @@ export const commentSchema = schema("comment", (s) => {
           column("timestamp")
             .defaultTo((b) => b.now())
         )
+        .createIndex("idx_user", ["userId"])
         .createIndex("idx_post", ["postId"]);
     })
     .addTable("user", (t) => {
@@ -44,7 +45,8 @@ export const commentSchema = schema("comment", (s) => {
     .addReference("author", {
       type: "one",
       from: { table: "comment", column: "userId" },
-      to: { table: "user", column: "id" }
+      to: { table: "user", column: "id" },
+      foreignKey: false
     });
 });`}
           codeblock={{

@@ -297,6 +297,114 @@ describe("create", () => {
     expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
   });
 
+  it("should support join-only references with foreignKey:false", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_users_email", ["email"]);
+        })
+        .addTable("invitations", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_inv_email", ["email"]);
+        })
+        .addReference("invitedUser", {
+          type: "one",
+          from: { table: "invitations", column: "email" },
+          to: { table: "users", column: "email" },
+          foreignKey: false,
+        });
+    });
+
+    const invitationsTable = userSchema.tables.invitations;
+    const invitedRelation = invitationsTable.relations["invitedUser"];
+    expect(invitedRelation).toBeDefined();
+    expect(invitedRelation.foreignKey).toBe(false);
+    expect(invitedRelation.on).toEqual([["email", "email"]]);
+
+    const addReferenceOps = userSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "email" });
+    expect(addReferenceOps[0].config.foreignKey).toBe(false);
+  });
+
+  it("should coerce id to _internalId for join-only references", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("sessions", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .createIndex("idx_sessions_user", ["userId"]);
+        })
+        .addReference("sessionUser", {
+          type: "one",
+          from: { table: "sessions", column: "userId" },
+          to: { table: "users", column: "id" },
+          foreignKey: false,
+        });
+    });
+
+    const addReferenceOps = userSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
+  });
+
+  it("should coerce left-side id to _internalId for join-only references", () => {
+    const userSchema = schema("user", (s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("memberships", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .createIndex("idx_memberships_user", ["userId"]);
+        })
+        .addReference("memberships", {
+          type: "many",
+          from: { table: "users", column: "id" },
+          to: { table: "memberships", column: "userId" },
+          foreignKey: false,
+        });
+    });
+
+    const addReferenceOps = userSchema.operations.filter((op) => op.type === "add-reference");
+    expect(addReferenceOps).toHaveLength(1);
+    expect(addReferenceOps[0].config.from).toEqual({ table: "users", column: "_internalId" });
+
+    const userRelation = userSchema.tables.users.relations["memberships"];
+    expect(userRelation.on).toEqual([["_internalId", "userId"]]);
+  });
+
+  it("should require indexes for join-only references", () => {
+    expect(() =>
+      schema("user", (s) => {
+        return s
+          .addTable("users", (t) => {
+            return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+          })
+          .addTable("invitations", (t) => {
+            return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+          })
+          .addReference("invitedUser", {
+            type: "one",
+            from: { table: "invitations", column: "email" },
+            to: { table: "users", column: "email" },
+            foreignKey: false,
+          });
+      }),
+    ).toThrow(/indexed join columns/);
+  });
+
   it("should support multiple references by calling addReference multiple times", () => {
     const userSchema = schema("user", (s) => {
       return s

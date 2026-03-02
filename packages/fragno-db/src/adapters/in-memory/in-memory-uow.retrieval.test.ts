@@ -25,10 +25,27 @@ const joinSchema = schema("join", (s) =>
         .addColumn("title", column("string"))
         .addColumn("authorId", referenceColumn()),
     )
+    .addTable("memberships", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("userId", referenceColumn())
+        .createIndex("idx_memberships_user", ["userId"]),
+    )
     .addReference("author", {
       type: "one",
       from: { table: "posts", column: "authorId" },
       to: { table: "users", column: "id" },
+    })
+    .addReference("membershipUser", {
+      type: "one",
+      from: { table: "memberships", column: "userId" },
+      to: { table: "users", column: "id" },
+    })
+    .addReference("memberships", {
+      type: "many",
+      from: { table: "users", column: "id" },
+      to: { table: "memberships", column: "userId" },
+      foreignKey: false,
     }),
 );
 
@@ -96,5 +113,37 @@ describe("in-memory uow retrieval", () => {
     await expect(executor.executeRetrievalPhase([opForExecutor])).rejects.toThrow(
       'In-memory adapter only supports orderByIndex; received orderBy on table "users".',
     );
+  });
+
+  it("joins join-only relations using left-side id coercion", async () => {
+    const { createUow } = createHarness();
+
+    const createData = createUow();
+    createData.create("users", {
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+    });
+    createData.create("memberships", {
+      id: "membership-1",
+      userId: "user-1",
+    });
+    await createData.executeMutations();
+
+    const query = createUow();
+    query.find("users", (b) =>
+      b
+        .whereIndex("primary", (eb) => eb("id", "=", "user-1"))
+        .join((jb) => jb.memberships((mb) => mb.select(["id"]))),
+    );
+
+    const [users] = (await query.executeRetrieve()) as Array<
+      Array<{ memberships?: { id: { externalId: string } } }>
+    >;
+
+    expect(users).toHaveLength(1);
+    expect(users[0].memberships).toMatchObject({
+      id: expect.objectContaining({ externalId: "membership-1" }),
+    });
   });
 });

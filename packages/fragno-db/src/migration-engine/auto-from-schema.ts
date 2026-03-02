@@ -203,6 +203,9 @@ function applyReferenceOperation(
   state: TableState,
   operation: Extract<SchemaOperation, { type: "add-reference" }>,
 ): void {
+  if (operation.config.foreignKey === false) {
+    return;
+  }
   state.foreignKeys.push({
     name: operation.referenceName,
     columns: [operation.config.from.column],
@@ -465,6 +468,9 @@ export function generateMigrationFromSchema(
     } else if (op.type === "add-reference") {
       if (!op.referenceName || op.referenceName.trim().length === 0) {
         throw new Error(`referenceName is required for add-reference on ${op.tableName}`);
+      }
+      if (op.config.foreignKey === false) {
+        continue;
       }
       migrationOperations.push({
         type: "add-foreign-key",
