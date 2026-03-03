@@ -30,6 +30,28 @@ const fkSchema = schema("fk", (s) =>
     }),
 );
 
+const joinOnlySchema = schema("join-only", (s) =>
+  s
+    .addTable("users", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("email", column("string"))
+        .createIndex("users_email_idx", ["email"], { unique: true }),
+    )
+    .addTable("invitations", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("email", column("string"))
+        .createIndex("invitations_email_idx", ["email"]),
+    )
+    .addReference("invitedUser", {
+      type: "one",
+      from: { table: "invitations", column: "email" },
+      to: { table: "users", column: "email" },
+      foreignKey: false,
+    }),
+);
+
 const createTestUowFactory = () => {
   const store = createInMemoryStore();
   const options = resolveInMemoryAdapterOptions({ idSeed: "seed" });
@@ -209,6 +231,31 @@ describe("in-memory uow mutations", () => {
     const deleteUser = createUow();
     deleteUser.delete("users", userId, (b) => b.check());
     await expect(deleteUser.executeMutations()).rejects.toThrow("Foreign key constraint violation");
+  });
+
+  it("does not enforce join-only relations as foreign keys", async () => {
+    const { createUow } = createUowFactoryWithOptions(joinOnlySchema);
+
+    const createInvitation = createUow();
+    createInvitation.create("invitations", { id: "invite-1", email: "missing@example.com" });
+    const createInvitationResult = await createInvitation.executeMutations();
+    expect(createInvitationResult.success).toBe(true);
+
+    const createUser = createUow();
+    createUser.create("users", { id: "user-1", email: "user@example.com" });
+    const createUserResult = await createUser.executeMutations();
+    expect(createUserResult.success).toBe(true);
+
+    const userId = createUser.getCreatedIds()[0]!;
+    const createInvitation2 = createUow();
+    createInvitation2.create("invitations", { id: "invite-2", email: "user@example.com" });
+    const createInvitation2Result = await createInvitation2.executeMutations();
+    expect(createInvitation2Result.success).toBe(true);
+
+    const deleteUser = createUow();
+    deleteUser.delete("users", userId, (b) => b.check());
+    const deleteUserResult = await deleteUser.executeMutations();
+    expect(deleteUserResult.success).toBe(true);
   });
 
   it("uses custom internal id generators when provided", async () => {
