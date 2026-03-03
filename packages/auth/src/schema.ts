@@ -152,6 +152,18 @@ export const authSchema = schema("auth", (s) => {
       },
       type: "one",
     })
+    .addReference("organizationMembers", {
+      from: {
+        table: "organization",
+        column: "id",
+      },
+      to: {
+        table: "organizationMember",
+        column: "organizationId",
+      },
+      type: "many",
+      foreignKey: false,
+    })
     .addReference("organizationMemberUser", {
       from: {
         table: "organizationMember",
@@ -268,5 +280,106 @@ export const authSchema = schema("auth", (s) => {
     })
     .alterTable("user", (t) => {
       return t.alterColumn("passwordHash").nullable();
+    })
+    .addReference("sessionOrganizationMembers", {
+      type: "many",
+      from: {
+        table: "session",
+        column: "userId",
+      },
+      to: {
+        table: "organizationMember",
+        column: "userId",
+      },
+      foreignKey: false,
+    })
+    .addReference("sessionMembers", {
+      type: "many",
+      from: {
+        table: "session",
+        column: "userId",
+      },
+      to: {
+        table: "organizationMember",
+        column: "userId",
+      },
+      foreignKey: false,
+    })
+    .addReference("organizationMemberRoles", {
+      type: "many",
+      from: {
+        table: "organizationMember",
+        // Join-only relations coerce `id` to internal ID.
+        column: "id",
+      },
+      to: {
+        table: "organizationMemberRole",
+        column: "memberId",
+      },
+      foreignKey: false,
+    })
+    .addReference("roles", {
+      type: "many",
+      from: {
+        table: "organizationMember",
+        // Join-only relations coerce `id` to internal ID.
+        column: "id",
+      },
+      to: {
+        table: "organizationMemberRole",
+        column: "memberId",
+      },
+      foreignKey: false,
+    })
+    .addReference("organization", {
+      type: "one",
+      from: {
+        table: "organizationMember",
+        column: "organizationId",
+      },
+      to: {
+        table: "organization",
+        column: "id",
+      },
+      foreignKey: false,
+    })
+    .addReference("userOrganizationInvitations", {
+      type: "many",
+      from: {
+        table: "user",
+        column: "email",
+      },
+      to: {
+        table: "organizationInvitation",
+        column: "email",
+      },
+      foreignKey: false,
+    })
+    .addReference("invitations", {
+      type: "many",
+      from: {
+        table: "user",
+        column: "email",
+      },
+      to: {
+        table: "organizationInvitation",
+        column: "email",
+      },
+      foreignKey: false,
+    })
+    .addReference("organization", {
+      type: "one",
+      from: {
+        table: "organizationInvitation",
+        column: "organizationId",
+      },
+      to: {
+        table: "organization",
+        column: "id",
+      },
+      foreignKey: false,
+    })
+    .alterTable("session", (t) => {
+      return t.createIndex("idx_session_id_expiresAt", ["id", "expiresAt"]);
     });
 });

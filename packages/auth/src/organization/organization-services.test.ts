@@ -6,7 +6,6 @@ import { hashPassword } from "../user/password";
 
 describe("organization services", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment("auth", instantiate(authFragmentDefinition))
     .build();
@@ -557,6 +556,30 @@ describe("organization services", async () => {
     expect(activeOrg.organizationId).toBe(orgsResult.organizations[0]?.organization.id ?? null);
   });
 
+  it("avoids unbounded member scans when resolving active organizations", async () => {
+    const txResult = await test.inContext(function () {
+      return fragment.services.getActiveOrganizationForSession({
+        sessionId: "inactive-session",
+      });
+    });
+
+    const typedUow = txResult._internal.typedUow;
+    if (!typedUow) {
+      throw new Error("Expected typed unit of work for getActiveOrganizationForSession");
+    }
+
+    const operations = typedUow.getRetrievalOperations();
+    const hasUnboundedMemberScan = operations.some(
+      (operation) =>
+        operation.type === "find" &&
+        operation.table.name === "organizationMember" &&
+        operation.indexName === "primary" &&
+        !operation.options.where,
+    );
+
+    expect(hasUnboundedMemberScan).toBe(false);
+  });
+
   it("paginates organizations for a user", async () => {
     const owner = await createUser("paginate-owner@test.com");
 
@@ -893,7 +916,6 @@ describe("organization services", async () => {
 
 describe("organization service role defaults", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1011,7 +1033,6 @@ describe("organization service role defaults", async () => {
 
 describe("organization service limits", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",

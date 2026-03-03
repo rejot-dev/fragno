@@ -22,6 +22,33 @@ type CreateMemberInput = {
   actor: { userId: string; userRole: Role };
 };
 
+type ListOrganizationMembersWithSessionParams = {
+  sessionId: string;
+  organizationId: string;
+  pageSize: number;
+  cursor?: Cursor;
+};
+
+type CreateOrganizationMemberWithSessionParams = {
+  sessionId: string;
+  organizationId: string;
+  userId: string;
+  roles?: readonly string[];
+};
+
+type UpdateOrganizationMemberWithSessionParams = {
+  sessionId: string;
+  organizationId: string;
+  memberId: string;
+  roles: readonly string[];
+};
+
+type DeleteOrganizationMemberWithSessionParams = {
+  sessionId: string;
+  organizationId: string;
+  memberId: string;
+};
+
 type OrganizationMemberServiceOptions = {
   organizationConfig?: OrganizationConfig<string>;
 };
@@ -122,6 +149,79 @@ const filterOwnerMemberIds = (
     }
   }
   return ids;
+};
+
+const resolveInternalId = (value: unknown): string | bigint | undefined => {
+  if (value && typeof value === "object") {
+    if ("internalId" in value) {
+      return (value as { internalId?: bigint }).internalId;
+    }
+    if ("databaseId" in value) {
+      return (value as { databaseId?: string | bigint }).databaseId;
+    }
+  }
+  return undefined;
+};
+
+const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
+  if (!value) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+};
+
+const extractRoles = (value: unknown): string[] => {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.map((role) => (role as { role: string }).role);
+  }
+  if (typeof value === "object" && "role" in value) {
+    return [(value as { role: string }).role];
+  }
+  return [];
+};
+
+const collectRolesByMemberId = (
+  roles: Array<{
+    role: string;
+    memberId: unknown;
+    organizationMemberRoleMember?: { id?: unknown } | null;
+  }>,
+  allowedMemberIds?: Set<string>,
+): Record<string, string[]> => {
+  const rolesByMemberId = new Map<string, Set<string>>();
+
+  for (const role of roles) {
+    const memberId = role.organizationMemberRoleMember?.id
+      ? toExternalId(role.organizationMemberRoleMember.id)
+      : toExternalId(role.memberId);
+
+    if (allowedMemberIds && !allowedMemberIds.has(memberId)) {
+      continue;
+    }
+
+    const existing = rolesByMemberId.get(memberId) ?? new Set<string>();
+    existing.add(role.role);
+    rolesByMemberId.set(memberId, existing);
+  }
+
+  const result: Record<string, string[]> = {};
+  for (const [memberId, roleSet] of rolesByMemberId) {
+    result[memberId] = Array.from(roleSet);
+  }
+
+  return result;
+};
+
+const matchesOrganizationId = (left: unknown, right: unknown): boolean => {
+  const leftInternal = resolveInternalId(left);
+  const rightInternal = resolveInternalId(right);
+  if (leftInternal !== undefined && rightInternal !== undefined) {
+    return String(leftInternal) === String(rightInternal);
+  }
+  return toExternalId(left) === toExternalId(right);
 };
 
 export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
@@ -891,6 +991,656 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
           }
 
           return { rolesByMemberId };
+        })
+        .build();
+    },
+
+    /**
+     * List organization members for a session.
+     */
+    listOrganizationMembersWithSession: function (
+      this: AuthServiceContext,
+      params: ListOrganizationMembersWithSessionParams,
+    ) {
+      const { sessionId, organizationId, cursor } = params;
+      const effectivePageSize = cursor ? cursor.pageSize : params.pageSize;
+      const effectiveSortOrder = cursor ? cursor.orderDirection : "asc";
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .find("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) => j.sessionMembers()),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+              ),
+            )
+            .findFirst("organization", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", organizationId)),
+            )
+            .findWithCursor("organizationMember", (b) => {
+              let query = b
+                .whereIndex("idx_org_member_org", (eb) => eb("organizationId", "=", organizationId))
+                .orderByIndex("idx_org_member_org", effectiveSortOrder)
+                .pageSize(effectivePageSize)
+                .join((j) => j.organizationMemberOrganization().organizationMemberUser());
+
+              return cursor ? query.after(cursor) : query;
+            })
+            .find("organizationMemberRole", (b) =>
+              b
+                .whereIndex("idx_org_member_role_member")
+                .join((j) =>
+                  j.organizationMemberRoleMember((mb) =>
+                    mb.whereIndex("idx_org_member_org", (eb) =>
+                      eb("organizationId", "=", organizationId),
+                    ),
+                  ),
+                ),
+            ),
+        )
+        .mutate(
+          ({ uow, retrieveResult: [sessions, expiredSession, organization, members, roles] }) => {
+            if (expiredSession) {
+              uow.delete("session", expiredSession.id, (b) => b.check());
+            }
+
+            const session = sessions[0] ?? null;
+            if (!session) {
+              return { ok: false as const, code: "session_invalid" as const };
+            }
+
+            if (!organization || organization.deletedAt != null) {
+              return { ok: false as const, code: "organization_not_found" as const };
+            }
+
+            const sessionMembers = normalizeMany(session.sessionMembers);
+            const hasMembership = sessionMembers.some((member) =>
+              matchesOrganizationId(member.organizationId, organization.id),
+            );
+
+            if (!hasMembership) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const memberIds = new Set(members.items.map((member) => toExternalId(member.id)));
+            const rolesByMemberId = collectRolesByMemberId(roles, memberIds);
+
+            const mappedMembers = members.items.map((member) => {
+              const resolvedMemberId = toExternalId(member.id);
+              const roles = rolesByMemberId[resolvedMemberId] ?? [];
+              const joinedOrganization = (
+                member as { organizationMemberOrganization?: { id: unknown } }
+              ).organizationMemberOrganization;
+              const joinedUser = (member as { organizationMemberUser?: { id: unknown } })
+                .organizationMemberUser;
+              const resolvedOrganizationId = joinedOrganization
+                ? toExternalId(joinedOrganization.id)
+                : toExternalId(member.organizationId);
+              const resolvedUserId = joinedUser
+                ? toExternalId(joinedUser.id)
+                : toExternalId(member.userId);
+
+              return mapMember(
+                {
+                  id: member.id,
+                  organizationId: member.organizationId,
+                  userId: member.userId,
+                  createdAt: member.createdAt,
+                  updatedAt: member.updatedAt,
+                },
+                roles,
+                {
+                  organizationId: resolvedOrganizationId,
+                  userId: resolvedUserId,
+                },
+              );
+            });
+
+            return {
+              ok: true as const,
+              members: mappedMembers,
+              cursor: members.cursor?.encode(),
+              hasNextPage: members.hasNextPage,
+            };
+          },
+        )
+        .build();
+    },
+
+    /**
+     * Create a member using session permissions.
+     */
+    createOrganizationMemberWithSession: function (
+      this: AuthServiceContext,
+      params: CreateOrganizationMemberWithSessionParams,
+    ) {
+      const roles = normalizeRoleNames(params.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) =>
+                  j
+                    .sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))
+                    .sessionMembers((mb) => mb.join((jb) => jb["organizationMemberRoles"]())),
+                ),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+              ),
+            )
+            .findFirst("organization", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.organizationId)),
+            )
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org_user", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", params.organizationId),
+                  eb("userId", "=", params.userId),
+                ),
+              ),
+            )
+            .find("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org", (eb) =>
+                eb("organizationId", "=", params.organizationId),
+              ),
+            ),
+        )
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [session, expiredSession, organization, existingMember, members],
+          }) => {
+            if (expiredSession) {
+              uow.delete("session", expiredSession.id, (b) => b.check());
+            }
+
+            if (!session || !session.sessionOwner) {
+              return { ok: false as const, code: "session_invalid" as const };
+            }
+
+            if (!organization || organization.deletedAt != null) {
+              return { ok: false as const, code: "organization_not_found" as const };
+            }
+
+            if (existingMember) {
+              return { ok: false as const, code: "member_already_exists" as const };
+            }
+
+            const actorMember = normalizeMany(session.sessionMembers).find((member) =>
+              matchesOrganizationId(member.organizationId, organization.id),
+            );
+
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const actorRoles = extractRoles(
+              (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+            );
+            if (
+              !isGlobalAdmin(session.sessionOwner.role as Role) &&
+              !canManageOrganization(actorRoles)
+            ) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            if (
+              limits?.membersPerOrganization !== undefined &&
+              members.length >= limits.membersPerOrganization
+            ) {
+              return { ok: false as const, code: "limit_reached" as const };
+            }
+
+            const now = new Date();
+            const memberId = uow.create("organizationMember", {
+              organizationId: params.organizationId,
+              userId: params.userId,
+              createdAt: now,
+              updatedAt: now,
+            });
+
+            for (const role of roles) {
+              uow.create("organizationMemberRole", {
+                memberId,
+                role,
+                createdAt: now,
+              });
+            }
+
+            const organizationSummary = mapOrganization({
+              id: organization.id,
+              name: organization.name,
+              slug: organization.slug,
+              logoUrl: organization.logoUrl ?? null,
+              metadata: organization.metadata ?? null,
+              createdBy: organization.createdBy,
+              createdAt: organization.createdAt,
+              updatedAt: organization.updatedAt,
+              deletedAt: organization.deletedAt ?? null,
+            });
+            const memberSummary = mapMember(
+              {
+                id: memberId,
+                organizationId: organization.id,
+                userId: params.userId,
+                createdAt: now,
+                updatedAt: now,
+              },
+              roles,
+              {
+                organizationId: toExternalId(organization.id),
+                userId: params.userId,
+              },
+            );
+            const actorSummary = mapUserSummary({
+              id: session.sessionOwner.id,
+              email: session.sessionOwner.email,
+              role: session.sessionOwner.role,
+              bannedAt: session.sessionOwner.bannedAt ?? null,
+            });
+
+            uow.triggerHook("onMemberAdded", {
+              organization: organizationSummary,
+              member: memberSummary,
+              actor: actorSummary,
+            });
+
+            return {
+              ok: true as const,
+              member: memberSummary,
+            };
+          },
+        )
+        .build();
+    },
+
+    /**
+     * Update member roles using session permissions.
+     */
+    updateOrganizationMemberRolesWithSession: function (
+      this: AuthServiceContext,
+      params: UpdateOrganizationMemberWithSessionParams,
+    ) {
+      const nextRoles = normalizeRoleNames(params.roles, DEFAULT_MEMBER_ROLES);
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) =>
+                  j
+                    .sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))
+                    .sessionMembers((mb) =>
+                      mb.join((jb) =>
+                        jb.organizationMemberOrganization()["organizationMemberRoles"](),
+                      ),
+                    ),
+                ),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+              ),
+            )
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.memberId)),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("idx_org_member_role_member", (eb) =>
+                eb("memberId", "=", params.memberId),
+              ),
+            )
+            .find("organizationMemberRole", (b) =>
+              b
+                .whereIndex("idx_org_member_role_role", (eb) => eb("role", "=", OWNER_ROLE))
+                .join((j) => j.organizationMemberRoleMember()),
+            ),
+        )
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [session, expiredSession, member, existingRoles, ownerRoles],
+          }) => {
+            if (expiredSession) {
+              uow.delete("session", expiredSession.id, (b) => b.check());
+            }
+
+            if (!session || !session.sessionOwner) {
+              return { ok: false as const, code: "session_invalid" as const };
+            }
+
+            if (!member) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
+
+            const actorMember = normalizeMany(session.sessionMembers).find((entry) => {
+              const entryOrganizationId = (
+                entry as { organizationMemberOrganization?: { id: unknown } }
+              ).organizationMemberOrganization?.id;
+              return matchesOrganizationId(
+                entryOrganizationId ?? entry.organizationId,
+                params.organizationId,
+              );
+            });
+
+            if (
+              actorMember &&
+              !matchesOrganizationId(
+                member.organizationId,
+                (actorMember as { organizationMemberOrganization?: { id: unknown } })
+                  .organizationMemberOrganization?.id ?? actorMember.organizationId,
+              )
+            ) {
+              return { ok: false as const, code: "member_not_found" as const };
+            }
+
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const actorRoles = extractRoles(
+              (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+            );
+            if (
+              !isGlobalAdmin(session.sessionOwner.role as Role) &&
+              !canManageOrganization(actorRoles)
+            ) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+
+            const hadOwnerRole = existingRoles.some((role) => role.role === OWNER_ROLE);
+            if (hadOwnerRole && !nextRoles.includes(OWNER_ROLE)) {
+              const ownerMemberIds = new Set<string>();
+              for (const role of ownerRoles) {
+                const ownerMember = (
+                  role as { organizationMemberRoleMember?: { organizationId: unknown } }
+                ).organizationMemberRoleMember;
+                if (
+                  ownerMember &&
+                  matchesOrganizationId(ownerMember.organizationId, member.organizationId)
+                ) {
+                  ownerMemberIds.add(toExternalId(role.memberId));
+                }
+              }
+
+              if (ownerMemberIds.size <= 1) {
+                return { ok: false as const, code: "last_owner" as const };
+              }
+            }
+
+            for (const existing of existingRoles) {
+              uow.delete("organizationMemberRole", existing.id, (b) => b.check());
+            }
+
+            const now = new Date();
+            for (const role of nextRoles) {
+              uow.create("organizationMemberRole", {
+                memberId: member.id,
+                role,
+                createdAt: now,
+              });
+            }
+
+            uow.update("organizationMember", member.id, (b) => b.set({ updatedAt: now }).check());
+
+            const organization = (
+              actorMember as {
+                organizationMemberOrganization?: {
+                  id: unknown;
+                  name: string;
+                  slug: string;
+                  logoUrl: string | null;
+                  metadata: unknown;
+                  createdBy: unknown;
+                  createdAt: Date;
+                  updatedAt: Date;
+                  deletedAt: Date | null;
+                };
+              }
+            ).organizationMemberOrganization;
+            const organizationSummary = organization
+              ? mapOrganization({
+                  id: organization.id,
+                  name: organization.name,
+                  slug: organization.slug,
+                  logoUrl: organization.logoUrl ?? null,
+                  metadata: organization.metadata ?? null,
+                  createdBy: organization.createdBy,
+                  createdAt: organization.createdAt,
+                  updatedAt: organization.updatedAt,
+                  deletedAt: organization.deletedAt ?? null,
+                })
+              : null;
+
+            const actorSummary = mapUserSummary({
+              id: session.sessionOwner.id,
+              email: session.sessionOwner.email,
+              role: session.sessionOwner.role,
+              bannedAt: session.sessionOwner.bannedAt ?? null,
+            });
+
+            const updatedMember = mapMember(
+              {
+                id: member.id,
+                organizationId: member.organizationId,
+                userId: member.userId,
+                createdAt: member.createdAt,
+                updatedAt: now,
+              },
+              nextRoles,
+            );
+
+            if (organizationSummary) {
+              uow.triggerHook("onMemberRolesUpdated", {
+                organization: organizationSummary,
+                member: updatedMember,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              member: updatedMember,
+            };
+          },
+        )
+        .build();
+    },
+
+    /**
+     * Remove a member using session permissions.
+     */
+    deleteOrganizationMemberWithSession: function (
+      this: AuthServiceContext,
+      params: DeleteOrganizationMemberWithSessionParams,
+    ) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) =>
+                  j
+                    .sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))
+                    .sessionMembers((mb) =>
+                      mb.join((jb) =>
+                        jb.organizationMemberOrganization()["organizationMemberRoles"](),
+                      ),
+                    ),
+                ),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+              ),
+            )
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.memberId)),
+            )
+            .find("organizationMemberRole", (b) =>
+              b.whereIndex("idx_org_member_role_member", (eb) =>
+                eb("memberId", "=", params.memberId),
+              ),
+            )
+            .find("organizationMemberRole", (b) =>
+              b
+                .whereIndex("idx_org_member_role_role", (eb) => eb("role", "=", OWNER_ROLE))
+                .join((j) => j.organizationMemberRoleMember()),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [session, expiredSession, member, roles, ownerRoles] }) => {
+          if (expiredSession) {
+            uow.delete("session", expiredSession.id, (b) => b.check());
+          }
+
+          if (!session || !session.sessionOwner) {
+            return { ok: false as const, code: "session_invalid" as const };
+          }
+
+          if (!member) {
+            return { ok: false as const, code: "member_not_found" as const };
+          }
+
+          const actorMember = normalizeMany(session.sessionMembers).find((entry) => {
+            const entryOrganizationId = (
+              entry as { organizationMemberOrganization?: { id: unknown } }
+            ).organizationMemberOrganization?.id;
+            return matchesOrganizationId(
+              entryOrganizationId ?? entry.organizationId,
+              params.organizationId,
+            );
+          });
+
+          if (
+            actorMember &&
+            !matchesOrganizationId(
+              member.organizationId,
+              (actorMember as { organizationMemberOrganization?: { id: unknown } })
+                .organizationMemberOrganization?.id ?? actorMember.organizationId,
+            )
+          ) {
+            return { ok: false as const, code: "member_not_found" as const };
+          }
+
+          if (!actorMember) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const isSelf = toExternalId(member.userId) === toExternalId(session.sessionOwner.id);
+          const actorRoles = extractRoles(
+            (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+          );
+          if (
+            !isSelf &&
+            !isGlobalAdmin(session.sessionOwner.role as Role) &&
+            !canManageOrganization(actorRoles)
+          ) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const hadOwnerRole = roles.some((role) => role.role === OWNER_ROLE);
+          if (hadOwnerRole) {
+            const ownerMemberIds = new Set<string>();
+            for (const role of ownerRoles) {
+              const ownerMember = (
+                role as { organizationMemberRoleMember?: { organizationId: unknown } }
+              ).organizationMemberRoleMember;
+              if (
+                ownerMember &&
+                matchesOrganizationId(ownerMember.organizationId, member.organizationId)
+              ) {
+                ownerMemberIds.add(toExternalId(role.memberId));
+              }
+            }
+
+            if (ownerMemberIds.size <= 1) {
+              return { ok: false as const, code: "last_owner" as const };
+            }
+          }
+
+          for (const role of roles) {
+            uow.delete("organizationMemberRole", role.id, (b) => b.check());
+          }
+
+          uow.delete("organizationMember", member.id, (b) => b.check());
+
+          const organization = (
+            actorMember as {
+              organizationMemberOrganization?: {
+                id: unknown;
+                name: string;
+                slug: string;
+                logoUrl: string | null;
+                metadata: unknown;
+                createdBy: unknown;
+                createdAt: Date;
+                updatedAt: Date;
+                deletedAt: Date | null;
+              };
+            }
+          ).organizationMemberOrganization;
+          const organizationSummary = organization
+            ? mapOrganization({
+                id: organization.id,
+                name: organization.name,
+                slug: organization.slug,
+                logoUrl: organization.logoUrl ?? null,
+                metadata: organization.metadata ?? null,
+                createdBy: organization.createdBy,
+                createdAt: organization.createdAt,
+                updatedAt: organization.updatedAt,
+                deletedAt: organization.deletedAt ?? null,
+              })
+            : null;
+
+          const actorSummary = mapUserSummary({
+            id: session.sessionOwner.id,
+            email: session.sessionOwner.email,
+            role: session.sessionOwner.role,
+            bannedAt: session.sessionOwner.bannedAt ?? null,
+          });
+
+          const removedMember = mapMember(
+            {
+              id: member.id,
+              organizationId: member.organizationId,
+              userId: member.userId,
+              createdAt: member.createdAt,
+              updatedAt: member.updatedAt,
+            },
+            roles.map((role) => role.role),
+          );
+
+          if (organizationSummary) {
+            uow.triggerHook("onMemberRemoved", {
+              organization: organizationSummary,
+              member: removedMember,
+              actor: actorSummary,
+            });
+          }
+
+          return { ok: true as const };
         })
         .build();
     },

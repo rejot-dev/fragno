@@ -9,7 +9,6 @@ import { hashPassword } from "../user/password";
 
 describe("organization routes", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -496,6 +495,86 @@ describe("organization routes", async () => {
     expect(removeResponse.data.success).toBe(true);
   });
 
+  it("returns session_invalid for member mutations with invalid sessions", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invalid-member-owner@test.com",
+    );
+    const { user: memberUser } = await createUserWithSession("invalid-member-user@test.com");
+
+    const created = await createOrganization(
+      ownerSessionId,
+      "Invalid Session Org",
+      "invalid-session-org",
+    );
+
+    const addMemberResponse = await addMember(
+      ownerSessionId,
+      created.organization.id,
+      memberUser.id,
+      ["member"],
+    );
+    assert(addMemberResponse.type === "json");
+
+    const memberId = addMemberResponse.data.member.id;
+    const invalidSessionId = "invalid-session-id";
+
+    const invalidCreate = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/members",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: invalidSessionId },
+        body: { userId: memberUser.id },
+      },
+    );
+
+    assert(invalidCreate.type === "error");
+    expect(invalidCreate.error.code).toBe("session_invalid");
+    expect(invalidCreate.status).toBe(401);
+
+    const invalidUpdate = await fragment.callRoute(
+      "PATCH",
+      "/organizations/:organizationId/members/:memberId",
+      {
+        pathParams: { organizationId: created.organization.id, memberId },
+        query: { sessionId: invalidSessionId },
+        body: { roles: ["member"] },
+      },
+    );
+
+    assert(invalidUpdate.type === "error");
+    expect(invalidUpdate.error.code).toBe("session_invalid");
+    expect(invalidUpdate.status).toBe(401);
+
+    const invalidDelete = await fragment.callRoute(
+      "DELETE",
+      "/organizations/:organizationId/members/:memberId",
+      {
+        pathParams: { organizationId: created.organization.id, memberId },
+        query: { sessionId: invalidSessionId },
+      },
+    );
+
+    assert(invalidDelete.type === "error");
+    expect(invalidDelete.error.code).toBe("session_invalid");
+    expect(invalidDelete.status).toBe(401);
+  });
+
+  it("returns organization_not_found when adding members to missing organizations", async () => {
+    const { sessionId } = await createUserWithSession("missing-org-owner@test.com");
+    const { user: memberUser } = await createUserWithSession("missing-org-member@test.com");
+
+    const response = await fragment.callRoute("POST", "/organizations/:organizationId/members", {
+      pathParams: { organizationId: "missing-org-id" },
+      query: { sessionId },
+      body: { userId: memberUser.id },
+    });
+
+    assert(response.type === "error");
+    expect(response.error.code).toBe("organization_not_found");
+    expect(response.status).toBe(404);
+  });
+
   it("lists invitations and handles invitation errors", async () => {
     const { sessionId: ownerSessionId } = await createUserWithSession("invite-list-owner@test.com");
     const { user: memberUser, sessionId: memberSessionId } = await createUserWithSession(
@@ -586,5 +665,183 @@ describe("organization routes", async () => {
 
     assert(invalidToken.type === "error");
     expect(invalidToken.error.code).toBe("invalid_token");
+  });
+});
+
+describe("organization routes limits regressions", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: {
+            limits: {
+              organizationsPerUser: 2,
+              membersPerOrganization: 2,
+            },
+          },
+        })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory, organizationRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+  let userCounter = 0;
+  let organizationCounter = 0;
+
+  const createUserWithSession = async (email?: string) => {
+    const resolvedEmail = email ?? `limit-user-${(userCounter += 1)}@orgs.test`;
+    const passwordHash = await hashPassword("password");
+    const [user] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createUserUnvalidated(resolvedEmail, passwordHash),
+        ])
+        .execute();
+    });
+
+    const [session] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.createSession(user.id)])
+        .execute();
+    });
+
+    if (!session.ok) {
+      throw new Error(`Failed to create session: ${session.code}`);
+    }
+
+    return { user, sessionId: session.session.id };
+  };
+
+  const createOrganization = async (sessionId: string, name?: string, slug?: string) => {
+    const resolvedName = name ?? `Limit Org ${(organizationCounter += 1)}`;
+    const resolvedSlug = slug ?? `limit-org-${organizationCounter}`;
+    const response = await fragment.callRoute("POST", "/organizations", {
+      query: { sessionId },
+      body: {
+        name: resolvedName,
+        slug: resolvedSlug,
+      },
+    });
+
+    assert(response.type === "json");
+    return response.data;
+  };
+
+  const addMember = async (
+    sessionId: string,
+    organizationId: string,
+    userId: string,
+    roles?: string[],
+  ) =>
+    fragment.callRoute("POST", "/organizations/:organizationId/members", {
+      pathParams: { organizationId },
+      query: { sessionId },
+      body: { userId, roles },
+    });
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("enforces organizationsPerUser based on full membership count", async () => {
+    const { sessionId } = await createUserWithSession("limit-owner@test.com");
+    const { user: memberUser } = await createUserWithSession("limit-member@test.com");
+
+    const firstOrg = await createOrganization(sessionId, "Limit Org One", "limit-org-one");
+    await createOrganization(sessionId, "Limit Org Two", "limit-org-two");
+
+    const addMemberResponse = await addMember(sessionId, firstOrg.organization.id, memberUser.id, [
+      "member",
+    ]);
+    assert(addMemberResponse.type === "json");
+
+    const thirdOrg = await fragment.callRoute("POST", "/organizations", {
+      query: { sessionId },
+      body: { name: "Limit Org Three", slug: "limit-org-three" },
+    });
+
+    assert(thirdOrg.type === "error");
+    expect(thirdOrg.error.code).toBe("limit_reached");
+  });
+
+  it("rejects invitation acceptance when membersPerOrganization is reached", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-limit-owner@test.com",
+    );
+    const { user: memberUser } = await createUserWithSession("invite-limit-member@test.com");
+    const { user: inviteeUser, sessionId: inviteeSessionId } = await createUserWithSession(
+      "invite-limit-invitee@test.com",
+    );
+
+    const created = await createOrganization(
+      ownerSessionId,
+      "Invite Limit Org",
+      "invite-limit-org",
+    );
+    const orgId = created.organization.id;
+
+    const addMemberResponse = await addMember(ownerSessionId, orgId, memberUser.id, ["member"]);
+    assert(addMemberResponse.type === "json");
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: {
+          email: inviteeUser.email,
+          roles: ["member"],
+        },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const acceptResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: inviteeSessionId },
+        body: {
+          action: "accept",
+          token: inviteResponse.data.invitation.token,
+        },
+      },
+    );
+
+    assert(acceptResponse.type === "error");
+    expect(acceptResponse.error.code).toBe("limit_reached");
+  });
+
+  it("returns a single member entry with aggregated roles", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession("roles-owner@test.com");
+    const { user: memberUser } = await createUserWithSession("roles-member@test.com");
+
+    const created = await createOrganization(ownerSessionId, "Roles Org", "roles-org");
+    const orgId = created.organization.id;
+
+    const addMemberResponse = await addMember(ownerSessionId, orgId, memberUser.id, [
+      "admin",
+      "member",
+    ]);
+    assert(addMemberResponse.type === "json");
+
+    const listResponse = await fragment.callRoute("GET", "/organizations/:organizationId/members", {
+      pathParams: { organizationId: orgId },
+      query: { sessionId: ownerSessionId },
+    });
+
+    assert(listResponse.type === "json");
+    expect(listResponse.data.members).toHaveLength(2);
+
+    const memberEntries = listResponse.data.members.filter(
+      (member: { userId: string }) => member.userId === memberUser.id,
+    );
+    expect(memberEntries).toHaveLength(1);
+    expect(new Set(memberEntries[0]?.roles)).toEqual(new Set(["admin", "member"]));
   });
 });
