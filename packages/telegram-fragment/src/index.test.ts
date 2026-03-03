@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
+import { getInternalFragment } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { telegramFragmentDefinition } from "./definition";
 import { telegramRoutesFactory } from "./routes";
+import { telegramSchema } from "./schema";
 import type { TelegramUpdate } from "./types";
 import { createTelegram, defineCommand } from "./types";
 
@@ -45,6 +47,7 @@ describe("telegram-fragment", async () => {
   const onChatMemberUpdated = vi.fn();
   const commandHandler = vi.fn();
   let sendOnCommand = false;
+  let editOnCommand = false;
 
   const telegramConfig = createTelegram({
     botToken: "test-token",
@@ -64,6 +67,13 @@ describe("telegram-fragment", async () => {
           commandHandler(ctx.command.name);
           if (sendOnCommand) {
             await ctx.api.sendMessage({ chat_id: ctx.chat.id, text: "pong" });
+          }
+          if (editOnCommand) {
+            await ctx.api.editMessageText({
+              chat_id: ctx.chat.id,
+              message_id: 60,
+              text: "edited",
+            });
           }
         },
       }),
@@ -89,6 +99,7 @@ describe("telegram-fragment", async () => {
     onChatMemberUpdated.mockClear();
     commandHandler.mockClear();
     sendOnCommand = false;
+    editOnCommand = false;
     vi.mocked(global.fetch).mockReset();
   });
 
@@ -123,6 +134,45 @@ describe("telegram-fragment", async () => {
     const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
     expect(messages).toHaveLength(1);
     expect(messages[0]?.commandName).toBe("ping");
+  });
+
+  test("dedupes chat and user upserts for duplicate update entities", async () => {
+    const duplicateUser = baseUpdate.message!.from!;
+    const duplicateMember = baseUpdate.message!.new_chat_members![0]!;
+    const duplicateUpdate: TelegramUpdate = {
+      ...baseUpdate,
+      update_id: 200,
+      message: {
+        ...baseUpdate.message!,
+        message_id: 70,
+        sender_chat: {
+          ...baseUpdate.message!.chat,
+        },
+        new_chat_members: [duplicateUser, duplicateMember, duplicateMember],
+        left_chat_member: duplicateUser,
+      },
+    };
+
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: duplicateUpdate,
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    const chats = await fragments.telegram.db.find("chat", (b) => b.whereIndex("primary"));
+    expect(chats).toHaveLength(1);
+    expect(chats[0]?.id.toString()).toBe("123");
+
+    const users = await fragments.telegram.db.find("user", (b) => b.whereIndex("primary"));
+    const userIds = users.map((user) => user.id.toString());
+    expect(new Set(userIds).size).toBe(2);
+    expect(userIds).toContain("42");
+    expect(userIds).toContain("43");
   });
 
   test("dedupes webhook update ids", async () => {
@@ -239,6 +289,12 @@ describe("telegram-fragment", async () => {
     });
 
     expect(sendResponse.type).toBe("json");
+    if (sendResponse.type === "json") {
+      expect(sendResponse.data.ok).toBe(true);
+      expect(sendResponse.data.queued).toBe(true);
+    }
+
+    await drainDurableHooks(fragment);
 
     const storedAfterSend = await fragments.telegram.db.find("message", (b) =>
       b.whereIndex("primary"),
@@ -268,6 +324,12 @@ describe("telegram-fragment", async () => {
     );
 
     expect(editResponse.type).toBe("json");
+    if (editResponse.type === "json") {
+      expect(editResponse.data.ok).toBe(true);
+      expect(editResponse.data.queued).toBe(true);
+    }
+
+    await drainDurableHooks(fragment);
 
     const storedAfterEdit = await fragments.telegram.db.find("message", (b) =>
       b.whereIndex("primary"),
@@ -312,5 +374,67 @@ describe("telegram-fragment", async () => {
     const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
     expect(messages).toHaveLength(2);
     expect(messages.map((message) => message.id.toString())).toContain("123:61");
+  });
+
+  test("batches command handler outgoing hooks into a single UOW", async () => {
+    sendOnCommand = true;
+    editOnCommand = true;
+
+    const outgoingMessage = {
+      message_id: 60,
+      date: baseUpdate.message!.date + 5,
+      text: "pong",
+      chat: baseUpdate.message!.chat,
+      from: {
+        id: 999,
+        is_bot: true,
+        first_name: "TestBot",
+        username: "test_bot",
+      },
+    };
+
+    const editedMessage = {
+      ...outgoingMessage,
+      text: "edited",
+      edit_date: outgoingMessage.date + 5,
+    };
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: outgoingMessage }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: editedMessage }),
+      } as Response);
+
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: baseUpdate,
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    const internalFragment = getInternalFragment(testContext.adapter);
+    const hooksNamespace = telegramSchema.name.replace(/-/g, "_");
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [internalFragment.services.hookService.getHooksByNamespace(hooksNamespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const outgoingHooks = hooks.filter((hook) => hook.hookName === "internalOutgoingMessage");
+    expect(outgoingHooks).toHaveLength(2);
+    const nonces = new Set(outgoingHooks.map((hook) => hook.nonce));
+    expect(nonces.size).toBe(1);
   });
 });

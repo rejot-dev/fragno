@@ -174,6 +174,13 @@ export interface TelegramChatMemberHookPayload {
   leftAt: Date | null;
 }
 
+export type TelegramOutgoingHookAction = "sendMessage" | "editMessageText";
+
+export type TelegramOutgoingHookPayload = {
+  action: TelegramOutgoingHookAction;
+  payload: Record<string, unknown>;
+};
+
 export type TelegramHooks = {
   onMessageReceived?: (payload: TelegramMessageHookPayload) => Promise<void> | void;
   onCommandMatched?: (payload: TelegramCommandHookPayload) => Promise<void> | void;
@@ -186,6 +193,7 @@ export type TelegramInternalHookPayload = {
 
 export type TelegramHooksMap = {
   internalProcessUpdate: HookFn<TelegramInternalHookPayload>;
+  internalOutgoingMessage: HookFn<TelegramOutgoingHookPayload>;
   onMessageReceived: HookFn<TelegramMessageHookPayload>;
   onCommandMatched: HookFn<TelegramCommandHookPayload>;
   onChatMemberUpdated: HookFn<TelegramChatMemberHookPayload>;
@@ -202,6 +210,19 @@ export interface TelegramApi {
   sendChatAction(payload: Record<string, unknown>): Promise<TelegramApiResult<boolean>>;
 }
 
+export type TelegramQueuedResult =
+  | { ok: true; queued: true }
+  | { ok: false; error_code?: number; description?: string };
+
+export type TelegramCommandApiResult<T> = TelegramApiResult<T> | TelegramQueuedResult;
+
+export interface TelegramCommandApi {
+  call<T>(method: string, payload: Record<string, unknown>): Promise<TelegramCommandApiResult<T>>;
+  sendMessage(payload: Record<string, unknown>): Promise<TelegramQueuedResult>;
+  editMessageText(payload: Record<string, unknown>): Promise<TelegramQueuedResult>;
+  sendChatAction(payload: Record<string, unknown>): Promise<TelegramApiResult<boolean>>;
+}
+
 export interface TelegramCommandContext {
   updateId: number;
   idempotencyKey: string;
@@ -214,7 +235,7 @@ export interface TelegramCommandContext {
     args: string;
     raw: string;
   };
-  api: TelegramApi;
+  api: TelegramCommandApi;
   handlerTx: HookContext["handlerTx"];
 }
 
@@ -270,10 +291,18 @@ export function createTelegram(
       return builder;
     },
     build(overrides: Partial<TelegramFragmentConfig> = {}) {
+      const baseCommands = baseConfig.commands ?? {};
+      const internalCommands = Object.fromEntries(commands);
+      const overrideCommands = overrides.commands ?? {};
+      const mergedCommands = {
+        ...baseCommands,
+        ...internalCommands,
+        ...overrideCommands,
+      };
       const resolved = {
         ...baseConfig,
         ...overrides,
-        commands: Object.fromEntries(commands),
+        commands: mergedCommands,
       } as TelegramFragmentConfig;
 
       if (!resolved.botToken) {

@@ -105,17 +105,24 @@ const actionSchema = z.enum([
   "upload_video_note",
 ]);
 
+const positiveIntSchema = z.coerce.number().int().positive();
+
 const sendMessageSchema = z.object({
   text: z.string().min(1),
   parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
   disableWebPagePreview: z.boolean().optional(),
-  replyToMessageId: z.coerce.number().optional(),
+  replyToMessageId: positiveIntSchema.optional(),
 });
 
 const editMessageSchema = z.object({
   text: z.string().min(1),
   parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
   disableWebPagePreview: z.boolean().optional(),
+});
+
+const queuedMessageSchema = z.object({
+  ok: z.boolean(),
+  queued: z.boolean(),
 });
 
 const webhookOutputSchema = z.object({
@@ -411,69 +418,27 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
         method: "POST",
         path: "/chats/:chatId/send",
         inputSchema: sendMessageSchema,
-        outputSchema: messageSummarySchema,
-        errorCodes: ["TELEGRAM_API_ERROR"] as const,
-        handler: async function ({ pathParams, input }, { json, error }) {
+        outputSchema: queuedMessageSchema,
+        handler: async function ({ pathParams, input }, { json }) {
           const payload = await input.valid();
 
-          const result = await api.sendMessage(
-            filterUndefined({
-              chat_id: pathParams.chatId,
-              text: payload.text,
-              parse_mode: payload.parseMode,
-              disable_web_page_preview: payload.disableWebPagePreview,
-              reply_to_message_id: payload.replyToMessageId,
-            }),
-          );
-
-          if (!result.ok) {
-            return error(
-              { message: result.description ?? "Telegram API error", code: "TELEGRAM_API_ERROR" },
-              502,
-            );
-          }
-
-          const message = result.result;
-
           await this.handlerTx()
-            .withServiceCalls(
-              () =>
-                [
-                  services.upsertOutgoingMessage({
-                    message,
-                    messageType: "message",
-                  }),
-                ] as const,
-            )
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(telegramSchema, {} as TelegramHooksMap);
+              uow.triggerHook("internalOutgoingMessage", {
+                action: "sendMessage",
+                payload: filterUndefined({
+                  chat_id: pathParams.chatId,
+                  text: payload.text,
+                  parse_mode: payload.parseMode,
+                  disable_web_page_preview: payload.disableWebPagePreview,
+                  reply_to_message_id: payload.replyToMessageId,
+                }),
+              });
+            })
             .execute();
 
-          return json({
-            id: `${message.chat.id}:${message.message_id}`,
-            chatId: String(message.chat.id),
-            fromUserId: message.from ? String(message.from.id) : null,
-            senderChatId: message.sender_chat ? String(message.sender_chat.id) : null,
-            replyToMessageId: message.reply_to_message
-              ? `${message.chat.id}:${message.reply_to_message.message_id}`
-              : null,
-            messageType: "message",
-            text: message.text ?? null,
-            payload: message,
-            sentAt: new Date(message.date * 1000),
-            editedAt: message.edit_date ? new Date(message.edit_date * 1000) : null,
-            commandName: null,
-            fromUser: message.from
-              ? {
-                  id: String(message.from.id),
-                  username: message.from.username ?? null,
-                  firstName: message.from.first_name,
-                  lastName: message.from.last_name ?? null,
-                  isBot: message.from.is_bot ?? false,
-                  languageCode: message.from.language_code ?? null,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                }
-              : null,
-          });
+          return json({ ok: true, queued: true });
         },
       }),
 
@@ -481,73 +446,33 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
         method: "POST",
         path: "/chats/:chatId/messages/:messageId/edit",
         inputSchema: editMessageSchema,
-        outputSchema: messageSummarySchema,
-        errorCodes: ["TELEGRAM_API_ERROR", "INVALID_MESSAGE_ID"] as const,
+        outputSchema: queuedMessageSchema,
+        errorCodes: ["INVALID_MESSAGE_ID"] as const,
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
-          const messageId = Number(pathParams.messageId);
-          if (!Number.isFinite(messageId)) {
+          const messageIdResult = positiveIntSchema.safeParse(pathParams.messageId);
+          if (!messageIdResult.success) {
             return error({ message: "Invalid message id", code: "INVALID_MESSAGE_ID" }, 400);
           }
-
-          const result = await api.editMessageText(
-            filterUndefined({
-              chat_id: pathParams.chatId,
-              message_id: messageId,
-              text: payload.text,
-              parse_mode: payload.parseMode,
-              disable_web_page_preview: payload.disableWebPagePreview,
-            }),
-          );
-
-          if (!result.ok) {
-            return error(
-              { message: result.description ?? "Telegram API error", code: "TELEGRAM_API_ERROR" },
-              502,
-            );
-          }
-
-          const message = result.result;
+          const messageId = messageIdResult.data;
 
           await this.handlerTx()
-            .withServiceCalls(
-              () =>
-                [
-                  services.upsertOutgoingMessage({
-                    message,
-                    messageType: "edited_message",
-                  }),
-                ] as const,
-            )
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(telegramSchema, {} as TelegramHooksMap);
+              uow.triggerHook("internalOutgoingMessage", {
+                action: "editMessageText",
+                payload: filterUndefined({
+                  chat_id: pathParams.chatId,
+                  message_id: messageId,
+                  text: payload.text,
+                  parse_mode: payload.parseMode,
+                  disable_web_page_preview: payload.disableWebPagePreview,
+                }),
+              });
+            })
             .execute();
 
-          return json({
-            id: `${message.chat.id}:${message.message_id}`,
-            chatId: String(message.chat.id),
-            fromUserId: message.from ? String(message.from.id) : null,
-            senderChatId: message.sender_chat ? String(message.sender_chat.id) : null,
-            replyToMessageId: message.reply_to_message
-              ? `${message.chat.id}:${message.reply_to_message.message_id}`
-              : null,
-            messageType: "edited_message",
-            text: message.text ?? null,
-            payload: message,
-            sentAt: new Date(message.date * 1000),
-            editedAt: message.edit_date ? new Date(message.edit_date * 1000) : null,
-            commandName: null,
-            fromUser: message.from
-              ? {
-                  id: String(message.from.id),
-                  username: message.from.username ?? null,
-                  firstName: message.from.first_name,
-                  lastName: message.from.last_name ?? null,
-                  isBot: message.from.is_bot ?? false,
-                  languageCode: message.from.language_code ?? null,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                }
-              : null,
-          });
+          return json({ ok: true, queued: true });
         },
       }),
     ];

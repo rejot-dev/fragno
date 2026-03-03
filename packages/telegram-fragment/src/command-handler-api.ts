@@ -1,66 +1,60 @@
 import type { HookContext } from "@fragno-dev/db";
 import { telegramSchema } from "./schema";
-import { telegramMessageSchema } from "./types";
-import type { TelegramApi, TelegramApiResult, TelegramMessage, TelegramUpdateType } from "./types";
-import { createUpsertOutgoingMessageOps } from "./services";
+import type {
+  TelegramApi,
+  TelegramCommandApi,
+  TelegramHooksMap,
+  TelegramOutgoingHookPayload,
+  TelegramQueuedResult,
+} from "./types";
 
-const persistOutgoingMessage = async (
-  handlerTx: HookContext["handlerTx"],
-  message: TelegramMessage,
-  messageType: TelegramUpdateType,
-) => {
-  try {
-    const ops = createUpsertOutgoingMessageOps({ message, messageType });
-    await handlerTx()
-      .retrieve(({ forSchema }) => ops.retrieve(forSchema(telegramSchema)))
-      .mutate(({ forSchema, retrieveResult }) =>
-        ops.mutate({ uow: forSchema(telegramSchema), retrieveResult }),
-      )
-      .execute();
-  } catch (error) {
-    console.error("telegram outgoing message persist error", error);
-  }
-};
+type OutgoingQueueItem = TelegramOutgoingHookPayload;
 
 export const createCommandHandlerApi = (
   api: TelegramApi,
   handlerTx: HookContext["handlerTx"],
-): TelegramApi => {
-  const persistFromResult = async (method: string, result: TelegramApiResult<unknown>) => {
-    if (!result.ok) {
-      return;
-    }
-    const parsed = telegramMessageSchema.safeParse(result.result);
-    if (!parsed.success) {
-      return;
-    }
-    const normalized = method.toLowerCase();
-    const messageType: TelegramUpdateType = normalized.startsWith("editmessage")
-      ? "edited_message"
-      : "message";
-    await persistOutgoingMessage(handlerTx, parsed.data, messageType);
+): { api: TelegramCommandApi; flush: () => Promise<void> } => {
+  const queue: OutgoingQueueItem[] = [];
+
+  const enqueue = (
+    action: TelegramOutgoingHookPayload["action"],
+    payload: Record<string, unknown>,
+  ): TelegramQueuedResult => {
+    queue.push({ action, payload });
+    return { ok: true, queued: true };
   };
 
-  return {
+  const flush = async () => {
+    if (queue.length === 0) {
+      return;
+    }
+    const entries = queue.splice(0, queue.length);
+    await handlerTx()
+      .mutate(({ forSchema }) => {
+        const uow = forSchema(telegramSchema, {} as TelegramHooksMap);
+        for (const payload of entries) {
+          uow.triggerHook("internalOutgoingMessage", payload);
+        }
+      })
+      .execute();
+  };
+
+  const commandApi: TelegramCommandApi = {
     call: async <T>(method: string, payload: Record<string, unknown>) => {
-      const result = await api.call<T>(method, payload);
-      await persistFromResult(method, result);
-      return result;
-    },
-    sendMessage: async (payload: Record<string, unknown>) => {
-      const result = await api.sendMessage(payload);
-      if (result.ok) {
-        await persistOutgoingMessage(handlerTx, result.result, "message");
+      const normalized = method.toLowerCase();
+      if (normalized === "sendmessage") {
+        return enqueue("sendMessage", payload);
       }
-      return result;
-    },
-    editMessageText: async (payload: Record<string, unknown>) => {
-      const result = await api.editMessageText(payload);
-      if (result.ok) {
-        await persistOutgoingMessage(handlerTx, result.result, "edited_message");
+      if (normalized === "editmessagetext") {
+        return enqueue("editMessageText", payload);
       }
-      return result;
+      return api.call<T>(method, payload);
     },
+    sendMessage: async (payload: Record<string, unknown>) => enqueue("sendMessage", payload),
+    editMessageText: async (payload: Record<string, unknown>) =>
+      enqueue("editMessageText", payload),
     sendChatAction: (payload: Record<string, unknown>) => api.sendChatAction(payload),
   };
+
+  return { api: commandApi, flush };
 };

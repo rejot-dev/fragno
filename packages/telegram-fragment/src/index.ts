@@ -41,6 +41,8 @@ export { createTelegram, defineCommand } from "./types";
 export type {
   TelegramApi,
   TelegramApiResult,
+  TelegramCommandApi,
+  TelegramCommandApiResult,
   TelegramChatMemberHookPayload,
   TelegramChatMemberSummary,
   TelegramChatSummary,
@@ -57,6 +59,7 @@ export type {
   TelegramMessage,
   TelegramMessageHookPayload,
   TelegramMessageSummary,
+  TelegramQueuedResult,
   TelegramUpdateType,
   TelegramUpdate,
   TelegramUser,
