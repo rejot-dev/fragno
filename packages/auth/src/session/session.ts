@@ -1,6 +1,6 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
-import type { Cursor } from "@fragno-dev/db/cursor";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { authSchema } from "../schema";
 import { z } from "zod";
 import {
@@ -11,13 +11,19 @@ import {
 } from "../utils/cookie";
 import type { Role, authFragmentDefinition } from "..";
 import type { AuthHooksMap } from "../hooks";
-import type { Organization, OrganizationMemberSummary } from "../organization/types";
+import type {
+  Organization,
+  OrganizationInvitation,
+  OrganizationInvitationStatus,
+  OrganizationMember,
+} from "../organization/types";
 import {
   serializeInvitationSummary,
   serializeMember,
   serializeOrganization,
 } from "../organization/serializers";
 import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
+import { toExternalId } from "../organization/utils";
 import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
@@ -42,6 +48,241 @@ export function assertOrganizationServices(
     throw new Error(`Missing organization services: ${missing.join(", ")}`);
   }
 }
+
+type OrganizationRow = {
+  id: unknown;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  metadata: unknown;
+  createdBy: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+};
+
+type ActiveOrganizationRow = {
+  id: unknown;
+};
+
+type OrganizationMemberRoleRow = {
+  role: string;
+};
+
+type OrganizationMemberRow = {
+  id: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  organization?: OrganizationRow | null;
+  roles?: OrganizationMemberRoleRow | OrganizationMemberRoleRow[] | null;
+};
+
+type OrganizationInvitationRow = {
+  id: unknown;
+  organizationId: unknown;
+  email: string;
+  roles: unknown;
+  status: string;
+  token: string;
+  inviterId: unknown;
+  expiresAt: Date;
+  createdAt: Date;
+  respondedAt: Date | null;
+  organization?: OrganizationRow | null;
+};
+
+type SessionOwnerRow = {
+  id: unknown;
+  email: string;
+  role: Role;
+};
+
+type SessionMemberRow = {
+  id: FragnoId;
+  expiresAt: Date;
+  sessionOwner?: SessionOwnerRow | null;
+  sessionActiveOrganization?: ActiveOrganizationRow | null;
+  sessionMembers?: OrganizationMemberRow | OrganizationMemberRow[] | null;
+};
+
+type SessionInvitationRow = {
+  id: FragnoId;
+  expiresAt: Date;
+  sessionActiveOrganization?: ActiveOrganizationRow | null;
+  sessionOwner?:
+    | (SessionOwnerRow & {
+        invitations?: OrganizationInvitationRow | OrganizationInvitationRow[] | null;
+      })
+    | null;
+};
+
+type SessionExpiryRow = {
+  id: FragnoId;
+};
+
+const organizationSelect = [
+  "id",
+  "name",
+  "slug",
+  "logoUrl",
+  "metadata",
+  "createdBy",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+] as const;
+
+const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
+  if (!value) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+};
+
+const mapOrganizationRow = (organization: OrganizationRow): Organization => ({
+  id: toExternalId(organization.id),
+  name: organization.name,
+  slug: organization.slug,
+  logoUrl: organization.logoUrl ?? null,
+  metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
+  createdBy: toExternalId(organization.createdBy),
+  createdAt: organization.createdAt,
+  updatedAt: organization.updatedAt,
+  deletedAt: organization.deletedAt ?? null,
+});
+
+const mapMemberRow = (
+  member: OrganizationMemberRow,
+  organizationId: string,
+  userId: string,
+  roles: string[],
+): OrganizationMember<string> => ({
+  id: toExternalId(member.id),
+  organizationId,
+  userId,
+  roles,
+  createdAt: member.createdAt,
+  updatedAt: member.updatedAt,
+});
+
+const mapInvitationRow = (
+  invitation: OrganizationInvitationRow,
+  organizationId: string,
+): OrganizationInvitation<string> => ({
+  id: toExternalId(invitation.id),
+  organizationId,
+  email: invitation.email,
+  roles: Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [],
+  status: invitation.status as OrganizationInvitationStatus,
+  token: invitation.token,
+  inviterId: toExternalId(invitation.inviterId),
+  expiresAt: invitation.expiresAt,
+  createdAt: invitation.createdAt,
+  respondedAt: invitation.respondedAt ?? null,
+});
+
+const buildOrganizationsFromRows = (
+  rows: SessionMemberRow[],
+): Array<{
+  organization: ReturnType<typeof serializeOrganization>;
+  member: ReturnType<typeof serializeMember>;
+}> => {
+  const organizationsByMemberId = new Map<
+    string,
+    {
+      organization: Organization;
+      member: OrganizationMember<string>;
+      roles: Set<string>;
+    }
+  >();
+
+  for (const row of rows) {
+    const sessionOwner = row.sessionOwner;
+    if (!sessionOwner) {
+      continue;
+    }
+    const userId = toExternalId(sessionOwner.id);
+    const members = normalizeMany(row.sessionMembers) as OrganizationMemberRow[];
+    for (const member of members) {
+      const organizationRow = member.organization;
+      if (!organizationRow || organizationRow.deletedAt) {
+        continue;
+      }
+      const memberId = toExternalId(member.id);
+      let entry = organizationsByMemberId.get(memberId);
+      if (!entry) {
+        const organization = mapOrganizationRow(organizationRow);
+        entry = {
+          organization,
+          member: mapMemberRow(member, organization.id, userId, []),
+          roles: new Set(),
+        };
+        organizationsByMemberId.set(memberId, entry);
+      }
+
+      const roles = normalizeMany(member.roles) as OrganizationMemberRoleRow[];
+      for (const role of roles) {
+        if (role?.role) {
+          entry.roles.add(role.role);
+        }
+      }
+    }
+  }
+
+  return Array.from(organizationsByMemberId.values()).map((entry) => ({
+    organization: serializeOrganization(entry.organization),
+    member: serializeMember({
+      ...entry.member,
+      roles: Array.from(entry.roles),
+    }),
+  }));
+};
+
+const buildInvitationsFromRows = (
+  rows: SessionInvitationRow[],
+): Array<{
+  invitation: ReturnType<typeof serializeInvitationSummary>;
+  organization: ReturnType<typeof serializeOrganization>;
+}> => {
+  const invitations: Array<{
+    invitation: ReturnType<typeof serializeInvitationSummary>;
+    organization: ReturnType<typeof serializeOrganization>;
+  }> = [];
+  const seenInvitationIds = new Set<string>();
+
+  for (const row of rows) {
+    const sessionOwner = row.sessionOwner;
+    if (!sessionOwner) {
+      continue;
+    }
+    const invitationsForUser = normalizeMany(
+      sessionOwner.invitations,
+    ) as OrganizationInvitationRow[];
+    for (const invitation of invitationsForUser) {
+      if (!invitation || invitation.status !== "pending") {
+        continue;
+      }
+      const organizationRow = invitation.organization;
+      if (!organizationRow || organizationRow.deletedAt) {
+        continue;
+      }
+      const invitationId = toExternalId(invitation.id);
+      if (seenInvitationIds.has(invitationId)) {
+        continue;
+      }
+      seenInvitationIds.add(invitationId);
+
+      const organization = mapOrganizationRow(organizationRow);
+      const mappedInvitation = mapInvitationRow(invitation, organization.id);
+      invitations.push({
+        invitation: serializeInvitationSummary(mappedInvitation),
+        organization: serializeOrganization(organization),
+      });
+    }
+  }
+
+  return invitations;
+};
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
@@ -70,9 +311,10 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             return { ok: false as const, code: "user_banned" as const };
           }
 
+          const expiresAtDb = uow.now().plus({ days: 30 });
           const id = uow.create("session", {
             userId,
-            expiresAt,
+            expiresAt: expiresAtDb,
           });
           const userSummary = mapUserSummary(user);
 
@@ -102,26 +344,29 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
      * Validate a session and return user info or null when invalid.
      */
     validateSession: function (this: AuthServiceContext, sessionId: string) {
-      const now = new Date();
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("session", (b) =>
-            b
-              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
-          ),
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+              ),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [session] }) => {
+        .mutate(({ uow, retrieveResult: [session, expiredSession] }) => {
+          if (expiredSession) {
+            uow.delete("session", expiredSession.id, (b) => b.check());
+          }
           if (!session) {
             return null;
           }
-
-          // Check if session has expired
-          if (session.expiresAt < now) {
-            uow.delete("session", session.id, (b) => b.check());
-            return null;
-          }
-
           if (!session.sessionOwner) {
             return null;
           }
@@ -184,26 +429,30 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
      */
     getSession: function (this: AuthServiceContext, headers: Headers) {
       const sessionId = extractSessionId(headers);
-      const now = new Date();
 
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("session", (b) =>
-            b
-              .whereIndex("primary", (eb) => eb("id", "=", sessionId ?? ""))
-              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
-          ),
+          uow
+            .findFirst("session", (b) =>
+              b
+                .whereIndex("idx_session_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", sessionId ?? ""), eb("expiresAt", ">", eb.now())),
+                )
+                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+            )
+            .findFirst("session", (b) =>
+              b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", sessionId ?? ""), eb("expiresAt", "<=", eb.now())),
+              ),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [session] }) => {
+        .mutate(({ uow, retrieveResult: [session, expiredSession] }) => {
+          if (expiredSession) {
+            uow.delete("session", expiredSession.id, (b) => b.check());
+          }
           if (!session || !sessionId) {
             return undefined;
           }
-
-          if (session.expiresAt < now) {
-            uow.delete("session", session.id, (b) => b.check());
-            return undefined;
-          }
-
           if (!session.sessionOwner) {
             return undefined;
           }
@@ -312,110 +561,157 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
+          if (config.organizations !== false) {
+            assertOrganizationServices(services);
+          }
+
+          const result = await this.handlerTx()
+            .retrieve(({ forSchema }) => {
+              const uow = forSchema(authSchema);
+              const scheduleExpiredLookup = () => {
+                uow.findFirst("session", (b) =>
+                  b.whereIndex("idx_session_id_expiresAt", (eb) =>
+                    eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+                  ),
+                );
+              };
+
+              if (config.organizations === false) {
+                uow.find("session", (b) =>
+                  b
+                    .whereIndex("idx_session_id_expiresAt", (eb) =>
+                      eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                    )
+                    .join((jb) => jb.sessionOwner((ub) => ub.select(["id", "email", "role"]))),
+                );
+                scheduleExpiredLookup();
+                return uow;
+              }
+
+              uow.find("session", (b) =>
+                b
+                  .whereIndex("idx_session_id_expiresAt", (eb) =>
+                    eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                  )
+                  .join((jb) =>
+                    jb
+                      .sessionOwner((ub) => ub.select(["id", "email", "role"]))
+                      .sessionActiveOrganization((ob) => ob.select(["id"]))
+                      .sessionMembers((mb) =>
+                        mb.join((jb2) =>
+                          jb2["organization"]((ob) => ob.select(organizationSelect))["roles"](
+                            (rb) => rb.select(["role"]),
+                          ),
+                        ),
+                      ),
+                  ),
+              );
+
+              uow.find("session", (b) =>
+                b
+                  .whereIndex("idx_session_id_expiresAt", (eb) =>
+                    eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                  )
+                  .join((jb) =>
+                    jb.sessionOwner((ub) =>
+                      ub
+                        .select(["id", "email", "role"])
+                        .join((jb2) =>
+                          jb2["invitations"]((ib) =>
+                            ib.join((jb3) =>
+                              jb3["organization"]((ob) => ob.select(organizationSelect)),
+                            ),
+                          ),
+                        ),
+                    ),
+                  ),
+              );
+
+              scheduleExpiredLookup();
+              return uow;
+            })
+            .transformRetrieve((retrieveResult) => {
+              if (config.organizations === false) {
+                const [sessions, expiredSession] = retrieveResult as unknown as [
+                  SessionMemberRow[],
+                  SessionExpiryRow | null,
+                ];
+                return {
+                  session: sessions[0] ?? null,
+                  organizations: [],
+                  invitations: [],
+                  activeOrganizationId: null,
+                  expiredSession,
+                };
+              }
+
+              const [memberRows, invitationRows, expiredSession] = retrieveResult as unknown as [
+                SessionMemberRow[],
+                SessionInvitationRow[],
+                SessionExpiryRow | null,
+              ];
+              const session = memberRows[0] ?? invitationRows[0] ?? null;
+              const activeOrganizationId =
+                session?.sessionActiveOrganization && session.sessionActiveOrganization.id
+                  ? toExternalId(session.sessionActiveOrganization.id)
+                  : null;
+
+              return {
+                session,
+                organizations: buildOrganizationsFromRows(memberRows),
+                invitations: buildInvitationsFromRows(invitationRows),
+                activeOrganizationId,
+                expiredSession,
+              };
+            })
+            .mutate(({ forSchema, retrieveResult }) => {
+              const { session, expiredSession } = retrieveResult;
+              if (expiredSession) {
+                const uow = forSchema(authSchema);
+                uow.delete("session", expiredSession.id, (b) => b.check());
+              }
+              if (!session) {
+                return { invalid: true as const };
+              }
+              if (!session.sessionOwner) {
+                return { invalid: true as const };
+              }
+              return { invalid: false as const };
+            })
+            .transform(({ retrieveResult, mutateResult }) => {
+              const { session, organizations, invitations, activeOrganizationId } = retrieveResult;
+              if (mutateResult.invalid || !session || !session.sessionOwner) {
+                return { ok: false as const };
+              }
+
+              const user = session.sessionOwner;
+              const userId = toExternalId(user.id);
+              const activeOrganization = activeOrganizationId
+                ? (organizations.find((entry) => entry.organization.id === activeOrganizationId) ??
+                  null)
+                : null;
+
+              return {
+                ok: true as const,
+                data: {
+                  user: {
+                    id: userId,
+                    email: user.email,
+                    role: user.role as Role,
+                  },
+                  organizations,
+                  activeOrganization,
+                  invitations,
+                },
+              };
+            })
             .execute();
 
-          if (!session) {
+          if (!result.ok) {
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
-          if (config.organizations === false) {
-            return json({
-              user: {
-                id: session.user.id,
-                email: session.user.email,
-                role: session.user.role as Role,
-              },
-              organizations: [],
-              activeOrganization: null,
-              invitations: [],
-            });
-          }
-
-          assertOrganizationServices(services);
-          const organizationServices = services as Required<typeof services>;
-
-          const organizations: Array<{
-            organization: Organization;
-            member: OrganizationMemberSummary;
-          }> = [];
-          let cursor: Cursor | undefined;
-          let hasNextPage = true;
-          const maxOrganizationPages = 50;
-          let pageCount = 0;
-          while (hasNextPage) {
-            if (++pageCount > maxOrganizationPages) {
-              throw new Error(
-                `Exceeded organization page limit (${maxOrganizationPages}) for user ${session.user.id}`,
-              );
-            }
-            const [organizationsResult] = await this.handlerTx()
-              .withServiceCalls(() => [
-                organizationServices.getOrganizationsForUser({
-                  userId: session.user.id,
-                  pageSize: 1000,
-                  cursor,
-                }),
-              ])
-              .execute();
-
-            organizations.push(...organizationsResult.organizations);
-            cursor = organizationsResult.cursor;
-            hasNextPage = organizationsResult.hasNextPage;
-          }
-
-          const memberIds = organizations.map((entry) => entry.member.id);
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              organizationServices.listOrganizationMemberRolesForMembers(memberIds),
-            ])
-            .execute();
-
-          const organizationsWithRoles = organizations.map((entry) => ({
-            organization: serializeOrganization(entry.organization),
-            member: serializeMember({
-              ...entry.member,
-              roles: rolesResult.rolesByMemberId[entry.member.id] ?? [],
-            }),
-          }));
-
-          const [invitationsResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              organizationServices.listOrganizationInvitationsForUser({
-                email: session.user.email,
-                status: "pending",
-              }),
-            ])
-            .execute();
-
-          const invitations = invitationsResult.invitations
-            .filter((entry) => entry.organization)
-            .map((entry) => ({
-              invitation: serializeInvitationSummary(entry.invitation),
-              organization: serializeOrganization(entry.organization!),
-            }));
-
-          const [activeResult] = await this.handlerTx()
-            .withServiceCalls(() => [organizationServices.getActiveOrganization(sessionId)])
-            .execute();
-
-          const activeOrganization = activeResult.organizationId
-            ? (organizationsWithRoles.find(
-                (entry) => entry.organization.id === activeResult.organizationId,
-              ) ?? null)
-            : null;
-
-          return json({
-            user: {
-              id: session.user.id,
-              email: session.user.email,
-              role: session.user.role as Role,
-            },
-            organizations: organizationsWithRoles,
-            activeOrganization,
-            invitations,
-          });
+          return json(result.data);
         },
       }),
     ];

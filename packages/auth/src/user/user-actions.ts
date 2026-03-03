@@ -461,44 +461,104 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
 
           const { email, password } = await input.valid();
 
-          // Get user by email
-          const [user] = await this.handlerTx()
-            .withServiceCalls(() => [services.getUserByEmail(email)])
+          let passwordCheck:
+            | { ok: true }
+            | { ok: false; code: "invalid_credentials" | "user_banned" }
+            | null = null;
+
+          const result = await this.handlerTx({
+            onAfterRetrieve: async (_uow, results) => {
+              const firstResult = Array.isArray(results[0]) ? results[0] : [];
+              const user = (firstResult[0] ?? null) as {
+                passwordHash?: string | null;
+                bannedAt?: Date | null;
+              } | null;
+
+              if (!user || !user.passwordHash) {
+                passwordCheck = { ok: false, code: "invalid_credentials" };
+                return;
+              }
+
+              const isValid = await verifyPassword(password, user.passwordHash);
+              if (!isValid) {
+                passwordCheck = { ok: false, code: "invalid_credentials" };
+                return;
+              }
+
+              if (user.bannedAt) {
+                passwordCheck = { ok: false, code: "user_banned" };
+                return;
+              }
+
+              passwordCheck = { ok: true };
+            },
+          })
+            .retrieve(({ forSchema }) =>
+              forSchema(authSchema).findFirst("user", (b) =>
+                b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+              ),
+            )
+            .mutate(({ forSchema, retrieveResult: [user] }) => {
+              if (!user || !passwordCheck) {
+                return { ok: false as const, code: "invalid_credentials" as const };
+              }
+
+              if (!passwordCheck.ok) {
+                return { ok: false as const, code: passwordCheck.code };
+              }
+
+              const uow = forSchema(authSchema);
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + 30);
+              const expiresAtDb = uow.now().plus({ days: 30 });
+              const sessionId = uow.create("session", {
+                userId: user.id,
+                expiresAt: expiresAtDb,
+              });
+
+              const userSummary = mapUserSummary({
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                bannedAt: user.bannedAt ?? null,
+              });
+
+              uow.triggerHook("onSessionCreated", {
+                session: {
+                  id: sessionId.valueOf(),
+                  user: userSummary,
+                  expiresAt,
+                  activeOrganizationId: null,
+                },
+                actor: userSummary,
+              });
+
+              return {
+                ok: true as const,
+                sessionId: sessionId.valueOf(),
+                userId: user.id,
+                email: user.email,
+                role: user.role as "user" | "admin",
+              };
+            })
             .execute();
-          if (!user) {
-            return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
-          }
 
-          // Verify password
-          if (!user.passwordHash) {
-            return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
-          }
-
-          const isValid = await verifyPassword(password, user.passwordHash);
-          if (!isValid) {
-            return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
-          }
-
-          // Create session
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.createSession(user.id)])
-            .execute();
-          if (!session.ok) {
-            if (session.code === "user_banned") {
+          if (!result.ok) {
+            if (result.code === "user_banned") {
               return error({ message: "User is banned", code: "user_banned" }, 403);
             }
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }
 
-          // Build response with Set-Cookie header
-          const setCookieHeader = buildSetCookieHeader(session.session.id, config.cookieOptions);
+          const sessionId = String(result.sessionId);
+          const setCookieHeader = buildSetCookieHeader(sessionId, config.cookieOptions);
 
           return json(
             {
-              sessionId: session.session.id,
-              userId: user.id,
-              email: user.email,
-              role: user.role,
+              sessionId,
+              userId: String(result.userId),
+              email: result.email,
+              role: result.role,
             },
             {
               headers: {

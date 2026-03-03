@@ -122,7 +122,8 @@ export const session_auth = mysqlTable("session_auth", {
     foreignColumns: [organization_auth._internalId],
     name: "fk_session_organization_sessionActiveOrganization_auth_c1d88689"
   }),
-  index("idx_session_idx_session_user_auth_0748231c").on(table.userId)
+  index("idx_session_idx_session_user_auth_0748231c").on(table.userId),
+  index("idx_session_idx_session_id_expiresAt_auth_2345cc9f").on(table.id, table.expiresAt)
 ])
 
 export const organization_auth = mysqlTable("organization_auth", {
@@ -409,7 +410,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 21
+  schemaVersion: 30
 }
 
 // ============================================================================

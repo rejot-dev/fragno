@@ -216,7 +216,6 @@ const tokenUpdateProvider = createTestProvider({
 
 describe("auth oauth", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1019,7 +1018,6 @@ describe("auth oauth", async () => {
 
 describe("auth oauth disabled", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1070,7 +1068,6 @@ describe("auth oauth missing redirect uri", async () => {
   });
 
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1119,7 +1116,6 @@ describe("auth oauth missing redirect uri", async () => {
 
 describe("auth oauth expired state", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1169,7 +1165,6 @@ describe("auth oauth expired state", async () => {
 
 describe("auth oauth linkByEmail false", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -1232,7 +1227,6 @@ describe("auth oauth token storage", async () => {
     provider: OAuthProvider,
   ) => {
     const { fragments, test } = await buildDatabaseFragmentsTest()
-      .withDbRoundtripGuard(false)
       .withTestAdapter({ type: "drizzle-pglite" })
       .withFragment(
         "auth",

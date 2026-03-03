@@ -2,7 +2,6 @@ import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import { type Cursor, decodeCursor } from "@fragno-dev/db/cursor";
 import { z } from "zod";
 import type { authFragmentDefinition } from "..";
-import type { Role } from "../types";
 import { extractSessionId } from "../utils/cookie";
 import {
   serializeInvitation,
@@ -51,7 +50,7 @@ const parseCursor = (cursorParam: string | null): Cursor | undefined => {
 };
 
 export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
-  ({ services, config }) => {
+  ({ config, services }) => {
     const organizationsEnabled = config.organizations !== false;
     const defineOrganizationRoute = ((route: Parameters<typeof defineRoute>[0]) =>
       defineRoute({
@@ -92,30 +91,36 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+          let body: z.infer<typeof createOrganizationInputSchema> | null = null;
+          let inputError: unknown = null;
+          try {
+            body = await input.valid();
+          } catch (err) {
+            inputError = err;
           }
 
-          const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganization({
-                name: body.name,
-                slug: body.slug,
-                logoUrl: body.logoUrl ?? null,
-                metadata: body.metadata ?? null,
-                creatorUserId: session.user.id,
-                creatorUserRole: session.user.role as Role,
+              services.createOrganizationWithSession({
                 sessionId,
+                input: body,
+                inputError,
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
+            if (result.code === "input_invalid") {
+              if (inputError) {
+                throw inputError;
+              }
+              return error({ message: "Invalid input", code: "invalid_input" }, 400);
+            }
+
             if (result.code === "organization_slug_taken") {
               return error(
                 { message: "Organization slug taken", code: "organization_slug_taken" },
@@ -167,39 +172,31 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const cursor = parseCursor(query.get("cursor"));
+          const rawCursor = parseCursor(query.get("cursor"));
+          const cursor =
+            rawCursor && (rawCursor.indexName === "_primary" || rawCursor.indexName === "primary")
+              ? rawCursor
+              : undefined;
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationsForUser({
-                userId: session.user.id,
+              services.getOrganizationsForSession({
+                sessionId,
                 pageSize: parsed.data.pageSize,
                 cursor,
               }),
             ])
             .execute();
 
-          const memberIds = result.organizations.map((entry) => entry.member.id);
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRolesForMembers(memberIds)])
-            .execute();
+          if (!result.ok) {
+            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+          }
 
           return json({
             organizations: result.organizations.map((entry) => ({
               organization: serializeOrganization(entry.organization),
-              member: serializeMember({
-                ...entry.member,
-                roles: rolesResult.rolesByMemberId[entry.member.id] ?? [],
-              }),
+              member: serializeMember(entry.member),
             })),
-            cursor: result.cursor?.encode(),
+            cursor: result.cursor,
             hasNextPage: result.hasNextPage,
           });
         },
@@ -222,53 +219,25 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [activeResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getActiveOrganization(sessionId)])
-            .execute();
-
-          if (!activeResult.organizationId) {
-            return json(null);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(activeResult.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return json(null);
-          }
-
-          const [memberResult] = await this.handlerTx()
+          const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
-                organizationId: activeResult.organizationId,
-                userId: session.user.id,
+              services.getActiveOrganizationForSession({
+                sessionId,
               }),
             ])
             .execute();
 
-          if (!memberResult) {
+          if (!result.ok) {
+            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+          }
+
+          if (!result.data) {
             return json(null);
           }
 
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRoles(memberResult.id)])
-            .execute();
-
           return json({
-            organization: serializeOrganization(organizationResult.organization),
-            member: serializeMember({
-              ...memberResult,
-              roles: rolesResult.roles,
-            }),
+            organization: serializeOrganization(result.data.organization),
+            member: serializeMember(result.data.member),
           });
         },
       }),
@@ -291,63 +260,35 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const body = await input.valid();
 
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(body.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
-          const [memberResult] = await this.handlerTx()
+          const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
+              services.setActiveOrganizationForSession({
+                sessionId,
                 organizationId: body.organizationId,
-                userId: session.user.id,
               }),
             ])
             .execute();
 
-          if (!memberResult) {
-            return error({ message: "Membership not found", code: "membership_not_found" }, 404);
-          }
+          if (!result.ok) {
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
 
-          const [setResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.setActiveOrganization(sessionId, body.organizationId),
-            ])
-            .execute();
-
-          if (!setResult.ok) {
-            if (setResult.code === "membership_not_found") {
+            if (result.code === "membership_not_found") {
               return error({ message: "Membership not found", code: "membership_not_found" }, 404);
             }
+
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRoles(memberResult.id)])
-            .execute();
-
           return json({
-            organization: serializeOrganization(organizationResult.organization),
-            member: serializeMember({
-              ...memberResult,
-              roles: rolesResult.roles,
-            }),
+            organization: serializeOrganization(result.organization),
+            member: serializeMember(result.member),
           });
         },
       }),
@@ -371,30 +312,19 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
+          const [result] = await this.handlerTx()
+            .withServiceCalls(() => [services.listInvitationsForSession({ sessionId })])
             .execute();
 
-          if (!session) {
+          if (!result.ok) {
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
-          const [result] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.listOrganizationInvitationsForUser({
-                email: session.user.email,
-                status: "pending",
-              }),
-            ])
-            .execute();
-
           return json({
-            invitations: result.invitations
-              .filter((entry) => entry.organization)
-              .map((entry) => ({
-                invitation: serializeInvitation(entry.invitation),
-                organization: serializeOrganization(entry.organization!),
-              })),
+            invitations: result.invitations.map((entry) => ({
+              invitation: serializeInvitation(entry.invitation),
+              organization: serializeOrganization(entry.organization),
+            })),
           });
         },
       }),
@@ -424,48 +354,19 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const body = await input.valid();
 
           if ((body.action === "accept" || body.action === "reject") && !body.token) {
             return error({ message: "Invalid token", code: "invalid_token" }, 400);
           }
 
-          const [invitationLookup] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.getOrganizationInvitationById(pathParams.invitationId),
-            ])
-            .execute();
-
-          if (!invitationLookup) {
-            return error({ message: "Invitation not found", code: "invitation_not_found" }, 404);
-          }
-
-          const [memberResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
-                organizationId: invitationLookup.invitation.organizationId,
-                userId: session.user.id,
-              }),
-            ])
-            .execute();
-
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.respondToOrganizationInvitation({
+              services.respondToInvitationWithSession({
+                sessionId,
                 invitationId: pathParams.invitationId,
                 action: body.action,
                 token: body.token,
-                actor: { userId: session.user.id, userRole: session.user.role as Role },
-                organizationId: invitationLookup.invitation.organizationId,
-                actorMemberId: memberResult?.id,
               }),
             ])
             .execute();
@@ -485,6 +386,10 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
             if (result.code === "permission_denied") {
               return error({ message: "Permission denied", code: "permission_denied" }, 403);
+            }
+
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
             }
 
             return error({ message: "Invitation not found", code: "invitation_not_found" }, 404);
@@ -511,48 +416,33 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(pathParams.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
-          const [memberResult] = await this.handlerTx()
+          const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
+              services.getOrganizationForSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
-                userId: session.user.id,
               }),
             ])
             .execute();
 
-          if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 403);
+          if (!result.ok) {
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
+
+            if (result.code === "permission_denied") {
+              return error({ message: "Permission denied", code: "permission_denied" }, 403);
+            }
+
+            return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRoles(memberResult.id)])
-            .execute();
-
           return json({
-            organization: serializeOrganization(organizationResult.organization),
-            member: serializeMember({
-              ...memberResult,
-              roles: rolesResult.roles,
-            }),
+            organization: serializeOrganization(result.organization),
+            member: serializeMember(result.member),
           });
         },
       }),
@@ -578,25 +468,23 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const body = await input.valid();
+
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.updateOrganization(pathParams.organizationId, body, {
-                userId: session.user.id,
-                userRole: session.user.role as Role,
+              services.updateOrganizationWithSession({
+                sessionId,
+                organizationId: pathParams.organizationId,
+                patch: body,
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
             if (result.code === "organization_not_found") {
               return error(
                 { message: "Organization not found", code: "organization_not_found" },
@@ -638,24 +526,20 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.deleteOrganization(pathParams.organizationId, {
-                userId: session.user.id,
-                userRole: session.user.role as Role,
+              services.deleteOrganizationWithSession({
+                sessionId,
+                organizationId: pathParams.organizationId,
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
             if (result.code === "organization_not_found") {
               return error(
                 { message: "Organization not found", code: "organization_not_found" },
@@ -695,43 +579,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           if (!sessionId) {
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
-
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(pathParams.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
-          const [memberResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
-                organizationId: pathParams.organizationId,
-                userId: session.user.id,
-              }),
-            ])
-            .execute();
-
-          if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 403);
-          }
-
           const cursor = parseCursor(query.get("cursor"));
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.listOrganizationMembers({
+              services.listOrganizationMembersWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
                 pageSize: parsed.data.pageSize,
                 cursor,
@@ -739,19 +591,24 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             ])
             .execute();
 
-          const memberIds = result.members.map((member) => member.id);
-          const [rolesResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.listOrganizationMemberRolesForMembers(memberIds)])
-            .execute();
+          if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
+
+            return error({ message: "Permission denied", code: "permission_denied" }, 403);
+          }
 
           return json({
-            members: result.members.map((member) =>
-              serializeMember({
-                ...member,
-                roles: rolesResult.rolesByMemberId[member.id] ?? [],
-              }),
-            ),
-            cursor: result.cursor?.encode(),
+            members: result.members.map((member) => serializeMember(member)),
+            cursor: result.cursor,
             hasNextPage: result.hasNextPage,
           });
         },
@@ -780,39 +637,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           if (!sessionId) {
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
-
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(pathParams.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganizationMember({
+              services.createOrganizationMemberWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
                 userId: body.userId,
                 roles: body.roles,
-                actor: { userId: session.user.id, userRole: session.user.role as Role },
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
+
             if (result.code === "member_already_exists") {
               return error(
                 { message: "Member already exists", code: "member_already_exists" },
@@ -849,28 +697,23 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           if (!sessionId) {
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
-
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.updateOrganizationMemberRoles({
+              services.updateOrganizationMemberRolesWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
                 memberId: pathParams.memberId,
                 roles: body.roles,
-                actor: { userId: session.user.id, userRole: session.user.role as Role },
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
             if (result.code === "member_not_found") {
               return error({ message: "Member not found", code: "member_not_found" }, 404);
             }
@@ -901,26 +744,21 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           if (!sessionId) {
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
-
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.removeOrganizationMember({
+              services.deleteOrganizationMemberWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
                 memberId: pathParams.memberId,
-                actor: { userId: session.user.id, userRole: session.user.role as Role },
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
             if (result.code === "member_not_found") {
               return error({ message: "Member not found", code: "member_not_found" }, 404);
             }
@@ -950,48 +788,34 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(pathParams.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
-          const [memberResult] = await this.handlerTx()
+          const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
+              services.listOrganizationInvitationsWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
-                userId: session.user.id,
               }),
             ])
             .execute();
 
-          if (!memberResult) {
+          if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
+
             return error({ message: "Permission denied", code: "permission_denied" }, 403);
           }
 
-          const [result] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.listOrganizationInvitations({
-                organizationId: pathParams.organizationId,
-              }),
-            ])
-            .execute();
-
           return json({
-            invitations: result.invitations.map(serializeInvitationSummary),
+            invitations: result.invitations.map((invitation) =>
+              serializeInvitationSummary(invitation),
+            ),
           });
         },
       }),
@@ -1019,53 +843,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const [session] = await this.handlerTx()
-            .withServiceCalls(() => [services.validateSession(sessionId)])
-            .execute();
-
-          if (!session) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
-          }
-
-          const [organizationResult] = await this.handlerTx()
-            .withServiceCalls(() => [services.getOrganizationById(pathParams.organizationId)])
-            .execute();
-
-          if (!organizationResult) {
-            return error(
-              { message: "Organization not found", code: "organization_not_found" },
-              404,
-            );
-          }
-
-          const [memberResult] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.getOrganizationMemberByUser({
-                organizationId: pathParams.organizationId,
-                userId: session.user.id,
-              }),
-            ])
-            .execute();
-
-          if (!memberResult) {
-            return error({ message: "Permission denied", code: "permission_denied" }, 403);
-          }
-
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganizationInvitation({
+              services.createOrganizationInvitationWithSession({
+                sessionId,
                 organizationId: pathParams.organizationId,
                 email: body.email,
                 roles: body.roles,
-                inviterId: session.user.id,
-                actor: { userId: session.user.id, userRole: session.user.role as Role },
-                actorMemberId: memberResult.id,
               }),
             ])
             .execute();
 
           if (!result.ok) {
+            if (result.code === "session_invalid") {
+              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            }
+
+            if (result.code === "organization_not_found") {
+              return error(
+                { message: "Organization not found", code: "organization_not_found" },
+                404,
+              );
+            }
+
             if (result.code === "limit_reached") {
               return error({ message: "Limit reached", code: "limit_reached" }, 400);
             }

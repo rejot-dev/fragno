@@ -129,6 +129,7 @@ export const session_auth = sqliteTable("session_auth", {
     name: "fk_session_organization_sessionActiveOrganization_auth_c1d88689"
   }),
   index("idx_session_idx_session_user_auth_0748231c").on(table.userId),
+  index("idx_session_idx_session_id_expiresAt_auth_2345cc9f").on(table.id, table.expiresAt),
   uniqueIndex("uidx_session_idx_session_external_id_auth_79bf465d").on(table.id)
 ])
 
@@ -422,7 +423,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 21
+  schemaVersion: 30
 }
 
 // ============================================================================

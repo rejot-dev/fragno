@@ -124,7 +124,8 @@ export const session_auth = schema_auth.table("session", {
     foreignColumns: [organization_auth._internalId],
     name: "fk_session_organization_sessionActiveOrganization"
   }),
-  index("idx_session_user").on(table.userId)
+  index("idx_session_user").on(table.userId),
+  index("idx_session_id_expiresAt").on(table.id, table.expiresAt)
 ])
 
 export const organization_auth = schema_auth.table("organization", {
@@ -411,7 +412,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 21
+  schemaVersion: 30
 }
 
 // ============================================================================

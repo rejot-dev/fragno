@@ -7,7 +7,6 @@ import { hashPassword } from "./password";
 
 const buildAuthTest = async () =>
   buildDatabaseFragmentsTest()
-    .withDbRoundtripGuard(false)
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
