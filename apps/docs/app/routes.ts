@@ -22,18 +22,31 @@ export default [
   ]),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
+  route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   layout("layouts/backoffice-layout.tsx", [
     ...prefix("backoffice", [
       index("routes/backoffice/dashboard.tsx"),
       route("organisations", "routes/backoffice/organisations.tsx"),
-      route("organisations/:orgId/telegram", "routes/backoffice/organisation-telegram-layout.tsx", [
-        index("routes/backoffice/organisation-telegram-index.tsx"),
-        route("configuration", "routes/backoffice/organisation-telegram-configuration.tsx"),
-        route("messages", "routes/backoffice/organisation-telegram-messages.tsx", [
-          index("routes/backoffice/organisation-telegram-messages-index.tsx"),
-          route(":chatId", "routes/backoffice/organisation-telegram-message-thread.tsx"),
-        ]),
+      route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
+      route("organisations/:orgId", "routes/backoffice/organisation-layout.tsx", [
+        index("routes/backoffice/organisation-overview.tsx"),
+        route("members", "routes/backoffice/organisation-members.tsx"),
+        route("invites", "routes/backoffice/organisation-invites.tsx"),
       ]),
+      route("connections", "routes/backoffice/connections/index.tsx"),
+      route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
+      route(
+        "connections/telegram/:orgId",
+        "routes/backoffice/connections/telegram/organisation-layout.tsx",
+        [
+          index("routes/backoffice/connections/telegram/organisation-index.tsx"),
+          route("configuration", "routes/backoffice/connections/telegram/configuration.tsx"),
+          route("messages", "routes/backoffice/connections/telegram/messages.tsx", [
+            index("routes/backoffice/connections/telegram/messages-index.tsx"),
+            route(":chatId", "routes/backoffice/connections/telegram/message-thread.tsx"),
+          ]),
+        ],
+      ),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
     ]),

@@ -1,8 +1,8 @@
 import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
 import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
-import type { Route } from "./+types/organisation-telegram-messages";
-import { fetchTelegramChats, fetchTelegramConfig } from "./organisation-telegram-data";
-import type { TelegramLayoutContext } from "./organisation-telegram-shared";
+import type { Route } from "./+types/messages";
+import { fetchTelegramChats, fetchTelegramConfig } from "./data";
+import type { TelegramLayoutContext } from "./shared";
 
 type TelegramMessagesLoaderData = {
   configError: string | null;
@@ -31,7 +31,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/organisations/${params.orgId}/telegram/configuration`);
+    return redirect(`/backoffice/connections/telegram/${params.orgId}/configuration`);
   }
 
   const { chats, chatsError } = await fetchTelegramChats(request, context, params.orgId);
@@ -55,7 +55,7 @@ export default function BackofficeOrganisationTelegramMessagesLayout() {
   const { orgId } = useOutletContext<TelegramLayoutContext>();
   const { chatId } = useParams();
   const selectedChatId = chatId ?? null;
-  const basePath = `/backoffice/organisations/${orgId}/telegram/messages`;
+  const basePath = `/backoffice/connections/telegram/${orgId}/messages`;
   const isDetailRoute = Boolean(selectedChatId);
 
   if (configError) {

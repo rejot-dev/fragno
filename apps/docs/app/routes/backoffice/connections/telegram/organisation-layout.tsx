@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
-import type { Route } from "./+types/organisation-telegram-layout";
-import { getOrganisation } from "./organisations.data";
+import type { Route } from "./+types/organisation-layout";
 import {
   TelegramErrorBoundary,
   TelegramHeader,
   TelegramTabs,
   type TelegramConfigState,
   type TelegramTab,
-} from "./organisation-telegram-shared";
-import { fetchTelegramConfig } from "./organisation-telegram-data";
+} from "./shared";
+import { fetchTelegramConfig } from "./data";
+import { getAuthMe } from "@/fragno/auth-server";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const organisation = getOrganisation(params.orgId);
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    return Response.redirect(new URL("/backoffice/login", request.url), 302);
+  }
+
+  const organisation =
+    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
   if (!organisation) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -63,9 +69,10 @@ export default function BackofficeOrganisationTelegramLayout({
 
   let activeTab: TelegramTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
-  if (currentPath.includes("/telegram/messages")) {
+  const pathSegments = currentPath.split("/").filter(Boolean);
+  if (pathSegments.includes("messages")) {
     activeTab = "messages";
-  } else if (currentPath.includes("/configuration")) {
+  } else if (pathSegments.includes("configuration")) {
     activeTab = "configuration";
   }
 

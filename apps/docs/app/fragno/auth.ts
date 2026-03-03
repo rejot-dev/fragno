@@ -79,7 +79,9 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
         secure: !isDev,
         path: "/",
       },
-      organizations: false,
+      organizations: {
+        autoCreateOrganization: {},
+      },
       oauth: oauthConfig,
     },
     { databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined) },

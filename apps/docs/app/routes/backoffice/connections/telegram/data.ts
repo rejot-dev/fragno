@@ -3,7 +3,7 @@ import type { RouterContextProvider } from "react-router";
 import type { TelegramChatSummary, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 import type { TelegramFragment } from "@/fragno/telegram";
 import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
-import type { TelegramConfigState } from "./organisation-telegram-shared";
+import type { TelegramConfigState } from "./shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;

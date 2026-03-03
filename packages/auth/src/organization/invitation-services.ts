@@ -69,6 +69,7 @@ type OrganizationRow = {
   logoUrl: string | null;
   metadata: unknown;
   createdBy: unknown;
+  organizationCreator?: { id?: unknown } | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -94,7 +95,7 @@ const mapOrganization = (organization: OrganizationRow): Organization => ({
   slug: organization.slug,
   logoUrl: organization.logoUrl ?? null,
   metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
-  createdBy: toExternalId(organization.createdBy),
+  createdBy: toExternalId(organization.organizationCreator?.id ?? organization.createdBy),
   createdAt: organization.createdAt,
   updatedAt: organization.updatedAt,
   deletedAt: organization.deletedAt ?? null,
@@ -397,7 +398,11 @@ export function createOrganizationInvitationServices(
                   eb.and(eb("email", "=", email), eb("status", "=", status)),
                 )
               : b.whereIndex("idx_org_invitation_email", (eb) => eb("email", "=", email))
-            ).join((j) => j.organizationInvitationOrganization()),
+            ).join((j) =>
+              j.organizationInvitationOrganization((org) =>
+                org.join((j) => j.organizationCreator()),
+              ),
+            ),
           ),
         )
         .transformRetrieve(([invitations]) => ({
@@ -424,7 +429,8 @@ export function createOrganizationInvitationServices(
                     logoUrl: invitation.organizationInvitationOrganization.logoUrl ?? null,
                     metadata: invitation.organizationInvitationOrganization.metadata ?? null,
                     createdBy: toExternalId(
-                      invitation.organizationInvitationOrganization.createdBy,
+                      invitation.organizationInvitationOrganization.organizationCreator?.id ??
+                        invitation.organizationInvitationOrganization.createdBy,
                     ),
                     createdAt: invitation.organizationInvitationOrganization.createdAt,
                     updatedAt: invitation.organizationInvitationOrganization.updatedAt,

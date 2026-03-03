@@ -140,7 +140,7 @@ const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
   return `${trimmed}/api/telegram/${orgId}/telegram/webhook`;
 };
 
-const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string) => {
+const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string, orgId: string) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   let response: Response;
@@ -159,9 +159,11 @@ const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string) =>
     if (error && typeof error === "object" && "name" in error) {
       const name = String((error as { name?: string }).name);
       if (name === "AbortError") {
+        console.warn("Telegram webhook request timed out", { orgId, webhookUrl });
         return { ok: false, message: "Telegram API request timed out" };
       }
     }
+    console.error("Telegram webhook request failed", { orgId, webhookUrl, error });
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -177,6 +179,12 @@ const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string) =>
   if (!response.ok || !payload?.ok) {
     const message =
       payload?.description ?? `Telegram API rejected the webhook (${response.status}).`;
+    console.warn("Telegram webhook rejected", {
+      orgId,
+      webhookUrl,
+      status: response.status,
+      description: payload?.description ?? null,
+    });
     return { ok: false, message };
   }
 
@@ -301,7 +309,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     }
 
     const webhookUrl = resolveWebhookUrl(origin, orgId, stored.webhookBaseUrl);
-    const webhookResult = await setTelegramWebhook(stored, webhookUrl);
+    const webhookResult = await setTelegramWebhook(stored, webhookUrl, orgId);
 
     return { ...buildConfigResponse(stored), webhook: webhookResult };
   }

@@ -10,10 +10,10 @@ import {
   useParams,
 } from "react-router";
 import type { TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
-import type { Route } from "./+types/organisation-telegram-message-thread";
-import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./organisation-telegram-data";
-import { formatTimestamp } from "./organisation-telegram-shared";
-import type { TelegramMessagesOutletContext } from "./organisation-telegram-messages";
+import type { Route } from "./+types/message-thread";
+import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
+import { formatTimestamp } from "./shared";
+import type { TelegramMessagesOutletContext } from "./messages";
 
 type TelegramMessagesThreadData = {
   messages: TelegramMessageSummary[];

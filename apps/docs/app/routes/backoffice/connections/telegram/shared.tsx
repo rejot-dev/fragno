@@ -1,7 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { BackofficeOrganisation } from "./organisations.data";
+import type { AuthMeData } from "@/fragno/auth-client";
+
+type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
 
 export type TelegramConfigState = {
   configured: boolean;
@@ -69,19 +71,19 @@ export function TelegramHeader({
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Organisations", to: "/backoffice/organisations" },
-        { label: organisationName ?? orgId, to: `/backoffice/organisations/${orgId}/telegram` },
-        { label: "Telegram" },
+        { label: "Connections", to: "/backoffice/connections" },
+        { label: "Telegram", to: "/backoffice/connections/telegram" },
+        { label: organisationName ?? orgId },
       ]}
       eyebrow="Integrations"
       title={`Telegram for ${organisationName ?? orgId}`}
       description="Connect a Telegram bot, capture chat activity, and review messages per organisation."
       actions={
         <Link
-          to="/backoffice/organisations"
+          to="/backoffice/connections/telegram"
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to organisations
+          Back to Telegram
         </Link>
       }
     />
@@ -97,7 +99,7 @@ export function TelegramTabs({
   activeTab: TelegramTab;
   isConfigured: boolean;
 }) {
-  const basePath = `/backoffice/organisations/${orgId}/telegram`;
+  const basePath = `/backoffice/connections/telegram/${orgId}`;
   const tabs = [
     {
       id: "messages" as const,

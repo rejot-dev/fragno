@@ -7,8 +7,8 @@ import {
   generateSecretToken,
   type TelegramConfigState,
   type TelegramLayoutContext,
-} from "./organisation-telegram-shared";
-import type { Route } from "./+types/organisation-telegram-configuration";
+} from "./shared";
+import type { Route } from "./+types/configuration";
 
 const SETUP_STEPS = [
   {

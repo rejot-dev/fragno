@@ -3,17 +3,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
 import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
 import { Menu } from "@base-ui/react/menu";
-import { NavigationMenu } from "@base-ui/react/navigation-menu";
 import { Separator } from "@base-ui/react/separator";
 import type { AuthMeData } from "@/fragno/auth-client";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/fragno/auth-client";
 
-const NAV_ITEMS = [
-  { label: "Dashboard", to: "/backoffice" },
-  { label: "Organisations", to: "/backoffice/organisations" },
-  { label: "Users", to: "/backoffice/users" },
-  { label: "Settings", to: "/backoffice/settings" },
+type NavItem = {
+  label: string;
+  to: string;
+  end?: boolean;
+  children?: NavItem[];
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Dashboard", to: "/backoffice", end: true },
+  {
+    label: "Connections",
+    to: "/backoffice/connections",
+    children: [{ label: "Telegram", to: "/backoffice/connections/telegram" }],
+  },
 ];
 
 type BackofficeSidebarProps = {
@@ -54,6 +62,8 @@ function BackofficeSidebarContent({
   showClose = false,
 }: BackofficeSidebarProps & { showClose?: boolean }) {
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
+  const activeOrganization =
+    me?.activeOrganization?.organization ?? me?.organizations?.[0]?.organization ?? null;
 
   return (
     <>
@@ -63,7 +73,9 @@ function BackofficeSidebarContent({
             <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
               Fragno
             </p>
-            <p className="text-lg font-semibold text-[var(--bo-fg)]">Backoffice</p>
+            <p className="text-lg font-semibold text-[var(--bo-fg)]">
+              {activeOrganization?.name ?? "Backoffice"}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="border border-[color:var(--bo-border)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
@@ -82,13 +94,29 @@ function BackofficeSidebarContent({
         <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
           <div className="flex min-h-full flex-col gap-4 pb-4">
             <BackofficeSidebarSection title="Navigation">
-              <NavigationMenu.Root>
-                <NavigationMenu.List className="space-y-2">
+              <nav aria-label="Backoffice">
+                <ul className="space-y-3">
                   {NAV_ITEMS.map((item) => (
-                    <BackofficeSidebarLink key={item.to} to={item.to} label={item.label} />
+                    <li key={item.to} className="space-y-2">
+                      <BackofficeSidebarLink to={item.to} label={item.label} end={item.end} />
+                      {item.children ? (
+                        <ul className="ml-3 space-y-2 border-l border-[color:var(--bo-border)] pl-3">
+                          {item.children.map((child) => (
+                            <li key={child.to}>
+                              <BackofficeSidebarLink
+                                to={child.to}
+                                label={child.label}
+                                end={child.end}
+                                variant="sub"
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
                   ))}
-                </NavigationMenu.List>
-              </NavigationMenu.Root>
+                </ul>
+              </nav>
             </BackofficeSidebarSection>
 
             <BackofficeSidebarSection title="Shortcuts">
@@ -130,35 +158,37 @@ function BackofficeSidebarSection({ title, children }: { title: string; children
   );
 }
 
-function BackofficeSidebarLink({ label, to }: { label: string; to: string }) {
+function BackofficeSidebarLink({
+  label,
+  to,
+  end,
+  variant = "primary",
+}: {
+  label: string;
+  to: string;
+  end?: boolean;
+  variant?: "primary" | "sub";
+}) {
+  const showSuffix = variant === "primary";
   return (
-    <NavigationMenu.Item>
-      <NavigationMenu.Link
-        href={to}
-        render={(linkProps) => {
-          const { className, ...rest } = linkProps;
-          return (
-            <NavLink
-              to={to}
-              end
-              {...rest}
-              className={({ isActive }) =>
-                cn(
-                  className,
-                  "flex items-center justify-between border px-3 py-2 text-sm font-semibold transition-colors",
-                  isActive
-                    ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                    : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
-                )
-              }
-            >
-              <span>{label}</span>
-              <span className="text-[10px] uppercase tracking-[0.22em] opacity-70">View</span>
-            </NavLink>
-          );
-        }}
-      />
-    </NavigationMenu.Item>
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center justify-between border px-3 py-2 font-semibold transition-colors",
+          variant === "sub" ? "text-xs" : "text-sm",
+          isActive
+            ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+            : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
+        )
+      }
+    >
+      <span>{label}</span>
+      {showSuffix ? (
+        <span className="text-[10px] uppercase tracking-[0.22em] opacity-70">View</span>
+      ) : null}
+    </NavLink>
   );
 }
 
@@ -174,8 +204,6 @@ function BackofficeUserCard({
   const { mutate: signOut, loading: signingOut } = authClient.useSignOut();
   const navigate = useNavigate();
   const user = me?.user ?? null;
-  const organizations = me?.organizations ?? [];
-  const activeOrganization = me?.activeOrganization?.organization ?? organizations[0]?.organization;
 
   const displayName = useMemo(() => {
     if (!user) {
@@ -236,72 +264,49 @@ function BackofficeUserCard({
         </div>
       </div>
 
-      {organizations.length > 0 ? (
-        <Menu.Root modal={false}>
-          <Menu.Trigger className="mt-3 flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]">
-            <span>Organisations</span>
-            <span className="text-[10px] text-[var(--bo-muted-2)]">{organizations.length}</span>
-          </Menu.Trigger>
-          <Menu.Portal container={portalContainer ?? undefined}>
-            <Menu.Positioner sideOffset={8} align="start">
-              <Menu.Popup className="w-64 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.14)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
-                <Menu.Group className="space-y-2">
-                  <Menu.GroupLabel className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
-                    Organisations
-                  </Menu.GroupLabel>
-                  {organizations.map(({ organization, member }) => (
-                    <Menu.Item
-                      key={organization.id}
-                      className={cn(
-                        "flex items-center justify-between border px-3 py-2 text-xs transition-colors",
-                        activeOrganization?.id === organization.id
-                          ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                          : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
-                        "data-[highlighted]:border-[color:var(--bo-accent)] data-[highlighted]:text-[var(--bo-fg)]",
-                      )}
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--bo-fg)]">
-                          {organization.name}
-                        </p>
-                        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-                          {member.roles.join(", ") || "Member"}
-                        </p>
-                      </div>
-                      <span className="px-2 py-1 text-[9px] uppercase tracking-[0.24em]">
-                        {activeOrganization?.id === organization.id ? "Active" : "Idle"}
-                      </span>
-                    </Menu.Item>
-                  ))}
-                </Menu.Group>
-                <Menu.Separator className="my-3 h-px w-full bg-[var(--bo-border)]" />
-                <Menu.Item className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--bo-muted)] transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]">
+      <Menu.Root modal={false}>
+        <Menu.Trigger className="mt-3 flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]">
+          <span>Account</span>
+          <span className="text-[10px] text-[var(--bo-muted-2)]">Menu</span>
+        </Menu.Trigger>
+        <Menu.Portal container={portalContainer ?? undefined}>
+          <Menu.Positioner sideOffset={8} align="start">
+            <Menu.Popup className="w-64 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.14)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
+              <Menu.Group className="space-y-2">
+                <Menu.GroupLabel className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                  Account
+                </Menu.GroupLabel>
+                <Menu.Item
+                  onClick={() => navigate("/backoffice/organisations")}
+                  className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--bo-muted)] transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
+                >
                   Manage organisations
                 </Menu.Item>
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
-      ) : (
-        <div className="mt-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-          No organisations yet
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={async () => {
-          try {
-            await signOut({});
-          } finally {
-            navigate("/backoffice/login", { replace: true });
-          }
-        }}
-        disabled={signingOut}
-        className="mt-3 flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-      >
-        Sign out
-        <span className="text-[10px] text-[var(--bo-muted-2)]">Session</span>
-      </button>
+                <Menu.Item
+                  onClick={() => navigate("/backoffice/settings")}
+                  className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--bo-muted)] transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
+                >
+                  Settings
+                </Menu.Item>
+              </Menu.Group>
+              <Menu.Separator className="my-3 h-px w-full bg-[var(--bo-border)]" />
+              <Menu.Item
+                onClick={async () => {
+                  try {
+                    await signOut({});
+                  } finally {
+                    navigate("/backoffice/login", { replace: true });
+                  }
+                }}
+                disabled={signingOut}
+                className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--bo-muted)] transition-colors disabled:opacity-60 data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
+              >
+                Sign out
+              </Menu.Item>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
     </div>
   );
 }

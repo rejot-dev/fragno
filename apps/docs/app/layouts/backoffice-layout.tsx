@@ -29,7 +29,11 @@ export default function BackofficeLayout({
   const { me } = loaderData;
   return (
     <BackofficeShell me={me} isLoading={false}>
-      {children ?? <Outlet />}
+      {children ?? <Outlet context={{ me }} />}
     </BackofficeShell>
   );
 }
+
+export type BackofficeLayoutContext = {
+  me: NonNullable<Route.ComponentProps["loaderData"]["me"]>;
+};

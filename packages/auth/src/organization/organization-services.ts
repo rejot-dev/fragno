@@ -84,6 +84,7 @@ const mapOrganization = (organization: {
   logoUrl: string | null;
   metadata: unknown;
   createdBy: unknown;
+  organizationCreator?: { id?: unknown } | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -93,7 +94,7 @@ const mapOrganization = (organization: {
   slug: organization.slug,
   logoUrl: organization.logoUrl ?? null,
   metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
-  createdBy: toExternalId(organization.createdBy),
+  createdBy: toExternalId(organization.organizationCreator?.id ?? organization.createdBy),
   createdAt: organization.createdAt,
   updatedAt: organization.updatedAt,
   deletedAt: organization.deletedAt ?? null,
@@ -334,7 +335,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("organization", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", organizationId)),
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", organizationId))
+              .join((j) => j.organizationCreator()),
           ),
         )
         .transformRetrieve(([organization]) =>
@@ -347,6 +350,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                   logoUrl: organization.logoUrl,
                   metadata: organization.metadata,
                   createdBy: organization.createdBy,
+                  organizationCreator: organization.organizationCreator ?? null,
                   createdAt: organization.createdAt,
                   updatedAt: organization.updatedAt,
                   deletedAt: organization.deletedAt,
@@ -371,7 +375,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("organization", (b) =>
-            b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", normalizedSlug)),
+            b
+              .whereIndex("idx_organization_slug", (eb) => eb("slug", "=", normalizedSlug))
+              .join((j) => j.organizationCreator()),
           ),
         )
         .transformRetrieve(([organization]) =>
@@ -384,6 +390,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                   logoUrl: organization.logoUrl,
                   metadata: organization.metadata,
                   createdBy: organization.createdBy,
+                  organizationCreator: organization.organizationCreator ?? null,
                   createdAt: organization.createdAt,
                   updatedAt: organization.updatedAt,
                   deletedAt: organization.deletedAt,
@@ -424,7 +431,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .retrieve((uow) =>
           uow
             .findFirst("organization", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", organizationId)),
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", organizationId))
+                .join((j) => j.organizationCreator()),
             )
             .findFirst("organization", (b) =>
               b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", nextSlug ?? "")),
@@ -489,6 +498,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               logoUrl: updated.logoUrl,
               metadata: updated.metadata,
               createdBy: existing.createdBy,
+              organizationCreator: existing.organizationCreator ?? null,
               createdAt: updated.createdAt,
               updatedAt: updated.updatedAt,
               deletedAt: updated.deletedAt,
@@ -531,7 +541,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         .retrieve((uow) =>
           uow
             .findFirst("organization", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", organizationId)),
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", organizationId))
+                .join((j) => j.organizationCreator()),
             )
             .findFirst("organizationMember", (b) =>
               b.whereIndex("idx_org_member_org_user", (eb) =>
@@ -569,6 +581,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             logoUrl: organization.logoUrl,
             metadata: organization.metadata,
             createdBy: organization.createdBy,
+            organizationCreator: organization.organizationCreator ?? null,
             createdAt: organization.createdAt,
             updatedAt: now,
             deletedAt: now,
@@ -611,7 +624,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               .whereIndex("idx_org_member_user", (eb) => eb("userId", "=", userId))
               .orderByIndex("idx_org_member_user", effectiveSortOrder)
               .pageSize(effectivePageSize)
-              .join((j) => j.organizationMemberOrganization().organizationMemberUser());
+              .join((j) =>
+                j
+                  .organizationMemberOrganization((org) => org.join((j) => j.organizationCreator()))
+                  .organizationMemberUser(),
+              );
 
             return cursor ? query.after(cursor) : query;
           }),
@@ -636,6 +653,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                   logoUrl: organization!.logoUrl,
                   metadata: organization!.metadata,
                   createdBy: organization!.createdBy,
+                  organizationCreator: organization!.organizationCreator ?? null,
                   createdAt: organization!.createdAt,
                   updatedAt: organization!.updatedAt,
                   deletedAt: organization!.deletedAt,

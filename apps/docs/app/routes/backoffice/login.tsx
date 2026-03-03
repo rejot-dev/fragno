@@ -27,12 +27,14 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authPending, setAuthPending] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthPending, setOauthPending] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordPending, setPasswordPending] = useState(false);
 
   const handleGithubSignIn = async () => {
-    setAuthPending(true);
-    setAuthError(null);
+    setOauthPending(true);
+    setOauthError(null);
 
     try {
       const result = await authClient.oauth.getAuthorizationUrl({
@@ -46,13 +48,36 @@ export default function BackofficeLogin() {
 
       window.location.assign(result.url);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
-      setAuthPending(false);
+      setOauthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
+      setOauthPending(false);
     }
   };
 
-  const handleRequestSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handlePasswordSignIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (passwordPending) {
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+
+    if (!email || !password) {
+      setPasswordError("Enter your email and password to continue.");
+      return;
+    }
+
+    setPasswordPending(true);
+    setPasswordError(null);
+
+    try {
+      await authClient.signIn.email({ email, password });
+      window.location.assign("/backoffice");
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to sign in.");
+      setPasswordPending(false);
+    }
   };
 
   return (
@@ -61,8 +86,8 @@ export default function BackofficeLogin() {
       className="relative isolate min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="max-w-xl space-y-4">
+      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-6 px-4 py-8 lg:flex-row lg:items-center lg:justify-between">
+        <div className="w-full max-w-xl space-y-4">
           <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
             Fragno Backoffice
           </p>
@@ -75,12 +100,6 @@ export default function BackofficeLogin() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              to="/backoffice"
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
-            >
-              View demo dashboard
-            </Link>
-            <Link
               to="/docs"
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
@@ -92,62 +111,84 @@ export default function BackofficeLogin() {
         <div className="w-full max-w-md">
           <FormContainer
             title="Sign in"
-            description="Connect your GitHub account to access the backoffice."
+            description="Use GitHub or your backoffice credentials to access the dashboard."
             eyebrow="Access"
           >
             <div className="space-y-3">
               <button
                 type="button"
                 onClick={handleGithubSignIn}
-                disabled={authPending}
+                disabled={oauthPending}
                 className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
-                {authPending ? "Redirecting…" : "Continue with GitHub"}
+                {oauthPending ? "Redirecting…" : "Continue with GitHub"}
               </button>
-              {authError ? (
-                <p className="text-xs text-red-400">{authError}</p>
+              {oauthError ? (
+                <p className="text-xs text-red-400">{oauthError}</p>
               ) : (
                 <p className="text-xs text-[var(--bo-muted-2)]">
                   GitHub access is required for release approvals.
                 </p>
               )}
-              <form onSubmit={handleRequestSubmit} className="space-y-3">
+              <form onSubmit={handlePasswordSignIn} className="space-y-3">
                 <div className="border-t border-[color:var(--bo-border)] pt-4">
                   <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-                    Request access
+                    Sign in with password
                   </p>
                   <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                    Accounts are approved in batches to keep audits crisp.
+                    Use your backoffice email and password.
                   </p>
                 </div>
-                <FormField label="Work email" hint="Use a team address for faster approval.">
+                <FormField label="Email address" hint="Your backoffice username uses email.">
                   <input
                     type="email"
                     name="email"
+                    autoComplete="username"
+                    required
                     placeholder="team@fragno.dev"
                     className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
                   />
                 </FormField>
-                <FormField label="Role" hint="Share the release or docs role you own.">
+                <FormField label="Password" hint="Minimum 8 characters.">
                   <input
-                    type="text"
-                    name="role"
-                    placeholder="Engineering lead"
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    required
+                    placeholder="••••••••"
                     className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
                   />
                 </FormField>
+                {passwordError ? (
+                  <p className="text-xs text-red-400">{passwordError}</p>
+                ) : (
+                  <p className="text-xs text-[var(--bo-muted-2)]">
+                    Password sign-in is enabled for local development.
+                  </p>
+                )}
                 <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     type="submit"
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                    disabled={passwordPending}
+                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                   >
-                    Submit request
+                    {passwordPending ? "Signing in…" : "Sign in"}
                   </button>
                   <span className="text-xs text-[var(--bo-muted-2)]">
-                    Reviewed within 24 hours.
+                    Contact an admin if you need access.
                   </span>
                 </div>
               </form>
+              <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
+                Need an account?{" "}
+                <Link
+                  to="/backoffice/sign-up"
+                  className="font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent)] transition-colors hover:text-[var(--bo-accent-strong)]"
+                >
+                  Create one
+                </Link>
+                .
+              </p>
             </div>
           </FormContainer>
         </div>

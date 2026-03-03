@@ -3,18 +3,8 @@ import { type Cursor, decodeCursor } from "@fragno-dev/db/cursor";
 import { z } from "zod";
 import type { authFragmentDefinition } from "..";
 import { extractSessionId } from "../utils/cookie";
-import {
-  serializeInvitation,
-  serializeInvitationSummary,
-  serializeMember,
-  serializeOrganization,
-} from "./serializers";
-import {
-  invitationSchema,
-  invitationSummarySchema,
-  memberSchema,
-  organizationSchema,
-} from "./schemas";
+import { serializeInvitation, serializeMember, serializeOrganization } from "./serializers";
+import { invitationSchema, memberSchema, organizationSchema } from "./schemas";
 
 const createOrganizationInputSchema = z.object({
   name: z.string().min(1).max(120),
@@ -779,7 +769,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         path: "/organizations/:organizationId/invitations",
         queryParameters: ["sessionId"],
         outputSchema: z.object({
-          invitations: z.array(invitationSummarySchema),
+          invitations: z.array(invitationSchema),
         }),
         errorCodes: ["organization_not_found", "permission_denied", "session_invalid"],
         handler: async function ({ pathParams, headers, query }, { json, error }) {
@@ -813,9 +803,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           }
 
           return json({
-            invitations: result.invitations.map((invitation) =>
-              serializeInvitationSummary(invitation),
-            ),
+            invitations: result.invitations.map(serializeInvitation),
           });
         },
       }),
