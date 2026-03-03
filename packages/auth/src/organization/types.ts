@@ -104,6 +104,7 @@ export interface OrganizationHooks<TRole extends string = DefaultOrganizationRol
   onInvitationCanceled?: (
     payload: OrganizationInvitationHookPayload<TRole>,
   ) => Promise<void> | void;
+  onInvitationExpired?: (payload: OrganizationInvitationHookPayload<TRole>) => Promise<void> | void;
 }
 
 export interface AutoCreateOrganizationConfig {

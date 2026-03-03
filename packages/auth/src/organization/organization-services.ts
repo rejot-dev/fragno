@@ -554,55 +554,73 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             .find("organizationMemberRole", (b) =>
               b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
             )
+            .find("organizationInvitation", (b) =>
+              b.whereIndex("idx_org_invitation_org_status", (eb) =>
+                eb.and(eb("organizationId", "=", organizationId), eb("status", "=", "pending")),
+              ),
+            )
             .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", actor.userId))),
         )
-        .mutate(({ uow, retrieveResult: [organization, actorMember, actorRoles, actorUser] }) => {
-          if (!organization) {
-            return { ok: false as const, code: "organization_not_found" as const };
-          }
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [organization, actorMember, actorRoles, invitations, actorUser],
+          }) => {
+            if (!organization) {
+              return { ok: false as const, code: "organization_not_found" as const };
+            }
 
-          if (!actorMember) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          const roles = filterRolesForMemberId(actorRoles, actorMember);
-          if (!isGlobalAdmin(actor.userRole) && !canDeleteOrganization(roles)) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            const roles = filterRolesForMemberId(actorRoles, actorMember);
+            if (!isGlobalAdmin(actor.userRole) && !canDeleteOrganization(roles)) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          uow.update("organization", organization.id, (b) =>
-            b.set({ deletedAt: now, updatedAt: now }).check(),
-          );
+            uow.update("organization", organization.id, (b) =>
+              b.set({ deletedAt: now, updatedAt: now }).check(),
+            );
 
-          const organizationSummary = mapOrganization({
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-            logoUrl: organization.logoUrl,
-            metadata: organization.metadata,
-            createdBy: organization.createdBy,
-            organizationCreator: organization.organizationCreator ?? null,
-            createdAt: organization.createdAt,
-            updatedAt: now,
-            deletedAt: now,
-          });
+            if (invitations.length > 0) {
+              for (const invitation of invitations) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "canceled", respondedAt: now }).check(),
+                );
+              }
+            }
 
-          const actorSummary = actorUser
-            ? mapUserSummary({
-                id: actorUser.id,
-                email: actorUser.email,
-                role: actorUser.role,
-                bannedAt: actorUser.bannedAt ?? null,
-              })
-            : null;
+            const organizationSummary = mapOrganization({
+              id: organization.id,
+              name: organization.name,
+              slug: organization.slug,
+              logoUrl: organization.logoUrl,
+              metadata: organization.metadata,
+              createdBy: organization.createdBy,
+              organizationCreator: organization.organizationCreator ?? null,
+              createdAt: organization.createdAt,
+              updatedAt: now,
+              deletedAt: now,
+            });
 
-          uow.triggerHook("onOrganizationDeleted", {
-            organization: organizationSummary,
-            actor: actorSummary,
-          });
+            const actorSummary = actorUser
+              ? mapUserSummary({
+                  id: actorUser.id,
+                  email: actorUser.email,
+                  role: actorUser.role,
+                  bannedAt: actorUser.bannedAt ?? null,
+                })
+              : null;
 
-          return { ok: true as const };
-        })
+            uow.triggerHook("onOrganizationDeleted", {
+              organization: organizationSummary,
+              actor: actorSummary,
+            });
+
+            return { ok: true as const };
+          },
+        )
         .build();
     },
 
@@ -1523,6 +1541,14 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             .findFirst("organization", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", params.organizationId)),
             )
+            .find("organizationInvitation", (b) =>
+              b.whereIndex("idx_org_invitation_org_status", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", params.organizationId),
+                  eb("status", "=", "pending"),
+                ),
+              ),
+            )
             .find("organizationMember", (b) =>
               b
                 .whereIndex("idx_org_member_org", (eb) =>
@@ -1531,77 +1557,93 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .join((j) => j["organizationMemberRoles"]()),
             ),
         )
-        .mutate(({ uow, retrieveResult: [session, expiredSession, organization, members] }) => {
-          if (expiredSession) {
-            uow.delete("session", expiredSession.id, (b) => b.check());
-          }
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [session, expiredSession, organization, invitations, members],
+          }) => {
+            if (expiredSession) {
+              uow.delete("session", expiredSession.id, (b) => b.check());
+            }
 
-          if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
-          }
+            if (!session || !session.sessionOwner) {
+              return { ok: false as const, code: "session_invalid" as const };
+            }
 
-          if (!organization) {
-            return { ok: false as const, code: "organization_not_found" as const };
-          }
+            if (!organization) {
+              return { ok: false as const, code: "organization_not_found" as const };
+            }
 
-          const actorMember = normalizeMany(members).find((entry) => {
-            const entryInternal = resolveInternalId(entry.organizationId);
-            const organizationInternal = resolveInternalId(organization.id);
-            const entryUserInternal = resolveInternalId(entry.userId);
-            const sessionUserInternal = resolveInternalId(session.userId);
-            if (entryInternal !== undefined && organizationInternal !== undefined) {
-              if (String(entryInternal) !== String(organizationInternal)) {
+            const actorMember = normalizeMany(members).find((entry) => {
+              const entryInternal = resolveInternalId(entry.organizationId);
+              const organizationInternal = resolveInternalId(organization.id);
+              const entryUserInternal = resolveInternalId(entry.userId);
+              const sessionUserInternal = resolveInternalId(session.userId);
+              if (entryInternal !== undefined && organizationInternal !== undefined) {
+                if (String(entryInternal) !== String(organizationInternal)) {
+                  return false;
+                }
+                if (entryUserInternal !== undefined && sessionUserInternal !== undefined) {
+                  return String(entryUserInternal) === String(sessionUserInternal);
+                }
                 return false;
               }
-              if (entryUserInternal !== undefined && sessionUserInternal !== undefined) {
-                return String(entryUserInternal) === String(sessionUserInternal);
-              }
               return false;
+            });
+            if (!actorMember) {
+              return { ok: false as const, code: "permission_denied" as const };
             }
-            return false;
-          });
-          if (!actorMember) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
 
-          const roles = extractRoles(
-            (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
-          );
-          if (!isGlobalAdmin(session.sessionOwner.role as Role) && !canDeleteOrganization(roles)) {
-            return { ok: false as const, code: "permission_denied" as const };
-          }
+            const roles = extractRoles(
+              (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+            );
+            if (
+              !isGlobalAdmin(session.sessionOwner.role as Role) &&
+              !canDeleteOrganization(roles)
+            ) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
 
-          const now = new Date();
-          uow.update("organization", organization.id, (b) =>
-            b.set({ deletedAt: now, updatedAt: now }).check(),
-          );
+            const now = new Date();
+            uow.update("organization", organization.id, (b) =>
+              b.set({ deletedAt: now, updatedAt: now }).check(),
+            );
 
-          const organizationSummary = mapOrganization({
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-            logoUrl: organization.logoUrl ?? null,
-            metadata: organization.metadata ?? null,
-            createdBy: organization.createdBy,
-            createdAt: organization.createdAt,
-            updatedAt: now,
-            deletedAt: now,
-          });
+            if (invitations.length > 0) {
+              for (const invitation of invitations) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "canceled", respondedAt: now }).check(),
+                );
+              }
+            }
 
-          const actorSummary = mapUserSummary({
-            id: session.sessionOwner.id,
-            email: session.sessionOwner.email,
-            role: session.sessionOwner.role,
-            bannedAt: session.sessionOwner.bannedAt ?? null,
-          });
+            const organizationSummary = mapOrganization({
+              id: organization.id,
+              name: organization.name,
+              slug: organization.slug,
+              logoUrl: organization.logoUrl ?? null,
+              metadata: organization.metadata ?? null,
+              createdBy: organization.createdBy,
+              createdAt: organization.createdAt,
+              updatedAt: now,
+              deletedAt: now,
+            });
 
-          uow.triggerHook("onOrganizationDeleted", {
-            organization: organizationSummary,
-            actor: actorSummary,
-          });
+            const actorSummary = mapUserSummary({
+              id: session.sessionOwner.id,
+              email: session.sessionOwner.email,
+              role: session.sessionOwner.role,
+              bannedAt: session.sessionOwner.bannedAt ?? null,
+            });
 
-          return { ok: true as const };
-        })
+            uow.triggerHook("onOrganizationDeleted", {
+              organization: organizationSummary,
+              actor: actorSummary,
+            });
+
+            return { ok: true as const };
+          },
+        )
         .build();
     },
   };

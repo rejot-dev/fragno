@@ -15,6 +15,7 @@ import type {
   AuthHooks,
   AuthHooksMap,
   BeforeCreateUserHook,
+  InvitationExpiredHookPayload,
   SessionHookPayload,
   UserHookPayload,
 } from "./hooks";
@@ -25,7 +26,9 @@ import type {
   OrganizationHooks,
   OrganizationInvitationHookPayload,
   OrganizationMemberHookPayload,
+  OrganizationInvitationStatus,
 } from "./organization/types";
+import { toExternalId } from "./organization/utils";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -55,6 +58,53 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
     const authHooks = config.hooks;
     const organizationConfig = config.organizations === false ? undefined : config.organizations;
     const organizationHooks = organizationConfig?.hooks as OrganizationHooks<string> | undefined;
+
+    const mapOrganization = (organization: {
+      id: unknown;
+      name: string;
+      slug: string;
+      logoUrl: string | null;
+      metadata: unknown;
+      createdBy: unknown;
+      organizationCreator?: { id?: unknown } | null;
+      createdAt: Date;
+      updatedAt: Date;
+      deletedAt: Date | null;
+    }) => ({
+      id: toExternalId(organization.id),
+      name: organization.name,
+      slug: organization.slug,
+      logoUrl: organization.logoUrl ?? null,
+      metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
+      createdBy: toExternalId(organization.organizationCreator?.id ?? organization.createdBy),
+      createdAt: organization.createdAt,
+      updatedAt: organization.updatedAt,
+      deletedAt: organization.deletedAt ?? null,
+    });
+
+    const mapInvitation = (invitation: {
+      id: unknown;
+      organizationId: unknown;
+      email: string;
+      roles: unknown;
+      status: string;
+      token: string;
+      inviterId: unknown;
+      expiresAt: Date;
+      createdAt: Date;
+      respondedAt: Date | null;
+    }) => ({
+      id: toExternalId(invitation.id),
+      organizationId: toExternalId(invitation.organizationId),
+      email: invitation.email,
+      roles: Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [],
+      status: invitation.status as OrganizationInvitationStatus,
+      token: invitation.token,
+      inviterId: toExternalId(invitation.inviterId),
+      expiresAt: invitation.expiresAt,
+      createdAt: invitation.createdAt,
+      respondedAt: invitation.respondedAt ?? null,
+    });
 
     const baseHooks = {
       onUserCreated: defineHook<UserHookPayload>(async function (payload) {
@@ -116,6 +166,75 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
           await organizationHooks?.onInvitationCanceled?.(payload);
         },
       ),
+      onInvitationExpired: defineHook<InvitationExpiredHookPayload>(async function (payload) {
+        if (!payload.invitationId) {
+          return;
+        }
+
+        const now = new Date();
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(authSchema).findFirst("organizationInvitation", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", payload.invitationId))
+                .join((j) =>
+                  j.organizationInvitationOrganization((org) =>
+                    org.join((j) => j.organizationCreator()),
+                  ),
+                ),
+            ),
+          )
+          .mutate(({ forSchema, retrieveResult: [invitation] }) => {
+            if (!invitation) {
+              return { shouldNotify: false as const };
+            }
+
+            const status = invitation.status as OrganizationInvitationStatus;
+            if (status !== "pending") {
+              return { shouldNotify: false as const };
+            }
+
+            if (invitation.expiresAt.getTime() > now.getTime()) {
+              return { shouldNotify: false as const };
+            }
+
+            const uow = forSchema(authSchema);
+            uow.update("organizationInvitation", invitation.id, (b) =>
+              b.set({ status: "expired", respondedAt: now }).check(),
+            );
+
+            if (!invitation.organizationInvitationOrganization) {
+              return { shouldNotify: false as const };
+            }
+
+            return {
+              shouldNotify: true as const,
+              organization: mapOrganization(invitation.organizationInvitationOrganization),
+              invitation: mapInvitation({
+                id: invitation.id,
+                organizationId: invitation.organizationId,
+                email: invitation.email,
+                roles: invitation.roles,
+                status: "expired",
+                token: invitation.token,
+                inviterId: invitation.inviterId,
+                expiresAt: invitation.expiresAt,
+                createdAt: invitation.createdAt,
+                respondedAt: now,
+              }),
+            };
+          })
+          .transform(({ mutateResult }) => mutateResult)
+          .execute();
+
+        if (result.shouldNotify) {
+          await organizationHooks?.onInvitationExpired?.({
+            organization: result.organization,
+            invitation: result.invitation,
+            actor: null,
+          });
+        }
+      }),
     };
   })
   .providesBaseService(({ defineService, config }) => {
@@ -481,6 +600,7 @@ export type {
   AuthHooks,
   BeforeCreateUserHook,
   BeforeCreateUserPayload,
+  InvitationExpiredHookPayload,
   SessionHookPayload,
   UserHookPayload,
   SessionSummary,

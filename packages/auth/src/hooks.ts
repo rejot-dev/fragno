@@ -28,6 +28,10 @@ export interface BeforeCreateUserPayload {
   role: UserSummary["role"];
 }
 
+export interface InvitationExpiredHookPayload {
+  invitationId: string;
+}
+
 // Synchronous to ensure checks run before mutations are committed.
 export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => void;
 
@@ -55,4 +59,5 @@ export type AuthHooksMap = {
   onInvitationAccepted: HookFn<OrganizationInvitationHookPayload<string>>;
   onInvitationRejected: HookFn<OrganizationInvitationHookPayload<string>>;
   onInvitationCanceled: HookFn<OrganizationInvitationHookPayload<string>>;
+  onInvitationExpired: HookFn<InvitationExpiredHookPayload>;
 };
