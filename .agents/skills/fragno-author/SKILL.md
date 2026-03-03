@@ -184,6 +184,13 @@ The Rules of Fragno are the default architectural constraints for database-backe
   `curl -L "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno" -H "accept: text/markdown"`
 - Local reference: `references/rules-of-fragno.md`
 
+### Data Model and Queries (Author Notes)
+
+Use this when designing a fragment’s **data model first**. Fragno does **not** support arbitrary
+joins; your schema must explicitly encode the query graph you need.
+
+- Local reference: `references/data-model-and-queries.md`
+
 ### Defining Schemas
 
 Learn how to define type-safe database schemas with the append-only log approach.
