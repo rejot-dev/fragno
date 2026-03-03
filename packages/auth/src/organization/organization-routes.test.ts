@@ -1,5 +1,5 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { authFragmentDefinition } from "..";
 import { userActionsRoutesFactory } from "../user/user-actions";
@@ -665,6 +665,450 @@ describe("organization routes", async () => {
 
     assert(invalidToken.type === "error");
     expect(invalidToken.error.code).toBe("invalid_token");
+  });
+
+  it("resends invitations for the same email and updates roles", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-resend-owner@test.com",
+    );
+    const { user: invitedUser, sessionId: invitedSessionId } = await createUserWithSession(
+      "invite-resend-user@test.com",
+    );
+
+    const created = await createOrganization(ownerSessionId, "Resend Org", "resend-org");
+
+    const firstInvite = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(firstInvite.type === "json");
+
+    const secondInvite = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["admin"] },
+      },
+    );
+
+    assert(secondInvite.type === "json");
+    expect(secondInvite.data.invitation.id).toBe(firstInvite.data.invitation.id);
+    expect(secondInvite.data.invitation.token).not.toBe(firstInvite.data.invitation.token);
+    expect(secondInvite.data.invitation.roles).toEqual(["admin"]);
+
+    const listOrgInvites = await fragment.callRoute(
+      "GET",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: ownerSessionId },
+      },
+    );
+
+    assert(listOrgInvites.type === "json");
+    expect(listOrgInvites.data.invitations).toHaveLength(1);
+    expect(listOrgInvites.data.invitations[0]?.roles).toEqual(["admin"]);
+
+    const tamperedAccept = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: secondInvite.data.invitation.id },
+        query: { sessionId: invitedSessionId },
+        body: { action: "accept", token: firstInvite.data.invitation.token },
+      },
+    );
+
+    assert(tamperedAccept.type === "error");
+    expect(tamperedAccept.error.code).toBe("invalid_token");
+  });
+
+  it("rejects tokens from other invitations", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-token-owner@test.com",
+    );
+    const { user: inviteeA, sessionId: inviteeSessionId } =
+      await createUserWithSession("invite-token-a@test.com");
+    const { user: inviteeB } = await createUserWithSession("invite-token-b@test.com");
+
+    const created = await createOrganization(ownerSessionId, "Token Org", "token-org");
+
+    const inviteA = await fragment.callRoute("POST", "/organizations/:organizationId/invitations", {
+      pathParams: { organizationId: created.organization.id },
+      query: { sessionId: ownerSessionId },
+      body: { email: inviteeA.email, roles: ["member"] },
+    });
+
+    const inviteB = await fragment.callRoute("POST", "/organizations/:organizationId/invitations", {
+      pathParams: { organizationId: created.organization.id },
+      query: { sessionId: ownerSessionId },
+      body: { email: inviteeB.email, roles: ["member"] },
+    });
+
+    assert(inviteA.type === "json");
+    assert(inviteB.type === "json");
+
+    const tamperedAccept = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteA.data.invitation.id },
+        query: { sessionId: inviteeSessionId },
+        body: { action: "accept", token: inviteB.data.invitation.token },
+      },
+    );
+
+    assert(tamperedAccept.type === "error");
+    expect(tamperedAccept.error.code).toBe("invalid_token");
+  });
+
+  it("blocks accepting invitations for a different email", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-mismatch@test.com",
+    );
+    const { user: invitedUser } = await createUserWithSession("invitee-mismatch@test.com");
+    const { sessionId: otherSessionId } = await createUserWithSession("other-mismatch@test.com");
+
+    const createResponse = await createOrganization(ownerSessionId, "Mismatch Org", "mismatch-org");
+    const orgId = createResponse.organization.id;
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const acceptResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: otherSessionId },
+        body: { action: "accept", token: inviteResponse.data.invitation.token },
+      },
+    );
+
+    assert(acceptResponse.type === "error");
+    expect(acceptResponse.error.code).toBe("permission_denied");
+    expect(acceptResponse.status).toBe(403);
+  });
+
+  it("blocks rejecting invitations for a different email", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-reject@test.com",
+    );
+    const { user: invitedUser } = await createUserWithSession("invitee-reject@test.com");
+    const { sessionId: otherSessionId } = await createUserWithSession("other-reject@test.com");
+
+    const createResponse = await createOrganization(ownerSessionId, "Reject Org", "reject-org");
+    const orgId = createResponse.organization.id;
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const rejectResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: otherSessionId },
+        body: { action: "reject", token: inviteResponse.data.invitation.token },
+      },
+    );
+
+    assert(rejectResponse.type === "error");
+    expect(rejectResponse.error.code).toBe("permission_denied");
+    expect(rejectResponse.status).toBe(403);
+  });
+
+  it("allows the inviter to cancel invitations", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-cancel@test.com",
+    );
+    const { user: invitedUser } = await createUserWithSession("invitee-cancel@test.com");
+
+    const createResponse = await createOrganization(ownerSessionId, "Cancel Org", "cancel-org");
+    const orgId = createResponse.organization.id;
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const cancelResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: ownerSessionId },
+        body: { action: "cancel" },
+      },
+    );
+
+    assert(cancelResponse.type === "json");
+    expect(cancelResponse.data.invitation.status).toBe("canceled");
+  });
+
+  it("allows organization admins to cancel invitations", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-admin-cancel@test.com",
+    );
+    const { user: adminUser, sessionId: adminSessionId } = await createUserWithSession(
+      "invite-admin-cancel@test.com",
+    );
+    const { user: invitedUser } = await createUserWithSession("invitee-admin-cancel@test.com");
+
+    const createResponse = await createOrganization(
+      ownerSessionId,
+      "Admin Cancel Org",
+      "admin-cancel-org",
+    );
+    const orgId = createResponse.organization.id;
+
+    const adminAddResponse = await addMember(ownerSessionId, orgId, adminUser.id, ["admin"]);
+    assert(adminAddResponse.type === "json");
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const cancelResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: adminSessionId },
+        body: { action: "cancel" },
+      },
+    );
+
+    assert(cancelResponse.type === "json");
+    expect(cancelResponse.data.invitation.status).toBe("canceled");
+  });
+
+  it("denies cancel for non-admin non-inviters", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-deny-cancel@test.com",
+    );
+    const { user: memberUser, sessionId: memberSessionId } = await createUserWithSession(
+      "invite-member-deny-cancel@test.com",
+    );
+    const { user: invitedUser } = await createUserWithSession("invitee-deny-cancel@test.com");
+
+    const createResponse = await createOrganization(
+      ownerSessionId,
+      "Deny Cancel Org",
+      "deny-cancel-org",
+    );
+    const orgId = createResponse.organization.id;
+
+    const addMemberResponse = await addMember(ownerSessionId, orgId, memberUser.id, ["member"]);
+    assert(addMemberResponse.type === "json");
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const cancelResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: memberSessionId },
+        body: { action: "cancel" },
+      },
+    );
+
+    assert(cancelResponse.type === "error");
+    expect(cancelResponse.error.code).toBe("permission_denied");
+    expect(cancelResponse.status).toBe(403);
+  });
+
+  it("returns invitation_expired for expired invitations", async () => {
+    const { user: ownerUser, sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-expired@test.com",
+    );
+    const { user: invitedUser, sessionId: invitedSessionId } = await createUserWithSession(
+      "invitee-expired@test.com",
+    );
+
+    const createResponse = await createOrganization(
+      ownerSessionId,
+      "Expired Invite Org",
+      "expired-invite-org",
+    );
+    const orgId = createResponse.organization.id;
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: orgId,
+            email: invitedUser.email,
+            inviterId: ownerUser.id,
+            roles: ["member"],
+            expiresAt: new Date(Date.now() - 1_000),
+            actor: { userId: ownerUser.id, userRole: ownerUser.role },
+            actorMemberId: createResponse.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    await drainDurableHooks(fragment.fragment);
+
+    const acceptResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: invitationResult.invitation.id },
+        query: { sessionId: invitedSessionId },
+        body: { action: "accept", token: invitationResult.invitation.token },
+      },
+    );
+
+    assert(acceptResponse.type === "error");
+    expect(acceptResponse.error.code).toBe("invitation_expired");
+  });
+
+  it("cancels pending invitations when an organization is deleted", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-delete-owner@test.com",
+    );
+    const { user: invitedUser, sessionId: invitedSessionId } = await createUserWithSession(
+      "invite-delete-user@test.com",
+    );
+
+    const created = await createOrganization(ownerSessionId, "Invite Delete Org", "invite-del-org");
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const deleteResponse = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
+      pathParams: { organizationId: created.organization.id },
+      query: { sessionId: ownerSessionId },
+    });
+
+    assert(deleteResponse.type === "json");
+    expect(deleteResponse.data.success).toBe(true);
+
+    const acceptResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: invitedSessionId },
+        body: { action: "accept", token: inviteResponse.data.invitation.token },
+      },
+    );
+
+    assert(acceptResponse.type === "error");
+    expect(acceptResponse.error.code).toBe("invitation_not_found");
+
+    const listUserInvites = await fragment.callRoute("GET", "/organizations/invitations", {
+      query: { sessionId: invitedSessionId },
+    });
+
+    assert(listUserInvites.type === "json");
+    expect(listUserInvites.data.invitations).toHaveLength(0);
+  });
+
+  it("requires a token when rejecting invitations", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession(
+      "invite-owner-reject-token@test.com",
+    );
+    const { user: invitedUser, sessionId: invitedSessionId } = await createUserWithSession(
+      "invitee-reject-token@test.com",
+    );
+
+    const createResponse = await createOrganization(
+      ownerSessionId,
+      "Reject Token Org",
+      "reject-token-org",
+    );
+    const orgId = createResponse.organization.id;
+
+    const inviteResponse = await fragment.callRoute(
+      "POST",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: orgId },
+        query: { sessionId: ownerSessionId },
+        body: { email: invitedUser.email, roles: ["member"] },
+      },
+    );
+
+    assert(inviteResponse.type === "json");
+
+    const rejectResponse = await fragment.callRoute(
+      "PATCH",
+      "/organizations/invitations/:invitationId",
+      {
+        pathParams: { invitationId: inviteResponse.data.invitation.id },
+        query: { sessionId: invitedSessionId },
+        body: { action: "reject" },
+      },
+    );
+
+    assert(rejectResponse.type === "error");
+    expect(rejectResponse.error.code).toBe("invalid_token");
   });
 });
 

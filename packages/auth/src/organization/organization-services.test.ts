@@ -1,8 +1,10 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { authFragmentDefinition } from "..";
 import { hashPassword } from "../user/password";
+import { getInternalFragment } from "@fragno-dev/db";
+import { authSchema } from "../schema";
 
 describe("organization services", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -746,6 +748,686 @@ describe("organization services", async () => {
     expect(userInvites.invitations[0]?.organization?.id).toBe(organizationResult.organization.id);
   });
 
+  it("resends pending invitations for the same email with updated roles and token", async () => {
+    const owner = await createUser("invite-resend-owner@test.com");
+    const invitedUser = await createUser("invite-resend-user@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite Resend Org",
+            slug: "invite-resend-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [firstInvite] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(firstInvite.ok);
+
+    const [secondInvite] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["admin"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(secondInvite.ok);
+    expect(secondInvite.invitation.id).toBe(firstInvite.invitation.id);
+    expect(secondInvite.invitation.token).not.toBe(firstInvite.invitation.token);
+    expect(secondInvite.invitation.roles).toEqual(["admin"]);
+
+    const [tamperedResponse] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: secondInvite.invitation.id,
+            action: "accept",
+            token: firstInvite.invitation.token,
+            actor: { userId: invitedUser.id, userRole: invitedUser.role },
+            organizationId: secondInvite.invitation.organizationId,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(tamperedResponse.ok).toBe(false);
+    if (!tamperedResponse.ok) {
+      expect(tamperedResponse.code).toBe("invalid_token");
+    }
+
+    const [pendingInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitations({
+            organizationId: organizationResult.organization.id,
+            status: "pending",
+          }),
+        ])
+        .execute();
+    });
+
+    const pendingForEmail = pendingInvites.invitations.filter(
+      (invitation) => invitation.email === invitedUser.email,
+    );
+    expect(pendingForEmail).toHaveLength(1);
+    expect(pendingForEmail[0]?.roles).toEqual(["admin"]);
+  });
+
+  it("rejects tokens from other invitations", async () => {
+    const owner = await createUser("invite-token-owner@test.com");
+    const inviteeA = await createUser("invitee-token-a@test.com");
+    const inviteeB = await createUser("invitee-token-b@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite Token Org",
+            slug: "invite-token-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [inviteA] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: inviteeA.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    const [inviteB] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: inviteeB.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(inviteA.ok);
+    assert(inviteB.ok);
+
+    const [tamperedResponse] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: inviteA.invitation.id,
+            action: "accept",
+            token: inviteB.invitation.token,
+            actor: { userId: inviteeA.id, userRole: inviteeA.role },
+            organizationId: inviteA.invitation.organizationId,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(tamperedResponse.ok).toBe(false);
+    if (!tamperedResponse.ok) {
+      expect(tamperedResponse.code).toBe("invalid_token");
+    }
+  });
+
+  it("schedules invitation expiration hooks", async () => {
+    const owner = await createUser("invite-expire-owner@test.com");
+    const invitedUser = await createUser("invite-expire-user@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Expire Hook Org",
+            slug: "expire-hook-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            expiresAt: new Date(Date.now() + 60_000),
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    const internalFragment = getInternalFragment(test.adapter);
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const expirationHook = hooks.find((hook) => {
+      const payload = hook.payload as { invitationId?: string } | null;
+      return (
+        hook.hookName === "onInvitationExpired" &&
+        payload?.invitationId === invitationResult.invitation.id
+      );
+    });
+
+    expect(expirationHook).toBeDefined();
+    expect(expirationHook?.nextRetryAt?.getTime()).toBe(
+      invitationResult.invitation.expiresAt.getTime(),
+    );
+  });
+
+  it("expires invitations via durable hook processing", async () => {
+    const owner = await createUser("invite-expire-owner-2@test.com");
+    const invitedUser = await createUser("invite-expire-user-2@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Expire Org",
+            slug: "expire-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            expiresAt: new Date(Date.now() - 1_000),
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    const internalFragment = getInternalFragment(test.adapter);
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const expirationHook = hooks.find((hook) => {
+      const payload = hook.payload as { invitationId?: string } | null;
+      return (
+        hook.hookName === "onInvitationExpired" &&
+        payload?.invitationId === invitationResult.invitation.id
+      );
+    });
+
+    expect(expirationHook).toBeDefined();
+    if (!expirationHook) {
+      throw new Error("Expected invitation expiration hook to be scheduled");
+    }
+
+    const internalState = fragment.fragment.$internal as { durableHooksToken?: object } | undefined;
+    expect(internalState?.durableHooksToken).toBeDefined();
+
+    await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalFragment.$internal.deps.schema);
+          uow.update("fragno_hooks", expirationHook.id, (b) =>
+            b.set({ nextRetryAt: new Date(Date.now() - 1_000) }),
+          );
+        })
+        .execute();
+    });
+
+    await drainDurableHooks(fragment.fragment);
+
+    const hooksAfterDrain = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const processedHook = hooksAfterDrain.find((hook) => {
+      const payload = hook.payload as { invitationId?: string } | null;
+      return (
+        hook.hookName === "onInvitationExpired" &&
+        payload?.invitationId === invitationResult.invitation.id
+      );
+    });
+
+    if (processedHook?.status === "failed") {
+      throw new Error(`Invitation expiration hook failed: ${processedHook.error ?? "unknown"}`);
+    }
+
+    const [expiredLookup] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationInvitationById(invitationResult.invitation.id),
+        ])
+        .execute();
+    });
+
+    expect(expiredLookup?.invitation.status).toBe("expired");
+    expect(expiredLookup?.invitation.respondedAt).toBeTruthy();
+
+    const [pendingInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitationsForUser({
+            email: invitedUser.email,
+            status: "pending",
+          }),
+        ])
+        .execute();
+    });
+
+    expect(pendingInvites.invitations).toHaveLength(0);
+  });
+
+  it("expires invitations even if the invitee user is deleted", async () => {
+    const owner = await createUser("invite-expire-owner-deleted@test.com");
+    const invitedUser = await createUser("invite-expire-user-deleted@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Expire Deleted Org",
+            slug: "expire-deleted-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            expiresAt: new Date(Date.now() - 1_000),
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    await test.inContext(function () {
+      return this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(authSchema);
+          uow.delete("user", invitedUser.id);
+        })
+        .execute();
+    });
+
+    const internalFragment = getInternalFragment(test.adapter);
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const expirationHook = hooks.find((hook) => {
+      const payload = hook.payload as { invitationId?: string } | null;
+      return (
+        hook.hookName === "onInvitationExpired" &&
+        payload?.invitationId === invitationResult.invitation.id
+      );
+    });
+
+    if (!expirationHook) {
+      throw new Error("Expected invitation expiration hook to be scheduled");
+    }
+
+    await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalFragment.$internal.deps.schema);
+          uow.update("fragno_hooks", expirationHook.id, (b) =>
+            b.set({ nextRetryAt: new Date(Date.now() - 1_000) }),
+          );
+        })
+        .execute();
+    });
+
+    await drainDurableHooks(fragment.fragment);
+
+    const [expiredLookup] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationInvitationById(invitationResult.invitation.id),
+        ])
+        .execute();
+    });
+
+    expect(expiredLookup?.invitation.status).toBe("expired");
+  });
+
+  it("marks invitations expired when responding after expiry", async () => {
+    const owner = await createUser("invite-expire-owner-3@test.com");
+    const invitedUser = await createUser("invite-expire-user-3@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Expire Respond Org",
+            slug: "expire-respond-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            expiresAt: new Date(Date.now() - 1_000),
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    const [response] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: invitationResult.invitation.id,
+            action: "accept",
+            token: invitationResult.invitation.token,
+            actor: { userId: invitedUser.id, userRole: invitedUser.role },
+            organizationId: invitationResult.invitation.organizationId,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) {
+      expect(response.code).toBe("invitation_expired");
+    }
+
+    const [expiredLookup] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationInvitationById(invitationResult.invitation.id),
+        ])
+        .execute();
+    });
+
+    expect(expiredLookup?.invitation.status).toBe("expired");
+  });
+
+  it("lists invitations by status", async () => {
+    const owner = await createUser("invite-status-owner@test.com");
+    const invitedUser = await createUser("invite-status-user@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite Status Org",
+            slug: "invite-status-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    const [cancelResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: invitationResult.invitation.id,
+            action: "cancel",
+            actor: { userId: owner.id, userRole: owner.role },
+            organizationId: invitationResult.invitation.organizationId,
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(cancelResult.ok).toBe(true);
+
+    const [pendingInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitations({
+            organizationId: organizationResult.organization.id,
+            status: "pending",
+          }),
+        ])
+        .execute();
+    });
+
+    expect(pendingInvites.invitations).toHaveLength(0);
+
+    const [canceledInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitations({
+            organizationId: organizationResult.organization.id,
+            status: "canceled",
+          }),
+        ])
+        .execute();
+    });
+
+    expect(canceledInvites.invitations).toHaveLength(1);
+  });
+
+  it("cancels pending invitations when an organization is deleted", async () => {
+    const owner = await createUser("invite-delete-owner@test.com");
+    const invitedUser = await createUser("invite-delete-user@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite Delete Org",
+            slug: "invite-delete-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [invitationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organizationResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            roles: ["member"],
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: organizationResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(invitationResult.ok);
+
+    const [deleteResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.deleteOrganization(organizationResult.organization.id, {
+            userId: owner.id,
+            userRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(deleteResult.ok).toBe(true);
+
+    const [lookup] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationInvitationById(invitationResult.invitation.id),
+        ])
+        .execute();
+    });
+
+    expect(lookup?.invitation.status).toBe("canceled");
+    expect(lookup?.invitation.respondedAt).toBeTruthy();
+
+    const [pendingInvites] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitationsForUser({
+            email: invitedUser.email,
+            status: "pending",
+          }),
+        ])
+        .execute();
+    });
+
+    expect(pendingInvites.invitations).toHaveLength(0);
+
+    const [acceptResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: invitationResult.invitation.id,
+            action: "accept",
+            token: invitationResult.invitation.token,
+            actor: { userId: invitedUser.id, userRole: invitedUser.role },
+            organizationId: invitationResult.invitation.organizationId,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(acceptResult.ok).toBe(false);
+    if (!acceptResult.ok) {
+      expect(acceptResult.code).toBe("invitation_not_found");
+    }
+  });
+
   it("removes members from organizations", async () => {
     const owner = await createUser("remove-owner@test.com");
     const memberUser = await createUser("remove-member@test.com");
@@ -1173,6 +1855,61 @@ describe("organization service limits", async () => {
     expect(secondInvite.ok).toBe(false);
     if (!secondInvite.ok) {
       expect(secondInvite.code).toBe("limit_reached");
+    }
+  });
+
+  it("blocks invitation acceptance when member limit is reached", async () => {
+    const owner = await createUser("invite-limit-owner-2@test.com");
+    const invitedUser = await createUser("invite-limit-user@test.com");
+
+    const [orgResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Invite Limit Org Two",
+            slug: "invite-limit-org-two",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(orgResult.ok);
+
+    const [inviteResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: orgResult.organization.id,
+            email: invitedUser.email,
+            inviterId: owner.id,
+            actor: { userId: owner.id, userRole: owner.role },
+            actorMemberId: orgResult.member.id,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(inviteResult.ok);
+
+    const [acceptResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.respondToOrganizationInvitation({
+            invitationId: inviteResult.invitation.id,
+            action: "accept",
+            token: inviteResult.invitation.token,
+            actor: { userId: invitedUser.id, userRole: invitedUser.role },
+            organizationId: inviteResult.invitation.organizationId,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(acceptResult.ok).toBe(false);
+    if (!acceptResult.ok) {
+      expect(acceptResult.code).toBe("limit_reached");
     }
   });
 });

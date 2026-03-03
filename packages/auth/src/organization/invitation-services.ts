@@ -181,6 +181,8 @@ const buildExpiresAt = (input: CreateInvitationInput): Date => {
   return expiresAt;
 };
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
 const filterRolesForMemberId = (
   roles: {
     role: string;
@@ -256,6 +258,7 @@ export function createOrganizationInvitationServices(
       const now = new Date();
       const token = bytesToHex(randomBytes(32));
       const actorMemberId = input.actorMemberId;
+      const normalizedEmail = normalizeEmail(input.email);
       const expiresAt = buildExpiresAt({
         ...input,
         expiresInDays: input.expiresInDays ?? invitationExpiresInDays,
@@ -304,6 +307,79 @@ export function createOrganizationInvitationServices(
             return { ok: false as const, code: "permission_denied" as const };
           }
 
+          const pendingInvitesForEmail = invitations.filter(
+            (invitation) => normalizeEmail(invitation.email) === normalizedEmail,
+          );
+          const existingInvitation =
+            pendingInvitesForEmail.length > 0
+              ? pendingInvitesForEmail.reduce((latest, invitation) =>
+                  invitation.createdAt > latest.createdAt ? invitation : latest,
+                )
+              : null;
+
+          const organization = actorMember.organizationMemberOrganization
+            ? mapOrganization(actorMember.organizationMemberOrganization)
+            : null;
+          const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
+
+          if (existingInvitation) {
+            for (const invitation of pendingInvitesForEmail) {
+              if (invitation.id !== existingInvitation.id) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "canceled", respondedAt: now }).check(),
+                );
+              }
+            }
+
+            uow.update("organizationInvitation", existingInvitation.id, (b) =>
+              b
+                .set({
+                  organizationId: input.organizationId,
+                  email: input.email,
+                  roles,
+                  status: "pending",
+                  token,
+                  inviterId: input.inviterId,
+                  expiresAt,
+                  createdAt: now,
+                  respondedAt: null,
+                })
+                .check(),
+            );
+
+            uow.triggerHook(
+              "onInvitationExpired",
+              { invitationId: toExternalId(existingInvitation.id) },
+              { processAt: expiresAt },
+            );
+
+            const invitation = mapInvitation({
+              id: existingInvitation.id,
+              organizationId: input.organizationId,
+              email: input.email,
+              roles,
+              status: "pending",
+              token,
+              inviterId: input.inviterId,
+              expiresAt,
+              createdAt: now,
+              respondedAt: null,
+            });
+
+            if (organization) {
+              uow.triggerHook("onInvitationCreated", {
+                organization,
+                invitation,
+                actor: actorSummary,
+              });
+            }
+
+            return {
+              ok: true as const,
+              invitation,
+            };
+          }
+
           if (
             limits?.invitationsPerOrganization !== undefined &&
             invitations.length >= limits.invitationsPerOrganization
@@ -323,9 +399,12 @@ export function createOrganizationInvitationServices(
             respondedAt: null,
           });
 
-          const organization = actorMember.organizationMemberOrganization
-            ? mapOrganization(actorMember.organizationMemberOrganization)
-            : null;
+          uow.triggerHook(
+            "onInvitationExpired",
+            { invitationId: toExternalId(invitationId) },
+            { processAt: expiresAt },
+          );
+
           const invitation = mapInvitation({
             id: invitationId,
             organizationId: input.organizationId,
@@ -338,7 +417,6 @@ export function createOrganizationInvitationServices(
             createdAt: now,
             respondedAt: null,
           });
-          const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
 
           if (organization) {
             uow.triggerHook("onInvitationCreated", {
@@ -495,7 +573,13 @@ export function createOrganizationInvitationServices(
 
             const status = invitation.status as OrganizationInvitationStatus;
             if (status !== "pending") {
-              return { ok: false as const, code: "invitation_not_found" as const };
+              return {
+                ok: false as const,
+                code:
+                  status === "expired"
+                    ? ("invitation_expired" as const)
+                    : ("invitation_not_found" as const),
+              };
             }
 
             if (input.action !== "cancel") {
@@ -504,7 +588,19 @@ export function createOrganizationInvitationServices(
               }
 
               if (invitation.expiresAt < now) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "expired", respondedAt: now }).check(),
+                );
                 return { ok: false as const, code: "invitation_expired" as const };
+              }
+
+              const actorEmail = actorUser?.email;
+              if (!actorEmail) {
+                return { ok: false as const, code: "permission_denied" as const };
+              }
+
+              if (normalizeEmail(actorEmail) !== normalizeEmail(invitation.email)) {
+                return { ok: false as const, code: "permission_denied" as const };
               }
             }
 
@@ -816,7 +912,13 @@ export function createOrganizationInvitationServices(
 
           const status = invitation.status as OrganizationInvitationStatus;
           if (status !== "pending") {
-            return { ok: false as const, code: "invitation_not_found" as const };
+            return {
+              ok: false as const,
+              code:
+                status === "expired"
+                  ? ("invitation_expired" as const)
+                  : ("invitation_not_found" as const),
+            };
           }
 
           const now = new Date();
@@ -825,7 +927,18 @@ export function createOrganizationInvitationServices(
               return { ok: false as const, code: "invalid_token" as const };
             }
             if (invitation.expiresAt < now) {
+              uow.update("organizationInvitation", invitation.id, (b) =>
+                b.set({ status: "expired", respondedAt: now }).check(),
+              );
               return { ok: false as const, code: "invitation_expired" as const };
+            }
+
+            const actorEmail = sessionOwner.email;
+            if (!actorEmail) {
+              return { ok: false as const, code: "permission_denied" as const };
+            }
+            if (normalizeEmail(actorEmail) !== normalizeEmail(invitation.email)) {
+              return { ok: false as const, code: "permission_denied" as const };
             }
           }
 
@@ -836,9 +949,10 @@ export function createOrganizationInvitationServices(
                 | null;
             }
           ).organizationInvitationOrganization;
-          const organizationSummary = invitationOrganization
-            ? mapOrganization(invitationOrganization)
-            : null;
+          if (!invitationOrganization || invitationOrganization.deletedAt) {
+            return { ok: false as const, code: "invitation_not_found" as const };
+          }
+          const organizationSummary = mapOrganization(invitationOrganization);
           const memberRows = invitations.flatMap((entry) => {
             const organization = (
               entry as {
@@ -1117,6 +1231,7 @@ export function createOrganizationInvitationServices(
           if (!session || !session.sessionOwner) {
             return { ok: false as const, code: "session_invalid" as const };
           }
+          const sessionOwner = session.sessionOwner;
 
           if (!organization || organization.deletedAt != null) {
             return { ok: false as const, code: "organization_not_found" as const };
@@ -1132,11 +1247,96 @@ export function createOrganizationInvitationServices(
           const actorRoles = extractRoles(
             (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
           );
-          if (
-            !isGlobalAdmin(session.sessionOwner.role as Role) &&
-            !canManageOrganization(actorRoles)
-          ) {
+          if (!isGlobalAdmin(sessionOwner.role as Role) && !canManageOrganization(actorRoles)) {
             return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const actorSummary = mapUserSummary({
+            id: sessionOwner.id,
+            email: sessionOwner.email,
+            role: sessionOwner.role,
+            bannedAt: sessionOwner.bannedAt ?? null,
+          });
+
+          const normalizedEmail = normalizeEmail(params.email);
+          const pendingInvitesForEmail = invitations.filter(
+            (invitation) => normalizeEmail(invitation.email) === normalizedEmail,
+          );
+          const existingInvitation =
+            pendingInvitesForEmail.length > 0
+              ? pendingInvitesForEmail.reduce((latest, invitation) =>
+                  invitation.createdAt > latest.createdAt ? invitation : latest,
+                )
+              : null;
+
+          const now = new Date();
+          const token = bytesToHex(randomBytes(32));
+          const expiresAt = buildExpiresAt({
+            organizationId: params.organizationId,
+            email: params.email,
+            roles,
+            inviterId: toExternalId(sessionOwner.id),
+            actor: {
+              userId: toExternalId(sessionOwner.id),
+              userRole: sessionOwner.role as Role,
+            },
+            expiresInDays: invitationExpiresInDays,
+          });
+
+          if (existingInvitation) {
+            for (const invitation of pendingInvitesForEmail) {
+              if (invitation.id !== existingInvitation.id) {
+                uow.update("organizationInvitation", invitation.id, (b) =>
+                  b.set({ status: "canceled", respondedAt: now }).check(),
+                );
+              }
+            }
+
+            uow.update("organizationInvitation", existingInvitation.id, (b) =>
+              b
+                .set({
+                  organizationId: params.organizationId,
+                  email: params.email,
+                  roles,
+                  status: "pending",
+                  token,
+                  inviterId: sessionOwner.id,
+                  expiresAt,
+                  createdAt: now,
+                  respondedAt: null,
+                })
+                .check(),
+            );
+
+            uow.triggerHook(
+              "onInvitationExpired",
+              { invitationId: toExternalId(existingInvitation.id) },
+              { processAt: expiresAt },
+            );
+
+            const invitation = mapInvitationRow({
+              id: existingInvitation.id,
+              organizationId: params.organizationId,
+              email: params.email,
+              roles,
+              status: "pending",
+              token,
+              inviterId: sessionOwner.id,
+              expiresAt,
+              createdAt: now,
+              respondedAt: null,
+            });
+
+            uow.triggerHook("onInvitationCreated", {
+              organization: mapOrganization(organization),
+              invitation,
+              actor: actorSummary,
+            });
+
+            return {
+              ok: true as const,
+              invitation,
+            };
           }
 
           if (
@@ -1146,23 +1346,23 @@ export function createOrganizationInvitationServices(
             return { ok: false as const, code: "limit_reached" as const };
           }
 
-          const now = new Date();
-          const token = bytesToHex(randomBytes(32));
-          const expiresAt = new Date();
-          const expiresInDays = invitationExpiresInDays ?? 3;
-          expiresAt.setDate(expiresAt.getDate() + expiresInDays);
-
           const invitationId = uow.create("organizationInvitation", {
             organizationId: params.organizationId,
             email: params.email,
             roles,
             status: "pending",
             token,
-            inviterId: session.sessionOwner.id,
+            inviterId: sessionOwner.id,
             expiresAt,
             createdAt: now,
             respondedAt: null,
           });
+
+          uow.triggerHook(
+            "onInvitationExpired",
+            { invitationId: toExternalId(invitationId) },
+            { processAt: expiresAt },
+          );
 
           const invitation = mapInvitationRow({
             id: invitationId,
@@ -1171,17 +1371,10 @@ export function createOrganizationInvitationServices(
             roles,
             status: "pending",
             token,
-            inviterId: session.sessionOwner.id,
+            inviterId: sessionOwner.id,
             expiresAt,
             createdAt: now,
             respondedAt: null,
-          });
-
-          const actorSummary = mapUserSummary({
-            id: session.sessionOwner.id,
-            email: session.sessionOwner.email,
-            role: session.sessionOwner.role,
-            bannedAt: session.sessionOwner.bannedAt ?? null,
           });
 
           uow.triggerHook("onInvitationCreated", {
