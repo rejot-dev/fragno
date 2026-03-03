@@ -272,13 +272,19 @@ const findJoinMatches = (
         throw new Error(`Column "${right}" not found on table "${targetTable.name}".`);
       }
 
-      const actualLeft = leftColumn.role === "external-id" ? "_internalId" : left;
+      const actualLeft =
+        leftColumn.role === "external-id" && rightColumn.role !== "external-id"
+          ? "_internalId"
+          : left;
       const actualLeftColumn = parentTable.columns[actualLeft];
       if (!actualLeftColumn) {
         throw new Error(`Column "${actualLeft}" not found on table "${parentTable.name}".`);
       }
 
-      const actualRight = rightColumn.role === "external-id" ? "_internalId" : right;
+      const actualRight =
+        rightColumn.role === "external-id" && leftColumn.role !== "external-id"
+          ? "_internalId"
+          : right;
       const actualRightColumn = targetTable.columns[actualRight];
       if (!actualRightColumn) {
         throw new Error(`Column "${actualRight}" not found on table "${targetTable.name}".`);
@@ -456,7 +462,7 @@ const enforceOutgoingForeignKeys = (
   resolver?: NamingResolver,
 ): void => {
   for (const relation of Object.values(table.relations)) {
-    if (relation.type !== "one") {
+    if (relation.type !== "one" || relation.foreignKey === false) {
       continue;
     }
 
@@ -523,7 +529,7 @@ const enforceNoIncomingForeignKeys = (
 ): void => {
   for (const sourceTable of Object.values(schema.tables)) {
     for (const relation of Object.values(sourceTable.relations)) {
-      if (relation.type !== "one") {
+      if (relation.type !== "one" || relation.foreignKey === false) {
         continue;
       }
 
