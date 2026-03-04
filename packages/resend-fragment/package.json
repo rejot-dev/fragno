@@ -63,7 +63,9 @@
   "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsc --noEmit",
-    "build": "tsdown"
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "type": "module",
   "private": true,
@@ -71,13 +73,19 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
+    "resend": "^6.9.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.2.2",
     "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
-    "tsdown": "^0.20.3"
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "tsdown": "^0.20.3",
+    "vitest": "^3.2.4"
   },
   "peerDependencies": {
     "typescript": ">=5",

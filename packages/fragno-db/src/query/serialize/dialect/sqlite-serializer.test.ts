@@ -219,6 +219,11 @@ describe("SQLiteSerializer", () => {
       const date = prismaSerializer["deserializeDate"]("2024-03-10 12:34:56.789", timestampColumn);
       expect(date.toISOString()).toBe("2024-03-10T12:34:56.789Z");
     });
+
+    it("should parse numeric timestamp strings with decimals", () => {
+      const date = serializer["deserializeDate"]("1772709276409.0", timestampColumn);
+      expect(date.getTime()).toBe(1772709276409);
+    });
   });
 
   describe("deserializeInteger", () => {
