@@ -11,6 +11,9 @@ Format:
 - [Fragno AI Fragment — Spec](./spec-ai-fragment.md) — AI fragment architecture and contract:
   thread/message/run models, NDJSON streaming, persistence guarantees, webhook handling, runner
   execution behavior, config surface, and client hooks.
+- [Pi Backoffice Sessions — Spec](./spec-pi-backoffice-sessions.md) — Backoffice integration for Pi
+  fragment sessions: org-scoped Durable Object hosting, harness configuration, session list + detail
+  UI, and configuration surfaces.
 - [Database Adapter Simplification — Spec](./spec-db-adapter-simplification.md) — Unify SQL runtime
   adapters, make schema output formats explicit, and replace ORM-specific adapters with a single SQL
   adapter plus explicit schema outputs.
