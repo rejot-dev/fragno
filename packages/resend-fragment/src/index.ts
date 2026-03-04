@@ -1,14 +1,23 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
-import { resendFragmentDefinition, type ResendFragmentConfig } from "./definition";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { resendFragmentDefinition } from "./definition";
+import type { ResendFragmentConfig } from "./definition";
 import { resendRoutesFactory } from "./routes";
+import type {
+  ResendEmailInput,
+  ResendEmailDetail,
+  ResendEmailRecord,
+  ResendEmailSummary,
+  ResendListEmailsOutput,
+  ResendSendEmailInput,
+} from "./routes";
 
 const routes = [resendRoutesFactory] as const;
 
 export function createResendFragment(
-  config: ResendFragmentConfig = {},
+  config: ResendFragmentConfig,
   options: FragnoPublicConfigWithDatabase,
 ) {
   return instantiate(resendFragmentDefinition)
@@ -18,12 +27,13 @@ export function createResendFragment(
     .build();
 }
 
-export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilder(resendFragmentDefinition, fragnoConfig, routes);
+export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(resendFragmentDefinition, fragnoConfig, routes);
 
   return {
-    useNotes: b.createHook("/notes"),
-    useCreateNote: b.createMutator("POST", "/notes"),
+    useEmails: builder.createHook("/emails"),
+    useEmail: builder.createHook("/emails/:emailId"),
+    useSendEmail: builder.createMutator("POST", "/emails"),
   };
 }
 
@@ -31,4 +41,12 @@ export { resendFragmentDefinition } from "./definition";
 export { resendRoutesFactory } from "./routes";
 export { resendSchema } from "./schema";
 export type { ResendFragmentConfig } from "./definition";
+export type {
+  ResendEmailInput,
+  ResendEmailDetail,
+  ResendEmailRecord,
+  ResendEmailSummary,
+  ResendListEmailsOutput,
+  ResendSendEmailInput,
+};
 export type { FragnoRouteConfig } from "@fragno-dev/core";

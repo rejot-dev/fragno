@@ -28,6 +28,7 @@ export default defineConfig([
     failOnWarn: true,
     platform: "node",
     outDir: "./dist/node",
+    fixedExtension: false,
     plugins: [unpluginFragno({ platform: "node" })],
     unbundle: true,
   },

@@ -89,7 +89,7 @@ export class SQLiteSerializer extends SQLSerializer {
       return value;
     }
     if (typeof value === "string") {
-      if (/^\d+$/.test(value)) {
+      if (/^\d+(?:\.\d+)?$/.test(value)) {
         const numericDate = new Date(Number(value));
         if (Number.isNaN(numericDate.getTime())) {
           throw new Error(`Cannot deserialize date from value: ${value}`);

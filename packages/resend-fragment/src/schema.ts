@@ -1,28 +1,40 @@
-import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-export const resendSchema = schema("resend-fragment", (s) => {
-  return s
-    .addTable("user", (t) => {
-      return t
+export const resendSchema = schema("resend", (s) => {
+  return s.addTable("email", (t) => {
+    return (
+      t
         .addColumn("id", idColumn())
-        .addColumn("name", column("string"))
-        .addColumn("email", column("string"))
-        .createIndex("idx_user_email", ["email"], { unique: true });
-    })
-    .addTable("note", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("content", column("string"))
-        .addColumn("userId", referenceColumn())
+        // status: queued | scheduled | sending | failed | sent | delivered | bounced | complained | opened | clicked
+        // (Resend webhook types map to "email.<status>" values.)
+        .addColumn("status", column("string"))
+        .addColumn("from", column("string").nullable())
+        .addColumn("to", column("json"))
+        .addColumn("cc", column("json").nullable())
+        .addColumn("bcc", column("json").nullable())
+        .addColumn("replyTo", column("json").nullable())
+        .addColumn("subject", column("string").nullable())
+        .addColumn("html", column("string").nullable())
+        .addColumn("text", column("string").nullable())
+        .addColumn("tags", column("json").nullable())
+        .addColumn("headers", column("json").nullable())
+        .addColumn("scheduledAt", column("timestamp").nullable())
+        .addColumn("sentAt", column("timestamp").nullable())
+        .addColumn("lastEventType", column("string").nullable())
+        .addColumn("lastEventAt", column("timestamp").nullable())
+        .addColumn("errorCode", column("string").nullable())
+        .addColumn("errorMessage", column("string").nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_note_user", ["userId"]);
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "note", column: "userId" },
-      to: { table: "user", column: "id" },
-    });
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_email_createdAt", ["createdAt"])
+        .createIndex("idx_email_status_createdAt", ["status", "createdAt"])
+        .createIndex("idx_email_status", ["status"])
+    );
+  });
 });
