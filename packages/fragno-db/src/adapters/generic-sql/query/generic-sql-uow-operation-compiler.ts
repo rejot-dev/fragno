@@ -118,13 +118,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       orderBy = indexColumns.map((col) => [col, orderDirection]);
     }
 
-    // Handle cursor pagination - build a cursor condition
-    // TODO: Multi-column cursor pagination not yet supported
-    if ((after || before) && indexColumns.length > 1) {
-      throw new Error(
-        "Multi-column cursor pagination is not yet supported in Generic SQL implementation",
-      );
-    }
+    // Handle cursor pagination - build a cursor condition (supports multi-column lexicographic compare)
     const cursorCondition = buildCursorCondition(
       after || before,
       indexColumns,

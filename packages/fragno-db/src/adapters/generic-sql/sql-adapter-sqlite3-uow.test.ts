@@ -22,7 +22,8 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
           .addColumn("age", column("integer").nullable())
-          .createIndex("name_idx", ["name"]);
+          .createIndex("name_idx", ["name"])
+          .createIndex("name_id_idx", ["name", "id"]);
       })
       .addTable("emails", (t) => {
         return t
@@ -867,6 +868,47 @@ describe("SqlAdapter SQLite", () => {
     expect(emptyPage.items).toHaveLength(0);
     expect(emptyPage.hasNextPage).toBe(false);
     expect(emptyPage.cursor).toBeUndefined();
+  });
+
+  it("should support composite cursor pagination", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const nameValue = "SqlAdapter SQLite UOW Composite Cursor";
+
+    const createUow = queryEngine.createUnitOfWork("create-composite-cursor-users");
+    for (let i = 0; i < 5; i += 1) {
+      createUow.create("users", { name: nameValue, age: 60 + i });
+    }
+    await createUow.executeMutations();
+
+    const all = await queryEngine.find("users", (b) =>
+      b
+        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+        .orderByIndex("name_id_idx", "asc"),
+    );
+
+    const firstPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+        .orderByIndex("name_id_idx", "asc")
+        .pageSize(2),
+    );
+
+    const secondPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+        .after(firstPage.cursor!)
+        .orderByIndex("name_id_idx", "asc")
+        .pageSize(2),
+    );
+
+    const ids = (rows: { id: FragnoId }[]) => rows.map((row) => row.id.externalId);
+
+    expect(all.length).toBeGreaterThanOrEqual(5);
+    expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.cursor).toBeInstanceOf(Cursor);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(ids(firstPage.items)).toEqual(ids(all).slice(0, 2));
+    expect(ids([...firstPage.items, ...secondPage.items])).toEqual(ids(all).slice(0, 4));
   });
 
   it("should support handlerTx with retry logic", async () => {

@@ -211,7 +211,10 @@ export function createCursorFromRecord(
     if (value === undefined) {
       throw new Error(`Record is missing value for index column "${col.name}".`);
     }
-    indexValues[col.name] = value;
+    // Resolve FragnoId/FragnoReference to primitive values for cursor serialization.
+    const resolved = resolveFragnoIdValue(value, col);
+    // BigInt values are not JSON-serializable, so store them as strings.
+    indexValues[col.name] = typeof resolved === "bigint" ? resolved.toString() : resolved;
   }
 
   return new Cursor({
@@ -263,6 +266,15 @@ export function serializeCursorValues(
       missingColumns.push(col.name);
       continue;
     }
+
+    // If the cursor value is already a FragnoId/FragnoReference, resolve it directly
+    // to avoid deserializing non-JSON objects.
+    const resolvedDirect = resolveFragnoIdValue(value, col);
+    if (resolvedDirect !== value) {
+      serialized[col.name] = serializer.serialize(resolvedDirect, col);
+      continue;
+    }
+
     // First deserialize from JSON format to application format
     // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
     const deserialized = serializer.deserialize(value, col);
