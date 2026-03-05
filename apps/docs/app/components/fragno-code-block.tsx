@@ -1,9 +1,5 @@
 "use client";
-import type {
-  HighlightOptions,
-  HighlightOptionsCommon,
-  HighlightOptionsThemes,
-} from "fumadocs-core/highlight";
+import type { HighlightOptions } from "fumadocs-core/highlight";
 import { useShiki } from "fumadocs-core/highlight/client";
 import { cn } from "@/lib/cn";
 import { type ComponentProps, createContext, type FC, Suspense, use } from "react";
@@ -24,7 +20,7 @@ export interface DynamicCodeblockProps {
    * @defaultValue true
    */
   wrapInSuspense?: boolean;
-  options?: Partial<Omit<HighlightOptionsCommon, "lang"> & HighlightOptionsThemes>;
+  options?: Partial<Omit<HighlightOptions, "lang">>;
   className?: string;
   /**
    * Show/hide the copy button.

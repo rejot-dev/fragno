@@ -11,7 +11,29 @@ import { join } from "node:path";
 import path from "path";
 import type { Plugin } from "vite";
 
-export default defineConfig(() => {
+const fumadocsDeps = [
+  "fumadocs-ui/components/callout",
+  "fumadocs-ui/components/steps",
+  "fumadocs-ui/components/card",
+  "fumadocs-ui/components/type-table",
+  "fumadocs-ui/components/codeblock",
+  "fumadocs-ui/components/tabs",
+  "fumadocs-ui/components/dynamic-codeblock",
+  "fumadocs-ui/components/ui/popover",
+  "fumadocs-ui/contexts/search",
+  "fumadocs-ui/layouts/home",
+  "fumadocs-ui/layouts/docs",
+  "fumadocs-ui/page",
+  "fumadocs-ui/provider/react-router",
+  "fumadocs-ui/utils/use-copy-button",
+  "fumadocs-core/highlight/client",
+  "hast-util-to-jsx-runtime",
+  "lucide-react",
+  "@marsidev/react-turnstile",
+];
+
+export default defineConfig(({ mode }) => {
+  const isDev = mode === "development";
   return {
     resolve: {
       alias: {
@@ -29,9 +51,18 @@ export default defineConfig(() => {
       }),
       devtoolsJson(),
     ],
-    optimizeDeps: {
-      include: ["hast-util-to-jsx-runtime"],
-    },
+    optimizeDeps: isDev
+      ? {
+          include: fumadocsDeps,
+        }
+      : undefined,
+    ssr: isDev
+      ? {
+          optimizeDeps: {
+            include: fumadocsDeps,
+          },
+        }
+      : undefined,
     server: {
       allowedHosts: ["local-wilco.recivo.email"],
     },

@@ -110,7 +110,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   };
 }
 
-const clientLoader = browserCollections.docs.createClientLoader({
+const clientLoader = browserCollections.docs.createClientLoader<Record<string, never>>({
   component({ toc, default: Mdx, frontmatter }) {
     const { url, path, processedMarkdown } = usePageData();
 

@@ -219,7 +219,7 @@ function Control({ url, author }: { url: string; author?: string }) {
   );
 }
 
-const clientLoader = browserCollections.blog.createClientLoader({
+const clientLoader = browserCollections.blog.createClientLoader<Record<string, never>>({
   component({ toc, default: Mdx, frontmatter }) {
     const publishDateSource = frontmatter.date;
     if (!publishDateSource) {

@@ -1,7 +1,7 @@
-import { ThemeToggle } from "fumadocs-ui/components/layout/theme-toggle";
 import { useState } from "react";
 import { Grid2x2, Grid3x3, Square, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function loader() {
   // Only allow access in development mode
@@ -208,9 +208,6 @@ export default function CodePreviewPage() {
                     code={code}
                     codeblock={{
                       allowCopy: false,
-                    }}
-                    options={{
-                      defaultColor: false,
                     }}
                   />
                 </div>

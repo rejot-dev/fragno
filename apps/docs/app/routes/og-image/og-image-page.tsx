@@ -1,8 +1,8 @@
-import { ThemeToggle } from "fumadocs-ui/components/layout/theme-toggle";
 import { OriginalOgImage } from "../../og-image/original-og-image";
 import { BannerOgImage } from "../../og-image/banner-og-image";
 import { useState } from "react";
 import { Check, Image, Palette } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function loader() {
   // Only allow access in development mode

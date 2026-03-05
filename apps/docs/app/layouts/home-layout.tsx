@@ -1,10 +1,9 @@
 import { HomeLayout } from "fumadocs-ui/layouts/home";
 import { baseOptions } from "@/lib/layout.shared";
 import { Link, Outlet, useLocation } from "react-router";
-import { Mail } from "lucide-react";
+import { Mail, Search } from "lucide-react";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import { useSearchContext } from "fumadocs-ui/contexts/search";
-import { Search } from "fumadocs-ui/internal/icons";
 import type { ReactNode } from "react";
 
 function SearchBar() {
