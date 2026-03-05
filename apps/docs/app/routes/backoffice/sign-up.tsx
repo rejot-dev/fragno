@@ -1,10 +1,13 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import { FormContainer, FormField } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
-import { getAuthMe } from "@/fragno/auth-server";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
 import type { Route } from "./+types/sign-up";
 import "../../backoffice.css";
+
+type BackofficeSignUpActionData = {
+  ok: false;
+  message: string;
+};
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -19,6 +22,59 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   return null;
 }
 
+export async function action({ request, context }: Route.ActionArgs) {
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const email = String(formData.get("signUpEmail") ?? "").trim();
+  const password = String(formData.get("signUpPassword") ?? "");
+  const confirmPassword = String(formData.get("signUpPasswordConfirm") ?? "");
+
+  if (!email || !password || !confirmPassword) {
+    return {
+      ok: false,
+      message: "Fill out email and password to create an account.",
+    } satisfies BackofficeSignUpActionData;
+  }
+
+  if (password !== confirmPassword) {
+    return {
+      ok: false,
+      message: "Passwords do not match.",
+    } satisfies BackofficeSignUpActionData;
+  }
+
+  try {
+    const callAuthRoute = createAuthRouteCaller(request, context);
+    const response = await callAuthRoute("POST", "/sign-up", {
+      body: { email, password },
+    });
+
+    if (response.type === "error") {
+      return {
+        ok: false,
+        message: response.error.message || "Unable to create an account.",
+      } satisfies BackofficeSignUpActionData;
+    }
+
+    if (response.type !== "json" && response.type !== "empty") {
+      return {
+        ok: false,
+        message: "Unable to create an account.",
+      } satisfies BackofficeSignUpActionData;
+    }
+
+    return redirect("/backoffice", { headers: response.headers });
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Unable to create an account.",
+    } satisfies BackofficeSignUpActionData;
+  }
+}
+
 export function meta() {
   return [
     { title: "Fragno Backoffice Sign Up" },
@@ -27,41 +83,10 @@ export function meta() {
 }
 
 export default function BackofficeSignUp() {
-  const [signUpError, setSignUpError] = useState<string | null>(null);
-  const [signUpPending, setSignUpPending] = useState(false);
-
-  const handleSignUp = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (signUpPending) {
-      return;
-    }
-
-    const formData = new FormData(event.currentTarget);
-    const email = String(formData.get("signUpEmail") ?? "").trim();
-    const password = String(formData.get("signUpPassword") ?? "");
-    const confirmPassword = String(formData.get("signUpPasswordConfirm") ?? "");
-
-    if (!email || !password || !confirmPassword) {
-      setSignUpError("Fill out email and password to create an account.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setSignUpError("Passwords do not match.");
-      return;
-    }
-
-    setSignUpPending(true);
-    setSignUpError(null);
-
-    try {
-      await authClient.signUp.email({ email, password });
-      window.location.assign("/backoffice");
-    } catch (error) {
-      setSignUpError(error instanceof Error ? error.message : "Unable to create an account.");
-      setSignUpPending(false);
-    }
-  };
+  const actionData = useActionData<BackofficeSignUpActionData>();
+  const navigation = useNavigation();
+  const signUpError = actionData?.message ?? null;
+  const signUpPending = navigation.state === "submitting";
 
   return (
     <div
@@ -103,7 +128,7 @@ export default function BackofficeSignUp() {
             description="Use your team email to create a backoffice login."
             eyebrow="Get access"
           >
-            <form onSubmit={handleSignUp} className="space-y-3">
+            <Form method="post" className="space-y-3">
               <FormField label="Work email" hint="Use the email tied to your team access.">
                 <input
                   type="email"
@@ -160,7 +185,7 @@ export default function BackofficeSignUp() {
                   .
                 </span>
               </div>
-            </form>
+            </Form>
           </FormContainer>
         </div>
       </div>
