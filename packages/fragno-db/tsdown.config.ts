@@ -4,6 +4,7 @@ export default defineConfig([
   {
     entry: [
       "./src/mod.ts",
+      "./src/durable-hooks.ts",
       "./src/id.ts",
       "./src/schema/create.ts",
       "./src/query/simple-query-interface.ts",

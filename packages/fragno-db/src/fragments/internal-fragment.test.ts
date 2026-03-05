@@ -261,6 +261,103 @@ describe("Hook Service", () => {
     });
   });
 
+  it("should paginate hooks by namespace with a cursor", async () => {
+    const namespace = "page-cursor";
+    const createdAt1 = new Date("2024-01-01T00:00:00.000Z");
+    const createdAt2 = new Date("2024-01-02T00:00:00.000Z");
+    const createdAt3 = new Date("2024-01-03T00:00:00.000Z");
+
+    let id1!: FragnoId;
+    let id2!: FragnoId;
+    let id3!: FragnoId;
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          id1 = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onPage1",
+            payload: { test: "page-1" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-page-1",
+            createdAt: createdAt1,
+          });
+          id2 = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onPage2",
+            payload: { test: "page-2" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-page-2",
+            createdAt: createdAt2,
+          });
+          id3 = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onPage3",
+            payload: { test: "page-3" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-page-3",
+            createdAt: createdAt3,
+          });
+        })
+        .execute();
+    });
+
+    const firstPage = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.getHooksByNamespacePage(namespace, { pageSize: 2 }),
+            ] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeDefined();
+    expect(firstPage.items.map((event) => event.id.externalId)).toEqual([
+      id3.externalId,
+      id2.externalId,
+    ]);
+
+    const secondPage = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.getHooksByNamespacePage(namespace, {
+                cursor: firstPage.cursor ?? undefined,
+                pageSize: 2,
+              }),
+            ] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.hasNextPage).toBe(false);
+    expect(secondPage.items[0]?.id.externalId).toBe(id1.externalId);
+  });
+
   it("should mark a hook event as processing", async () => {
     const nonce = "test-nonce-3";
     let eventId: FragnoId;

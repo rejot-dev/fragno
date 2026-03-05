@@ -9,6 +9,7 @@ import {
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { FragnoId } from "../schema/create";
+import type { Cursor } from "../query/cursor";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow, type DbNow } from "../query/db-now";
 import {
@@ -16,6 +17,7 @@ import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
+import { isHookStatus, type HookStatus } from "../hooks/hooks";
 
 type AdapterRegistry = {
   listSchemas: () => Array<{
@@ -69,6 +71,25 @@ if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
   // Keep the internal schema version monotonic after removing fragno_db_schemas.
   internalSchema.version = INTERNAL_SCHEMA_MIN_VERSION;
 }
+
+const describeHookStatusSource = (event: { id: FragnoId; hookName: string }) =>
+  `fragno_hooks id=${event.id} hook=${event.hookName}`;
+
+const coerceHookStatus = (status: string, context: string): HookStatus => {
+  if (isHookStatus(status)) {
+    return status;
+  }
+  throw new Error(`Invalid hook status from database (${context}): ${status}`);
+};
+
+const DEFAULT_HOOKS_PAGE_SIZE = 50;
+
+const resolveHookPageSize = (pageSize?: number): number => {
+  if (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize <= 0) {
+    return DEFAULT_HOOKS_PAGE_SIZE;
+  }
+  return pageSize;
+};
 
 // This uses DatabaseFragmentDefinitionBuilder directly
 // to avoid circular dependency (it doesn't need to link to itself)
@@ -191,7 +212,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               id: event.id,
               hookName: event.hookName,
               payload: event.payload as unknown,
-              status: event.status,
+              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
               lastAttemptAt: event.lastAttemptAt,
@@ -226,7 +247,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               id: event.id,
               hookName: event.hookName,
               payload: event.payload,
-              status: event.status,
+              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
               lastAttemptAt: event.lastAttemptAt,
@@ -283,7 +304,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               id: event.id,
               hookName: event.hookName,
               payload: event.payload as unknown,
-              status: event.status,
+              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
               idempotencyKey: event.nonce,
@@ -488,7 +509,45 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
             ),
           )
-          .transformRetrieve(([result]) => result ?? undefined)
+          .transformRetrieve(([result]) =>
+            result
+              ? {
+                  ...result,
+                  status: coerceHookStatus(result.status, describeHookStatusSource(result)),
+                }
+              : undefined,
+          )
+          .build();
+      },
+
+      /**
+       * Get hook events for a namespace in newest-first order with pagination.
+       */
+      getHooksByNamespacePage(
+        namespace: string,
+        options: { cursor?: Cursor | string; pageSize?: number } = {},
+      ) {
+        const pageSize = resolveHookPageSize(options.pageSize);
+
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.findWithCursor("fragno_hooks", (b) => {
+              const query = b
+                .whereIndex("idx_namespace_created_at", (eb) => eb("namespace", "=", namespace))
+                .orderByIndex("idx_namespace_created_at", "desc")
+                .pageSize(pageSize);
+
+              return options.cursor ? query.after(options.cursor) : query;
+            }),
+          )
+          .transformRetrieve(([page]) => ({
+            items: page.items.map((event) => ({
+              ...event,
+              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
+            })),
+            cursor: page.cursor,
+            hasNextPage: page.hasNextPage,
+          }))
           .build();
       },
 
@@ -502,7 +561,12 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               b.whereIndex("idx_namespace_status_retry", (eb) => eb("namespace", "=", namespace)),
             ),
           )
-          .transformRetrieve(([events]) => events)
+          .transformRetrieve(([events]) =>
+            events.map((event) => ({
+              ...event,
+              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
+            })),
+          )
           .build();
       },
     });

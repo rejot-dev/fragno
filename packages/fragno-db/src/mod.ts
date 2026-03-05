@@ -1,4 +1,10 @@
 import type { DatabaseAdapter } from "./adapters/adapters";
+import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
+import type {
+  FragnoPublicConfigWithDatabase,
+  ImplicitDatabaseDependencies,
+  DatabaseHandlerContext,
+} from "./db-fragment-definition-builder";
 import type { AnySchema } from "./schema/create";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
@@ -9,11 +15,6 @@ import {
   type DbIntervalInput,
   type DbNow,
 } from "./query/db-now";
-import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
-import type {
-  FragnoPublicConfigWithDatabase,
-  ImplicitDatabaseDependencies,
-} from "./db-fragment-definition-builder";
 import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 
@@ -160,6 +161,13 @@ export type {
 } from "./hooks/hooks";
 export { defineSyncCommands } from "./sync/commands";
 export type {
+  DurableHookRecord,
+  DurableHookStatus,
+  DurableHooksAccessor,
+  DurableHooksService,
+} from "./durable-hooks";
+export { getDurableHooksService } from "./durable-hooks";
+export type {
   SubmitAppliedResponse,
   SubmitConflictReason,
   SubmitConflictResponse,
@@ -180,8 +188,7 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
+    DatabaseHandlerContext,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     FragnoPublicConfigWithDatabase
