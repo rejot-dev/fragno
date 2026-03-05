@@ -34,7 +34,20 @@ export default [
         route("invites", "routes/backoffice/organisation-invites.tsx"),
       ]),
       route("connections", "routes/backoffice/connections/index.tsx"),
+      route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
+      route(
+        "connections/resend/:orgId",
+        "routes/backoffice/connections/resend/organisation-layout.tsx",
+        [
+          route("configuration", "routes/backoffice/connections/resend/configuration.tsx"),
+          route("send", "routes/backoffice/connections/resend/send.tsx"),
+          route("outbox", "routes/backoffice/connections/resend/outbox.tsx", [
+            index("routes/backoffice/connections/resend/outbox-index.tsx"),
+            route(":emailId", "routes/backoffice/connections/resend/outbox-detail.tsx"),
+          ]),
+        ],
+      ),
       route(
         "connections/telegram/:orgId",
         "routes/backoffice/connections/telegram/organisation-layout.tsx",
@@ -60,6 +73,7 @@ export default [
     route("markdown/*", "routes/api/markdown.ts"),
     route("forms/*", "routes/api/forms.ts"),
     route("auth/*", "routes/api/auth.ts"),
+    route("resend/:orgId/*", "routes/api/resend.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),

@@ -4,12 +4,14 @@ import { MailingList } from "./mailing-list.do";
 import { Forms } from "./forms.do";
 import { Auth } from "./auth.do";
 import { Telegram } from "./telegram.do";
+import { Resend } from "./resend.do";
 
 // Export Durable Object classes
 export { MailingList };
 export { Forms };
 export { Auth };
 export { Telegram };
+export { Resend };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
