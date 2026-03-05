@@ -410,7 +410,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 30
+  schemaVersion: 31
 }
 
 // ============================================================================

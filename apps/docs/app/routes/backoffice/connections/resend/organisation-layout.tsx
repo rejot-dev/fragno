@@ -1,0 +1,110 @@
+import { useEffect, useState } from "react";
+import { Outlet, redirect } from "react-router";
+import type { Route } from "./+types/organisation-layout";
+import {
+  ResendErrorBoundary,
+  ResendHeader,
+  ResendTabs,
+  type ResendConfigState,
+  type ResendTab,
+} from "./shared";
+import { fetchResendConfig } from "./data";
+import { getAuthMe } from "@/fragno/auth-server";
+
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  if (!params.orgId) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    return Response.redirect(new URL("/backoffice/login", request.url), 302);
+  }
+
+  const organisation =
+    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
+  if (!organisation) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const url = new URL(request.url);
+  const currentPath = url.pathname.replace(/\/+$/, "");
+  const basePath = `/backoffice/connections/resend/${params.orgId}`;
+  if (currentPath === basePath) {
+    const target = configState?.configured ? "send" : "configuration";
+    return redirect(`${basePath}/${target}`);
+  }
+
+  return {
+    orgId: params.orgId,
+    origin: new URL(request.url).origin,
+    organisation,
+    configState,
+    configError,
+  };
+}
+
+export function meta({ data }: Route.MetaArgs) {
+  const orgId = data?.orgId ?? "organisation";
+  return [{ title: `Resend Setup · ${orgId}` }];
+}
+
+export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
+  return <ResendErrorBoundary error={error} params={params} />;
+}
+
+export default function BackofficeOrganisationResendLayout({
+  loaderData,
+  matches,
+}: Route.ComponentProps) {
+  const {
+    orgId,
+    origin,
+    organisation,
+    configState: initialConfigState,
+    configError: initialConfigError,
+  } = loaderData;
+  const [configState, setConfigState] = useState<ResendConfigState | null>(initialConfigState);
+  const [configError, setConfigError] = useState<string | null>(initialConfigError);
+  const configLoading = false;
+
+  useEffect(() => {
+    setConfigState(initialConfigState);
+    setConfigError(initialConfigError);
+  }, [initialConfigError, initialConfigState, orgId]);
+
+  let activeTab: ResendTab = "configuration";
+  const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
+  const pathSegments = currentPath.split("/").filter(Boolean);
+  if (pathSegments.includes("outbox")) {
+    activeTab = "outbox";
+  } else if (pathSegments.includes("send")) {
+    activeTab = "send";
+  } else if (pathSegments.includes("configuration")) {
+    activeTab = "configuration";
+  }
+
+  return (
+    <div className="space-y-4">
+      <ResendHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
+      <ResendTabs
+        orgId={orgId}
+        activeTab={activeTab}
+        isConfigured={Boolean(configState?.configured)}
+      />
+      <Outlet
+        context={{
+          orgId,
+          origin,
+          organisation,
+          configState,
+          configLoading,
+          configError,
+          setConfigState,
+          setConfigError,
+        }}
+      />
+    </div>
+  );
+}

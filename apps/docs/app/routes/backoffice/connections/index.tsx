@@ -10,6 +10,12 @@ const CONNECTIONS = [
     status: "Available",
   },
   {
+    id: "resend",
+    name: "Resend",
+    description: "Send emails, register webhooks, and monitor delivery status.",
+    status: "Available",
+  },
+  {
     id: "slack",
     name: "Slack",
     description: "Sync workspace activity and notify channel subscribers.",
@@ -40,6 +46,9 @@ export default function BackofficeConnections() {
   const telegramTarget = activeOrganizationId
     ? `/backoffice/connections/telegram/${activeOrganizationId}`
     : null;
+  const resendTarget = activeOrganizationId
+    ? `/backoffice/connections/resend/${activeOrganizationId}`
+    : null;
 
   return (
     <div className="space-y-4">
@@ -52,7 +61,12 @@ export default function BackofficeConnections() {
 
       <section className="grid gap-3 md:grid-cols-2">
         {CONNECTIONS.map((connection) => {
-          const connectionLink = connection.id === "telegram" ? telegramTarget : null;
+          const connectionLink =
+            connection.id === "telegram"
+              ? telegramTarget
+              : connection.id === "resend"
+                ? resendTarget
+                : null;
           const isAvailable = Boolean(connectionLink);
           return (
             <div

@@ -66,6 +66,10 @@
         "name": "TELEGRAM",
         "class_name": "Telegram",
       },
+      {
+        "name": "RESEND",
+        "class_name": "Resend",
+      },
     ],
   },
   /**
@@ -88,6 +92,10 @@
     {
       "tag": "v4",
       "new_sqlite_classes": ["Telegram"],
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["Resend"],
     },
   ],
   "rules": [

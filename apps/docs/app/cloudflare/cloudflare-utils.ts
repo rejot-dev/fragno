@@ -4,6 +4,7 @@ import { CloudflareContext } from "./cloudflare-context";
 import type { Forms } from "workers/forms.do";
 import type { Auth } from "workers/auth.do";
 import type { Telegram } from "workers/telegram.do";
+import type { Resend } from "workers/resend.do";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
@@ -60,4 +61,17 @@ export function getTelegramDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Resend Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getResendDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Resend> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.RESEND.get(env.RESEND.idFromName(orgId));
 }
