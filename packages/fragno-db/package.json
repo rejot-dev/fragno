@@ -83,6 +83,10 @@
       "types": "./dist/db-fragment-definition-builder.d.ts",
       "default": "./dist/db-fragment-definition-builder.js"
     },
+    "./durable-hooks": {
+      "types": "./dist/durable-hooks.d.ts",
+      "default": "./dist/durable-hooks.js"
+    },
     "./dispatchers/node": {
       "types": "./dist/dispatchers/node/index.d.ts",
       "default": "./dist/dispatchers/node/index.js"

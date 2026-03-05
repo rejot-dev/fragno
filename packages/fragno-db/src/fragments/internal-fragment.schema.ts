@@ -88,5 +88,8 @@ export const internalSchema = schema("fragno_internal", (s) => {
     })
     .alterTable("fragno_hooks", (t) =>
       t.createIndex("idx_namespace_status_last_attempt", ["namespace", "status", "lastAttemptAt"]),
+    )
+    .alterTable("fragno_hooks", (t) =>
+      t.createIndex("idx_namespace_created_at", ["namespace", "createdAt", "id"]),
     );
 });

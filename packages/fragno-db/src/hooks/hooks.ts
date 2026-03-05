@@ -57,13 +57,16 @@ export interface HookContext {
   handlerTx: HookHandlerTx;
 }
 
-export type HookStatus = "pending" | "processing" | "completed" | "failed";
+export const hookStatusValues = ["pending", "processing", "completed", "failed"] as const;
 
-const hookStatusValues = ["pending", "processing", "completed", "failed"] as const;
+export type HookStatus = (typeof hookStatusValues)[number];
+
+export const isHookStatus = (value: unknown): value is HookStatus =>
+  typeof value === "string" && hookStatusValues.includes(value as HookStatus);
 
 const assertHookStatus = (value: unknown): HookStatus => {
-  if (typeof value === "string" && hookStatusValues.includes(value as HookStatus)) {
-    return value as HookStatus;
+  if (isHookStatus(value)) {
+    return value;
   }
   throw new Error(`Invalid hook status: ${String(value)}`);
 };

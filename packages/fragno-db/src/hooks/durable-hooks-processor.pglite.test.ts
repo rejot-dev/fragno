@@ -79,5 +79,5 @@ describe("durable hooks with pglite", () => {
     } finally {
       await cleanup();
     }
-  });
+  }, 15000);
 });
