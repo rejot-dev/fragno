@@ -6,16 +6,21 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 type AuthCallRoute = AuthFragment["callRoute"];
 
-function createAuthRouteCaller(
+export function createAuthRouteCaller(
   request: Request,
   context: Readonly<RouterContextProvider>,
 ): AuthCallRoute {
   const authDo = getAuthDurableObject(context);
+  const headers = new Headers();
+  const cookie = request.headers.get("cookie");
+  if (cookie) {
+    headers.set("cookie", cookie);
+  }
 
   return createRouteCaller<AuthFragment>({
     baseUrl: request.url,
     mountRoute: "/api/auth",
-    baseHeaders: request.headers,
+    baseHeaders: headers,
     fetch: authDo.fetch.bind(authDo),
   });
 }

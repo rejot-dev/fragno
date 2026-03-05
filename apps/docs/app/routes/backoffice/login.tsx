@@ -1,10 +1,15 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router";
+import { useState } from "react";
+import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
-import { getAuthMe } from "@/fragno/auth-server";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
 import type { Route } from "./+types/login";
 import "../../backoffice.css";
+
+type BackofficeLoginActionData = {
+  ok: false;
+  message: string;
+};
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -19,6 +24,51 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   return null;
 }
 
+export async function action({ request, context }: Route.ActionArgs) {
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    return {
+      ok: false,
+      message: "Enter your email and password to continue.",
+    } satisfies BackofficeLoginActionData;
+  }
+
+  try {
+    const callAuthRoute = createAuthRouteCaller(request, context);
+    const response = await callAuthRoute("POST", "/sign-in", {
+      body: { email, password },
+    });
+
+    if (response.type === "error") {
+      return {
+        ok: false,
+        message: response.error.message || "Unable to sign in.",
+      } satisfies BackofficeLoginActionData;
+    }
+
+    if (response.type !== "json" && response.type !== "empty") {
+      return {
+        ok: false,
+        message: "Unable to sign in.",
+      } satisfies BackofficeLoginActionData;
+    }
+
+    return redirect("/backoffice", { headers: response.headers });
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Unable to sign in.",
+    } satisfies BackofficeLoginActionData;
+  }
+}
+
 export function meta() {
   return [
     { title: "Fragno Backoffice Login" },
@@ -29,8 +79,10 @@ export function meta() {
 export default function BackofficeLogin() {
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordPending, setPasswordPending] = useState(false);
+  const actionData = useActionData<BackofficeLoginActionData>();
+  const navigation = useNavigation();
+  const passwordError = actionData?.message ?? null;
+  const passwordPending = navigation.state === "submitting";
 
   const handleGithubSignIn = async () => {
     setOauthPending(true);
@@ -50,33 +102,6 @@ export default function BackofficeLogin() {
     } catch (error) {
       setOauthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
       setOauthPending(false);
-    }
-  };
-
-  const handlePasswordSignIn = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (passwordPending) {
-      return;
-    }
-
-    const formData = new FormData(event.currentTarget);
-    const email = String(formData.get("email") ?? "").trim();
-    const password = String(formData.get("password") ?? "");
-
-    if (!email || !password) {
-      setPasswordError("Enter your email and password to continue.");
-      return;
-    }
-
-    setPasswordPending(true);
-    setPasswordError(null);
-
-    try {
-      await authClient.signIn.email({ email, password });
-      window.location.assign("/backoffice");
-    } catch (error) {
-      setPasswordError(error instanceof Error ? error.message : "Unable to sign in.");
-      setPasswordPending(false);
     }
   };
 
@@ -130,7 +155,7 @@ export default function BackofficeLogin() {
                   GitHub access is required for release approvals.
                 </p>
               )}
-              <form onSubmit={handlePasswordSignIn} className="space-y-3">
+              <Form method="post" className="space-y-3">
                 <div className="border-t border-[color:var(--bo-border)] pt-4">
                   <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
                     Sign in with password
@@ -178,7 +203,7 @@ export default function BackofficeLogin() {
                     Contact an admin if you need access.
                   </span>
                 </div>
-              </form>
+              </Form>
               <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
                 Need an account?{" "}
                 <Link
