@@ -18,7 +18,8 @@ const testSchema = schema("test", (s) => {
         .addColumn("invitedBy", referenceColumn().nullable())
         .createIndex("idx_email", ["email"], { unique: true })
         .createIndex("idx_users_name", ["name"])
-        .createIndex("idx_age", ["age"]);
+        .createIndex("idx_age", ["age"])
+        .createIndex("idx_users_name_created_id", ["name", "createdAt", "id"]);
     })
     .addTable("posts", (t) => {
       return t
@@ -924,6 +925,45 @@ describe("GenericSQLUOWOperationCompiler", () => {
         `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", 5]);
+    });
+
+    test("should compile find with composite cursor pagination", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+      const createdAt = new Date("2024-01-01T00:00:00.000Z");
+      const cursor = new Cursor({
+        indexName: "idx_users_name_created_id",
+        orderDirection: "desc",
+        pageSize: 7,
+        indexValues: { name: "Alice", createdAt, id: "user-123" },
+      });
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "idx_users_name_created_id",
+        options: {
+          useIndex: "idx_users_name_created_id",
+          select: true,
+          orderByIndex: { indexName: "idx_users_name_created_id", direction: "desc" },
+          after: cursor,
+          pageSize: 7,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" < ? or ("users"."name" = ? and "users"."createdAt" < ?) or ("users"."name" = ? and "users"."createdAt" = ? and "users"."id" < ?)) order by "users"."name" desc, "users"."createdAt" desc, "users"."id" desc limit ?"`,
+      );
+      expect(result!.parameters).toEqual([
+        "Alice",
+        "Alice",
+        createdAt.getTime(),
+        "Alice",
+        createdAt.getTime(),
+        "user-123",
+        7,
+      ]);
     });
   });
 
