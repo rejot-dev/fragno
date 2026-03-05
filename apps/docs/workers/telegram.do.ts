@@ -10,6 +10,11 @@ import {
   type TelegramConfig,
   type TelegramFragment,
 } from "@/fragno/telegram";
+import {
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+  type DurableHookQueueResponse,
+} from "@/fragno/durable-hooks";
 
 type StoredTelegramConfig = TelegramConfig & {
   webhookBaseUrl?: string;
@@ -312,6 +317,22 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     const webhookResult = await setTelegramWebhook(stored, webhookUrl, orgId);
 
     return { ...buildConfigResponse(stored), webhook: webhookResult };
+  }
+
+  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
+    const fragment = await this.#ensureFragment();
+    if (!fragment) {
+      return {
+        configured: false,
+        hooksEnabled: false,
+        namespace: null,
+        items: [],
+        cursor: undefined,
+        hasNextPage: false,
+      };
+    }
+
+    return await loadDurableHookQueue(fragment, options);
   }
 
   async fetch(request: Request): Promise<Response> {

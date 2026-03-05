@@ -7,6 +7,11 @@ import {
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 import { Resend as ResendClient } from "resend";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
+import {
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+  type DurableHookQueueResponse,
+} from "@/fragno/durable-hooks";
 
 type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
   webhookBaseUrl?: string;
@@ -428,6 +433,22 @@ export class Resend extends DurableObject<CloudflareEnv> {
       ...buildConfigResponse(existing ?? null),
       webhook: { ok: webhookResult.ok, message: webhookResult.message },
     };
+  }
+
+  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
+    const fragment = await this.#ensureFragment();
+    if (!fragment) {
+      return {
+        configured: false,
+        hooksEnabled: false,
+        namespace: null,
+        items: [],
+        cursor: undefined,
+        hasNextPage: false,
+      };
+    }
+
+    return await loadDurableHookQueue(fragment, options);
   }
 
   async fetch(request: Request): Promise<Response> {

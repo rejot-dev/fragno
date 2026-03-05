@@ -60,6 +60,28 @@ export default [
           ]),
         ],
       ),
+      route("internals", "routes/backoffice/internals/index.tsx"),
+      route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
+      route(
+        "internals/durable-hooks/singletons",
+        "routes/backoffice/internals/durable-hooks-singletons.tsx",
+        [
+          index("routes/backoffice/internals/durable-hooks-singletons-index.tsx"),
+          route(":hookId", "routes/backoffice/internals/durable-hooks-singletons-detail.tsx"),
+        ],
+      ),
+      route(
+        "internals/durable-hooks/:orgId",
+        "routes/backoffice/internals/durable-hooks-organisation-redirect.tsx",
+      ),
+      route(
+        "internals/durable-hooks/:orgId/:fragment",
+        "routes/backoffice/internals/durable-hooks-organisation.tsx",
+        [
+          index("routes/backoffice/internals/durable-hooks-organisation-index.tsx"),
+          route(":hookId", "routes/backoffice/internals/durable-hooks-organisation-detail.tsx"),
+        ],
+      ),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
     ]),

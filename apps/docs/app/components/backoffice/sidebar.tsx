@@ -25,6 +25,11 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Resend", to: "/backoffice/connections/resend" },
     ],
   },
+  {
+    label: "Internals",
+    to: "/backoffice/internals",
+    children: [{ label: "Durable hooks", to: "/backoffice/internals/durable-hooks" }],
+  },
 ];
 
 type BackofficeSidebarProps = {
