@@ -6,7 +6,6 @@
 interface CloudflareEnv {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
-  RESEND_API_KEY: string;
   TURNSTILE_SECRET_KEY: string;
   PI_LOG_LEVEL?: "off" | "error" | "warn" | "info" | "debug";
 }

@@ -14,7 +14,6 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (!me?.user) {
     return Response.redirect(new URL("/backoffice/login", request.url), 302);
   }
-  console.log("me", me);
 
   return { me };
 }

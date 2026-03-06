@@ -1,6 +1,5 @@
 import { createMailingListFragment } from "@fragno-dev/fragment-mailing-list";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { sendEmail } from "@/resend/resend";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 
@@ -33,31 +32,7 @@ export function createMailingListServer(init: MailingListInit) {
           return;
         }
 
-        const { env } = init;
-
-        if (!env.RESEND_API_KEY) {
-          throw new Error("RESEND_API_KEY is not set");
-        }
-
-        const prefix = import.meta.env.MODE === "development" ? "[DEVELOPMENT] " : "";
-
-        const result = await sendEmail(
-          {
-            to: ["founders@rejot.dev"],
-            subject: `${prefix}New subscriber to Fragno mailing list`,
-            html: `<p>New subscriber to Fragno mailing list: ${email}</p>`,
-          },
-          { apiKey: env.RESEND_API_KEY },
-        );
-
-        if (result.type === "error") {
-          console.error("Failed to send email", {
-            error: result.error,
-          });
-          throw new Error(`Failed to send email: ${result.error.message}`);
-        } else {
-          console.log("Email sent", result.data.id);
-        }
+        console.info("Mailing list subscription received", { email });
       },
     },
     {

@@ -34,7 +34,8 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),
-  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt)
+  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt),
+  index("idx_fragno_hooks_idx_namespace_created_at_e489a066").on(table.namespace, table.createdAt, table.id)
 ])
 
 export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {

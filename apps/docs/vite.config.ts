@@ -39,6 +39,9 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),
+        ajv: path.resolve(__dirname, "./app/fragno/ajv-shim.ts"),
+        "ajv-formats": path.resolve(__dirname, "./app/fragno/ajv-formats-shim.ts"),
+        undici: path.resolve(__dirname, "./app/fragno/undici-shim.ts"),
       },
     },
     plugins: [
@@ -56,13 +59,16 @@ export default defineConfig(({ mode }) => {
           include: fumadocsDeps,
         }
       : undefined,
-    ssr: isDev
-      ? {
-          optimizeDeps: {
-            include: fumadocsDeps,
-          },
-        }
-      : undefined,
+    ssr: {
+      ...(isDev
+        ? {
+            optimizeDeps: {
+              include: fumadocsDeps,
+            },
+          }
+        : {}),
+      noExternal: ["@mariozechner/pi-ai"],
+    },
     server: {
       allowedHosts: ["local-wilco.recivo.email"],
     },

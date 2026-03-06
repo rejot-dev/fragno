@@ -136,6 +136,7 @@ describe("pi-fragment session detail route", () => {
     }
 
     expect(detailResponse.data.messages.length).toBeGreaterThan(0);
+    expect(detailResponse.data.events.length).toBeGreaterThan(0);
     expect(detailResponse.data.trace.length).toBeGreaterThan(0);
     expect(detailResponse.data.summaries.length).toBeGreaterThan(0);
     expect(detailResponse.data.summaries[0]?.summary ?? "").toContain("assistant");
@@ -220,7 +221,45 @@ describe("pi-fragment session detail route", () => {
     expect(detailResponse.data.summaries[0]?.turn).toBe(0);
     expect(detailResponse.data.summaries[1]?.turn).toBe(1);
     expect(detailResponse.data.messages.length).toBeGreaterThan(0);
+    expect(detailResponse.data.events.length).toBeGreaterThan(0);
     expect(detailResponse.data.trace.length).toBeGreaterThan(0);
+  });
+
+  it("supports include flags for events/trace/summaries query params", async () => {
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Selective detail" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    const sessionId = createResponse.data.id;
+    const workflowInstanceId = createResponse.data.workflowInstanceId;
+    if (!workflowInstanceId) {
+      throw new Error("Expected workflow instance id");
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId },
+      body: { text: "ping", done: true },
+    });
+    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId },
+      query: { events: "true", trace: "false", summaries: "false" },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(detailResponse.data.messages.length).toBeGreaterThan(0);
+    expect(detailResponse.data.events.length).toBeGreaterThan(0);
+    expect(detailResponse.data.trace).toEqual([]);
+    expect(detailResponse.data.summaries).toEqual([]);
   });
 
   it("returns an error when workflow status is invalid", async () => {

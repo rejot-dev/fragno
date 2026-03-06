@@ -34,7 +34,8 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 }, (table) => [
   index("idx_namespace_status_retry").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_nonce").on(table.nonce),
-  index("idx_namespace_status_last_attempt").on(table.namespace, table.status, table.lastAttemptAt)
+  index("idx_namespace_status_last_attempt").on(table.namespace, table.status, table.lastAttemptAt),
+  index("idx_namespace_created_at").on(table.namespace, table.createdAt, table.id)
 ])
 
 export const fragno_db_outbox = pgTable("fragno_db_outbox", {

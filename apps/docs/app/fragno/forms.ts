@@ -5,7 +5,6 @@ import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { STATIC_FORMS } from "./static-forms";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
-import { sendEmail } from "@/resend/resend";
 
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
@@ -38,31 +37,10 @@ export function createFormsServer(init: FormsInit) {
           return;
         }
 
-        const { env } = init;
-
-        if (!env.RESEND_API_KEY) {
-          console.warn("RESEND_API_KEY is not set");
-          return;
-        }
-
-        const prefix = import.meta.env.MODE === "development" ? "[DEVELOPMENT] " : "";
-
-        const result = await sendEmail(
-          {
-            to: ["founders@rejot.dev"],
-            subject: `${prefix}New submission for form ${response.formId}`,
-            html: `<pre> ${JSON.stringify(response.data)}</pre>`,
-          },
-          { apiKey: env.RESEND_API_KEY },
-        );
-
-        if (result.type === "error") {
-          console.warn("Failed to send email", {
-            error: result.error,
-          });
-        } else {
-          console.log("Email sent", result.data.id);
-        }
+        console.info("Form submission received", {
+          formId: response.formId,
+          data: response.data,
+        });
       },
       staticForms: STATIC_FORMS,
     },

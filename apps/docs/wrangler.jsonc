@@ -70,6 +70,10 @@
         "name": "RESEND",
         "class_name": "Resend",
       },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+      },
     ],
   },
   /**
@@ -96,6 +100,10 @@
     {
       "tag": "v5",
       "new_sqlite_classes": ["Resend"],
+    },
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["Pi"],
     },
   ],
   "rules": [
