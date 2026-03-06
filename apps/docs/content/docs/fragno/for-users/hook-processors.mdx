@@ -8,7 +8,8 @@ import { Callout } from "fumadocs-ui/components/callout";
 ## Overview
 
 Database-backed fragments can schedule durable hooks. Durable hooks are stored in the database as
-part of the same transaction as your mutations, then executed after the commit with retries.
+part of the same transaction as your mutations. After commit, Fragno emits a durable notify signal;
+dispatchers run the actual hook execution and retries.
 
 A hook processor is the background process that wakes up and processes these hooks, so retries and
 scheduled work happen even when no new requests arrive. In code, the runtime helpers create a
@@ -33,8 +34,8 @@ Durable hook processing is designed for at-least-once delivery and idempotent ha
 - Events stuck in `processing` too long are re-queued (default 10 minutes).
 
 Dispatchers use `getNextWakeAt()` to decide when work is due. If there is nothing scheduled, they
-sleep. If work is due, they run `processor.process()`. The hook processor is the full loop: a
-dispatcher plus the processor it drives.
+sleep. If work is due, they run due hooks. The hook processor is the full loop: a dispatcher plus
+the processor it drives.
 
 <Callout type="info">
   Durable hooks are at-least-once. Your hook handlers must be idempotent.
@@ -74,11 +75,13 @@ import { migrate } from "@fragno-dev/db";
 import { createMyFragmentServer, type MyFragment } from "@/fragno/my-fragment";
 
 export class MyFragmentDO extends DurableObject<Env> {
+  state: DurableObjectState;
   fragment: MyFragment;
   handler: ReturnType<ReturnType<NonNullable<typeof createDurableHooksProcessor>>>;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
+    this.state = state;
 
     this.fragment = createMyFragmentServer({ env, state, type: "live" });
     state.blockConcurrencyWhile(async () => {
@@ -93,6 +96,12 @@ export class MyFragmentDO extends DurableObject<Env> {
 
   alarm() {
     return this.handler.alarm?.();
+  }
+
+  fetch(request: Request) {
+    return this.fragment.handler(request, {
+      waitUntil: this.state.waitUntil.bind(this.state),
+    });
   }
 }
 ```

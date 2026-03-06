@@ -1028,6 +1028,187 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
+  describe("durable hooks waitUntil forwarding", () => {
+    it("forwards request waitUntil to notifier context", async () => {
+      const mockAdapter = createMockAdapter();
+      const requestSourceSymbol = Symbol.for("fragno-request-source");
+      const requestRouteSymbol = Symbol.for("fragno-request-route");
+      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
+      const notifySpy = vi.fn().mockResolvedValue(undefined);
+      const waitUntilSpy = vi.fn();
+
+      type TestHooks = {
+        onPing: HookFn<{ value: string }>;
+      };
+
+      const definition = defineFragment("db-frag-hooks-waituntil")
+        .extend(withDatabase(testSchema))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onPing: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const internalData = definition.internalDataFactory?.({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        services: {} as Record<string, never>,
+        serviceDeps: {} as Record<string, never>,
+      }) as { durableHooksToken?: object } | undefined;
+
+      const runtime = internalData?.durableHooksToken
+        ? getDurableHooksRuntimeByToken(internalData.durableHooksToken)
+        : undefined;
+      if (!runtime) {
+        throw new Error("Durable hooks runtime missing");
+      }
+      runtime.config.notifier = {
+        notify: notifySpy,
+      };
+
+      const createHandlerTxBuilderSpy = vi
+        .spyOn(executeUnitOfWork, "createHandlerTxBuilder")
+        .mockReturnValue(
+          {} as unknown as ReturnType<typeof executeUnitOfWork.createHandlerTxBuilder>,
+        );
+
+      const mockStorage = {
+        getStore: () => ({
+          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          [requestSourceSymbol]: "route",
+          [requestRouteSymbol]: { method: "POST", path: "/users" },
+          [requestWaitUntilSymbol]: waitUntilSpy,
+        }),
+      } as unknown as RequestContextStorage<DatabaseContextStorage>;
+
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        storage: mockStorage,
+      });
+
+      contexts.handlerContext.handlerTx();
+      const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
+      const mockUow = {
+        getTriggeredHooks: () => [
+          {
+            namespace: runtime.config.namespace,
+            hookName: "onPing",
+            payload: { value: "ping" },
+          },
+        ],
+      } as unknown as IUnitOfWork;
+      await callArgs?.onAfterMutate?.(mockUow);
+
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      const notifyContext = notifySpy.mock.calls[0]?.[0] as
+        | { route?: string; source?: string; waitUntil?: unknown }
+        | undefined;
+      expect(notifyContext).toMatchObject({
+        source: "request",
+        route: "POST /users",
+      });
+      expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
+      expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+
+      createHandlerTxBuilderSpy.mockRestore();
+    });
+
+    it("forwards inherited request waitUntil for hook mutations", async () => {
+      const mockAdapter = createMockAdapter();
+      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
+      const notifySpy = vi.fn().mockResolvedValue(undefined);
+      const waitUntilSpy = vi.fn();
+
+      type TestHooks = {
+        onPing: HookFn<{ value: string }>;
+      };
+
+      const definition = defineFragment("db-frag-hooks-hook-waituntil")
+        .extend(withDatabase(testSchema))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onPing: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const internalData = definition.internalDataFactory?.({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        services: {} as Record<string, never>,
+        serviceDeps: {} as Record<string, never>,
+      }) as { durableHooksToken?: object } | undefined;
+
+      const runtime = internalData?.durableHooksToken
+        ? getDurableHooksRuntimeByToken(internalData.durableHooksToken)
+        : undefined;
+      if (!runtime) {
+        throw new Error("Durable hooks runtime missing");
+      }
+      runtime.config.notifier = {
+        notify: notifySpy,
+      };
+
+      const createHandlerTxBuilderSpy = vi
+        .spyOn(executeUnitOfWork, "createHandlerTxBuilder")
+        .mockImplementation((options) => {
+          return {
+            execute: vi.fn(async () => {
+              const mockUow = {
+                getTriggeredHooks: () => [
+                  {
+                    namespace: runtime.config.namespace,
+                    hookName: "onPing",
+                    payload: { value: "ping" },
+                  },
+                ],
+              } as unknown as IUnitOfWork;
+              await options.onAfterMutate?.(mockUow);
+            }),
+          } as unknown as ReturnType<typeof executeUnitOfWork.createHandlerTxBuilder>;
+        });
+
+      try {
+        const storage = mockAdapter.contextStorage as RequestContextStorage<DatabaseContextStorage>;
+        await storage.runWithInitializer(
+          () =>
+            ({
+              uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+              [requestWaitUntilSymbol]: waitUntilSpy,
+            }) as DatabaseContextStorage,
+          async () => {
+            await runtime.config.handlerTx().execute();
+          },
+        );
+
+        expect(notifySpy).toHaveBeenCalledTimes(1);
+        const notifyContext = notifySpy.mock.calls[0]?.[0] as
+          | { source?: string; waitUntil?: unknown }
+          | undefined;
+        expect(notifyContext?.source).toBe("hook");
+        expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
+        expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        createHandlerTxBuilderSpy.mockRestore();
+      }
+    });
+  });
+
   describe("durable hooks cross-namespace scheduling", () => {
     it("should schedule hooks triggered in another namespace when mutation runs inside a hook", async () => {
       const sqlite = new SQLite(":memory:");
@@ -1120,10 +1301,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           throw new Error("Durable hooks runtime missing");
         }
 
-        const scheduleSpy = vi.fn().mockResolvedValue(0);
-        runtimeB.config.scheduler = {
-          schedule: scheduleSpy,
-          drain: vi.fn().mockResolvedValue(undefined),
+        const notifySpy = vi.fn();
+        runtimeB.config.notifier = {
+          notify: notifySpy,
         };
 
         const internalFragment = getInternalFragment(adapter);
@@ -1147,14 +1327,314 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             .execute();
         });
 
-        const schedulerA = runtimeA.config.scheduler ?? hooks.createHookScheduler(runtimeA.config);
-        runtimeA.config.scheduler = schedulerA;
-        await schedulerA.schedule();
+        const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
+        runtimeA.config.runner = runnerA;
+        await runnerA.processDue();
 
-        expect(scheduleSpy).toHaveBeenCalled();
+        expect(notifySpy).toHaveBeenCalled();
       } finally {
         await adapter.close();
         sqlite.close();
+      }
+    });
+
+    it("should skip cross-namespace notify when target namespace has autoSchedule=false", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+
+      const schemaA = schema("hooks_alpha_autoschedule", (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+      const schemaB = schema("hooks_beta_autoschedule", (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      type HooksA = {
+        onAlpha: (payload: { value: string }) => void;
+      };
+      type HooksB = {
+        onBeta: (payload: { value: string }) => void;
+      };
+
+      const hooksB: HooksB = {
+        onBeta: () => {},
+      };
+
+      const namespaceA = sanitizeNamespace(schemaA.name);
+      const namespaceB = sanitizeNamespace(schemaB.name);
+
+      const fragmentADef = defineFragment("frag-hooks-autoschedule-a")
+        .extend(withDatabase(schemaA))
+        .provideHooks<HooksA>(({ defineHook }) => ({
+          onAlpha: defineHook(async function () {
+            await this.handlerTx({
+              onBeforeMutate: (uow) => {
+                uow.registerSchema(schemaB, namespaceB);
+              },
+            })
+              .mutate(({ forSchema }) => {
+                const other = forSchema(schemaB, hooksB);
+                other.triggerHook("onBeta", { value: "beta" });
+              })
+              .execute();
+          }),
+        }))
+        .build();
+
+      const fragmentBDef = defineFragment("frag-hooks-autoschedule-b")
+        .extend(withDatabase(schemaB))
+        .provideHooks<HooksB>(({ defineHook }) => ({
+          onBeta: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      try {
+        const internalMigrations = adapter.prepareMigrations(internalSchema, null);
+        await internalMigrations.executeWithDriver(adapter.driver, 0);
+
+        const migrationsA = adapter.prepareMigrations(schemaA, namespaceA);
+        await migrationsA.executeWithDriver(adapter.driver, 0);
+
+        const migrationsB = adapter.prepareMigrations(schemaB, namespaceB);
+        await migrationsB.executeWithDriver(adapter.driver, 0);
+
+        const fragmentA = instantiate(fragmentADef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapter })
+          .build();
+        const fragmentB = instantiate(fragmentBDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapter, durableHooks: { autoSchedule: false } })
+          .build();
+
+        const tokenA = (fragmentA.$internal as { durableHooksToken?: object }).durableHooksToken;
+        const tokenB = (fragmentB.$internal as { durableHooksToken?: object }).durableHooksToken;
+
+        expect(tokenA).toBeDefined();
+        expect(tokenB).toBeDefined();
+
+        const runtimeA = tokenA ? getDurableHooksRuntimeByToken(tokenA) : undefined;
+        const runtimeB = tokenB ? getDurableHooksRuntimeByToken(tokenB) : undefined;
+
+        if (!runtimeA || !runtimeB) {
+          throw new Error("Durable hooks runtime missing");
+        }
+
+        const notifySpy = vi.fn();
+        runtimeB.config.notifier = {
+          notify: notifySpy,
+        };
+
+        const internalFragment = getInternalFragment(adapter);
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema);
+              uow.create("fragno_hooks", {
+                namespace: namespaceA,
+                hookName: "onAlpha",
+                payload: { value: "alpha" },
+                status: "pending",
+                attempts: 0,
+                maxAttempts: 1,
+                lastAttemptAt: null,
+                nextRetryAt: null,
+                error: null,
+                nonce: "auto-schedule-test-nonce",
+              });
+            })
+            .execute();
+        });
+
+        const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
+        runtimeA.config.runner = runnerA;
+        await runnerA.processDue();
+
+        expect(notifySpy).not.toHaveBeenCalled();
+
+        const queuedHooks = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [internalFragment.services.hookService.getHooksByNamespace(namespaceB)] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+
+        const pendingBetaHooks = queuedHooks.filter(
+          (hook) => hook.status === "pending" && hook.hookName === "onBeta",
+        );
+        expect(pendingBetaHooks.length).toBeGreaterThan(0);
+      } finally {
+        await adapter.close();
+        sqlite.close();
+      }
+    });
+
+    it("should notify the matching runtime instance when namespace has multiple runtimes", async () => {
+      const sqliteA = new SQLite(":memory:");
+      const sqliteB = new SQLite(":memory:");
+      const adapterA = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqliteA }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      const adapterB = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqliteB }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+
+      const unique = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const schemaA = schema(`hooks_alpha_instance_${unique}`, (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+      const schemaB = schema(`hooks_shared_${unique}`, (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      type HooksA = {
+        onAlpha: (payload: { value: string }) => void;
+      };
+      type HooksB = {
+        onBeta: (payload: { value: string }) => void;
+      };
+
+      const hooksB: HooksB = {
+        onBeta: () => {},
+      };
+
+      const namespaceA = sanitizeNamespace(schemaA.name);
+      const namespaceB = sanitizeNamespace(schemaB.name);
+
+      const fragmentADef = defineFragment("frag-hooks-instance-a")
+        .extend(withDatabase(schemaA))
+        .provideHooks<HooksA>(({ defineHook }) => ({
+          onAlpha: defineHook(async function () {
+            await this.handlerTx({
+              onBeforeMutate: (uow) => {
+                uow.registerSchema(schemaB, namespaceB);
+              },
+            })
+              .mutate(({ forSchema }) => {
+                const other = forSchema(schemaB, hooksB);
+                other.triggerHook("onBeta", { value: "beta" });
+              })
+              .execute();
+          }),
+        }))
+        .build();
+
+      const fragmentBDef = defineFragment("frag-hooks-shared")
+        .extend(withDatabase(schemaB))
+        .provideHooks<HooksB>(({ defineHook }) => ({
+          onBeta: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      try {
+        const internalMigrationsA = adapterA.prepareMigrations(internalSchema, null);
+        await internalMigrationsA.executeWithDriver(adapterA.driver, 0);
+        const schemaAMigrations = adapterA.prepareMigrations(schemaA, namespaceA);
+        await schemaAMigrations.executeWithDriver(adapterA.driver, 0);
+        const schemaBMigrationsA = adapterA.prepareMigrations(schemaB, namespaceB);
+        await schemaBMigrationsA.executeWithDriver(adapterA.driver, 0);
+
+        const internalMigrationsB = adapterB.prepareMigrations(internalSchema, null);
+        await internalMigrationsB.executeWithDriver(adapterB.driver, 0);
+        const schemaBMigrationsB = adapterB.prepareMigrations(schemaB, namespaceB);
+        await schemaBMigrationsB.executeWithDriver(adapterB.driver, 0);
+
+        const fragmentA = instantiate(fragmentADef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapterA })
+          .build();
+        const fragmentBForAdapterA = instantiate(fragmentBDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapterA })
+          .build();
+        const fragmentBForAdapterB = instantiate(fragmentBDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapterB })
+          .build();
+
+        const tokenA = (fragmentA.$internal as { durableHooksToken?: object }).durableHooksToken;
+        const tokenBForAdapterA = (fragmentBForAdapterA.$internal as { durableHooksToken?: object })
+          .durableHooksToken;
+        const tokenBForAdapterB = (fragmentBForAdapterB.$internal as { durableHooksToken?: object })
+          .durableHooksToken;
+
+        expect(tokenA).toBeDefined();
+        expect(tokenBForAdapterA).toBeDefined();
+        expect(tokenBForAdapterB).toBeDefined();
+
+        const runtimeA = tokenA ? getDurableHooksRuntimeByToken(tokenA) : undefined;
+        const runtimeBForAdapterA = tokenBForAdapterA
+          ? getDurableHooksRuntimeByToken(tokenBForAdapterA)
+          : undefined;
+        const runtimeBForAdapterB = tokenBForAdapterB
+          ? getDurableHooksRuntimeByToken(tokenBForAdapterB)
+          : undefined;
+
+        if (!runtimeA || !runtimeBForAdapterA || !runtimeBForAdapterB) {
+          throw new Error("Durable hooks runtime missing");
+        }
+
+        const notifySpyForAdapterA = vi.fn();
+        const notifySpyForAdapterB = vi.fn();
+        runtimeBForAdapterA.config.notifier = {
+          notify: notifySpyForAdapterA,
+        };
+        runtimeBForAdapterB.config.notifier = {
+          notify: notifySpyForAdapterB,
+        };
+
+        const internalFragment = getInternalFragment(adapterA);
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema);
+              uow.create("fragno_hooks", {
+                namespace: namespaceA,
+                hookName: "onAlpha",
+                payload: { value: "alpha" },
+                status: "pending",
+                attempts: 0,
+                maxAttempts: 1,
+                lastAttemptAt: null,
+                nextRetryAt: null,
+                error: null,
+                nonce: "instance-test-nonce",
+              });
+            })
+            .execute();
+        });
+
+        const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
+        runtimeA.config.runner = runnerA;
+        await runnerA.processDue();
+
+        expect(notifySpyForAdapterA).toHaveBeenCalled();
+        expect(notifySpyForAdapterB).not.toHaveBeenCalled();
+      } finally {
+        await adapterA.close();
+        await adapterB.close();
+        sqliteA.close();
+        sqliteB.close();
       }
     });
   });

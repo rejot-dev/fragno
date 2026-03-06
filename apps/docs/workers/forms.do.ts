@@ -4,10 +4,12 @@ import { createFormsServer } from "@/fragno/forms";
 import { migrate } from "@fragno-dev/db";
 
 export class Forms extends DurableObject<CloudflareEnv> {
+  #state: DurableObjectState;
   #fragment: FormsFragment;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
+    this.#state = state;
 
     this.#fragment = createFormsServer({
       env,
@@ -25,6 +27,8 @@ export class Forms extends DurableObject<CloudflareEnv> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return this.#fragment.handler(request);
+    return this.#fragment.handler(request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }

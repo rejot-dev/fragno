@@ -1,9 +1,13 @@
 import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { createHookScheduler } from "./hooks";
+import { createDurableHooksRunner } from "./hooks";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
 
 export type DurableHooksProcessor = {
+  processDue: () => Promise<number>;
+  /**
+   * @deprecated Use processDue().
+   */
   process: () => Promise<number>;
   getNextWakeAt: () => Promise<Date | null>;
   drain: () => Promise<void>;
@@ -56,13 +60,20 @@ export function createDurableHooksProcessor<TSchema extends AnySchema>(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     durableHooks.stuckProcessingTimeoutMinutes,
   );
-  const scheduler =
-    durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks));
+  const runner =
+    durableHooks.runner ??
+    (durableHooks.runner = durableHooks.scheduler
+      ? {
+          processDue: () => durableHooks.scheduler!.schedule(),
+          drain: () => durableHooks.scheduler!.drain(),
+        }
+      : createDurableHooksRunner(durableHooks));
 
   return {
     namespace,
-    process: async () => scheduler.schedule(),
-    drain: async () => scheduler.drain(),
+    processDue: async () => runner.processDue(),
+    process: async () => runner.processDue(),
+    drain: async () => runner.drain(),
     getNextWakeAt: async () => {
       return await internalFragment.inContext(async function () {
         return await this.handlerTx()
@@ -109,22 +120,25 @@ export function createDurableHooksProcessorGroupFromProcessors(
   const onError = options.onError ?? (() => {});
   const namespace = processors.map((processor) => processor.namespace).join(",");
 
+  const processDue = async () => {
+    const results = await Promise.allSettled(
+      processors.map(async (processor) => await processor.processDue()),
+    );
+    let processed = 0;
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        processed += result.value;
+      } else {
+        onError(result.reason);
+      }
+    }
+    return processed;
+  };
+
   return {
     namespace,
-    process: async () => {
-      const results = await Promise.allSettled(
-        processors.map(async (processor) => await processor.process()),
-      );
-      let processed = 0;
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          processed += result.value;
-        } else {
-          onError(result.reason);
-        }
-      }
-      return processed;
-    },
+    processDue,
+    process: processDue,
     drain: async () => {
       const results = await Promise.allSettled(
         processors.map(async (processor) => await processor.drain()),

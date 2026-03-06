@@ -87,7 +87,7 @@ describe("createDurableHooksProcessor", () => {
     const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
 
-    const processed = await processor.process();
+    const processed = await processor.processDue();
     expect(processed).toBe(1);
   });
 
@@ -153,9 +153,11 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
   });
 
   function createProcessorStub() {
+    const processDue = vi.fn().mockResolvedValue(0);
     return {
       namespace: "test",
-      process: vi.fn().mockResolvedValue(0),
+      processDue,
+      process: processDue,
       getNextWakeAt: vi.fn().mockResolvedValue(null),
       drain: vi.fn().mockResolvedValue(undefined),
     };
@@ -178,12 +180,12 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     const onError = vi.fn();
     const processorA = makeProcessor({
       namespace: "a",
-      process: vi.fn().mockResolvedValue(2),
+      processDue: vi.fn().mockResolvedValue(2),
       drain: vi.fn().mockResolvedValue(undefined),
     });
     const processorB = makeProcessor({
       namespace: "b",
-      process: vi.fn().mockRejectedValue(error),
+      processDue: vi.fn().mockRejectedValue(error),
       drain: vi.fn().mockRejectedValue(error),
     });
 
@@ -192,7 +194,7 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     });
     expect(group).not.toBeNull();
 
-    const processed = await group.process();
+    const processed = await group.processDue();
     expect(processed).toBe(2);
     expect(onError).toHaveBeenCalledWith(error);
 

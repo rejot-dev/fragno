@@ -1017,6 +1017,48 @@ describe("fragment-instantiator", () => {
 
       expect(contextCreationSpy).toHaveBeenCalledTimes(2);
     });
+
+    it("should store lifecycle waitUntil in request storage", async () => {
+      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
+      const waitUntil = vi.fn();
+
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({}))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            get waitUntil() {
+              return (storage.getStore() as Record<symbol, unknown>)[requestWaitUntilSymbol];
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
+        .build();
+
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/test",
+          handler: async function (_input, { json }) {
+            return json({
+              hasWaitUntil: typeof this.waitUntil === "function",
+              sameWaitUntil: this.waitUntil === waitUntil,
+            });
+          },
+        }),
+      ]);
+
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const response = await fragment.handler(new Request("http://localhost/api/test"), {
+        waitUntil,
+      });
+      const data = await response.json();
+
+      expect(data).toEqual({ hasWaitUntil: true, sameWaitUntil: true });
+    });
   });
 
   describe("defineService with custom this context", () => {
