@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
+    "@cloudflare/sandbox": "^0.7.12",
     "@fragno-dev/auth": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",

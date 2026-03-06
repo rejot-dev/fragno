@@ -12,6 +12,14 @@
     "enabled": true,
   },
   "preview_urls": true,
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./sandbox.Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 4,
+    },
+  ],
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -70,6 +78,14 @@
         "name": "RESEND",
         "class_name": "Resend",
       },
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox",
+      },
+      {
+        "name": "SANDBOX_REGISTRY",
+        "class_name": "SandboxRegistry",
+      },
     ],
   },
   /**
@@ -96,6 +112,14 @@
     {
       "tag": "v5",
       "new_sqlite_classes": ["Resend"],
+    },
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["Sandbox"],
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["SandboxRegistry"],
     },
   ],
   "rules": [

@@ -5,10 +5,12 @@ import type { Forms } from "workers/forms.do";
 import type { Auth } from "workers/auth.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Resend } from "workers/resend.do";
+import type { SandboxRegistry } from "workers/sandbox-registry.do";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
 export const AUTH_SINGLETON_ID = "AUTH_SINGLETON_ID" as const;
+const SANDBOX_REGISTRY_ORG_KEY_PREFIX = "SANDBOX_REGISTRY_ORG:";
 
 /**
  * Helper to get the Mailing List Durable Object stub from the router context.
@@ -74,4 +76,18 @@ export function getResendDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.RESEND.get(env.RESEND.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Sandbox Registry Durable Object stub from the router context.
+ * Each organization gets its own registry instance.
+ */
+export function getSandboxRegistryDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<SandboxRegistry> {
+  const { env } = context.get(CloudflareContext);
+  const registryKey = `${SANDBOX_REGISTRY_ORG_KEY_PREFIX}${orgId}`;
+
+  return env.SANDBOX_REGISTRY.get(env.SANDBOX_REGISTRY.idFromName(registryKey));
 }

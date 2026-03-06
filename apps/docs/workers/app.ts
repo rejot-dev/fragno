@@ -5,6 +5,8 @@ import { Forms } from "./forms.do";
 import { Auth } from "./auth.do";
 import { Telegram } from "./telegram.do";
 import { Resend } from "./resend.do";
+import { SandboxRegistry } from "./sandbox-registry.do";
+import { Sandbox } from "./sandbox.do";
 
 // Export Durable Object classes
 export { MailingList };
@@ -12,6 +14,8 @@ export { Forms };
 export { Auth };
 export { Telegram };
 export { Resend };
+export { Sandbox };
+export { SandboxRegistry };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
