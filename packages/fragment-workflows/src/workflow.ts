@@ -1,6 +1,7 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
+import type { WorkflowsLoggerConfig } from "./debug-log";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -261,6 +262,10 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
    * Defaults to true.
    */
   autoTickHooks?: boolean;
+  /**
+   * Optional logging config for internal workflows diagnostics.
+   */
+  logging?: WorkflowsLoggerConfig;
   runtime: FragnoRuntime;
 }
 
