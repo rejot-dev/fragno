@@ -26,6 +26,11 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    label: "Environments",
+    to: "/backoffice/environments",
+    children: [{ label: "CF Sandbox", to: "/backoffice/environments/cf-sandbox" }],
+  },
+  {
     label: "Internals",
     to: "/backoffice/internals",
     children: [{ label: "Durable hooks", to: "/backoffice/internals/durable-hooks" }],
