@@ -15,6 +15,7 @@ import type {
   WorkflowsHistoryStep,
   workflowsFragmentDefinition,
 } from "@fragno-dev/workflows";
+import type { PiLoggerConfig } from "../debug-log";
 
 import type { PiSessionStatus, PiSteeringMode } from "./constants";
 
@@ -91,4 +92,8 @@ export interface PiFragmentConfig {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
   defaultSteeringMode?: PiSteeringMode;
+  /**
+   * Optional logging config for internal pi-fragment diagnostics.
+   */
+  logging?: PiLoggerConfig;
 }
