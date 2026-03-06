@@ -36,6 +36,8 @@ export default [
       route("connections", "routes/backoffice/connections/index.tsx"),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
+      route("environments", "routes/backoffice/environments/index.tsx"),
+      route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),
       route(
         "connections/resend/:orgId",
         "routes/backoffice/connections/resend/organisation-layout.tsx",
