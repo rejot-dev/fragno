@@ -4,7 +4,7 @@ import path from "node:path";
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
-import { defineFragment } from "@fragno-dev/core";
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
@@ -19,11 +19,12 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
-import { getRegistryForAdapterSync } from "./internal/adapter-registry";
+import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { defineSyncCommands } from "./sync/commands";
 import * as hooks from "./hooks/hooks";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
+import { internalSchema } from "./fragments/internal-fragment";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -1024,6 +1025,137 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         : undefined;
       expect(runtime?.config.hooks).toBeDefined();
       expect(runtime?.config.hooks).toHaveProperty("onPing");
+    });
+  });
+
+  describe("durable hooks cross-namespace scheduling", () => {
+    it("should schedule hooks triggered in another namespace when mutation runs inside a hook", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+
+      const schemaA = schema("hooks_alpha", (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+      const schemaB = schema("hooks_beta", (s) =>
+        s.addTable("items", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      type HooksA = {
+        onAlpha: (payload: { value: string }) => void;
+      };
+      type HooksB = {
+        onBeta: (payload: { value: string }) => void;
+      };
+
+      const hooksB: HooksB = {
+        onBeta: () => {},
+      };
+
+      const namespaceA = sanitizeNamespace(schemaA.name);
+      const namespaceB = sanitizeNamespace(schemaB.name);
+
+      const fragmentADef = defineFragment("frag-hooks-a")
+        .extend(withDatabase(schemaA))
+        .provideHooks<HooksA>(({ defineHook }) => ({
+          onAlpha: defineHook(async function () {
+            await this.handlerTx({
+              onBeforeMutate: (uow) => {
+                uow.registerSchema(schemaB, namespaceB);
+              },
+            })
+              .mutate(({ forSchema }) => {
+                const other = forSchema(schemaB, hooksB);
+                other.triggerHook("onBeta", { value: "beta" });
+              })
+              .execute();
+          }),
+        }))
+        .build();
+
+      const fragmentBDef = defineFragment("frag-hooks-b")
+        .extend(withDatabase(schemaB))
+        .provideHooks<HooksB>(({ defineHook }) => ({
+          onBeta: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      try {
+        const internalMigrations = adapter.prepareMigrations(internalSchema, null);
+        await internalMigrations.executeWithDriver(adapter.driver, 0);
+
+        const migrationsA = adapter.prepareMigrations(schemaA, namespaceA);
+        await migrationsA.executeWithDriver(adapter.driver, 0);
+
+        const migrationsB = adapter.prepareMigrations(schemaB, namespaceB);
+        await migrationsB.executeWithDriver(adapter.driver, 0);
+
+        const fragmentA = instantiate(fragmentADef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapter })
+          .build();
+        const fragmentB = instantiate(fragmentBDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapter })
+          .build();
+
+        const tokenA = (fragmentA.$internal as { durableHooksToken?: object }).durableHooksToken;
+        const tokenB = (fragmentB.$internal as { durableHooksToken?: object }).durableHooksToken;
+
+        expect(tokenA).toBeDefined();
+        expect(tokenB).toBeDefined();
+
+        const runtimeA = tokenA ? getDurableHooksRuntimeByToken(tokenA) : undefined;
+        const runtimeB = tokenB ? getDurableHooksRuntimeByToken(tokenB) : undefined;
+
+        if (!runtimeA || !runtimeB) {
+          throw new Error("Durable hooks runtime missing");
+        }
+
+        const scheduleSpy = vi.fn().mockResolvedValue(0);
+        runtimeB.config.scheduler = {
+          schedule: scheduleSpy,
+          drain: vi.fn().mockResolvedValue(undefined),
+        };
+
+        const internalFragment = getInternalFragment(adapter);
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema);
+              uow.create("fragno_hooks", {
+                namespace: namespaceA,
+                hookName: "onAlpha",
+                payload: { value: "alpha" },
+                status: "pending",
+                attempts: 0,
+                maxAttempts: 1,
+                lastAttemptAt: null,
+                nextRetryAt: null,
+                error: null,
+                nonce: "test-nonce",
+              });
+            })
+            .execute();
+        });
+
+        const schedulerA = runtimeA.config.scheduler ?? hooks.createHookScheduler(runtimeA.config);
+        runtimeA.config.scheduler = schedulerA;
+        await schedulerA.schedule();
+
+        expect(scheduleSpy).toHaveBeenCalled();
+      } finally {
+        await adapter.close();
+        sqlite.close();
+      }
     });
   });
 
