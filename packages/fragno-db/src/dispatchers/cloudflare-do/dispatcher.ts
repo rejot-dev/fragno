@@ -1,4 +1,5 @@
 import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
+import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
 
 type AlarmStorage = {
   setAlarm?: (timestamp: number | Date) => Promise<void>;
@@ -35,7 +36,10 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     const onProcessError =
       options.onProcessError ??
       ((error: unknown) => {
-        console.error("Durable hooks dispatcher error", error);
+        DurableHooksLogger.error("Durable hooks dispatcher error", {
+          namespace: processor.namespace,
+          fields: { error: DurableHooksLogger.toErrorMessage(error) },
+        });
       });
     const rawSetAlarm = state.storage.setAlarm;
     const rawDeleteAlarm = state.storage.deleteAlarm;
@@ -63,8 +67,23 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         do {
           queued = false;
           try {
-            await processor.process();
+            const startedAt = Date.now();
+            DurableHooksLogger.debug("Durable hooks alarm start", {
+              namespace: processor.namespace,
+            });
+            const processed = await processor.process();
+            DurableHooksLogger.debug("Durable hooks alarm processed", {
+              namespace: processor.namespace,
+              fields: {
+                processed,
+                ms: Date.now() - startedAt,
+              },
+            });
           } catch (error) {
+            DurableHooksLogger.error("Durable hooks alarm failed", {
+              namespace: processor.namespace,
+              fields: { error: DurableHooksLogger.toErrorMessage(error) },
+            });
             onProcessError(error);
           }
         } while (queued);
@@ -78,15 +97,32 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       const nextWakeAt = await processor.getNextWakeAt();
       if (!nextWakeAt) {
         await deleteAlarm?.();
+        DurableHooksLogger.debug("Durable hooks alarm cleared", {
+          namespace: processor.namespace,
+        });
         return;
       }
 
       const now = Date.now();
       const scheduledAt = new Date(Math.max(nextWakeAt.getTime(), now));
       await setAlarm(scheduledAt);
+      DurableHooksLogger.debug("Durable hooks alarm scheduled", {
+        namespace: processor.namespace,
+        fields: {
+          nextWakeAt: nextWakeAt.toISOString(),
+          scheduledAt: scheduledAt.toISOString(),
+        },
+      });
     };
 
+    DurableHooksLogger.debug("Durable hooks dispatcher init", {
+      namespace: processor.namespace,
+    });
     void scheduleNextAlarm().catch((error) => {
+      DurableHooksLogger.error("Durable hooks alarm schedule failed", {
+        namespace: processor.namespace,
+        fields: { error: DurableHooksLogger.toErrorMessage(error) },
+      });
       onProcessError(error);
     });
 

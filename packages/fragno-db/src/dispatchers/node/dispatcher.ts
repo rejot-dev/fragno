@@ -1,4 +1,5 @@
 import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
+import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
 
 export type DurableHooksDispatcher = {
   wake: () => Promise<void>;
@@ -20,7 +21,10 @@ export function createDurableHooksDispatcher(
   const onError =
     options.onError ??
     ((error: unknown) => {
-      console.error("Durable hooks dispatcher error", error);
+      DurableHooksLogger.error("Durable hooks dispatcher error", {
+        namespace: options.processor.namespace,
+        fields: { error: DurableHooksLogger.toErrorMessage(error) },
+      });
     });
   let timer: ReturnType<typeof setInterval> | undefined;
   let processing = false;

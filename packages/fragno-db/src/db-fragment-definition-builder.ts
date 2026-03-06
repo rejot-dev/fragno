@@ -31,13 +31,16 @@ import {
   type HookFn,
   type HookContext,
   type HookProcessorConfig,
+  type HookScheduler,
   type DurableHooksProcessingOptions,
   createHookScheduler,
 } from "./hooks/hooks";
 import {
   getDurableHooksRuntimeByConfig,
+  getDurableHooksRuntimeByNamespace,
   registerDurableHooksRuntime,
 } from "./hooks/durable-hooks-runtime";
+import { DurableHooksLogger } from "./hooks/durable-hooks-logger";
 import type { SyncCommandRegistry, SyncCommandTargetRegistration } from "./sync/types";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 import { sanitizeNamespace } from "./naming/sql-naming";
@@ -297,6 +300,11 @@ type DbRoundtripGuardState = {
   maxRoundtrips: number;
 };
 
+type DurableHooksLogContext = {
+  route?: string | null;
+  source?: "request" | "hook";
+};
+
 type AnyHandlerTxBuilder = HandlerTxBuilder<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
@@ -362,6 +370,112 @@ function wrapHandlerTxBuilderWithRoundtripGuard<
   };
 
   return wrap(builder);
+}
+
+function buildDurableHooksLogContext(context?: DurableHooksLogContext) {
+  const logContext: Record<string, unknown> = {};
+  if (context?.route !== undefined) {
+    logContext["route"] = context.route;
+  }
+  if (context?.source !== undefined) {
+    logContext["source"] = context.source;
+  }
+  return logContext;
+}
+
+function scheduleDurableHooks(
+  scheduler: HookScheduler,
+  namespace: string,
+  logContextFields: Record<string, unknown>,
+  options?: { crossNamespace?: boolean },
+) {
+  const crossNamespace = options?.crossNamespace ?? false;
+  const suffix = crossNamespace ? " (cross-namespace)" : "";
+  const scheduleStart = Date.now();
+  DurableHooksLogger.debug(`Durable hooks schedule requested${suffix}`, {
+    namespace,
+    fields: logContextFields,
+  });
+  void scheduler
+    .schedule()
+    .then((processed) => {
+      DurableHooksLogger.debug(`Durable hooks schedule completed${suffix}`, {
+        namespace,
+        fields: {
+          processed,
+          ms: Date.now() - scheduleStart,
+          ...logContextFields,
+        },
+      });
+    })
+    .catch((error) => {
+      DurableHooksLogger.error(`Durable hooks schedule failed${suffix}`, {
+        namespace,
+        fields: {
+          error: DurableHooksLogger.toErrorMessage(error),
+          ...logContextFields,
+        },
+      });
+    });
+}
+
+function scheduleDurableHooksAfterMutate<THooks extends HooksMap>({
+  uow,
+  hooksConfig,
+  autoSchedule,
+  planMode,
+  logContext,
+}: {
+  uow: IUnitOfWork;
+  hooksConfig?: HookProcessorConfig<THooks>;
+  autoSchedule: boolean;
+  planMode: boolean;
+  logContext?: DurableHooksLogContext;
+}) {
+  if (planMode) {
+    return;
+  }
+
+  const logContextFields = buildDurableHooksLogContext(logContext);
+  const triggeredHooks = uow.getTriggeredHooks();
+
+  if (hooksConfig?.scheduler && autoSchedule) {
+    scheduleDurableHooks(hooksConfig.scheduler, hooksConfig.namespace, logContextFields);
+  } else if (hooksConfig?.scheduler && !autoSchedule && triggeredHooks.length > 0) {
+    DurableHooksLogger.debug("Durable hooks schedule skipped (autoSchedule=false)", {
+      namespace: hooksConfig.namespace,
+      fields: {
+        queued: triggeredHooks.length,
+        ...logContextFields,
+      },
+    });
+  }
+
+  if (triggeredHooks.length === 0) {
+    return;
+  }
+
+  const namespaces = new Set<string>();
+  for (const hook of triggeredHooks) {
+    namespaces.add(hook.namespace);
+  }
+  if (hooksConfig) {
+    namespaces.delete(hooksConfig.namespace);
+  }
+
+  for (const namespace of namespaces) {
+    const runtime = getDurableHooksRuntimeByNamespace(namespace);
+    if (!runtime) {
+      DurableHooksLogger.debug("Durable hooks runtime missing for namespace", {
+        namespace,
+        fields: logContextFields,
+      });
+      continue;
+    }
+    const scheduler =
+      runtime.config.scheduler ?? (runtime.config.scheduler = createHookScheduler(runtime.config));
+    scheduleDurableHooks(scheduler, namespace, logContextFields, { crossNamespace: true });
+  }
 }
 
 function resolveDbRoundtripGuard(
@@ -960,6 +1074,10 @@ export class DatabaseFragmentDefinitionBuilder<
         typeof context.deps === "object" && context.deps !== null
           ? (context.deps as object)
           : undefined;
+      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const namespaceKey = namespace ?? this.#schema.name;
+      const durableHooksOptions = context.options.durableHooks;
+      DurableHooksLogger.configure(durableHooksOptions?.logging, namespaceKey);
       const cachedHooksConfig = depsKey ? hooksConfigCache.get(depsKey) : undefined;
       if (cachedHooksConfig) {
         if (!cachedHooksConfig.hooks && context.services) {
@@ -974,9 +1092,6 @@ export class DatabaseFragmentDefinitionBuilder<
         return cachedHooksConfig;
       }
 
-      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
-      const namespaceKey = namespace ?? this.#schema.name;
-      const durableHooksOptions = context.options.durableHooks;
       const autoSchedule = durableHooksOptions?.autoSchedule !== false;
       const baseAdapter = resolveDatabaseAdapter(context.options, this.#schema);
       const hookAdapter = baseAdapter.getHookProcessingAdapter?.() ?? baseAdapter;
@@ -1033,11 +1148,13 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             },
             onAfterMutate: async (uow) => {
-              if (!planMode && autoSchedule) {
-                void hooksConfig.scheduler?.schedule().catch((error) => {
-                  console.error("Durable hooks processing failed", error);
-                });
-              }
+              scheduleDurableHooksAfterMutate({
+                uow,
+                hooksConfig,
+                autoSchedule,
+                planMode,
+                logContext: { source: "hook" },
+              });
               if (userOnAfterMutate) {
                 await userOnAfterMutate(uow);
               }
@@ -1205,11 +1322,13 @@ export class DatabaseFragmentDefinitionBuilder<
           },
           onAfterRetrieve: guardOnAfterRetrieve,
           onAfterMutate: async (uow) => {
-            if (hooksConfig?.scheduler && !planMode && autoSchedule) {
-              void hooksConfig.scheduler.schedule().catch((error) => {
-                console.error("Durable hooks processing failed", error);
-              });
-            }
+            scheduleDurableHooksAfterMutate({
+              uow,
+              hooksConfig,
+              autoSchedule,
+              planMode,
+              logContext: { route: routeLabel, source: "request" },
+            });
             if (hooksConfig && !planMode) {
               const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);
               if (
@@ -1222,15 +1341,15 @@ export class DatabaseFragmentDefinitionBuilder<
                   .some((hook) => hook.namespace === hooksConfig.namespace);
                 if (hasHooks) {
                   runtimeState.dispatcherWarningEmitted = true;
-                  console.warn(
-                    [
-                      "[fragno-db] Durable hooks dispatcher not configured for fragment",
-                      `"${hooksConfig.namespace}".`,
-                      "Hooks will only run during requests; scheduled/retry hooks may stall.",
-                      "Create a dispatcher with createDurableHooksProcessor([...]) from",
-                      "`@fragno-dev/db/dispatchers/node` or `@fragno-dev/db/dispatchers/cloudflare-do`.",
-                    ].join(" "),
-                  );
+                  DurableHooksLogger.warn("Durable hooks dispatcher not configured for fragment", {
+                    namespace: hooksConfig.namespace,
+                    fields: {
+                      guidance:
+                        "Hooks will only run during requests; scheduled/retry hooks may stall. " +
+                        "Create a dispatcher with createDurableHooksProcessor([...]) from " +
+                        "`@fragno-dev/db/dispatchers/node` or `@fragno-dev/db/dispatchers/cloudflare-do`.",
+                    },
+                  });
                 }
               }
             }
