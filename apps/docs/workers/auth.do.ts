@@ -94,6 +94,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
 
   async fetch(request: Request): Promise<Response> {
     const fragment = this.#getFragment(request);
-    return fragment.handler(request);
+    return fragment.handler(request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }

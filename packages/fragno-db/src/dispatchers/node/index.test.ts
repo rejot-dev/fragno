@@ -2,18 +2,38 @@ import { describe, expect, it, vi } from "vitest";
 import { createDurableHooksDispatcher } from "./dispatcher";
 
 describe("createDurableHooksDispatcher", () => {
+  it("should notify via async wake hint", async () => {
+    const processDue = vi.fn().mockResolvedValue(0);
+    const dispatcher = createDurableHooksDispatcher({
+      processor: {
+        processDue,
+        process: processDue,
+        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      },
+    });
+
+    dispatcher.notify({ source: "request" });
+    dispatcher.notify({ source: "request" });
+
+    expect(processDue).toHaveBeenCalledTimes(0);
+    await Promise.resolve();
+    expect(processDue).toHaveBeenCalledTimes(1);
+  });
+
   it("should wake and process hooks", async () => {
-    const process = vi.fn().mockResolvedValue(0);
+    const processDue = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(null);
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
     });
 
     await dispatcher.wake();
 
-    expect(process).toHaveBeenCalledTimes(1);
+    expect(processDue).toHaveBeenCalledTimes(1);
   });
 
   it("should coalesce overlapping wake calls", async () => {
@@ -21,12 +41,13 @@ describe("createDurableHooksDispatcher", () => {
     const firstPromise = new Promise<number>((resolve) => {
       resolveFirst = resolve;
     });
-    const process = vi.fn().mockReturnValueOnce(firstPromise).mockResolvedValue(0);
+    const processDue = vi.fn().mockReturnValueOnce(firstPromise).mockResolvedValue(0);
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
       processor: {
-        process,
+        processDue,
+        process: processDue,
         getNextWakeAt: vi.fn().mockResolvedValue(null),
         drain,
         namespace: "test",
@@ -36,13 +57,13 @@ describe("createDurableHooksDispatcher", () => {
     const first = dispatcher.wake();
     const second = dispatcher.wake();
 
-    expect(process).toHaveBeenCalledTimes(1);
+    expect(processDue).toHaveBeenCalledTimes(1);
 
     resolveFirst(0);
     await first;
     await second;
 
-    expect(process).toHaveBeenCalledTimes(2);
+    expect(processDue).toHaveBeenCalledTimes(2);
   });
 
   it("should poll and process when due", async () => {
@@ -50,12 +71,12 @@ describe("createDurableHooksDispatcher", () => {
     const now = new Date("2024-01-01T00:00:00Z");
     vi.setSystemTime(now);
 
-    const process = vi.fn().mockResolvedValue(0);
+    const processDue = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 1000));
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 
@@ -63,7 +84,7 @@ describe("createDurableHooksDispatcher", () => {
     await vi.advanceTimersByTimeAsync(1000);
     dispatcher.stopPolling();
 
-    expect(process).toHaveBeenCalledTimes(1);
+    expect(processDue).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
@@ -72,12 +93,12 @@ describe("createDurableHooksDispatcher", () => {
     const now = new Date("2024-01-01T00:00:00Z");
     vi.setSystemTime(now);
 
-    const process = vi.fn().mockResolvedValue(0);
+    const processDue = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() + 60000));
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 
@@ -85,7 +106,7 @@ describe("createDurableHooksDispatcher", () => {
     await vi.advanceTimersByTimeAsync(1000);
     dispatcher.stopPolling();
 
-    expect(process).not.toHaveBeenCalled();
+    expect(processDue).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 });

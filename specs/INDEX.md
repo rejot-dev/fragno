@@ -22,6 +22,9 @@ Format:
 - [Durable Hooks Dispatchers — Spec](./spec-durable-hooks-dispatcher.md) — Process-at scheduling for
   durable hooks plus generic dispatchers (Node polling, Cloudflare DO alarms) that live in
   `@fragno-dev/db`.
+- [Durable Hooks Notify/Run Separation — Spec](./spec-durable-hooks-notify-run-separation.md) —
+  Split durable hook enqueue/notify/run responsibilities, move request completion to notify-only,
+  and make Cloudflare alarm scheduling durable with `waitUntil`.
 - [In-Memory Adapter + OCC Model Checker — Spec](./spec-in-memory-adapter.md) — In-memory adapter
   design with optimistic concurrency control, SQLite-aligned semantics, storage/indexing, and model
   checker behavior.

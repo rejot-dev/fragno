@@ -33,9 +33,10 @@ export function registerDurableHooksRuntime(config: HookProcessorConfig): object
     DurableHooksLogger.warn("Durable hooks runtime already registered for namespace", {
       namespace: config.namespace,
     });
-  } else {
-    runtimeByNamespace.set(config.namespace, runtime);
   }
+  // Always keep the newest runtime registration per namespace so lookups do not
+  // depend on older in-process instances.
+  runtimeByNamespace.set(config.namespace, runtime);
 
   return token;
 }
@@ -54,4 +55,8 @@ export function getDurableHooksRuntimeByNamespace(
   namespace: string,
 ): DurableHooksRuntimeState | undefined {
   return runtimeByNamespace.get(namespace);
+}
+
+export function getDurableHooksNotifierByNamespace(namespace: string) {
+  return runtimeByNamespace.get(namespace)?.config.notifier;
 }

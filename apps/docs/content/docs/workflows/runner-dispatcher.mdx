@@ -4,8 +4,8 @@ description: Wire workflow execution in Node or Cloudflare via durable hooks.
 icon: Code
 ---
 
-Workflows execute when durable hooks are processed. The dispatcher is responsible for polling and
-processing hooks when work is available.
+Workflows execute when durable hooks are processed. Request paths enqueue and notify; the dispatcher
+is responsible for running the workflow hooks when work is available.
 
 ## In-process dispatcher (Node)
 
@@ -29,12 +29,22 @@ For Cloudflare, use the Durable Object dispatcher package so alarms drive hook p
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 
 export class WorkflowsDispatcher {
+  state: DurableObjectState;
+  fragment: MyWorkflowFragment;
   handler: ReturnType<ReturnType<NonNullable<typeof createDurableHooksProcessor>>>;
 
   constructor(state: DurableObjectState, env: Env) {
-    const dispatcher = createDurableHooksProcessor([env.fragment]);
+    this.state = state;
+    this.fragment = env.fragment;
+    const dispatcher = createDurableHooksProcessor([this.fragment]);
 
     this.handler = dispatcher(state, env);
+  }
+
+  fetch(request: Request) {
+    return this.fragment.handler(request, {
+      waitUntil: this.state.waitUntil.bind(this.state),
+    });
   }
 
   alarm() {

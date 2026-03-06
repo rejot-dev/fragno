@@ -1,5 +1,6 @@
 import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
+import type { HookNotifyContext, HookNotifySource } from "../../hooks/hooks";
 
 type AlarmStorage = {
   setAlarm?: (timestamp: number | Date) => Promise<void>;
@@ -12,6 +13,7 @@ export type DurableHooksDispatcherDurableObjectState = {
 
 export type DurableHooksDispatcherDurableObjectHandler = {
   fetch?: (request: Request) => Promise<Response>;
+  notify?: (context: HookNotifyContext) => void | Promise<void>;
   alarm?: () => Promise<void>;
 };
 
@@ -55,6 +57,9 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     let processing = false;
     let queued = false;
     let currentPromise: Promise<void> | undefined;
+    let alarmRefreshQueued = false;
+    let alarmRefreshPromise: Promise<void> | undefined;
+    let latestAlarmRefreshSource: HookNotifySource = "request";
 
     const runProcess = () => {
       if (processing) {
@@ -71,7 +76,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
             DurableHooksLogger.debug("Durable hooks alarm start", {
               namespace: processor.namespace,
             });
-            const processed = await processor.process();
+            const processed = await processor.processDue();
             DurableHooksLogger.debug("Durable hooks alarm processed", {
               namespace: processor.namespace,
               fields: {
@@ -93,12 +98,21 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       return currentPromise;
     };
 
-    const scheduleNextAlarm = async () => {
+    const scheduleNextAlarm = async (source: HookNotifySource) => {
+      DurableHooksLogger.debug("Durable hooks alarm schedule requested", {
+        namespace: processor.namespace,
+        fields: {
+          source,
+        },
+      });
       const nextWakeAt = await processor.getNextWakeAt();
       if (!nextWakeAt) {
         await deleteAlarm?.();
         DurableHooksLogger.debug("Durable hooks alarm cleared", {
           namespace: processor.namespace,
+          fields: {
+            source,
+          },
         });
         return;
       }
@@ -109,16 +123,37 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       DurableHooksLogger.debug("Durable hooks alarm scheduled", {
         namespace: processor.namespace,
         fields: {
+          source,
           nextWakeAt: nextWakeAt.toISOString(),
           scheduledAt: scheduledAt.toISOString(),
         },
       });
     };
 
+    const refreshAlarm = (source: HookNotifySource): Promise<void> => {
+      latestAlarmRefreshSource = source;
+      if (alarmRefreshPromise) {
+        alarmRefreshQueued = true;
+        return alarmRefreshPromise;
+      }
+
+      alarmRefreshPromise = (async () => {
+        do {
+          alarmRefreshQueued = false;
+          await scheduleNextAlarm(latestAlarmRefreshSource);
+        } while (alarmRefreshQueued);
+      })().finally(() => {
+        alarmRefreshQueued = false;
+        alarmRefreshPromise = undefined;
+      });
+
+      return alarmRefreshPromise;
+    };
+
     DurableHooksLogger.debug("Durable hooks dispatcher init", {
       namespace: processor.namespace,
     });
-    void scheduleNextAlarm().catch((error) => {
+    void refreshAlarm("alarm").catch((error) => {
       DurableHooksLogger.error("Durable hooks alarm schedule failed", {
         namespace: processor.namespace,
         fields: { error: DurableHooksLogger.toErrorMessage(error) },
@@ -127,10 +162,26 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     });
 
     return {
+      notify: (context) => {
+        const schedulePromise = refreshAlarm(context.source);
+        const handledPromise = schedulePromise.catch((error) => {
+          DurableHooksLogger.error("Durable hooks alarm schedule failed", {
+            namespace: processor.namespace,
+            fields: { error: DurableHooksLogger.toErrorMessage(error) },
+          });
+          onProcessError(error);
+        });
+        if (context.waitUntil) {
+          context.waitUntil(handledPromise);
+        } else {
+          void handledPromise;
+        }
+        return handledPromise;
+      },
       alarm: async () => {
         try {
           await runProcess();
-          await scheduleNextAlarm();
+          await refreshAlarm("alarm");
         } catch (error) {
           onProcessError(error);
         }

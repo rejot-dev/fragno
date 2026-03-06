@@ -1,7 +1,9 @@
 import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
+import type { HookNotifyContext } from "../../hooks/hooks";
 
 export type DurableHooksDispatcher = {
+  notify: (context: HookNotifyContext) => void;
   wake: () => Promise<void>;
   drain: () => Promise<void>;
   startPolling: () => void;
@@ -29,6 +31,7 @@ export function createDurableHooksDispatcher(
   let timer: ReturnType<typeof setInterval> | undefined;
   let processing = false;
   let queued = false;
+  let notifyQueued = false;
   let currentPromise: Promise<void> | undefined;
 
   const runProcess = () => {
@@ -42,7 +45,7 @@ export function createDurableHooksDispatcher(
       do {
         queued = false;
         try {
-          await options.processor.process();
+          await options.processor.processDue();
         } catch (error) {
           onError(error);
         }
@@ -68,6 +71,16 @@ export function createDurableHooksDispatcher(
   };
 
   return {
+    notify: (_context) => {
+      if (notifyQueued) {
+        return;
+      }
+      notifyQueued = true;
+      queueMicrotask(() => {
+        notifyQueued = false;
+        void runProcess();
+      });
+    },
     wake: async () => {
       await runProcess();
     },

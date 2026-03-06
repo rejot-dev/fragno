@@ -1028,6 +1028,101 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
+  describe("durable hooks waitUntil forwarding", () => {
+    it("forwards request waitUntil to notifier context", async () => {
+      const mockAdapter = createMockAdapter();
+      const requestSourceSymbol = Symbol.for("fragno-request-source");
+      const requestRouteSymbol = Symbol.for("fragno-request-route");
+      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
+      const notifySpy = vi.fn().mockResolvedValue(undefined);
+      const waitUntilSpy = vi.fn();
+
+      type TestHooks = {
+        onPing: HookFn<{ value: string }>;
+      };
+
+      const definition = defineFragment("db-frag-hooks-waituntil")
+        .extend(withDatabase(testSchema))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onPing: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      const deps = definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+      });
+
+      const internalData = definition.internalDataFactory?.({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        services: {} as Record<string, never>,
+        serviceDeps: {} as Record<string, never>,
+      }) as { durableHooksToken?: object } | undefined;
+
+      const runtime = internalData?.durableHooksToken
+        ? getDurableHooksRuntimeByToken(internalData.durableHooksToken)
+        : undefined;
+      if (!runtime) {
+        throw new Error("Durable hooks runtime missing");
+      }
+      runtime.config.notifier = {
+        notify: notifySpy,
+      };
+
+      const createHandlerTxBuilderSpy = vi
+        .spyOn(executeUnitOfWork, "createHandlerTxBuilder")
+        .mockReturnValue(
+          {} as unknown as ReturnType<typeof executeUnitOfWork.createHandlerTxBuilder>,
+        );
+
+      const mockStorage = {
+        getStore: () => ({
+          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          [requestSourceSymbol]: "route",
+          [requestRouteSymbol]: { method: "POST", path: "/users" },
+          [requestWaitUntilSymbol]: waitUntilSpy,
+        }),
+      } as unknown as RequestContextStorage<DatabaseContextStorage>;
+
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps,
+        storage: mockStorage,
+      });
+
+      contexts.handlerContext.handlerTx();
+      const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
+      const mockUow = {
+        getTriggeredHooks: () => [
+          {
+            namespace: runtime.config.namespace,
+            hookName: "onPing",
+            payload: { value: "ping" },
+          },
+        ],
+      } as unknown as IUnitOfWork;
+      await callArgs?.onAfterMutate?.(mockUow);
+
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      const notifyContext = notifySpy.mock.calls[0]?.[0] as
+        | { route?: string; source?: string; waitUntil?: unknown }
+        | undefined;
+      expect(notifyContext).toMatchObject({
+        source: "request",
+        route: "POST /users",
+      });
+      expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
+      expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+
+      createHandlerTxBuilderSpy.mockRestore();
+    });
+  });
+
   describe("durable hooks cross-namespace scheduling", () => {
     it("should schedule hooks triggered in another namespace when mutation runs inside a hook", async () => {
       const sqlite = new SQLite(":memory:");
@@ -1120,10 +1215,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           throw new Error("Durable hooks runtime missing");
         }
 
-        const scheduleSpy = vi.fn().mockResolvedValue(0);
-        runtimeB.config.scheduler = {
-          schedule: scheduleSpy,
-          drain: vi.fn().mockResolvedValue(undefined),
+        const notifySpy = vi.fn();
+        runtimeB.config.notifier = {
+          notify: notifySpy,
         };
 
         const internalFragment = getInternalFragment(adapter);
@@ -1147,11 +1241,11 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             .execute();
         });
 
-        const schedulerA = runtimeA.config.scheduler ?? hooks.createHookScheduler(runtimeA.config);
-        runtimeA.config.scheduler = schedulerA;
-        await schedulerA.schedule();
+        const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
+        runtimeA.config.runner = runnerA;
+        await runnerA.processDue();
 
-        expect(scheduleSpy).toHaveBeenCalled();
+        expect(notifySpy).toHaveBeenCalled();
       } finally {
         await adapter.close();
         sqlite.close();

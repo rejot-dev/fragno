@@ -34,6 +34,7 @@ export type { BoundServices };
 
 const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
+const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
 
 type RequestRouteInfo = {
   method: HTTPMethod;
@@ -42,6 +43,10 @@ type RequestRouteInfo = {
   fullPath?: string;
 };
 type RequestSource = "route" | "context";
+
+export type FragnoRequestLifecycleContext = {
+  waitUntil?: (promise: Promise<unknown>) => void;
+};
 
 type InternalRoutePrefix = "/_internal";
 
@@ -383,16 +388,19 @@ export class FragnoInstantiatedFragment<
     callback: () => T,
     source?: RequestSource,
     routeInfo?: RequestRouteInfo,
+    lifecycleContext?: FragnoRequestLifecycleContext,
   ): T;
   #withRequestStorage<T>(
     callback: () => Promise<T>,
     source?: RequestSource,
     routeInfo?: RequestRouteInfo,
+    lifecycleContext?: FragnoRequestLifecycleContext,
   ): Promise<T>;
   #withRequestStorage<T>(
     callback: () => T | Promise<T>,
     source: RequestSource = "context",
     routeInfo?: RequestRouteInfo,
+    lifecycleContext?: FragnoRequestLifecycleContext,
   ): T | Promise<T> {
     if (!this.#serviceThisContext && !this.#handlerThisContext) {
       // No request context configured - just run callback directly
@@ -408,6 +416,9 @@ export class FragnoInstantiatedFragment<
       metadataTarget[requestSourceSymbol] = source;
       if (routeInfo) {
         metadataTarget[requestRouteSymbol] = routeInfo;
+      }
+      if (lifecycleContext?.waitUntil) {
+        metadataTarget[requestWaitUntilSymbol] = lifecycleContext.waitUntil;
       }
     }
     return this.#contextStorage.run(storageData, callback);
@@ -554,7 +565,7 @@ export class FragnoInstantiatedFragment<
    * Main request handler for this fragment.
    * Handles routing, middleware, and error handling.
    */
-  async handler(req: Request): Promise<Response> {
+  async handler(req: Request, lifecycleContext?: FragnoRequestLifecycleContext): Promise<Response> {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
@@ -697,7 +708,7 @@ export class FragnoInstantiatedFragment<
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeRequest, "route", routeInfo);
+    return this.#withRequestStorage(executeRequest, "route", routeInfo, lifecycleContext);
   }
 
   /**
@@ -1331,7 +1342,7 @@ interface IFragnoInstantiatedFragment {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlersFor(framework: FullstackFrameworks): any;
 
-  handler(req: Request): Promise<Response>;
+  handler(req: Request, lifecycleContext?: FragnoRequestLifecycleContext): Promise<Response>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   callRoute(method: HTTPMethod, path: string, inputOptions?: any): Promise<any>;

@@ -31,13 +31,14 @@ import {
   type HookFn,
   type HookContext,
   type HookProcessorConfig,
-  type HookScheduler,
+  type HookNotifier,
+  type HookNotifyContext,
   type DurableHooksProcessingOptions,
-  createHookScheduler,
+  createDurableHooksRunner,
 } from "./hooks/hooks";
 import {
   getDurableHooksRuntimeByConfig,
-  getDurableHooksRuntimeByNamespace,
+  getDurableHooksNotifierByNamespace,
   registerDurableHooksRuntime,
 } from "./hooks/durable-hooks-runtime";
 import { DurableHooksLogger } from "./hooks/durable-hooks-logger";
@@ -292,6 +293,7 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
 const dbRoundtripGuardStateSymbol = Symbol("fragno-db-roundtrip-guard");
 const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
+const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
 const roundtripGuardDocsUrl = "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno";
 
 type DbRoundtripGuardState = {
@@ -300,10 +302,7 @@ type DbRoundtripGuardState = {
   maxRoundtrips: number;
 };
 
-type DurableHooksLogContext = {
-  route?: string | null;
-  source?: "request" | "hook";
-};
+type DurableHooksLogContext = HookNotifyContext;
 
 type AnyHandlerTxBuilder = HandlerTxBuilder<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -383,33 +382,34 @@ function buildDurableHooksLogContext(context?: DurableHooksLogContext) {
   return logContext;
 }
 
-function scheduleDurableHooks(
-  scheduler: HookScheduler,
+function notifyDurableHooks(
+  notifier: HookNotifier,
   namespace: string,
+  notifyContext: HookNotifyContext,
   logContextFields: Record<string, unknown>,
   options?: { crossNamespace?: boolean },
 ) {
   const crossNamespace = options?.crossNamespace ?? false;
   const suffix = crossNamespace ? " (cross-namespace)" : "";
-  const scheduleStart = Date.now();
-  DurableHooksLogger.debug(`Durable hooks schedule requested${suffix}`, {
+  const notifyStart = Date.now();
+  DurableHooksLogger.debug(`Durable hooks notify requested${suffix}`, {
     namespace,
     fields: logContextFields,
   });
-  void scheduler
-    .schedule()
+  const notifyPromise = Promise.resolve()
+    .then(() => notifier.notify(notifyContext))
     .then((processed) => {
-      DurableHooksLogger.debug(`Durable hooks schedule completed${suffix}`, {
+      DurableHooksLogger.debug(`Durable hooks notify completed${suffix}`, {
         namespace,
         fields: {
-          processed,
-          ms: Date.now() - scheduleStart,
+          result: processed === undefined ? null : processed,
+          ms: Date.now() - notifyStart,
           ...logContextFields,
         },
       });
     })
     .catch((error) => {
-      DurableHooksLogger.error(`Durable hooks schedule failed${suffix}`, {
+      DurableHooksLogger.error(`Durable hooks notify failed${suffix}`, {
         namespace,
         fields: {
           error: DurableHooksLogger.toErrorMessage(error),
@@ -417,9 +417,15 @@ function scheduleDurableHooks(
         },
       });
     });
+
+  if (notifyContext.waitUntil) {
+    notifyContext.waitUntil(notifyPromise);
+    return;
+  }
+  void notifyPromise;
 }
 
-function scheduleDurableHooksAfterMutate<THooks extends HooksMap>({
+function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
   uow,
   hooksConfig,
   autoSchedule,
@@ -436,16 +442,38 @@ function scheduleDurableHooksAfterMutate<THooks extends HooksMap>({
     return;
   }
 
+  const notifyContext: HookNotifyContext = {
+    source: logContext?.source ?? "request",
+    route: logContext?.route,
+    waitUntil: logContext?.waitUntil,
+  };
+
   const logContextFields = buildDurableHooksLogContext(logContext);
   const triggeredHooks = uow.getTriggeredHooks();
+  const ownNamespaceTriggeredCount = hooksConfig
+    ? triggeredHooks.filter((hook) => hook.namespace === hooksConfig.namespace).length
+    : 0;
 
-  if (hooksConfig?.scheduler && autoSchedule) {
-    scheduleDurableHooks(hooksConfig.scheduler, hooksConfig.namespace, logContextFields);
-  } else if (hooksConfig?.scheduler && !autoSchedule && triggeredHooks.length > 0) {
-    DurableHooksLogger.debug("Durable hooks schedule skipped (autoSchedule=false)", {
+  if (hooksConfig?.notifier && autoSchedule && ownNamespaceTriggeredCount > 0) {
+    notifyDurableHooks(
+      hooksConfig.notifier,
+      hooksConfig.namespace,
+      notifyContext,
+      logContextFields,
+    );
+  } else if (hooksConfig && !autoSchedule && ownNamespaceTriggeredCount > 0) {
+    DurableHooksLogger.debug("Durable hooks notify skipped (autoSchedule=false)", {
       namespace: hooksConfig.namespace,
       fields: {
-        queued: triggeredHooks.length,
+        queued: ownNamespaceTriggeredCount,
+        ...logContextFields,
+      },
+    });
+  } else if (hooksConfig && !hooksConfig.notifier && ownNamespaceTriggeredCount > 0) {
+    DurableHooksLogger.debug("Durable hooks notify skipped (notifier missing)", {
+      namespace: hooksConfig.namespace,
+      fields: {
+        queued: ownNamespaceTriggeredCount,
         ...logContextFields,
       },
     });
@@ -464,17 +492,17 @@ function scheduleDurableHooksAfterMutate<THooks extends HooksMap>({
   }
 
   for (const namespace of namespaces) {
-    const runtime = getDurableHooksRuntimeByNamespace(namespace);
-    if (!runtime) {
-      DurableHooksLogger.debug("Durable hooks runtime missing for namespace", {
+    const notifier = getDurableHooksNotifierByNamespace(namespace);
+    if (!notifier) {
+      DurableHooksLogger.debug("Durable hooks notifier missing for namespace", {
         namespace,
         fields: logContextFields,
       });
       continue;
     }
-    const scheduler =
-      runtime.config.scheduler ?? (runtime.config.scheduler = createHookScheduler(runtime.config));
-    scheduleDurableHooks(scheduler, namespace, logContextFields, { crossNamespace: true });
+    notifyDurableHooks(notifier, namespace, notifyContext, logContextFields, {
+      crossNamespace: true,
+    });
   }
 }
 
@@ -1148,7 +1176,7 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             },
             onAfterMutate: async (uow) => {
-              scheduleDurableHooksAfterMutate({
+              notifyDurableHooksAfterMutate({
                 uow,
                 hooksConfig,
                 autoSchedule,
@@ -1174,7 +1202,7 @@ export class DatabaseFragmentDefinitionBuilder<
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };
-      hooksConfig.scheduler = createHookScheduler(hooksConfig);
+      hooksConfig.runner = createDurableHooksRunner(hooksConfig);
       registerDurableHooksRuntime(hooksConfig);
       if (depsKey) {
         hooksConfigCache.set(depsKey, hooksConfig);
@@ -1238,6 +1266,11 @@ export class DatabaseFragmentDefinitionBuilder<
             [requestRouteSymbol]?: { method?: string; path?: string };
           }
         )[requestRouteSymbol];
+        const routeWaitUntil = (
+          currentStorage as DatabaseContextStorage & {
+            [requestWaitUntilSymbol]?: (promise: Promise<unknown>) => void;
+          }
+        )[requestWaitUntilSymbol];
         const routeLabel =
           routeInfo && routeInfo.method && routeInfo.path
             ? `${routeInfo.method} ${routeInfo.path}`
@@ -1322,12 +1355,12 @@ export class DatabaseFragmentDefinitionBuilder<
           },
           onAfterRetrieve: guardOnAfterRetrieve,
           onAfterMutate: async (uow) => {
-            scheduleDurableHooksAfterMutate({
+            notifyDurableHooksAfterMutate({
               uow,
               hooksConfig,
               autoSchedule,
               planMode,
-              logContext: { route: routeLabel, source: "request" },
+              logContext: { route: routeLabel, source: "request", waitUntil: routeWaitUntil },
             });
             if (hooksConfig && !planMode) {
               const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);

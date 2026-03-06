@@ -122,6 +122,26 @@ export interface TriggeredHook {
   options?: TriggerHookOptions;
 }
 
+export type HookNotifySource = "request" | "hook" | "alarm";
+
+export type HookNotifyContext = {
+  source: HookNotifySource;
+  route?: string | null;
+  waitUntil?: (promise: Promise<unknown>) => void;
+};
+
+export type HookNotifier = {
+  notify: (context: HookNotifyContext) => void | Promise<void>;
+};
+
+export type DurableHooksRunner = {
+  processDue: () => Promise<number>;
+  drain: () => Promise<void>;
+};
+
+/**
+ * @deprecated Use DurableHooksRunner.
+ */
 export type HookScheduler = {
   schedule: () => Promise<number>;
   drain: () => Promise<void>;
@@ -136,7 +156,15 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   internalFragment: InternalFragmentInstance;
   handlerTx: HookHandlerTx;
   /**
-   * Internal hook scheduler used to coordinate processing/drain.
+   * Internal hook runner used to coordinate processing/drain.
+   */
+  runner?: DurableHooksRunner;
+  /**
+   * Post-commit durable hooks notifier.
+   */
+  notifier?: HookNotifier;
+  /**
+   * @deprecated Use `runner`.
    */
   scheduler?: HookScheduler;
   defaultRetryPolicy?: RetryPolicy;
@@ -563,12 +591,12 @@ export async function processHooks<THooks extends HooksMap>(
   return processedCount;
 }
 
-export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
+export function createDurableHooksRunner(config: HookProcessorConfig): DurableHooksRunner {
   let processing = false;
   let queued = false;
   let currentPromise: Promise<number> | null = null;
 
-  const schedule = async () => {
+  const processDue = async () => {
     if (processing) {
       queued = true;
       return currentPromise ?? Promise.resolve(0);
@@ -586,6 +614,7 @@ export function createHookScheduler(config: HookProcessorConfig): HookScheduler 
       } finally {
         processing = false;
         queued = false;
+        currentPromise = null;
       }
     })();
 
@@ -594,12 +623,23 @@ export function createHookScheduler(config: HookProcessorConfig): HookScheduler 
 
   const drain = async () => {
     while (true) {
-      const processed = await schedule();
+      const processed = await processDue();
       if (processed === 0) {
         return;
       }
     }
   };
 
-  return { schedule, drain };
+  return { processDue, drain };
+}
+
+/**
+ * @deprecated Use createDurableHooksRunner.
+ */
+export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
+  const runner = createDurableHooksRunner(config);
+  return {
+    schedule: () => runner.processDue(),
+    drain: () => runner.drain(),
+  };
 }

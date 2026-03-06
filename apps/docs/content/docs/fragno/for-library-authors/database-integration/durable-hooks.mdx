@@ -10,8 +10,9 @@ Durable hooks solve a common problem:
 > What if your database transaction commits, but your side effect (email, webhook, API call) fails?
 
 With durable hooks, you **register a hook trigger during the transaction**. The trigger is persisted
-in the database as part of the same commit, and then the hook is executed **after the commit**. If
-execution fails, it's retried with an exponential backoff policy.
+in the database as part of the same commit. After commit, Fragno emits a notify signal; dispatchers
+perform the actual hook execution with retries. If execution fails, it's retried with an exponential
+backoff policy.
 
 ## Defining hooks
 
@@ -99,8 +100,8 @@ defineRoute({
 
 ## Dispatching hooks outside requests
 
-Durable hooks are processed after mutations, but you should also run a background dispatcher so
-retries and scheduled hooks fire even when no new requests arrive.
+After mutations, Fragno emits notify-only signals. You should run a background dispatcher so retries
+and scheduled hooks fire even when no new requests arrive.
 
 ### Node (polling)
 
@@ -121,11 +122,21 @@ if (dispatcher) {
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 
 export class DurableHooksDispatcher {
+  state: DurableObjectState;
+  fragment: MyFragment;
   handler: ReturnType<ReturnType<NonNullable<typeof createDurableHooksProcessor>>>;
 
   constructor(state: DurableObjectState, env: Env) {
-    const dispatcher = createDurableHooksProcessor([env.fragment]);
+    this.state = state;
+    this.fragment = env.fragment;
+    const dispatcher = createDurableHooksProcessor([this.fragment]);
     this.handler = dispatcher(state, env);
+  }
+
+  fetch(request: Request) {
+    return this.fragment.handler(request, {
+      waitUntil: this.state.waitUntil.bind(this.state),
+    });
   }
 
   alarm() {
