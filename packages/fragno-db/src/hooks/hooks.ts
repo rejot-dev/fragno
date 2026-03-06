@@ -8,6 +8,7 @@ import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import { dbNow, isDbNow, type DbNow } from "../query/db-now";
 import type { FragnoId } from "../schema/create";
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
+import { DurableHooksLogger, type DurableHooksLoggerConfig } from "./durable-hooks-logger";
 
 /**
  * Context available in hook functions via `this`.
@@ -190,6 +191,11 @@ export type DurableHooksProcessingOptions = {
    * Invoked after the hooks are moved back to `pending`.
    */
   onStuckProcessingHooks?: (info: StuckHookProcessingInfo) => void;
+  /**
+   * Durable hooks logging controls.
+   * Defaults: enabled=true, level="warn".
+   */
+  logging?: DurableHooksLoggerConfig;
 };
 
 export type HookHandlerTx = (
@@ -231,6 +237,26 @@ export function prepareHookMutations(
   if (triggeredHooks.length === 0) {
     return;
   }
+
+  const primaryNamespace = triggeredHooks[0]?.namespace;
+  DurableHooksLogger.debug("Durable hooks queued", {
+    namespace: primaryNamespace,
+    fields: () => {
+      const hookSummary = new Map<string, number>();
+      for (const hook of triggeredHooks) {
+        const key = `${hook.namespace}:${hook.hookName}`;
+        hookSummary.set(key, (hookSummary.get(key) ?? 0) + 1);
+      }
+      const hooks = Array.from(hookSummary.entries()).map(([key, count]) => {
+        const [namespace, hookName] = key.split(":");
+        return { namespace, hookName, count };
+      });
+      return {
+        hooks,
+        total: triggeredHooks.length,
+      };
+    },
+  });
 
   const internalSchema = internalFragment.$internal.deps.schema;
   const internalUow = uow.forSchema(internalSchema);
@@ -313,6 +339,23 @@ export async function processHooks<THooks extends HooksMap>(
       .execute();
   });
 
+  const pendingCount = result.pendingEvents.length;
+  const stuckClaimedCount = result.stuckResult?.events.length ?? 0;
+  const stuckRequeuedCount = result.stuckResult?.stuckEvents.length ?? 0;
+  const staleBeforeApprox = includeStuckProcessing
+    ? new Date(Date.now() - stuckProcessingTimeoutMinutes * 60_000).toISOString()
+    : null;
+  DurableHooksLogger.debug("Durable hooks claimed", {
+    namespace,
+    fields: {
+      pending: pendingCount,
+      stuck: stuckClaimedCount,
+      requeued: stuckRequeuedCount,
+      includeStuckProcessing,
+      staleBeforeApprox,
+    },
+  });
+
   claimedEvents = [...result.pendingEvents, ...(result.stuckResult?.events ?? [])].map((event) => ({
     ...event,
     status: assertHookStatus(event.status),
@@ -327,11 +370,19 @@ export async function processHooks<THooks extends HooksMap>(
         events: stuckEvents,
       });
     } catch (error) {
-      console.error("Error calling onStuckProcessingHooks", error);
+      DurableHooksLogger.error("Error calling onStuckProcessingHooks", {
+        namespace,
+        fields: {
+          error: DurableHooksLogger.toErrorMessage(error),
+        },
+      });
     }
   }
 
   if (claimedEvents.length === 0) {
+    DurableHooksLogger.debug("Durable hooks idle", {
+      namespace,
+    });
     return 0;
   }
 
@@ -340,6 +391,16 @@ export async function processHooks<THooks extends HooksMap>(
     claimedEvents.map(async (event) => {
       const hookFn = hooks[event.hookName];
       if (!hookFn) {
+        DurableHooksLogger.error("Hook missing", {
+          namespace,
+          fields: {
+            eventId: event.id,
+            hookName: event.hookName,
+            attempts: event.attempts,
+            maxAttempts: event.maxAttempts,
+            createdAt: event.createdAt.toISOString(),
+          },
+        });
         return {
           eventId: event.id,
           status: "failed" as const,
@@ -350,6 +411,20 @@ export async function processHooks<THooks extends HooksMap>(
       }
 
       try {
+        const startedAt = Date.now();
+        DurableHooksLogger.debug("Hook start", {
+          namespace,
+          fields: {
+            eventId: event.id,
+            hookName: event.hookName,
+            status: event.status,
+            attempts: event.attempts,
+            maxAttempts: event.maxAttempts,
+            createdAt: event.createdAt.toISOString(),
+            nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
+            lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
+          },
+        });
         const hookContext: HookContext = {
           idempotencyKey: event.idempotencyKey,
           hookId: event.id,
@@ -363,12 +438,28 @@ export async function processHooks<THooks extends HooksMap>(
           handlerTx: config.handlerTx,
         };
         await hookFn.call(hookContext, event.payload);
+        DurableHooksLogger.debug("Hook completed", {
+          namespace,
+          fields: {
+            eventId: event.id,
+            hookName: event.hookName,
+            ms: Date.now() - startedAt,
+          },
+        });
         return {
           eventId: event.id,
           status: "completed" as const,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        DurableHooksLogger.error("Hook failed", {
+          namespace,
+          fields: {
+            eventId: event.id,
+            hookName: event.hookName,
+            error: errorMessage,
+          },
+        });
         return {
           eventId: event.id,
           status: "failed" as const,
@@ -389,9 +480,11 @@ export async function processHooks<THooks extends HooksMap>(
 
         for (const processedEvent of processedEvents) {
           if (processedEvent.status === "rejected") {
-            console.error("Hook processing promise rejected", {
+            DurableHooksLogger.error("Hook processing promise rejected", {
               namespace,
-              error: processedEvent.reason,
+              fields: {
+                error: DurableHooksLogger.toErrorMessage(processedEvent.reason),
+              },
             });
             continue;
           }
@@ -444,6 +537,28 @@ export async function processHooks<THooks extends HooksMap>(
     (count, result) => count + (result.status === "fulfilled" ? 1 : 0),
     0,
   );
+
+  const failed = processedEvents
+    .filter((result) => result.status === "fulfilled" && result.value.status === "failed")
+    .map((result) => {
+      if (result.status !== "fulfilled") {
+        return null;
+      }
+      return {
+        eventId: result.value.eventId,
+        error: result.value.error ?? null,
+      };
+    })
+    .filter(Boolean);
+
+  DurableHooksLogger.debug("Durable hooks processed", {
+    namespace,
+    fields: {
+      processed: processedCount,
+      failed: failed.length,
+      failures: failed.length > 0 ? failed : null,
+    },
+  });
 
   return processedCount;
 }
