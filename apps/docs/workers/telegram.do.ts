@@ -344,6 +344,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       );
     }
 
-    return fragment.handler(request);
+    return fragment.handler(request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }

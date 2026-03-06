@@ -5,6 +5,7 @@ import { instantiate } from "@fragno-dev/core";
 import {
   prepareHookMutations,
   processHooks,
+  createDurableHooksRunner,
   type HooksMap,
   type HookContext,
   type HookHandlerTx,
@@ -17,6 +18,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import { FragnoId } from "../schema/create";
+import { DurableHooksLogger } from "./durable-hooks-logger";
 
 const TEST_NS = "test";
 
@@ -353,6 +355,54 @@ describe("Hook System", () => {
       expect(events).toHaveLength(1);
       expect(events[0]?.nextRetryAt).toBeInstanceOf(Date);
       expect(events[0]?.nextRetryAt?.getTime()).toBe(pastTime.getTime());
+    });
+
+    it("should preserve full hookName in queued hooks log summary when it contains colons", async () => {
+      const hookName = "on:segment:created";
+      const hooks: HooksMap = {
+        [hookName]: vi.fn(),
+      };
+      const debugSpy = vi.spyOn(DurableHooksLogger, "debug").mockImplementation(() => {});
+
+      try {
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema, hooks);
+              uow.triggerHook(hookName, { data: "test" });
+              prepareHookMutations(
+                uow,
+                internalFragment,
+                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+              );
+            })
+            .execute();
+        });
+
+        const queuedCall = debugSpy.mock.calls.find(
+          ([message]) => message === "Durable hooks queued",
+        );
+        expect(queuedCall).toBeDefined();
+
+        const fields = queuedCall?.[1]?.fields;
+        expect(typeof fields).toBe("function");
+
+        const summary = (
+          fields as () => {
+            hooks: Array<{ namespace: string; hookName: string; count: number }>;
+            total: number;
+          }
+        )();
+
+        expect(summary.hooks).toContainEqual({
+          namespace: TEST_NS,
+          hookName,
+          count: 1,
+        });
+        expect(summary.total).toBe(1);
+      } finally {
+        debugSpy.mockRestore();
+      }
     });
   });
 
@@ -893,6 +943,55 @@ describe("Hook System", () => {
       });
 
       expect(hookFn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("createDurableHooksRunner", () => {
+    it("should return the total processed count across queued reruns", async () => {
+      const namespace = "test-runner-queued";
+      let resolveHook!: () => void;
+      const hookDone = new Promise<void>((resolve) => {
+        resolveHook = resolve;
+      });
+      const hookFn = vi.fn(async () => {
+        await hookDone;
+      });
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema);
+            uow.create("fragno_hooks", {
+              namespace,
+              hookName: "onQueued",
+              payload: { ok: true },
+              status: "pending",
+              attempts: 0,
+              maxAttempts: 1,
+              lastAttemptAt: null,
+              nextRetryAt: null,
+              error: null,
+              nonce: "runner-queued-nonce",
+            });
+          })
+          .execute();
+      });
+
+      const runner = createDurableHooksRunner({
+        hooks: { onQueued: hookFn },
+        namespace,
+        internalFragment,
+        handlerTx,
+        defaultRetryPolicy: new NoRetryPolicy(),
+      });
+
+      const firstRun = runner.processDue();
+      const queuedRun = runner.processDue();
+      resolveHook();
+
+      await expect(firstRun).resolves.toBe(1);
+      await expect(queuedRun).resolves.toBe(1);
+      expect(hookFn).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -122,6 +122,26 @@ export interface TriggeredHook {
   options?: TriggerHookOptions;
 }
 
+export type HookNotifySource = "request" | "hook" | "alarm";
+
+export type HookNotifyContext = {
+  source: HookNotifySource;
+  route?: string | null;
+  waitUntil?: (promise: Promise<unknown>) => void;
+};
+
+export type HookNotifier = {
+  notify: (context: HookNotifyContext) => void | Promise<void>;
+};
+
+export type DurableHooksRunner = {
+  processDue: () => Promise<number>;
+  drain: () => Promise<void>;
+};
+
+/**
+ * @deprecated Use DurableHooksRunner.
+ */
 export type HookScheduler = {
   schedule: () => Promise<number>;
   drain: () => Promise<void>;
@@ -136,7 +156,20 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   internalFragment: InternalFragmentInstance;
   handlerTx: HookHandlerTx;
   /**
-   * Internal hook scheduler used to coordinate processing/drain.
+   * Whether post-mutate notifications should auto-schedule processing.
+   * Defaults to true.
+   */
+  autoSchedule?: boolean;
+  /**
+   * Internal hook runner used to coordinate processing/drain.
+   */
+  runner?: DurableHooksRunner;
+  /**
+   * Post-commit durable hooks notifier.
+   */
+  notifier?: HookNotifier;
+  /**
+   * @deprecated Use `runner`.
    */
   scheduler?: HookScheduler;
   defaultRetryPolicy?: RetryPolicy;
@@ -242,15 +275,21 @@ export function prepareHookMutations(
   DurableHooksLogger.debug("Durable hooks queued", {
     namespace: primaryNamespace,
     fields: () => {
-      const hookSummary = new Map<string, number>();
+      const hookSummary = new Map<string, { namespace: string; hookName: string; count: number }>();
       for (const hook of triggeredHooks) {
         const key = `${hook.namespace}:${hook.hookName}`;
-        hookSummary.set(key, (hookSummary.get(key) ?? 0) + 1);
+        const summary = hookSummary.get(key);
+        if (summary) {
+          summary.count += 1;
+          continue;
+        }
+        hookSummary.set(key, {
+          namespace: hook.namespace,
+          hookName: hook.hookName,
+          count: 1,
+        });
       }
-      const hooks = Array.from(hookSummary.entries()).map(([key, count]) => {
-        const [namespace, hookName] = key.split(":");
-        return { namespace, hookName, count };
-      });
+      const hooks = Array.from(hookSummary.values());
       return {
         hooks,
         total: triggeredHooks.length,
@@ -563,12 +602,12 @@ export async function processHooks<THooks extends HooksMap>(
   return processedCount;
 }
 
-export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
+export function createDurableHooksRunner(config: HookProcessorConfig): DurableHooksRunner {
   let processing = false;
   let queued = false;
   let currentPromise: Promise<number> | null = null;
 
-  const schedule = async () => {
+  const processDue = async () => {
     if (processing) {
       queued = true;
       return currentPromise ?? Promise.resolve(0);
@@ -576,16 +615,17 @@ export function createHookScheduler(config: HookProcessorConfig): HookScheduler 
 
     processing = true;
     currentPromise = (async () => {
-      let lastCount = 0;
+      let totalProcessed = 0;
       try {
         do {
           queued = false;
-          lastCount = await processHooks(config);
+          totalProcessed += await processHooks(config);
         } while (queued);
-        return lastCount;
+        return totalProcessed;
       } finally {
         processing = false;
         queued = false;
+        currentPromise = null;
       }
     })();
 
@@ -594,12 +634,23 @@ export function createHookScheduler(config: HookProcessorConfig): HookScheduler 
 
   const drain = async () => {
     while (true) {
-      const processed = await schedule();
+      const processed = await processDue();
       if (processed === 0) {
         return;
       }
     }
   };
 
-  return { schedule, drain };
+  return { processDue, drain };
+}
+
+/**
+ * @deprecated Use createDurableHooksRunner.
+ */
+export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
+  const runner = createDurableHooksRunner(config);
+  return {
+    schedule: () => runner.processDue(),
+    drain: () => runner.drain(),
+  };
 }
