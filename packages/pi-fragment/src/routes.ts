@@ -7,6 +7,7 @@ import { z } from "zod";
 import { piSchema } from "./schema";
 import { piFragmentDefinition } from "./pi/definition";
 import { messageAckSchema, sessionBaseSchema, sessionDetailSchema } from "./pi/route-schemas";
+import { PiLogger } from "./debug-log";
 import {
   extractAssistantTextFromMessage,
   normalizeSteeringMode,
@@ -65,6 +66,15 @@ const getAssistantFromResult = (result: unknown): AgentMessage | null => {
   return assistant as AgentMessage;
 };
 
+const getLastMessageTimestamp = (messages: AgentMessage[]): number | null => {
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || typeof lastMessage !== "object") {
+    return null;
+  }
+  const timestamp = (lastMessage as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : null;
+};
+
 const parseAssistantTurn = (name: string): number | null => {
   const match = /^assistant-(\d+)$/.exec(name);
   return match ? Number.parseInt(match[1], 10) : null;
@@ -75,6 +85,12 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
   const trace: AgentEvent[] = [];
   const summaries: PiTurnSummary[] = [];
   let lastAssistant: AgentMessage | null = null;
+  let lastMessages: AgentMessage[] = [];
+  let lastAssistantMessages: AgentMessage[] = [];
+  let lastMessagesStepCreatedAt: Date | null = null;
+  let lastAssistantMessagesStepCreatedAt: Date | null = null;
+  let lastMessageStepName: string | null = null;
+  let lastAssistantStepName: string | null = null;
 
   const sortedSteps = [...steps].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -85,7 +101,9 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
 
     const stepMessages = getArrayFromResult<AgentMessage>(step.result, "messages");
     if (stepMessages) {
-      messages = stepMessages;
+      lastMessages = stepMessages;
+      lastMessagesStepCreatedAt = step.createdAt;
+      lastMessageStepName = step.name;
     }
 
     const stepTrace = getArrayFromResult<AgentEvent>(step.result, "trace");
@@ -97,6 +115,11 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
     const turn = parseAssistantTurn(step.name);
     if (assistant && turn !== null) {
       lastAssistant = assistant;
+      if (stepMessages) {
+        lastAssistantMessages = stepMessages;
+        lastAssistantMessagesStepCreatedAt = step.createdAt;
+        lastAssistantStepName = step.name;
+      }
       summaries.push({
         turn,
         assistant,
@@ -105,11 +128,49 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
     }
   }
 
-  if (messages.length === 0 && isRecord(output) && Array.isArray(output["messages"])) {
+  // History can contain multiple message snapshots from different step types.
+  // Assistant snapshots are not always newest, so compare recency first:
+  // step createdAt -> last message timestamp -> deterministic fallback order.
+  if (lastMessages.length > 0 && lastAssistantMessages.length > 0) {
+    const messagesStepTime = lastMessagesStepCreatedAt?.getTime();
+    const assistantStepTime = lastAssistantMessagesStepCreatedAt?.getTime();
+    const messagesTimestamp = getLastMessageTimestamp(lastMessages);
+    const assistantTimestamp = getLastMessageTimestamp(lastAssistantMessages);
+
+    if (
+      messagesStepTime !== undefined &&
+      assistantStepTime !== undefined &&
+      messagesStepTime !== assistantStepTime
+    ) {
+      messages = messagesStepTime > assistantStepTime ? lastMessages : lastAssistantMessages;
+    } else if (
+      messagesTimestamp !== null &&
+      assistantTimestamp !== null &&
+      messagesTimestamp !== assistantTimestamp
+    ) {
+      messages = messagesTimestamp > assistantTimestamp ? lastMessages : lastAssistantMessages;
+    } else {
+      messages = lastMessages;
+    }
+  } else if (lastMessages.length > 0) {
+    messages = lastMessages;
+  } else if (lastAssistantMessages.length > 0) {
+    messages = lastAssistantMessages;
+  } else if (isRecord(output) && Array.isArray(output["messages"])) {
+    // When history has no usable message snapshots, use workflow output as the final fallback.
     messages = output["messages"] as AgentMessage[];
   }
+
   if (lastAssistant && !messages.some((message) => message?.role === "assistant")) {
     messages = [...messages, lastAssistant];
+  }
+
+  if (lastMessages.length > 0 && lastAssistantMessages.length === 0) {
+    PiLogger.debug("no assistant messages yet; using latest non-assistant messages", {
+      lastMessageStepName,
+      lastAssistantStepName,
+      sortedSteps: sortedSteps.length,
+    });
   }
 
   return { messages, trace, summaries };
@@ -124,6 +185,11 @@ const collectHistorySteps = (
 
 export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
   ({ config, defineRoute, serviceDeps }) => {
+    PiLogger.reset();
+    if (config.logging) {
+      PiLogger.configure(config.logging);
+    }
+
     return [
       defineRoute({
         method: "POST",

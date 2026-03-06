@@ -1,11 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
+import { drainDurableHooks } from "@fragno-dev/test";
 
-import { buildHarness, createStreamFn, drainWorkflowRunner, mockModel } from "./test-utils";
+import { buildHarness, createStreamFn, mockModel } from "./test-utils";
 import type { PiFragmentConfig } from "./types";
 import { PI_WORKFLOW_NAME } from "./workflow";
+import { PiLogger } from "../debug-log";
 
 type TestHarness = Awaited<ReturnType<typeof buildHarness>>;
+const ASSISTANT_STEP_PREFIX = "assistant-";
+const USER_STEP_PREFIX = "user-";
 
 const usage = {
   input: 0,
@@ -25,6 +30,12 @@ const buildAssistantMessage = (text: string): AssistantMessage => ({
   usage,
   stopReason: "stop",
   timestamp: 123,
+});
+
+const buildUserMessage = (text: string, timestamp: number): AgentMessage => ({
+  role: "user",
+  content: [{ type: "text", text }],
+  timestamp,
 });
 
 const formatResponseError = (response: {
@@ -59,7 +70,7 @@ describe("pi-fragment session detail route", () => {
       tools: {},
     };
 
-    const result = await buildHarness(config);
+    const result = await buildHarness(config, { autoTickHooks: true });
     fragments = result.fragments;
     test = result.test;
     workflows = result.workflows;
@@ -124,7 +135,7 @@ describe("pi-fragment session detail route", () => {
       pathParams: { sessionId },
       body: { text: "ping", done: true },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId },
@@ -139,6 +150,155 @@ describe("pi-fragment session detail route", () => {
     expect(detailResponse.data.trace.length).toBeGreaterThan(0);
     expect(detailResponse.data.summaries.length).toBeGreaterThan(0);
     expect(detailResponse.data.summaries[0]?.summary ?? "").toContain("assistant");
+  });
+
+  it("prefers newer messages over older assistant snapshots", async () => {
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Prefer newer messages" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    const sessionId = createResponse.data.id;
+    const workflowInstanceId = createResponse.data.workflowInstanceId;
+    if (!workflowInstanceId) {
+      throw new Error("Expected workflow instance id");
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId },
+      body: { text: "seed", done: true },
+    });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+    const stepRows = await workflows.db.find("workflow_step");
+    // Workflow message steps are named with `assistant-<turn>` and `user-<turn>` prefixes.
+    const messageSteps = stepRows.filter((step) => {
+      const result = (step as { result?: unknown }).result;
+      if (!result || typeof result !== "object") {
+        return false;
+      }
+      return Array.isArray((result as { messages?: unknown }).messages);
+    });
+    const assistantStep = messageSteps.find((step) =>
+      String((step as { name?: unknown }).name ?? "").includes(ASSISTANT_STEP_PREFIX),
+    );
+    const userStep = messageSteps.find((step) => {
+      const stepName = String((step as { name?: unknown }).name ?? "");
+      if (stepName.includes(ASSISTANT_STEP_PREFIX)) {
+        return false;
+      }
+      return stepName.includes(USER_STEP_PREFIX);
+    });
+    if (!assistantStep || !userStep) {
+      const stepNames = stepRows
+        .map((step) => String((step as { name?: unknown }).name ?? ""))
+        .join(", ");
+      throw new Error(`Expected assistant and non-assistant message steps (found: ${stepNames})`);
+    }
+
+    const oldUser = buildUserMessage("older-user", 1000);
+    const oldAssistant = buildAssistantMessage("assistant:old");
+    const newerUser = buildUserMessage("newer-user", 2000);
+    const olderCreatedAt = new Date("2025-01-01T00:00:00.000Z");
+    const newerCreatedAt = new Date("2025-01-01T00:00:01.000Z");
+
+    await workflows.db.update("workflow_step", assistantStep.id, (b) =>
+      b.set({
+        result: {
+          messages: [oldUser, oldAssistant],
+          assistant: oldAssistant,
+        },
+        createdAt: olderCreatedAt,
+        updatedAt: olderCreatedAt,
+      }),
+    );
+
+    await workflows.db.update("workflow_step", userStep.id, (b) =>
+      b.set({
+        result: {
+          messages: [oldUser, oldAssistant, newerUser],
+        },
+        createdAt: newerCreatedAt,
+        updatedAt: newerCreatedAt,
+      }),
+    );
+
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(detailResponse.data.messages).toEqual([oldUser, oldAssistant, newerUser]);
+  });
+
+  it("logs when falling back to non-assistant message snapshots", async () => {
+    const debugSpy = vi.spyOn(PiLogger, "debug").mockImplementation(() => {});
+
+    try {
+      const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+        body: { agent: "default", name: "Fallback logging" },
+      });
+
+      if (createResponse.type !== "json") {
+        throw new Error(formatResponseError(createResponse));
+      }
+
+      const sessionId = createResponse.data.id;
+      const workflowInstanceId = createResponse.data.workflowInstanceId;
+      if (!workflowInstanceId) {
+        throw new Error("Expected workflow instance id");
+      }
+
+      await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+        pathParams: { sessionId },
+        body: { text: "seed", done: true },
+      });
+      await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+      const stepRows = await workflows.db.find("workflow_step");
+      const assistantStep = stepRows.find((step) =>
+        String((step as { name?: unknown }).name ?? "").includes(ASSISTANT_STEP_PREFIX),
+      );
+      if (!assistantStep) {
+        throw new Error("Expected assistant step");
+      }
+
+      const assistantOnly = buildAssistantMessage("assistant-only");
+      await workflows.db.update("workflow_step", assistantStep.id, (b) =>
+        b.set({
+          result: {
+            assistant: assistantOnly,
+          },
+        }),
+      );
+
+      const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+        pathParams: { sessionId },
+      });
+
+      expect(detailResponse.type).toBe("json");
+      if (detailResponse.type !== "json") {
+        throw new Error(formatResponseError(detailResponse));
+      }
+
+      const fallbackCall = debugSpy.mock.calls.find(
+        ([message]) => message === "no assistant messages yet; using latest non-assistant messages",
+      );
+      expect(fallbackCall).toBeDefined();
+      expect(fallbackCall?.[1]).toMatchObject({
+        lastAssistantStepName: null,
+        sortedSteps: expect.any(Number),
+      });
+    } finally {
+      debugSpy.mockRestore();
+    }
   });
 
   it("uses workflow output messages when history is empty", async () => {
@@ -200,12 +360,12 @@ describe("pi-fragment session detail route", () => {
       pathParams: { sessionId },
       body: { text: "ping", done: false },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
     await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
       body: { text: "pong", done: true },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId },
