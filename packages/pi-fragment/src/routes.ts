@@ -7,6 +7,7 @@ import { z } from "zod";
 import { piSchema } from "./schema";
 import { piFragmentDefinition } from "./pi/definition";
 import { messageAckSchema, sessionBaseSchema, sessionDetailSchema } from "./pi/route-schemas";
+import { PiLogger } from "./debug-log";
 import {
   extractAssistantTextFromMessage,
   normalizeSteeringMode,
@@ -75,6 +76,10 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
   const trace: AgentEvent[] = [];
   const summaries: PiTurnSummary[] = [];
   let lastAssistant: AgentMessage | null = null;
+  let lastMessages: AgentMessage[] = [];
+  let lastAssistantMessages: AgentMessage[] = [];
+  let lastMessageStepName: string | null = null;
+  let lastAssistantStepName: string | null = null;
 
   const sortedSteps = [...steps].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -85,7 +90,8 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
 
     const stepMessages = getArrayFromResult<AgentMessage>(step.result, "messages");
     if (stepMessages) {
-      messages = stepMessages;
+      lastMessages = stepMessages;
+      lastMessageStepName = step.name;
     }
 
     const stepTrace = getArrayFromResult<AgentEvent>(step.result, "trace");
@@ -97,6 +103,10 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
     const turn = parseAssistantTurn(step.name);
     if (assistant && turn !== null) {
       lastAssistant = assistant;
+      if (stepMessages) {
+        lastAssistantMessages = stepMessages;
+        lastAssistantStepName = step.name;
+      }
       summaries.push({
         turn,
         assistant,
@@ -105,11 +115,24 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
     }
   }
 
-  if (messages.length === 0 && isRecord(output) && Array.isArray(output["messages"])) {
+  if (lastAssistantMessages.length > 0) {
+    messages = lastAssistantMessages;
+  } else if (lastMessages.length > 0) {
+    messages = lastMessages;
+  } else if (isRecord(output) && Array.isArray(output["messages"])) {
     messages = output["messages"] as AgentMessage[];
   }
+
   if (lastAssistant && !messages.some((message) => message?.role === "assistant")) {
     messages = [...messages, lastAssistant];
+  }
+
+  if (lastMessages.length > 0 && lastAssistantMessages.length === 0) {
+    PiLogger.debug("history fallback: using latest non-assistant messages", {
+      lastMessageStepName,
+      lastAssistantStepName,
+      steps: sortedSteps.length,
+    });
   }
 
   return { messages, trace, summaries };
@@ -124,6 +147,8 @@ const collectHistorySteps = (
 
 export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
   ({ config, defineRoute, serviceDeps }) => {
+    PiLogger.configure(config.logging);
+
     return [
       defineRoute({
         method: "POST",

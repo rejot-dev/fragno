@@ -70,7 +70,8 @@
   "scripts": {
     "types:check": "tsc --noEmit",
     "build": "tsdown",
-    "test": "vitest run"
+    "test": "vitest run",
+    "cli": "tsx src/cli/mod.ts"
   },
   "type": "module",
   "bin": {
