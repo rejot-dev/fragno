@@ -1,6 +1,6 @@
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
-import type { AgentEvent, AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
+import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -10,22 +10,16 @@ import {
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
-import {
-  defineWorkflow,
-  type WorkflowEvent,
-  type WorkflowStep,
-  type WorkflowsRegistry,
-} from "@fragno-dev/workflows";
-import { z } from "zod";
 
 import { piFragmentDefinition } from "./definition";
 import { piRoutesFactory } from "../routes";
 import { piSchema } from "../schema";
-import { PI_WORKFLOW_NAME } from "./workflow";
+import { createPiWorkflows } from "./workflow";
 import type { createPiFragment } from "./factory";
 import type {
   PiFragmentConfig,
   PiAgentRegistry,
+  PiToolSideEffectReducerRegistry,
   PiToolRegistry,
   PiWorkflowsService,
 } from "./types";
@@ -134,6 +128,9 @@ export const createStreamFn = (text: string): StreamFn => {
   return createStreamFnScript(
     [
       { type: "start", partial: message },
+      { type: "text_start", contentIndex: 0, partial: message },
+      { type: "text_delta", contentIndex: 0, delta: text, partial: message },
+      { type: "text_end", contentIndex: 0, content: text, partial: message },
       { type: "done", reason: "stop", message },
     ],
     { result: message },
@@ -202,124 +199,18 @@ export const createDelayedStreamFn = (delayMs = 25): StreamFn => {
   };
 };
 
-type AgentLoopParams = {
-  sessionId: string;
-  agentName: string;
-  systemPrompt?: string;
-  initialMessages?: AgentMessage[];
-};
-
-const agentLoopParamsSchema: z.ZodType<AgentLoopParams> = z.object({
-  sessionId: z.string(),
-  agentName: z.string(),
-  systemPrompt: z.string().optional(),
-  initialMessages: z.array(z.custom<AgentMessage>()).optional(),
-});
-
-const userMessageSchema = z.object({
-  text: z.string().optional(),
-  done: z.boolean().optional(),
-  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
-});
-
-const buildUserMessage = (text: string): AgentMessage => ({
-  role: "user",
-  content: [{ type: "text", text }],
-  timestamp: Date.now(),
-});
-
 export const createTestWorkflows = (options: {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-}) => {
-  return {
-    agentLoop: defineWorkflow(
-      { name: PI_WORKFLOW_NAME, schema: agentLoopParamsSchema },
-      async (event: WorkflowEvent<AgentLoopParams>, step: WorkflowStep) => {
-        const params = agentLoopParamsSchema.parse(event.payload ?? {});
-        const agent = options.agents[params.agentName];
-        if (!agent) {
-          throw new Error(`Agent ${params.agentName} not found.`);
-        }
-
-        let messages: AgentMessage[] = Array.isArray(params.initialMessages)
-          ? params.initialMessages
-          : [];
-        let turn = 0;
-
-        while (true) {
-          const userEvent = await step.waitForEvent(`wait-user-${turn}`, {
-            type: "user_message",
-            timeout: "1 hour",
-          });
-          const payload = userMessageSchema.parse(userEvent.payload ?? {});
-          const userResult = await step.do(`user-${turn}`, async () => {
-            const userMessage = buildUserMessage(payload.text ?? "");
-            return { messages: [...messages, userMessage], user: userMessage };
-          });
-          messages = userResult.messages;
-
-          const assistantResult = await step.do(`assistant-${turn}`, async () => {
-            const fallbackAssistantMessage = {
-              role: "assistant",
-              content: [{ type: "text", text: `assistant:${payload.text ?? ""}` }],
-            } as AgentMessage;
-            let assistantMessage = fallbackAssistantMessage;
-            const trace: AgentEvent[] = [];
-
-            if (agent.streamFn) {
-              const stream = await Promise.resolve(
-                agent.streamFn(
-                  agent.model,
-                  { systemPrompt: params.systemPrompt ?? agent.systemPrompt, messages },
-                  { apiKey: "test" },
-                ),
-              );
-              if (stream && typeof stream === "object" && Symbol.asyncIterator in stream) {
-                for await (const eventItem of stream as AsyncIterable<unknown>) {
-                  trace.push({
-                    type: "message_update",
-                    message: fallbackAssistantMessage,
-                    assistantMessageEvent: eventItem as never,
-                  } as AgentEvent);
-                }
-              }
-              if (
-                stream &&
-                typeof stream === "object" &&
-                "result" in stream &&
-                typeof stream.result === "function"
-              ) {
-                try {
-                  const result = await stream.result();
-                  if (result && typeof result === "object" && "role" in result) {
-                    assistantMessage = result as AgentMessage;
-                  }
-                } catch {
-                  assistantMessage = fallbackAssistantMessage;
-                }
-              }
-            }
-
-            return {
-              messages: [...messages, assistantMessage],
-              trace,
-              assistant: assistantMessage,
-            };
-          });
-
-          messages = assistantResult.messages;
-
-          if (payload.done) {
-            return { messages };
-          }
-
-          turn += 1;
-        }
-      },
-    ),
-  } satisfies WorkflowsRegistry;
-};
+  toolSideEffectReducers?: PiToolSideEffectReducerRegistry;
+  logging?: PiFragmentConfig["logging"];
+}) =>
+  createPiWorkflows({
+    agents: options.agents,
+    tools: options.tools,
+    toolSideEffectReducers: options.toolSideEffectReducers,
+    logging: options.logging,
+  });
 
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;
 
@@ -347,7 +238,12 @@ export const buildHarness = async (
     autoTickHooks?: boolean;
   } = {},
 ): Promise<DatabaseFragmentsTest> => {
-  const workflows = createTestWorkflows({ agents: config.agents, tools: config.tools });
+  const workflows = createTestWorkflows({
+    agents: config.agents,
+    tools: config.tools,
+    toolSideEffectReducers: config.toolSideEffectReducers,
+    logging: config.logging,
+  });
   const workflowsHarness = await createWorkflowsTestHarness({
     workflows,
     adapter: options.adapter ?? { type: "kysely-sqlite" },
@@ -386,35 +282,4 @@ export const buildHarness = async (
       cleanup: workflowsHarness.test.cleanup,
     },
   };
-};
-
-export const drainWorkflowRunner = async (
-  workflows: DatabaseFragmentsTest["workflows"],
-  workflowName: string,
-  instanceId: string,
-  options: { maxTicks?: number } = {},
-): Promise<{ status: string }> => {
-  const maxTicks = options.maxTicks ?? 10;
-
-  const buildTickPayload = async () => {
-    const instances = await workflows.db.find("workflow_instance");
-    const instance = instances.find(
-      (row: unknown) => String((row as { id?: unknown }).id) === instanceId,
-    ) as { id?: unknown; runNumber?: number } | undefined;
-    if (!instance) {
-      throw new Error(`Workflow instance ${instanceId} not found.`);
-    }
-    return {
-      workflowName,
-      instanceId,
-      instanceRef: String(instance.id ?? instanceId),
-      runNumber: typeof instance.runNumber === "number" ? instance.runNumber : 0,
-      reason: "event" as const,
-    };
-  };
-
-  const payload = await buildTickPayload();
-  await workflows.runUntilIdle(payload, { maxTicks });
-
-  return await workflows.getStatus(workflowName, instanceId);
 };

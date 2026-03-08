@@ -6,7 +6,7 @@ import type {
   StreamFn,
   ThinkingLevel,
 } from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import type { TxResult } from "@fragno-dev/db";
 import type {
@@ -75,11 +75,64 @@ export type PiAgentDefinition = {
 
 export type PiAgentRegistry = Record<string, PiAgentDefinition>;
 
+export const PI_TOOL_JOURNAL_VERSION = 1 as const;
+
+export type PiToolJournalVersion = typeof PI_TOOL_JOURNAL_VERSION;
+
+export type PiToolCallStableKey = string;
+
+export type PiPersistedToolResult = {
+  content: Array<TextContent | ImageContent>;
+  details: unknown;
+};
+
+export type PiPersistedToolCallSource = "executed" | "replay";
+
+export type PiPersistedToolCallV1 = {
+  version: PiToolJournalVersion;
+  key: PiToolCallStableKey;
+  sessionId: string;
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  result: PiPersistedToolResult;
+  isError: boolean;
+  source: PiPersistedToolCallSource;
+  capturedAt: number;
+  seq: number;
+};
+
+export type PiPersistedToolCall = PiPersistedToolCallV1;
+
+export type PiToolReplayCache = Map<PiToolCallStableKey, PiPersistedToolCall>;
+
+export type PiToolSideEffectReducerContext = {
+  key: PiToolCallStableKey;
+  sessionId: string;
+  turnId: string;
+};
+
+export type PiToolSideEffectReducer = (
+  state: unknown,
+  entry: PiPersistedToolCall,
+  ctx: PiToolSideEffectReducerContext,
+) => unknown;
+
+export type PiToolSideEffectReducerRegistry = Record<string, PiToolSideEffectReducer>;
+
+export type PiToolReplayContext = {
+  cache: PiToolReplayCache;
+  journal: PiPersistedToolCall[];
+  sideEffects: Record<string, unknown>;
+};
+
 export type PiToolFactoryContext = {
   session: PiSession;
   turnId: string;
   toolConfig: unknown;
   messages: AgentMessage[];
+  replay: PiToolReplayContext;
 };
 
 export type PiToolFactory =
@@ -92,6 +145,7 @@ export interface PiFragmentConfig {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
   defaultSteeringMode?: PiSteeringMode;
+  toolSideEffectReducers?: PiToolSideEffectReducerRegistry;
   /**
    * Optional logging config for internal pi-fragment diagnostics.
    */

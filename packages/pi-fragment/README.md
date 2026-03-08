@@ -7,6 +7,8 @@ A Fragno fragment that runs Pi agents using workflow-backed sessions with regist
 - Session lifecycle (create, list, fetch)
 - Workflow-backed agent turns (history stored in workflow steps)
 - Registry-driven agent + tool configuration
+- Automatic tool call capture + deterministic replay from persisted workflow step state
+- Framework-level side-effect reducers (including built-in bash VFS reconstruction)
 - Minimal API surface for sessions + messages
 
 ## Server usage
@@ -59,7 +61,40 @@ Workflows are executed via the workflows fragment durable hook dispatcher. For a
 
 - `agents`: registry of agent definitions (name, system prompt, model, tools)
 - `tools`: registry of tool factories
+- `toolSideEffectReducers`: optional reducers keyed by tool name for reconstructing runtime state
 - `defaultSteeringMode`: optional default for agent steering mode
+
+## Tool Replay Middleware Contract
+
+Tool calls are persisted automatically in each `assistant-*` workflow step result. Tools do not need
+to write workflow state directly.
+
+- Stable key: `sessionId:turnId:toolCallId`
+- Journal fields: `version`, `toolName`, `args`, `result`, `isError`, `source`, `capturedAt`, `seq`
+- Replay: duplicate tool calls with the same stable key are short-circuited and reuse persisted
+  results
+- Error parity: replayed failed calls preserve `isError` behavior
+
+### Reducers for Stateful Tools
+
+For stateful runtimes (for example bash virtual filesystems), register a reducer so tool factories
+receive reconstructed state through `ctx.replay.sideEffects`.
+
+```ts
+const pi = createPi()
+  .toolSideEffectReducer("bash", (state, entry) => {
+    // Apply persisted bash tool details in deterministic order.
+    const previous = typeof state === "object" && state ? state : {};
+    const details =
+      entry.result.details && typeof entry.result.details === "object" ? entry.result.details : {};
+    return { ...previous, ...details };
+  })
+  .build();
+```
+
+`@fragno-dev/pi-fragment` includes a default `bash` reducer that replays common
+`cwd/files/writes/deletes` detail payloads. Custom reducers can extend or override this behavior per
+tool.
 
 ## Routes
 

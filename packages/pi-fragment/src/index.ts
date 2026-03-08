@@ -5,13 +5,22 @@ export { createPiFragment } from "./pi/factory";
 export { createPiWorkflows, PI_WORKFLOW_NAME } from "./pi/workflow";
 export { piRoutesFactory } from "./routes";
 export { SESSION_STATUSES, STEERING_MODES, THINKING_LEVELS } from "./pi/constants";
+export { PI_TOOL_JOURNAL_VERSION } from "./pi/types";
 export type {
   PiFragmentConfig,
   PiAgentDefinition,
   PiAgentRegistry,
+  PiPersistedToolCall,
+  PiPersistedToolCallSource,
+  PiPersistedToolResult,
   PiSession,
   PiToolFactory,
   PiToolFactoryContext,
+  PiToolReplayCache,
+  PiToolReplayContext,
+  PiToolSideEffectReducer,
+  PiToolSideEffectReducerContext,
+  PiToolSideEffectReducerRegistry,
   PiToolRegistry,
   PiTurnSummary,
   PiWorkflowHistoryStep,

@@ -4,6 +4,8 @@ import type {
   PiFragmentConfig,
   PiToolFactory,
   PiToolRegistry,
+  PiToolSideEffectReducer,
+  PiToolSideEffectReducerRegistry,
 } from "./types";
 import type { PiSteeringMode } from "./constants";
 import { createPiWorkflows, type PiWorkflowsRegistry } from "./workflow";
@@ -31,7 +33,9 @@ export const defineAgent = (
 export const createPi = () => {
   const agents: PiAgentRegistry = {};
   const tools: PiToolRegistry = {};
+  const toolSideEffectReducers: PiToolSideEffectReducerRegistry = {};
   let defaultSteeringMode: PiSteeringMode | undefined;
+  let logging: PiFragmentConfig["logging"];
 
   const builder = {
     agent(definition: PiAgentDefinition) {
@@ -50,21 +54,41 @@ export const createPi = () => {
       Object.assign(tools, registry);
       return builder;
     },
+    toolSideEffectReducer(toolName: string, reducer: PiToolSideEffectReducer) {
+      toolSideEffectReducers[toolName] = reducer;
+      return builder;
+    },
+    toolSideEffectReducers(registry: PiToolSideEffectReducerRegistry) {
+      Object.assign(toolSideEffectReducers, registry);
+      return builder;
+    },
     defaultSteeringMode(mode: PiSteeringMode) {
       defaultSteeringMode = mode;
+      return builder;
+    },
+    logging(config: PiFragmentConfig["logging"]) {
+      logging = config;
       return builder;
     },
     build(): PiRuntime {
       const agentsSnapshot = { ...agents };
       const toolsSnapshot = { ...tools };
+      const reducersSnapshot = { ...toolSideEffectReducers };
       const config: PiFragmentConfig = {
         agents: agentsSnapshot,
         tools: toolsSnapshot,
         defaultSteeringMode,
+        toolSideEffectReducers: reducersSnapshot,
+        logging,
       };
       return {
         config,
-        workflows: createPiWorkflows({ agents: agentsSnapshot, tools: toolsSnapshot }),
+        workflows: createPiWorkflows({
+          agents: agentsSnapshot,
+          tools: toolsSnapshot,
+          toolSideEffectReducers: reducersSnapshot,
+          logging,
+        }),
       };
     },
   };
