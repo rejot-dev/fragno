@@ -25,9 +25,8 @@ const CONNECTIONS = [
   {
     id: "github",
     name: "GitHub",
-    description: "Track repository events and automate release updates.",
-    status: "Planned",
-    to: null,
+    description: "Track installation webhooks, link repositories, and inspect pull requests.",
+    status: "Available",
   },
 ];
 
@@ -49,6 +48,9 @@ export default function BackofficeConnections() {
   const resendTarget = activeOrganizationId
     ? `/backoffice/connections/resend/${activeOrganizationId}`
     : null;
+  const githubTarget = activeOrganizationId
+    ? `/backoffice/connections/github/${activeOrganizationId}`
+    : null;
 
   return (
     <div className="space-y-4">
@@ -66,7 +68,9 @@ export default function BackofficeConnections() {
               ? telegramTarget
               : connection.id === "resend"
                 ? resendTarget
-                : null;
+                : connection.id === "github"
+                  ? githubTarget
+                  : null;
           const isAvailable = Boolean(connectionLink);
           return (
             <div

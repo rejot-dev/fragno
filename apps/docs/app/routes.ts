@@ -36,6 +36,11 @@ export default [
       route("connections", "routes/backoffice/connections/index.tsx"),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
+      route("connections/github", "routes/backoffice/connections/github/index.tsx"),
+      route(
+        "connections/github/setup-callback",
+        "routes/backoffice/connections/github/setup-callback.tsx",
+      ),
       route("environments", "routes/backoffice/environments/index.tsx"),
       route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),
       route(
@@ -62,7 +67,20 @@ export default [
           ]),
         ],
       ),
+      route(
+        "connections/github/:orgId",
+        "routes/backoffice/connections/github/organisation-layout.tsx",
+        [
+          index("routes/backoffice/connections/github/organisation-index.tsx"),
+          route("configuration", "routes/backoffice/connections/github/configuration.tsx"),
+          route("repositories", "routes/backoffice/connections/github/repositories.tsx", [
+            index("routes/backoffice/connections/github/repositories-index.tsx"),
+            route(":repoId", "routes/backoffice/connections/github/repository-detail.tsx"),
+          ]),
+        ],
+      ),
       route("internals", "routes/backoffice/internals/index.tsx"),
+      route("internals/github", "routes/backoffice/internals/github.tsx"),
       route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
       route(
         "internals/durable-hooks/singletons",
@@ -94,6 +112,8 @@ export default [
     route("auth/*", "routes/api/auth.ts"),
     route("resend/:orgId/*", "routes/api/resend.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
+    route("github/webhooks", "routes/api/github-webhooks.ts"),
+    route("github/:orgId/*", "routes/api/github.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;

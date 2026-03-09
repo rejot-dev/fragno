@@ -82,8 +82,9 @@ export default function BackofficeDurableHooksLanding() {
             organizations.map(({ organization }) => {
               const telegramPath = `/backoffice/internals/durable-hooks/${organization.id}/telegram`;
               const resendPath = `/backoffice/internals/durable-hooks/${organization.id}/resend`;
+              const githubPath = `/backoffice/internals/durable-hooks/${organization.id}/github`;
               const handleOrgClick = () => {
-                navigate(telegramPath);
+                navigate(githubPath);
               };
 
               return (
@@ -126,6 +127,13 @@ export default function BackofficeDurableHooksLanding() {
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Resend
+                    </Link>
+                    <Link
+                      to={githubPath}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      GitHub
                     </Link>
                   </div>
                 </div>

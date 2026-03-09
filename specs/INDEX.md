@@ -41,6 +41,10 @@ Format:
   tests, build config, and docs.
 - [Auth Organizations and Roles — Spec](./spec-auth-organizations.md) — Add organizations, members,
   roles, invitations, hooks, and conservative endpoints to the auth fragment.
+- [GitHub App Global Webhook Routing + Organization Mapping — Spec](./spec-github-app-global-webhook-routing.md)
+  — Introduces singleton GitHub webhook ingress, installation-to-organization binding, secure setup
+  callback flow, and replay of unclaimed deliveries before forwarding to org-scoped GitHub
+  fragments.
 - [Fragno Upload Fragment - Spec](./spec-upload-fragment.md) — Generic file upload + management
   fragment: storage adapters, key system, routes, DB schema, hooks, and client API.
 - [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment

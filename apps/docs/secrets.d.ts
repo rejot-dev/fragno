@@ -6,6 +6,17 @@
 interface CloudflareEnv {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
+  GITHUB_APP_ID: string;
+  GITHUB_APP_SLUG: string;
+  GITHUB_APP_PRIVATE_KEY: string;
+  GITHUB_APP_PRIVATE_KEY_FILE: string;
+  GITHUB_APP_WEBHOOK_SECRET: string;
+  GITHUB_APP_API_BASE_URL: string;
+  GITHUB_APP_API_VERSION: string;
+  GITHUB_APP_WEB_BASE_URL: string;
+  GITHUB_APP_DEFAULT_LINK_KEY: string;
+  GITHUB_APP_TOKEN_CACHE_TTL_SECONDS: string;
+  GITHUB_APP_WEBHOOK_DEBUG: string;
   RESEND_API_KEY: string;
   TURNSTILE_SECRET_KEY: string;
   PI_LOG_LEVEL?: "off" | "error" | "warn" | "info" | "debug";

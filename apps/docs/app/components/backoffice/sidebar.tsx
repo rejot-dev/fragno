@@ -23,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { label: "Telegram", to: "/backoffice/connections/telegram" },
       { label: "Resend", to: "/backoffice/connections/resend" },
+      { label: "GitHub", to: "/backoffice/connections/github" },
     ],
   },
   {
@@ -33,7 +34,10 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Internals",
     to: "/backoffice/internals",
-    children: [{ label: "Durable hooks", to: "/backoffice/internals/durable-hooks" }],
+    children: [
+      { label: "GitHub", to: "/backoffice/internals/github" },
+      { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+    ],
   },
 ];
 

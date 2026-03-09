@@ -4,7 +4,7 @@
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./workers/app");
-		durableNamespaces: "MailingList" | "Forms" | "Auth" | "Telegram" | "Resend" | "Sandbox" | "SandboxRegistry";
+		durableNamespaces: "MailingList" | "Forms" | "Auth" | "Telegram" | "Resend" | "Sandbox" | "SandboxRegistry" | "GitHub" | "GitHubWebhookRouter";
 	}
 	interface Env {
 		TURNSTILE_SITEKEY: string;
@@ -13,6 +13,12 @@ declare namespace Cloudflare {
 		GITHUB_CLIENT_ID: string;
 		GITHUB_CLIENT_SECRET: string;
 		PI_LOG_LEVEL: string;
+		GITHUB_APP_ID: string;
+		GITHUB_APP_SLUG: string;
+		GITHUB_APP_CLIENT_ID: string;
+		GITHUB_APP_CLIENT_SECRET: string;
+		GITHUB_APP_WEBHOOK_SECRET: string;
+		GITHUB_APP_PRIVATE_KEY: string;
 		MAILING_LIST: DurableObjectNamespace<import("./workers/app").MailingList>;
 		FORMS: DurableObjectNamespace<import("./workers/app").Forms>;
 		AUTH: DurableObjectNamespace<import("./workers/app").Auth>;
@@ -20,6 +26,8 @@ declare namespace Cloudflare {
 		RESEND: DurableObjectNamespace<import("./workers/app").Resend>;
 		SANDBOX: DurableObjectNamespace<import("./workers/app").Sandbox>;
 		SANDBOX_REGISTRY: DurableObjectNamespace<import("./workers/app").SandboxRegistry>;
+		GITHUB: DurableObjectNamespace<import("./workers/app").GitHub>;
+		GITHUB_WEBHOOK_ROUTER: DurableObjectNamespace<import("./workers/app").GitHubWebhookRouter>;
 	}
 }
 interface CloudflareEnv extends Cloudflare.Env {}
@@ -27,7 +35,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "TURNSTILE_SITEKEY" | "TURNSTILE_SECRET_KEY" | "RESEND_API_KEY" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "PI_LOG_LEVEL">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "TURNSTILE_SITEKEY" | "TURNSTILE_SECRET_KEY" | "RESEND_API_KEY" | "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET" | "PI_LOG_LEVEL" | "GITHUB_APP_ID" | "GITHUB_APP_SLUG" | "GITHUB_APP_CLIENT_ID" | "GITHUB_APP_CLIENT_SECRET" | "GITHUB_APP_WEBHOOK_SECRET" | "GITHUB_APP_PRIVATE_KEY">> {}
 }
 declare module "*.sql" {
 	const value: string;
