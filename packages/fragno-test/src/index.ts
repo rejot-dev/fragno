@@ -31,6 +31,7 @@ export type {
 export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-test";
 export type { AnyFragmentResult } from "./db-test";
 export { drainDurableHooks } from "./durable-hooks";
+export type { DrainDurableHooksMode, DrainDurableHooksOptions } from "./durable-hooks";
 export {
   runModelChecker,
   defaultStateHasher,

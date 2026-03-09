@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { drainDurableHooks } from "@fragno-dev/test";
 
-import {
-  buildHarness,
-  createStreamFn,
-  drainWorkflowRunner,
-  mockModel,
-  type DatabaseFragmentsTest,
-} from "./test-utils";
+import { buildHarness, createStreamFn, mockModel, type DatabaseFragmentsTest } from "./test-utils";
 import { SESSION_STATUSES } from "./constants";
 import type { PiFragmentConfig } from "./types";
 import { PI_WORKFLOW_NAME } from "./workflow";
@@ -25,7 +20,7 @@ const buildTestHarness = async () => {
     tools: {},
   };
 
-  return await buildHarness(config);
+  return await buildHarness(config, { autoTickHooks: true });
 };
 
 const createSession = async (fragments: DatabaseFragmentsTest["fragments"]) => {
@@ -122,7 +117,7 @@ const buildMultiAgentHarness = async () => {
     tools: {},
   };
 
-  return await buildHarness(config);
+  return await buildHarness(config, { autoTickHooks: true });
 };
 
 describe("pi-fragment messages route", () => {
@@ -293,16 +288,8 @@ describe("pi-fragment messages route", () => {
       expect(alphaResponse.status).toBe(202);
       expect(betaResponse.status).toBe(202);
 
-      await drainWorkflowRunner(
-        multi.workflows,
-        workflowName,
-        alphaSession.workflowInstanceId ?? "",
-      );
-      await drainWorkflowRunner(
-        multi.workflows,
-        workflowName,
-        betaSession.workflowInstanceId ?? "",
-      );
+      await drainDurableHooks(multi.workflows.fragment, { mode: "singlePass" });
+      await drainDurableHooks(multi.workflows.fragment, { mode: "singlePass" });
 
       const alphaStatus = await multi.workflows.getStatus(
         workflowName,
@@ -359,8 +346,8 @@ describe("pi-fragment messages route", () => {
     expect(responseA.status).toBe(202);
     expect(responseB.status).toBe(202);
 
-    await drainWorkflowRunner(workflows, workflowName, sessionA.workflowInstanceId ?? "");
-    await drainWorkflowRunner(workflows, workflowName, sessionB.workflowInstanceId ?? "");
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const statusA = await workflows.getStatus(workflowName, sessionA.workflowInstanceId ?? "");
     const statusB = await workflows.getStatus(workflowName, sessionB.workflowInstanceId ?? "");

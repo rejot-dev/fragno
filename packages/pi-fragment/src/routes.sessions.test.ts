@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
+import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { PiFragmentConfig } from "./pi/types";
 import { PI_WORKFLOW_NAME } from "./pi/workflow";
@@ -9,7 +10,6 @@ import {
   createFailingStreamFn,
   createInvalidResultStreamFn,
   createDelayedStreamFn,
-  drainWorkflowRunner,
   mockModel,
   type DatabaseFragmentsTest,
 } from "./pi/test-utils";
@@ -67,7 +67,7 @@ const setupStreamHarness = async (streamFn: StreamFn) => {
     tools: {},
   };
 
-  const result = await buildHarness(config);
+  const result = await buildHarness(config, { autoTickHooks: true });
   return { fragments: result.fragments, test: result.test, workflows: result.workflows };
 };
 
@@ -92,7 +92,7 @@ describe("pi-fragment sessions", () => {
       tools: {},
     };
 
-    const result = await buildHarness(config);
+    const result = await buildHarness(config, { autoTickHooks: true });
     fragments = result.fragments;
     test = result.test;
     workflows = result.workflows;
@@ -187,6 +187,7 @@ describe("pi-fragment sessions", () => {
           throw new Error("CREATE_FAILED");
         },
       }),
+      autoTickHooks: true,
     });
 
     const response = await local.fragments.pi.callRoute("POST", "/sessions", {
@@ -432,7 +433,7 @@ describe("pi-fragment sessions", () => {
       pathParams: { sessionId },
       body: { text: "ping" },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId },
@@ -542,7 +543,7 @@ describe("pi-fragment streamFn behavior", () => {
       }
       expect(messageResponse.status).toBe(202);
 
-      await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+      await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
         pathParams: { sessionId },
@@ -570,7 +571,7 @@ describe("pi-fragment streamFn behavior", () => {
     }
   });
 
-  it("falls back to generated assistant message on stream result failure", async () => {
+  it("does not synthesize fallback text when stream result fails", async () => {
     const streamFn = createFailingStreamFn({ failOnceForText: "fallback" });
     const { fragments, test, workflows } = await setupStreamHarness(streamFn);
 
@@ -603,7 +604,10 @@ describe("pi-fragment streamFn behavior", () => {
       }
       expect(messageResponse.status).toBe(202);
 
-      await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+      await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+      const status = await workflows.getStatus(workflowName, workflowInstanceId);
+      expect(status.status).toBe("waiting");
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
         pathParams: { sessionId },
@@ -613,15 +617,13 @@ describe("pi-fragment streamFn behavior", () => {
       if (detailResponse.type !== "json") {
         throw new Error(formatResponseError(detailResponse));
       }
-      expect(extractAssistantTextFromMessages(detailResponse.data.messages)).toBe(
-        "assistant:fallback",
-      );
+      expect(extractAssistantTextFromMessages(detailResponse.data.messages)).toBe("");
     } finally {
       await test.cleanup();
     }
   });
 
-  it("falls back when stream result is invalid", async () => {
+  it("keeps the workflow waiting for retry when stream result is invalid", async () => {
     const streamFn = createInvalidResultStreamFn();
     const { fragments, test, workflows } = await setupStreamHarness(streamFn);
 
@@ -654,7 +656,10 @@ describe("pi-fragment streamFn behavior", () => {
       }
       expect(messageResponse.status).toBe(202);
 
-      await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+      await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+      const status = await workflows.getStatus(workflowName, workflowInstanceId);
+      expect(status.status).toBe("waiting");
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
         pathParams: { sessionId },
@@ -664,9 +669,7 @@ describe("pi-fragment streamFn behavior", () => {
       if (detailResponse.type !== "json") {
         throw new Error(formatResponseError(detailResponse));
       }
-      expect(extractAssistantTextFromMessages(detailResponse.data.messages)).toBe(
-        "assistant:invalid",
-      );
+      expect(extractAssistantTextFromMessages(detailResponse.data.messages)).toBe("");
     } finally {
       await test.cleanup();
     }
@@ -705,7 +708,7 @@ describe("pi-fragment streamFn behavior", () => {
       }
       expect(messageResponse.status).toBe(202);
 
-      await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+      await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
         pathParams: { sessionId },
