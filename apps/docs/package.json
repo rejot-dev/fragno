@@ -10,7 +10,7 @@
     "postinstall": "fumadocs-mdx",
     "preview": "pnpm run build && vite preview",
     "types:check": "tsgo -b --noEmit",
-    "types:generate": "wrangler types --env-interface CloudflareEnv && react-router typegen && fumadocs-mdx",
+    "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen && fumadocs-mdx",
     "db:fragno:generate": "fragno-cli db generate app/fragno/mailing-list.ts -o app/db/mailing-list-do.schema.ts && fragno-cli db generate app/fragno/forms.ts -o app/db/forms-do.schema.ts",
     "db:mailing-list-do:generate": "drizzle-kit generate --config mailing-list-do.drizzle.config.ts",
     "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts",

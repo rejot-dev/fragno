@@ -17,7 +17,8 @@ interface CloudflareEnv {
   GITHUB_APP_DEFAULT_LINK_KEY: string;
   GITHUB_APP_TOKEN_CACHE_TTL_SECONDS: string;
   GITHUB_APP_WEBHOOK_DEBUG: string;
+  GITHUB_APP_CLIENT_ID: string;
+  GITHUB_APP_CLIENT_SECRET: string;
   RESEND_API_KEY: string;
   TURNSTILE_SECRET_KEY: string;
-  PI_LOG_LEVEL?: "off" | "error" | "warn" | "info" | "debug";
 }

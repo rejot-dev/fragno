@@ -1,7 +1,7 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import type {
   SandboxCommandResult,
@@ -875,7 +875,26 @@ async function resolveActiveOrganizationId(
   context: Route.LoaderArgs["context"] | Route.ActionArgs["context"],
 ): Promise<string | null> {
   const me = await getAuthMe(request, context);
-  return me?.activeOrganization?.organization.id ?? null;
+  const activeOrganizationId = me?.activeOrganization?.organization.id ?? null;
+  if (activeOrganizationId) {
+    return activeOrganizationId;
+  }
+
+  const fallbackOrganizationId = me?.organizations?.[0]?.organization.id ?? null;
+  if (!fallbackOrganizationId) {
+    return null;
+  }
+
+  try {
+    const callAuthRoute = createAuthRouteCaller(request, context);
+    await callAuthRoute("POST", "/organizations/active", {
+      body: { organizationId: fallbackOrganizationId },
+    });
+  } catch {
+    // Keep using membership fallback for this request when active-org sync fails.
+  }
+
+  return fallbackOrganizationId;
 }
 
 function toErrorMessage(error: unknown) {
