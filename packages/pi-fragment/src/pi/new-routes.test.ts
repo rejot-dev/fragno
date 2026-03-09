@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { drainDurableHooks } from "@fragno-dev/test";
 
-import { buildHarness, createStreamFn, drainWorkflowRunner, mockModel } from "./test-utils";
+import { buildHarness, createStreamFn, mockModel } from "./test-utils";
 import type { PiFragmentConfig } from "./types";
-import { PI_WORKFLOW_NAME } from "./workflow";
 
 describe("pi-fragment new routes", () => {
-  const workflowName = PI_WORKFLOW_NAME;
   type TestHarness = Awaited<ReturnType<typeof buildHarness>>;
   let cleanup: TestHarness["test"]["cleanup"];
   let callRoute: TestHarness["fragments"]["pi"]["callRoute"];
@@ -25,7 +24,7 @@ describe("pi-fragment new routes", () => {
       tools: {},
     };
 
-    const harness = await buildHarness(config);
+    const harness = await buildHarness(config, { autoTickHooks: true });
     callRoute = harness.fragments.pi.callRoute;
     cleanup = harness.test.cleanup;
     workflows = harness.workflows;
@@ -136,7 +135,7 @@ describe("pi-fragment new routes", () => {
       body: { text: "hello flow", done: true },
     });
 
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const detail = await callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId },
@@ -185,13 +184,13 @@ describe("pi-fragment new routes", () => {
       pathParams: { sessionId },
       body: { text: "first turn", done: false },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     await callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
       body: { text: "second turn", done: true },
     });
-    await drainWorkflowRunner(workflows, workflowName, workflowInstanceId);
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const detail = await callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId },
