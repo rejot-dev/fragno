@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 import type { Route } from "./+types/durable-hooks-organisation";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getResendDurableObject, getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+import {
+  getGitHubDurableObject,
+  getResendDurableObject,
+  getTelegramDurableObject,
+} from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
@@ -20,7 +24,7 @@ type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
   fragment: DurableHooksOrgFragment;
 };
 
-type DurableHooksOrgFragment = "telegram" | "resend";
+type DurableHooksOrgFragment = "telegram" | "resend" | "github";
 
 const parsePageSize = (value: string | null) => {
   if (!value) {
@@ -31,7 +35,7 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (value === "telegram" || value === "resend") {
+  if (value === "telegram" || value === "resend" || value === "github") {
     return value;
   }
   return null;
@@ -67,30 +71,40 @@ export async function loader({
   }
 
   try {
-    const queue =
-      fragment === "resend"
-        ? ((await getResendDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          })) as DurableHookQueueResponse)
-        : ((await getTelegramDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          })) as DurableHookQueueResponse);
+    const queue = ((): Promise<DurableHookQueueResponse> => {
+      if (fragment === "resend") {
+        return getResendDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+        }) as Promise<DurableHookQueueResponse>;
+      }
+      if (fragment === "github") {
+        return getGitHubDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+        }) as Promise<DurableHookQueueResponse>;
+      }
+      return getTelegramDurableObject(context, params.orgId).getHookQueue({
+        cursor,
+        pageSize,
+      }) as Promise<DurableHookQueueResponse>;
+    })();
+    const queueData = await queue;
     return {
-      configured: queue.configured,
-      hooksEnabled: queue.hooksEnabled,
-      namespace: queue.namespace,
-      items: queue.items,
-      cursor: queue.cursor,
-      hasNextPage: queue.hasNextPage,
+      configured: queueData.configured,
+      hooksEnabled: queueData.hooksEnabled,
+      namespace: queueData.namespace,
+      items: queueData.items,
+      cursor: queueData.cursor,
+      hasNextPage: queueData.hasNextPage,
       error: null,
       orgId: params.orgId,
       organisationName: organisation.name ?? null,
       fragment,
     } satisfies DurableHooksOrgLoaderData;
   } catch (error) {
-    const fragmentLabel = fragment === "resend" ? "Resend" : "Telegram";
+    const fragmentLabel =
+      fragment === "resend" ? "Resend" : fragment === "github" ? "GitHub" : "Telegram";
     return {
       configured: false,
       hooksEnabled: false,
@@ -137,11 +151,14 @@ export default function BackofficeDurableHooksOrganisation() {
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   const activeFragment = fragment;
-  const fragmentLabel = activeFragment === "resend" ? "Resend" : "Telegram";
+  const fragmentLabel =
+    activeFragment === "resend" ? "Resend" : activeFragment === "github" ? "GitHub" : "Telegram";
   const configurePath =
     activeFragment === "resend"
       ? `/backoffice/connections/resend/${orgId}/configuration`
-      : `/backoffice/connections/telegram/${orgId}/configuration`;
+      : activeFragment === "github"
+        ? `/backoffice/connections/github/${orgId}/configuration`
+        : `/backoffice/connections/telegram/${orgId}/configuration`;
   const queueCount = items.length;
   const nextCursor = cursor;
   const nextSearchParams = new URLSearchParams(searchParams);
@@ -172,6 +189,12 @@ export default function BackofficeDurableHooksOrganisation() {
       id: "resend",
       label: "Resend",
       to: fragmentTabHref("resend"),
+      disabled: false,
+    },
+    {
+      id: "github",
+      label: "GitHub",
+      to: fragmentTabHref("github"),
       disabled: false,
     },
   ];

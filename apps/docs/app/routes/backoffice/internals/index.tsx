@@ -3,6 +3,14 @@ import { BackofficePageHeader } from "@/components/backoffice";
 
 const INTERNALS = [
   {
+    id: "github",
+    name: "GitHub",
+    description:
+      "Inspect GitHub App runtime configuration and singleton installation routing state.",
+    status: "Available",
+    to: "/backoffice/internals/github",
+  },
+  {
     id: "durable-hooks",
     name: "Durable hooks",
     description:

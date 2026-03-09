@@ -25,6 +25,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/forms": "workspace:*",
+    "@fragno-dev/github-app-fragment": "workspace:*",
     "@fragno-dev/fragment-mailing-list": "workspace:*",
     "@fragno-dev/jsonforms-shadcn-renderers": "workspace:*",
     "@fragno-dev/resend-fragment": "workspace:*",

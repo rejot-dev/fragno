@@ -1,16 +1,19 @@
 import type { RouterContextProvider } from "react-router";
-import type { MailingList } from "workers/mailing-list.do";
-import { CloudflareContext } from "./cloudflare-context";
-import type { Forms } from "workers/forms.do";
 import type { Auth } from "workers/auth.do";
+import type { Forms } from "workers/forms.do";
+import type { GitHub } from "workers/github.do";
+import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
+import type { MailingList } from "workers/mailing-list.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Resend } from "workers/resend.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
+import { CloudflareContext } from "./cloudflare-context";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
 export const AUTH_SINGLETON_ID = "AUTH_SINGLETON_ID" as const;
 const SANDBOX_REGISTRY_ORG_KEY_PREFIX = "SANDBOX_REGISTRY_ORG:";
+export const GITHUB_WEBHOOK_ROUTER_SINGLETON_ID = "GITHUB_WEBHOOK_ROUTER_SINGLETON_ID" as const;
 
 /**
  * Helper to get the Mailing List Durable Object stub from the router context.
@@ -90,4 +93,31 @@ export function getSandboxRegistryDurableObject(
   const registryKey = `${SANDBOX_REGISTRY_ORG_KEY_PREFIX}${orgId}`;
 
   return env.SANDBOX_REGISTRY.get(env.SANDBOX_REGISTRY.idFromName(registryKey));
+}
+
+/**
+ * Helper to get the GitHub Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getGitHubDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<GitHub> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.GITHUB.get(env.GITHUB.idFromName(orgId));
+}
+
+/**
+ * Helper to get the global GitHub webhook router Durable Object.
+ * This singleton stores installation -> organisation routing metadata.
+ */
+export function getGitHubWebhookRouterDurableObject(
+  context: Readonly<RouterContextProvider>,
+): DurableObjectStub<GitHubWebhookRouter> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.GITHUB_WEBHOOK_ROUTER.get(
+    env.GITHUB_WEBHOOK_ROUTER.idFromName(GITHUB_WEBHOOK_ROUTER_SINGLETON_ID),
+  );
 }

@@ -86,6 +86,14 @@
         "name": "SANDBOX_REGISTRY",
         "class_name": "SandboxRegistry",
       },
+      {
+        "name": "GITHUB",
+        "class_name": "GitHub",
+      },
+      {
+        "name": "GITHUB_WEBHOOK_ROUTER",
+        "class_name": "GitHubWebhookRouter",
+      },
     ],
   },
   /**
@@ -120,6 +128,14 @@
     {
       "tag": "v7",
       "new_sqlite_classes": ["SandboxRegistry"],
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": ["GitHub"],
+    },
+    {
+      "tag": "v9",
+      "new_sqlite_classes": ["GitHubWebhookRouter"],
     },
   ],
   "rules": [

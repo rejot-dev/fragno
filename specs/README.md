@@ -93,6 +93,9 @@ very detailed, living documents that guide implementation without constraining t
   the outbox and applies mutations to IndexedDB.
 - [Auth Organizations and Roles — Spec](./spec-auth-organizations.md) — Add organizations, members,
   roles, invitations, hooks, and conservative endpoints to the auth fragment.
+- [GitHub App Global Webhook Routing + Organization Mapping — Spec](./spec-github-app-global-webhook-routing.md)
+  — Singleton webhook ingress, installation-to-org binding, secure setup callback, and replay
+  routing into org-scoped GitHub fragment instances.
 
 ## Implementation Plans
 
