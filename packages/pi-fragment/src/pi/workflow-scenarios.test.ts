@@ -19,9 +19,11 @@ import { defineAgent } from "./dsl";
 import {
   PI_TOOL_JOURNAL_VERSION,
   type PiAgentDefinition,
+  type PiAgentLoopState,
   type PiPersistedToolCall,
   type PiToolFactory,
 } from "./types";
+import { PI_WORKFLOW_NAME } from "./workflow";
 
 type ScenarioStatus = { status: string; output?: unknown; error?: { message?: string } };
 
@@ -444,6 +446,77 @@ describe("pi-workflows scenarios", () => {
           expect(assistantResult?.assistant).toMatchObject({ role: "assistant" });
           expect(Array.isArray(assistantResult?.trace)).toBe(true);
           expect(assistantResult?.toolJournal ?? []).toHaveLength(0);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  it("restores current-run detail state from replayable workflow state", async () => {
+    const agents = createAgents(createStreamFn("assistant:restore"));
+    const workflows = createTestWorkflows({ agents, tools: {} });
+
+    type ScenarioVars = {
+      restoredState?: PiAgentLoopState;
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "pi-workflows-restore-current-run-state",
+      workflows,
+      harness: { adapter: { type: "kysely-sqlite" } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({
+          workflow: "agentLoop",
+          id: "session-restore-state",
+          params: {
+            sessionId: "session-restore-state",
+            agentName: "default",
+            systemPrompt: "You are helpful.",
+            initialMessages: [],
+          },
+        }),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "agentLoop",
+          instanceId: "session-restore-state",
+          event: {
+            type: "user_message",
+            payload: { text: "restore me", done: false, steeringMode: "one-at-a-time" },
+          },
+        }),
+        scenarioSteps.read({
+          read: async (ctx) => {
+            return await ctx.harness.fragment.inContext(function () {
+              return this.handlerTx()
+                .withServiceCalls(() => [
+                  ctx.harness.fragment.services.restoreInstanceState(
+                    PI_WORKFLOW_NAME,
+                    "session-restore-state",
+                  ),
+                ])
+                .transform(({ serviceResult: [result] }) => result)
+                .execute();
+            });
+          },
+          storeAs: "restoredState",
+        }),
+        scenarioSteps.assert((ctx) => {
+          const restoredState = ctx.vars.restoredState;
+          expect(restoredState).toBeTruthy();
+          expect(restoredState?.turn).toBe(1);
+          expect(restoredState?.phase).toBe("waiting-for-user");
+          expect(restoredState?.waitingFor).toMatchObject({
+            type: "user_message",
+            turn: 1,
+            stepKey: "waitForEvent:wait-user-1",
+          });
+          expect(restoredState?.events).toHaveLength(1);
+          expect(restoredState?.events[0]?.payload).toMatchObject({ text: "restore me" });
+          expect(restoredState?.trace.length).toBeGreaterThan(0);
+          expect(restoredState?.summaries).toHaveLength(1);
+          expect(restoredState?.summaries[0]?.summary).toContain("assistant:restore");
+          expect(restoredState?.messages).toMatchObject([{ role: "user" }, { role: "assistant" }]);
         }),
       ],
     });

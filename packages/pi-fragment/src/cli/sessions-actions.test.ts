@@ -106,9 +106,9 @@ describe("sessions actions", () => {
           id: "session-2",
           status: "running",
           workflow: { status: "running" },
-          events: [{ type: "user_message" }],
-          trace: [{ type: "llm_start" }],
-          summaries: [{ turn: 1, summary: "hello" }],
+          phase: "running-agent",
+          turn: 3,
+          waitingFor: { type: "assistant", turn: 3, stepKey: "do:assistant-3" },
           extra: "ignored",
         }),
         { status: 200 },
@@ -124,22 +124,27 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
+    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(JSON.parse(output)).toEqual({
       status: "running",
       workflow: { status: "running" },
-      events: [{ type: "user_message" }],
+      phase: "running-agent",
+      turn: 3,
+      waitingFor: { type: "assistant", turn: 3, stepKey: "do:assistant-3" },
     });
   });
 
-  it("fetches session detail without trace and summaries by default", async () => {
+  it("fetches the full current-run session detail by default", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           id: "session-2",
           status: "running",
           workflow: { status: "running" },
+          phase: "running-agent",
+          turn: 1,
+          waitingFor: { type: "assistant", turn: 1, stepKey: "do:assistant-1" },
           messages: [{ role: "user", content: "hello", timestamp: 1 }],
           events: [{ type: "user_message", payload: { text: "hello" } }],
           trace: [{ type: "llm_start" }],
@@ -158,18 +163,20 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
+    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
     const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
     expect(output).toMatchObject({
       id: "session-2",
       status: "running",
+      phase: "running-agent",
+      turn: 1,
       events: [{ type: "user_message", payload: { text: "hello" } }],
+      trace: [{ type: "llm_start" }],
+      summaries: [{ turn: 1, summary: "hello" }],
     });
-    expect(output).not.toHaveProperty("trace");
-    expect(output).not.toHaveProperty("summaries");
   });
 
-  it("renders session detail text output with all message and event timestamps", async () => {
+  it("renders session detail text output with timestamps, trace, and summaries", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -177,6 +184,9 @@ describe("sessions actions", () => {
           name: "Support",
           agent: "agent-1",
           status: "running",
+          phase: "running-agent",
+          turn: 1,
+          waitingFor: { type: "assistant", turn: 1, stepKey: "do:assistant-1" },
           steeringMode: "all",
           createdAt: "2026-03-06T09:00:00.000Z",
           updatedAt: "2026-03-06T09:01:00.000Z",
@@ -208,24 +218,29 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
+    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
 
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(output).toContain("Session");
     expect(output).toContain("Messages (2)");
     expect(output).toContain("Events (2)");
+    expect(output).toContain("Trace (1)");
+    expect(output).toContain("Summaries (1)");
     expect(output).toContain("Writer");
     expect(output).toContain("Timestamp");
     expect(output).toContain("Message");
+    expect(output).toContain("Phase");
+    expect(output).toContain("Turn");
+    expect(output).toContain("Waiting");
     expect(output).toContain("user_message");
     expect(output).toContain("assistant_reply");
+    expect(output).toContain("llm_start");
+    expect(output).toContain("hello");
     expect(output).toMatch(/\d{2}:\d{2}:\d{2}/);
     expect(output).not.toContain("1700000000");
     expect(output).not.toContain("1700000005");
     expect(output).not.toContain("2026-03-06T09:00:00.000Z");
     expect(output).not.toContain("2026-03-06T09:01:00.000Z");
-    expect(output).not.toContain("llm_start");
-    expect(output).not.toContain("summary");
   });
 
   it("returns exit code 2 on server errors", async () => {

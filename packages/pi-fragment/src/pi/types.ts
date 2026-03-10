@@ -7,21 +7,19 @@ import type {
   ThinkingLevel,
 } from "@mariozechner/pi-agent-core";
 import type { Api, ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
-import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import type { TxResult } from "@fragno-dev/db";
 import type {
   InstanceStatus,
+  WorkflowsFragmentServices,
   WorkflowsHistory,
   WorkflowsHistoryStep,
-  workflowsFragmentDefinition,
 } from "@fragno-dev/workflows";
 import type { PiLoggerConfig } from "../debug-log";
 
 import type { PiSessionStatus, PiSteeringMode } from "./constants";
+import type { PiWorkflowsRegistry } from "./workflow";
 
-export type WorkflowsService = InstantiatedFragmentFromDefinition<
-  typeof workflowsFragmentDefinition
->["services"];
+export type WorkflowsService = WorkflowsFragmentServices<PiWorkflowsRegistry>;
 
 export type PiSession = {
   id: string;
@@ -42,13 +40,49 @@ export type PiTurnSummary = {
   summary: string | null;
 };
 
+export type PiSessionDetailEvent = {
+  id: string;
+  type: string;
+  payload: unknown | null;
+  createdAt: Date;
+  deliveredAt: Date | null;
+  consumedByStepKey: string | null;
+  runNumber?: number | null;
+};
+
+export type PiAgentLoopPhase = "waiting-for-user" | "running-agent" | "complete";
+
+export type PiAgentLoopWaitingFor =
+  | {
+      type: "user_message";
+      turn: number;
+      stepKey: string;
+      timeoutMs: number | null;
+    }
+  | {
+      type: "assistant";
+      turn: number;
+      stepKey: string;
+    }
+  | null;
+
+export type PiAgentLoopState = {
+  messages: AgentMessage[];
+  events: PiSessionDetailEvent[];
+  trace: AgentEvent[];
+  summaries: PiTurnSummary[];
+  turn: number;
+  phase: PiAgentLoopPhase;
+  waitingFor: PiAgentLoopWaitingFor;
+};
+
 export type PiWorkflowsInstanceStatus = InstanceStatus;
 export type PiWorkflowsHistoryPage = WorkflowsHistory;
 export type PiWorkflowHistoryStep = WorkflowsHistoryStep;
 
 export type PiWorkflowsService = Pick<
   WorkflowsService,
-  "createInstance" | "getInstanceStatus" | "getInstanceRunNumber" | "sendEvent" | "listHistory"
+  "createInstance" | "getInstanceStatus" | "restoreInstanceState" | "sendEvent"
 > & {
   getInstanceStatusBatch?: (
     workflowName: string,

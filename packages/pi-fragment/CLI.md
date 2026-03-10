@@ -65,6 +65,10 @@ fragno-pi sessions get --session session-123
 fragno-pi sessions get session-123 --status-only
 ```
 
+`sessions get` reads the restored current-run detail payload directly from the server. By default it
+prints the returned messages, events, trace, and summaries; `--status-only` trims the output down to
+status, workflow state, turn, phase, and waiting markers.
+
 Send a message:
 
 ```bash
@@ -73,7 +77,7 @@ fragno-pi sessions send-message session-123 --file ./message.txt --done
 ```
 
 `send-message` is asynchronous. It returns a 202 ACK with status only. Use `sessions get` to fetch
-assistant responses once the workflow finishes.
+the restored current-run detail once the workflow finishes.
 
 Use headers or env vars for auth:
 

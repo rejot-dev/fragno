@@ -5,7 +5,7 @@ A Fragno fragment that runs Pi agents using workflow-backed sessions with regist
 ## Features
 
 - Session lifecycle (create, list, fetch)
-- Workflow-backed agent turns (history stored in workflow steps)
+- Workflow-backed agent turns with restorable current-run inspection state
 - Registry-driven agent + tool configuration
 - Automatic tool call capture + deterministic replay from persisted workflow step state
 - Framework-level side-effect reducers (including built-in bash VFS reconstruction)
@@ -104,8 +104,9 @@ tool.
 - `POST /sessions/:sessionId/messages`
 
 `POST /sessions/:sessionId/messages` is asynchronous. It returns `202 Accepted` with a status-only
-ACK payload. Fetch `GET /sessions/:sessionId` to read assistant messages, trace, and summaries once
-the workflow processes the message.
+ACK payload. Fetch `GET /sessions/:sessionId` to read the restored current-run detail payload
+(messages, events, trace, summaries, phase, and waiting markers) once the workflow processes the
+message.
 
 ## Client usage
 
