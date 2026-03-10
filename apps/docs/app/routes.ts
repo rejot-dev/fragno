@@ -41,6 +41,7 @@ export default [
         "connections/github/setup-callback",
         "routes/backoffice/connections/github/setup-callback.tsx",
       ),
+      route("connections/upload", "routes/backoffice/connections/upload/index.tsx"),
       route("environments", "routes/backoffice/environments/index.tsx"),
       route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),
       route(
@@ -79,6 +80,17 @@ export default [
           ]),
         ],
       ),
+      route(
+        "connections/upload/:orgId",
+        "routes/backoffice/connections/upload/organisation-layout.tsx",
+        [
+          route("configuration", "routes/backoffice/connections/upload/configuration.tsx"),
+          route("uploads", "routes/backoffice/connections/upload/uploads.tsx"),
+          route("files", "routes/backoffice/connections/upload/files.tsx", [
+            index("routes/backoffice/connections/upload/files-index.tsx"),
+          ]),
+        ],
+      ),
       route("internals", "routes/backoffice/internals/index.tsx"),
       route("internals/github", "routes/backoffice/internals/github.tsx"),
       route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
@@ -114,6 +126,7 @@ export default [
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgId/*", "routes/api/github.ts"),
+    route("upload/:orgId/*", "routes/api/upload.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;

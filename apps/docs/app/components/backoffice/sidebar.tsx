@@ -24,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: "Telegram", to: "/backoffice/connections/telegram" },
       { label: "Resend", to: "/backoffice/connections/resend" },
       { label: "GitHub", to: "/backoffice/connections/github" },
+      { label: "Upload", to: "/backoffice/connections/upload" },
     ],
   },
   {

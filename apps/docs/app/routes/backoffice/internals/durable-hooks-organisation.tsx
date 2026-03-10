@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 import type { Route } from "./+types/durable-hooks-organisation";
+import {
+  FRAGMENT_LABELS,
+  getDurableHooksLoaderErrorMessage,
+  type DurableHooksOrgFragment,
+} from "./durable-hooks-organisation-state";
 import { BackofficePageHeader } from "@/components/backoffice";
 import {
   getGitHubDurableObject,
   getResendDurableObject,
   getTelegramDurableObject,
+  getUploadDurableObject,
 } from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
@@ -24,8 +30,6 @@ type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
   fragment: DurableHooksOrgFragment;
 };
 
-type DurableHooksOrgFragment = "telegram" | "resend" | "github";
-
 const parsePageSize = (value: string | null) => {
   if (!value) {
     return undefined;
@@ -35,7 +39,7 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (value === "telegram" || value === "resend" || value === "github") {
+  if (value === "telegram" || value === "resend" || value === "github" || value === "upload") {
     return value;
   }
   return null;
@@ -84,6 +88,12 @@ export async function loader({
           pageSize,
         }) as Promise<DurableHookQueueResponse>;
       }
+      if (fragment === "upload") {
+        return getUploadDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+        }) as Promise<DurableHookQueueResponse>;
+      }
       return getTelegramDurableObject(context, params.orgId).getHookQueue({
         cursor,
         pageSize,
@@ -103,8 +113,6 @@ export async function loader({
       fragment,
     } satisfies DurableHooksOrgLoaderData;
   } catch (error) {
-    const fragmentLabel =
-      fragment === "resend" ? "Resend" : fragment === "github" ? "GitHub" : "Telegram";
     return {
       configured: false,
       hooksEnabled: false,
@@ -112,8 +120,11 @@ export async function loader({
       items: [],
       cursor: undefined,
       hasNextPage: false,
-      error:
-        error instanceof Error ? error.message : `Failed to load ${fragmentLabel} durable hooks.`,
+      error: getDurableHooksLoaderErrorMessage({
+        fragment,
+        orgId: params.orgId,
+        error,
+      }),
       orgId: params.orgId,
       organisationName: organisation.name ?? null,
       fragment,
@@ -151,14 +162,15 @@ export default function BackofficeDurableHooksOrganisation() {
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   const activeFragment = fragment;
-  const fragmentLabel =
-    activeFragment === "resend" ? "Resend" : activeFragment === "github" ? "GitHub" : "Telegram";
+  const fragmentLabel = FRAGMENT_LABELS[activeFragment];
   const configurePath =
-    activeFragment === "resend"
-      ? `/backoffice/connections/resend/${orgId}/configuration`
-      : activeFragment === "github"
-        ? `/backoffice/connections/github/${orgId}/configuration`
-        : `/backoffice/connections/telegram/${orgId}/configuration`;
+    activeFragment === "telegram"
+      ? `/backoffice/connections/telegram/${orgId}/configuration`
+      : activeFragment === "resend"
+        ? `/backoffice/connections/resend/${orgId}/configuration`
+        : activeFragment === "github"
+          ? `/backoffice/connections/github/${orgId}/configuration`
+          : `/backoffice/connections/upload/${orgId}/configuration`;
   const queueCount = items.length;
   const nextCursor = cursor;
   const nextSearchParams = new URLSearchParams(searchParams);
@@ -195,6 +207,12 @@ export default function BackofficeDurableHooksOrganisation() {
       id: "github",
       label: "GitHub",
       to: fragmentTabHref("github"),
+      disabled: false,
+    },
+    {
+      id: "upload",
+      label: "Upload",
+      to: fragmentTabHref("upload"),
       disabled: false,
     },
   ];
