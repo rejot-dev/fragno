@@ -1,10 +1,16 @@
 // Fragment definition and service implementations for workflow instances.
+import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import type { Cursor } from "@fragno-dev/db";
-import type { FragnoId } from "@fragno-dev/db/schema";
+import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 import { runWorkflowsTick } from "./new-runner";
 import { WorkflowsLogger } from "./debug-log";
+import { restoreWorkflowState } from "./runner/restore-state";
+import type {
+  WorkflowEventRecord,
+  WorkflowInstanceRecord,
+  WorkflowStepRecord,
+} from "./runner/types";
 import { workflowsSchema } from "./schema";
 import {
   isSystemEventActor,
@@ -14,10 +20,13 @@ import {
 } from "./system-events";
 import type {
   InstanceStatus,
+  WorkflowDefinition,
   WorkflowEnqueuedHookPayload,
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
   WorkflowRegistryEntry,
+  WorkflowStateShape,
+  WorkflowsHooks,
   WorkflowsFragmentConfig,
 } from "./workflow";
 
@@ -34,56 +43,11 @@ const INSTANCE_STATUSES = new Set<InstanceStatus["status"]>([
 
 const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "terminated", "errored"]);
 
-type WorkflowInstanceRecord = {
-  workflowName: string;
-  status: string;
-  params: unknown;
-  runNumber: number;
-  createdAt: Date;
-  updatedAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
-  output: unknown | null;
-  errorName: string | null;
-  errorMessage: string | null;
-};
-
 type WorkflowInstanceStatusRecord = {
   status: string;
   output: unknown | null;
   errorName: string | null;
   errorMessage: string | null;
-};
-
-type WorkflowStepRecord = {
-  id: FragnoId;
-  runNumber: number;
-  stepKey: string;
-  name: string;
-  type: string;
-  status: string;
-  attempts: number;
-  maxAttempts: number;
-  timeoutMs: number | null;
-  nextRetryAt: Date | null;
-  wakeAt: Date | null;
-  waitEventType: string | null;
-  result: unknown | null;
-  errorName: string | null;
-  errorMessage: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type WorkflowEventRecord = {
-  id: FragnoId;
-  runNumber: number;
-  actor: string | null;
-  type: string;
-  payload: unknown | null;
-  createdAt: Date;
-  deliveredAt: Date | null;
-  consumedByStepKey: string | null;
 };
 
 export type WorkflowsHistoryStep = {
@@ -136,6 +100,50 @@ type ListHistoryParams = {
 };
 
 type InstanceDetails = { id: string; details: InstanceStatus };
+
+type RestoreInstanceStateState = WorkflowStateShape | undefined;
+
+type RestoreInstanceStateResult<TState extends RestoreInstanceStateState> = TState extends undefined
+  ? undefined
+  : TState;
+
+type RestoreInstanceStateWorkflow<TState extends RestoreInstanceStateState> = WorkflowDefinition<
+  unknown,
+  unknown,
+  StandardSchemaV1 | undefined,
+  StandardSchemaV1 | undefined,
+  TState
+>;
+
+type RestoreInstanceStateReadModel = {
+  instance: WorkflowInstanceRecord;
+  steps: WorkflowStepRecord[];
+};
+
+function buildRestoreInstanceStateReadModel(
+  instance: WorkflowInstanceRecord | null | undefined,
+  steps: WorkflowStepRecord[],
+): RestoreInstanceStateReadModel {
+  if (!instance) {
+    throw new Error("INSTANCE_NOT_FOUND");
+  }
+
+  return {
+    instance,
+    steps: steps.filter((step) => step.runNumber === instance.runNumber),
+  };
+}
+
+function restoreWorkflowStateFromReadModel<TState extends RestoreInstanceStateState>(
+  workflow: RestoreInstanceStateWorkflow<TState>,
+  readModel: RestoreInstanceStateReadModel,
+) {
+  return restoreWorkflowState({
+    workflow,
+    instance: readModel.instance,
+    steps: readModel.steps,
+  });
+}
 
 function generateInstanceId(randomUuid: () => string) {
   const prefix = "inst_";
@@ -285,17 +293,20 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       workflowsByName.set(entry.name, entry);
     }
 
-    const assertWorkflowName = (workflowName: string) => {
-      if (!workflowsByName.has(workflowName)) {
-        throw new Error("WORKFLOW_NOT_FOUND");
-      }
-    };
-
-    const validateWorkflowParams = async (workflowName: string, params: unknown) => {
+    const getWorkflowEntry = (workflowName: string) => {
       const entry = workflowsByName.get(workflowName);
       if (!entry) {
         throw new Error("WORKFLOW_NOT_FOUND");
       }
+      return entry;
+    };
+
+    const assertWorkflowName = (workflowName: string) => {
+      getWorkflowEntry(workflowName);
+    };
+
+    const validateWorkflowParams = async (workflowName: string, params: unknown) => {
+      const entry = getWorkflowEntry(workflowName);
 
       if ("workflow" in entry) {
         return params ?? {};
@@ -314,6 +325,43 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
       return result.value;
     };
+
+    const getWorkflowEntryForRestore = <
+      TState extends RestoreInstanceStateState = RestoreInstanceStateState,
+    >(
+      workflowName: string,
+    ): RestoreInstanceStateWorkflow<TState> => {
+      return getWorkflowEntry(workflowName) as RestoreInstanceStateWorkflow<TState>;
+    };
+
+    const buildRestoreInstanceStateTx = <TState extends RestoreInstanceStateState>(
+      ctx: DatabaseServiceContext<WorkflowsHooks>,
+      workflowName: string,
+      workflow: RestoreInstanceStateWorkflow<TState>,
+      instanceId: string,
+    ) =>
+      ctx
+        .serviceTx(workflowsSchema)
+        .retrieve((uow) => {
+          return uow
+            .findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+              ),
+            )
+            .find("workflow_step", (b) =>
+              b
+                .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceId),
+                )
+                .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc"),
+            );
+        })
+        .transformRetrieve(([instance, steps]) =>
+          buildRestoreInstanceStateReadModel(instance, steps),
+        )
+        .mutate(({ retrieveResult }) => restoreWorkflowStateFromReadModel(workflow, retrieveResult))
+        .build();
 
     return defineService({
       validateWorkflowParams,
@@ -474,6 +522,23 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             return buildInstanceMetadata(instance);
           })
           .build();
+      },
+      restoreInstanceState: function <
+        TState extends RestoreInstanceStateState = RestoreInstanceStateState,
+      >(
+        workflowOrName: string | RestoreInstanceStateWorkflow<TState>,
+        instanceId: string,
+      ): TxResult<RestoreInstanceStateResult<TState>, RestoreInstanceStateReadModel> {
+        if (typeof workflowOrName === "string") {
+          return buildRestoreInstanceStateTx(
+            this,
+            workflowOrName,
+            getWorkflowEntryForRestore<TState>(workflowOrName),
+            instanceId,
+          );
+        }
+
+        return buildRestoreInstanceStateTx(this, workflowOrName.name, workflowOrName, instanceId);
       },
       getInstanceCurrentStep: function ({
         instanceId,

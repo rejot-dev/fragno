@@ -2,10 +2,19 @@
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
-import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import {
+  defaultFragnoRuntime,
+  instantiate,
+  type InstantiatedFragmentFromDefinition,
+} from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
+import { createWorkflowsTestHarness } from "./test";
 import { defineWorkflow } from "./workflow";
-import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
+import type {
+  WorkflowEnqueuedHookPayload,
+  WorkflowInstanceCurrentStep,
+  WorkflowInstanceMetadata,
+} from "./workflow";
 
 const demoWorkflow = defineWorkflow({ name: "demo-workflow" }, async (_event, step) => {
   await step.do("noop", () => ({}));
@@ -50,6 +59,39 @@ describe("Workflows Fragment Services", () => {
   beforeEach(async () => {
     await drainDurableHooks(fragment);
     await testContext.resetDatabase();
+  });
+
+  test("restoreInstanceState infers the workflow state from the workflow argument", () => {
+    const StatefulWorkflow = defineWorkflow(
+      {
+        name: "typed-service-restore",
+        initialState: { phase: "idle", seeded: false, approved: false },
+      },
+      async function (_event, step) {
+        this?.setState({ phase: "waiting", seeded: true });
+        await step.waitForEvent("ready", { type: "ready" });
+        this?.setState({ phase: "complete", approved: true });
+        return { ok: true };
+      },
+    );
+
+    type WorkflowsServices = InstantiatedFragmentFromDefinition<
+      typeof workflowsFragmentDefinition
+    >["services"];
+
+    const typecheck = <T>(_getValue: () => T): void => {};
+
+    typecheck(() => {
+      const services = null as unknown as WorkflowsServices;
+      const restored = services.restoreInstanceState(StatefulWorkflow, "typed-service-1");
+      type RestoredState =
+        typeof restored extends TxResult<infer TResult, infer _> ? TResult : never;
+      const typed: RestoredState = { phase: "waiting", seeded: true, approved: false };
+
+      return typed;
+    });
+
+    expect(StatefulWorkflow.initialState).toBeTruthy();
   });
 
   test("createInstance should create instance records", async () => {
@@ -446,6 +488,94 @@ describe("Workflows Fragment Services", () => {
     );
 
     expect(runNumber).toBe(3);
+  });
+
+  test("restoreInstanceState should replay current state without consuming pending events", async () => {
+    const buildPayload = (
+      instance: { id: { toString(): string }; workflowName: string; runNumber: number },
+      reason: WorkflowEnqueuedHookPayload["reason"],
+    ): WorkflowEnqueuedHookPayload => ({
+      workflowName: instance.workflowName,
+      instanceId: instance.id.toString(),
+      instanceRef: String(instance.id),
+      runNumber: instance.runNumber,
+      reason,
+    });
+
+    const StatefulWorkflow = defineWorkflow(
+      {
+        name: "stateful-service-restore",
+        initialState: { phase: "idle", seeded: false, approved: false },
+      },
+      async function (_event, step) {
+        this?.setState({ phase: "starting" });
+
+        const seed = await step.do("seed", () => ({ seed: 1 }));
+
+        this?.setState({ phase: "waiting", seeded: seed.seed > 0 });
+        await step.waitForEvent("ready", { type: "ready" });
+        this?.setState({ phase: "complete", approved: true });
+
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { STATEFUL: StatefulWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("STATEFUL", { id: "stateful-1" });
+    const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(createdInstance).toBeTruthy();
+
+    await harness.tick(buildPayload(createdInstance!, "create"));
+    await harness.sendEvent("STATEFUL", "stateful-1", {
+      type: "ready",
+      payload: { ok: true },
+    });
+
+    const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
+      b.whereIndex("primary"),
+    );
+    const [pendingEventBefore] = await harness.db.find("workflow_event", (b) =>
+      b
+        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+          eb.and(
+            eb("instanceRef", "=", waitingInstance!.id),
+            eb("runNumber", "=", waitingInstance!.runNumber),
+          ),
+        )
+        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
+    );
+
+    const restored = await harness.fragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          harness.fragment.services.restoreInstanceState("stateful-service-restore", "stateful-1"),
+        ])
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const [pendingEventAfter] = await harness.db.find("workflow_event", (b) =>
+      b
+        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+          eb.and(
+            eb("instanceRef", "=", waitingInstance!.id),
+            eb("runNumber", "=", waitingInstance!.runNumber),
+          ),
+        )
+        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
+    );
+
+    expect(restored).toEqual({ phase: "waiting", seeded: true, approved: false });
+    expect(pendingEventBefore?.consumedByStepKey).toBeNull();
+    expect(pendingEventAfter?.consumedByStepKey).toBeNull();
   });
 
   test("listHistory should return steps and events for a run", async () => {

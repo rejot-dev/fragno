@@ -48,6 +48,10 @@ export type PiWorkflowsOptions = {
   logging?: PiFragmentConfig["logging"];
 };
 
+export type PiAgentLoopState = {
+  messages: AgentMessage[];
+};
+
 const TOOL_JOURNAL_FIELD = "toolJournal";
 
 const agentLoopParamsSchema: z.ZodType<PiAgentLoopParams> = z.object({
@@ -790,10 +794,16 @@ const runAgentTurn = async (options: {
   };
 };
 
-const agentLoopWorkflow = (options: PiWorkflowsOptions) =>
+export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
   defineWorkflow(
-    { name: PI_WORKFLOW_NAME, schema: agentLoopParamsSchema },
-    async (event: WorkflowEvent<PiAgentLoopParams>, step: WorkflowStep) => {
+    {
+      name: PI_WORKFLOW_NAME,
+      schema: agentLoopParamsSchema,
+      initialState: {
+        messages: [] as PiAgentLoopState["messages"],
+      } satisfies PiAgentLoopState,
+    },
+    async function (event: WorkflowEvent<PiAgentLoopParams>, step: WorkflowStep) {
       const params = agentLoopParamsSchema.parse(event.payload ?? {});
       const agentDefinition = options.agents[params.agentName];
       if (!agentDefinition) {
@@ -805,6 +815,7 @@ const agentLoopWorkflow = (options: PiWorkflowsOptions) =>
         : [];
       let turn = 0;
       const replayCache: PiToolReplayContext["cache"] = new Map();
+      this?.setState({ messages });
 
       while (true) {
         const userEvent = await step.waitForEvent(`wait-user-${turn}`, {
@@ -820,6 +831,7 @@ const agentLoopWorkflow = (options: PiWorkflowsOptions) =>
           return { messages: [...messages, userMessage], user: userMessage };
         });
         messages = userResult.messages;
+        this?.setState({ messages });
 
         const replay = createReplayContext({
           cache: replayCache,
@@ -845,6 +857,7 @@ const agentLoopWorkflow = (options: PiWorkflowsOptions) =>
         const parsedAssistantResult = parseAssistantStepResult(assistantResult, assistantStepName);
         messages = parsedAssistantResult.messages;
         hydrateReplayCache(replayCache, parsedAssistantResult.toolJournal);
+        this?.setState({ messages });
 
         if (payload.done) {
           return { messages };
@@ -856,7 +869,7 @@ const agentLoopWorkflow = (options: PiWorkflowsOptions) =>
   );
 
 export type PiWorkflowsRegistry = {
-  agentLoop: ReturnType<typeof agentLoopWorkflow>;
+  agentLoop: ReturnType<typeof createPiAgentLoopWorkflow>;
 };
 
 export const createPiWorkflows = (options: PiWorkflowsOptions) => {
@@ -866,6 +879,6 @@ export const createPiWorkflows = (options: PiWorkflowsOptions) => {
   }
 
   return {
-    agentLoop: agentLoopWorkflow(options),
+    agentLoop: createPiAgentLoopWorkflow(options),
   } satisfies WorkflowsRegistry;
 };

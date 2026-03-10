@@ -41,9 +41,20 @@ export class RunnerStepSuspended extends Error {
   }
 }
 
+export class RunnerStepReplayStopped extends Error {
+  readonly stepKey: string;
+
+  constructor(stepKey: string) {
+    super("WORKFLOW_REPLAY_STOPPED");
+    this.name = "RunnerStepReplayStopped";
+    this.stepKey = stepKey;
+  }
+}
+
 type RunnerStepOptions = {
   state: RunnerState;
   taskKind: RunnerTaskKind;
+  mode?: "execute" | "restore";
 };
 
 type StepTxQueue = {
@@ -113,11 +124,13 @@ function computeBackoffDelayMs(
 export class RunnerStep implements WorkflowStep {
   #state: RunnerState;
   #taskKind: RunnerTaskKind;
+  #mode: "execute" | "restore";
   #stepOccurrences = new Map<string, number>();
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
     this.#taskKind = options.taskKind;
+    this.#mode = options.mode ?? "execute";
   }
 
   async do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
@@ -147,6 +160,10 @@ export class RunnerStep implements WorkflowStep {
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
       return snapshot.result as T;
+    }
+
+    if (this.#mode === "restore") {
+      throw new RunnerStepReplayStopped(stepKey);
     }
 
     if (snapshot?.status === "errored") {
@@ -256,6 +273,10 @@ export class RunnerStep implements WorkflowStep {
       return;
     }
 
+    if (this.#mode === "restore") {
+      throw new RunnerStepReplayStopped(stepKey);
+    }
+
     if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
       this.#upsertStep(stepKey, {
         name,
@@ -300,6 +321,10 @@ export class RunnerStep implements WorkflowStep {
 
     if (isCompletedStatus(snapshot?.status)) {
       return;
+    }
+
+    if (this.#mode === "restore") {
+      throw new RunnerStepReplayStopped(stepKey);
     }
 
     if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
@@ -347,6 +372,10 @@ export class RunnerStep implements WorkflowStep {
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
       return snapshot.result as { type: string; payload: Readonly<T>; timestamp: Date };
+    }
+
+    if (this.#mode === "restore") {
+      throw new RunnerStepReplayStopped(stepKey);
     }
 
     const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);

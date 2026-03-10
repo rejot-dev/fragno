@@ -1,8 +1,3 @@
-// Type helper to remove 'this' parameter from functions
-type OmitThisParameter<T> = T extends (this: infer _This, ...args: infer A) => infer R
-  ? (...args: A) => R
-  : T;
-
 // Recursively remove 'this' parameter from all functions in an object
 export type BoundServices<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown

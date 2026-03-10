@@ -135,8 +135,29 @@ export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegi
   >;
 };
 
-/** Function-based workflow run signature. */
-export type WorkflowRunFn<TParams = unknown, TOutput = unknown> = (
+/** JSON-like workflow state shape restored by replaying workflow execution. */
+export type WorkflowStateShape = Record<string, unknown>;
+
+/**
+ * Optional `this` binding exposed to stateful workflows.
+ * Replay shallow-merges each emitted patch onto the latest restored state snapshot.
+ */
+export type WorkflowStateContext<TState extends WorkflowStateShape | undefined = undefined> = {
+  setState: (nextState: TState extends WorkflowStateShape ? Partial<TState> : never) => void;
+};
+
+/**
+ * Function-based workflow run signature.
+ * Note: replay reruns workflow code around cached completed step results, so `setState` calls
+ * inside completed `step.do(...)` callbacks are not restorable unless user code re-emits them
+ * after the step returns.
+ */
+export type WorkflowRunFn<
+  TParams = unknown,
+  TOutput = unknown,
+  TState extends WorkflowStateShape | undefined = undefined,
+> = (
+  this: WorkflowStateContext<TState> | undefined,
   event: WorkflowEvent<TParams>,
   step: WorkflowStep,
 ) => Promise<TOutput> | TOutput;
@@ -147,49 +168,92 @@ export interface WorkflowDefinition<
   TOutput = unknown,
   TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+  TState extends WorkflowStateShape | undefined = undefined,
 > {
   name: string;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
-  run(event: WorkflowEvent<TParams>, step: WorkflowStep): Promise<TOutput> | TOutput;
+  initialState?: TState;
+  run(
+    this: WorkflowStateContext<TState> | undefined,
+    event: WorkflowEvent<TParams>,
+    step: WorkflowStep,
+  ): Promise<TOutput> | TOutput;
 }
 
-export function defineWorkflow<TParams, TOutput = unknown>(
-  options: { name: string; schema?: undefined; outputSchema?: undefined },
-  run: WorkflowRunFn<TParams, TOutput>,
-): WorkflowDefinition<TParams, TOutput, undefined, undefined>;
-export function defineWorkflow<TSchema extends StandardSchemaV1, TOutput = unknown>(
-  options: { name: string; schema: TSchema; outputSchema?: undefined },
-  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput>,
-): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined>;
-export function defineWorkflow<TOutputSchema extends StandardSchemaV1, TParams = unknown>(
-  options: { name: string; schema?: undefined; outputSchema: TOutputSchema },
-  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>>,
+export function defineWorkflow<
+  TParams,
+  TOutput = unknown,
+  TState extends WorkflowStateShape | undefined = undefined,
+>(
+  options: { name: string; schema?: undefined; outputSchema?: undefined; initialState?: TState },
+  run: WorkflowRunFn<TParams, TOutput, TState>,
+): WorkflowDefinition<TParams, TOutput, undefined, undefined, TState>;
+export function defineWorkflow<
+  TSchema extends StandardSchemaV1,
+  TOutput = unknown,
+  TState extends WorkflowStateShape | undefined = undefined,
+>(
+  options: { name: string; schema: TSchema; outputSchema?: undefined; initialState?: TState },
+  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput, TState>,
+): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined, TState>;
+export function defineWorkflow<
+  TOutputSchema extends StandardSchemaV1,
+  TParams = unknown,
+  TState extends WorkflowStateShape | undefined = undefined,
+>(
+  options: {
+    name: string;
+    schema?: undefined;
+    outputSchema: TOutputSchema;
+    initialState?: TState;
+  },
+  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>, TState>,
 ): WorkflowDefinition<
   TParams,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   undefined,
-  TOutputSchema
+  TOutputSchema,
+  TState
 >;
 export function defineWorkflow<
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
+  TState extends WorkflowStateShape | undefined = undefined,
 >(
-  options: { name: string; schema: TInputSchema; outputSchema: TOutputSchema },
+  options: {
+    name: string;
+    schema: TInputSchema;
+    outputSchema: TOutputSchema;
+    initialState?: TState;
+  },
   run: WorkflowRunFn<
     StandardSchemaV1.InferOutput<TInputSchema>,
-    StandardSchemaV1.InferOutput<TOutputSchema>
+    StandardSchemaV1.InferOutput<TOutputSchema>,
+    TState
   >,
 ): WorkflowDefinition<
   StandardSchemaV1.InferOutput<TInputSchema>,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   TInputSchema,
-  TOutputSchema
+  TOutputSchema,
+  TState
 >;
 export function defineWorkflow(
-  options: { name: string; schema?: StandardSchemaV1; outputSchema?: StandardSchemaV1 },
-  run: WorkflowRunFn,
-): WorkflowDefinition {
+  options: {
+    name: string;
+    schema?: StandardSchemaV1;
+    outputSchema?: StandardSchemaV1;
+    initialState?: WorkflowStateShape;
+  },
+  run: WorkflowRunFn<unknown, unknown, WorkflowStateShape | undefined>,
+): WorkflowDefinition<
+  unknown,
+  unknown,
+  StandardSchemaV1 | undefined,
+  StandardSchemaV1 | undefined,
+  WorkflowStateShape | undefined
+> {
   return { ...options, run };
 }
 
@@ -198,7 +262,8 @@ export type WorkflowRegistryEntry = WorkflowDefinition<
   unknown,
   unknown,
   StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined
+  StandardSchemaV1 | undefined,
+  WorkflowStateShape | undefined
 >;
 
 export type WorkflowParamsFromEntry<TEntry> =
@@ -206,7 +271,8 @@ export type WorkflowParamsFromEntry<TEntry> =
     infer TParams,
     unknown,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    WorkflowStateShape | undefined
   >
     ? TParams
     : unknown;
@@ -216,10 +282,25 @@ export type WorkflowOutputFromEntry<TEntry> =
     unknown,
     infer TOutput,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    WorkflowStateShape | undefined
   >
     ? TOutput
     : unknown;
+
+export type WorkflowStateFromEntry<TEntry> =
+  TEntry extends WorkflowDefinition<
+    unknown,
+    unknown,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    infer TState
+  >
+    ? TState
+    : undefined;
+
+export type WorkflowRestoredState<TEntry> =
+  WorkflowStateFromEntry<TEntry> extends undefined ? undefined : WorkflowStateFromEntry<TEntry>;
 
 /** Map of binding keys to workflow definitions. */
 export type WorkflowsRegistry = Record<string, WorkflowRegistryEntry>;
