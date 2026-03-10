@@ -6,6 +6,7 @@ import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { MailingList } from "workers/mailing-list.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Resend } from "workers/resend.do";
+import type { Upload } from "workers/upload.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
 import { CloudflareContext } from "./cloudflare-context";
 
@@ -79,6 +80,19 @@ export function getResendDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.RESEND.get(env.RESEND.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Upload Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getUploadDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Upload> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.UPLOAD.get(env.UPLOAD.idFromName(orgId));
 }
 
 /**

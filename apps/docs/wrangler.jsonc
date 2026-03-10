@@ -38,6 +38,12 @@
   "vars": {
     "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
   },
+  "r2_buckets": [
+    {
+      "binding": "UPLOAD_BUCKET",
+      "bucket_name": "fragno-dev-docs-upload",
+    },
+  ],
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
@@ -77,6 +83,10 @@
       {
         "name": "RESEND",
         "class_name": "Resend",
+      },
+      {
+        "name": "UPLOAD",
+        "class_name": "Upload",
       },
       {
         "name": "SANDBOX",
@@ -136,6 +146,10 @@
     {
       "tag": "v9",
       "new_sqlite_classes": ["GitHubWebhookRouter"],
+    },
+    {
+      "tag": "v10",
+      "new_sqlite_classes": ["Upload"],
     },
   ],
   "rules": [

@@ -16,6 +16,12 @@ const CONNECTIONS = [
     status: "Available",
   },
   {
+    id: "upload",
+    name: "Upload",
+    description: "Configure org-scoped storage, inspect files, and run manual upload actions.",
+    status: "Available",
+  },
+  {
     id: "slack",
     name: "Slack",
     description: "Sync workspace activity and notify channel subscribers.",
@@ -51,6 +57,9 @@ export default function BackofficeConnections() {
   const githubTarget = activeOrganizationId
     ? `/backoffice/connections/github/${activeOrganizationId}`
     : null;
+  const uploadTarget = activeOrganizationId
+    ? `/backoffice/connections/upload/${activeOrganizationId}`
+    : null;
 
   return (
     <div className="space-y-4">
@@ -70,6 +79,8 @@ export default function BackofficeConnections() {
                 ? resendTarget
                 : connection.id === "github"
                   ? githubTarget
+                : connection.id === "upload"
+                  ? uploadTarget
                   : null;
           const isAvailable = Boolean(connectionLink);
           return (

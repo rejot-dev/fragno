@@ -9,7 +9,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const fragmentParam = url.searchParams.get("fragment");
   const fragment =
-    fragmentParam === "resend" || fragmentParam === "github" ? fragmentParam : "telegram";
+    fragmentParam === "resend" ||
+    fragmentParam === "github" ||
+    fragmentParam === "upload"
+      ? fragmentParam
+      : "telegram";
   return redirect(`/backoffice/internals/durable-hooks/${params.orgId}/${fragment}`);
 }
 
