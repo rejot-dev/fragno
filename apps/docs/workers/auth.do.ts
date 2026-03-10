@@ -11,6 +11,24 @@ import {
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 
+const resolveAuthBaseUrl = (request: Request): string => {
+  const requestUrl = new URL(request.url);
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  if (forwardedHost) {
+    const forwardedProto =
+      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+      requestUrl.protocol.replace(/:$/, "");
+
+    try {
+      return new URL(`${forwardedProto}://${forwardedHost}`).origin;
+    } catch {
+      // Fall back to the request origin if forwarded headers are malformed.
+    }
+  }
+
+  return requestUrl.origin;
+};
+
 export class Auth extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
@@ -67,7 +85,7 @@ export class Auth extends DurableObject<CloudflareEnv> {
   }
 
   #getFragment(request: Request) {
-    const baseUrl = new URL(request.url).origin;
+    const baseUrl = resolveAuthBaseUrl(request);
 
     if (!this.#fragment || this.#fragmentBaseUrl !== baseUrl) {
       this.#fragment = createAuthServer(
