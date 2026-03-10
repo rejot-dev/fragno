@@ -11,6 +11,7 @@ const MAX_PAGE_SIZE = 200;
 export type UploadSessionStatus = {
   uploadId: string;
   fileKey: string;
+  provider: string;
   status: string;
   strategy: string;
   expectedSizeBytes: number;
@@ -23,9 +24,6 @@ export type UploadSessionStatus = {
   completedAt?: string | Date | null;
   errorCode?: string | null;
   errorMessage?: string | null;
-};
-
-export type UploadCreateResponse = UploadSessionStatus & {
   upload: {
     mode: "single" | "multipart";
     transport: "direct" | "proxy";
@@ -33,10 +31,24 @@ export type UploadCreateResponse = UploadSessionStatus & {
     uploadHeaders?: Record<string, string>;
     partSizeBytes?: number;
     maxParts?: number;
+    statusEndpoint: string;
+    progressEndpoint: string;
     partsEndpoint?: string;
+    partsCompleteEndpoint?: string;
     completeEndpoint: string;
+    abortEndpoint: string;
     contentEndpoint?: string;
   };
+};
+
+export type UploadCreateResponse = {
+  uploadId: string;
+  fileKey: string;
+  provider: string;
+  status: "created" | "in_progress";
+  strategy: string;
+  expiresAt?: string | Date;
+  upload: UploadSessionStatus["upload"];
 };
 
 export type UploadFileRecord = {

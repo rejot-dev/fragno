@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createR2BindingStorageAdapter,
   resolveR2BindingBucket,
@@ -28,7 +28,7 @@ const concatBytes = (chunks: Uint8Array[]) => {
   return result;
 };
 
-const createInMemoryBucket = (options?: { multipart?: boolean; failPartNumber?: number }) => {
+const createInMemoryBucket = (options?: { failPartNumber?: number }) => {
   const store = new Map<
     string,
     { payload: Uint8Array; contentType?: string | undefined; etag: string }
@@ -83,10 +83,7 @@ const createInMemoryBucket = (options?: { multipart?: boolean; failPartNumber?: 
     delete: async (key) => {
       store.delete(key);
     },
-  };
-
-  if (options?.multipart) {
-    bucket.createMultipartUpload = async (key, uploadOptions) => {
+    createMultipartUpload: async (key, uploadOptions) => {
       stats.createMultipartUploadCalls += 1;
       const uploadId = `upload-${++uploadSequence}`;
       multipartSessions.set(uploadId, {
@@ -101,7 +98,7 @@ const createInMemoryBucket = (options?: { multipart?: boolean; failPartNumber?: 
           stats.uploadPartCalls += 1;
           stats.uploadedPartNumbers.push(partNumber);
 
-          if (options.failPartNumber === partNumber) {
+          if (options?.failPartNumber === partNumber) {
             throw new Error("part upload failed");
           }
 
@@ -153,14 +150,18 @@ const createInMemoryBucket = (options?: { multipart?: boolean; failPartNumber?: 
           multipartSessions.delete(uploadId);
         },
       };
-    };
-  }
+    },
+  };
 
   return {
     bucket,
     stats,
   };
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("r2 binding storage adapter", () => {
   const provider = "r2-binding";
@@ -251,7 +252,7 @@ describe("r2 binding storage adapter", () => {
   });
 
   test("uses single put below multipart threshold", async () => {
-    const inMemory = createInMemoryBucket({ multipart: true });
+    const inMemory = createInMemoryBucket();
     const adapter = createR2BindingStorageAdapter({
       bucket: inMemory.bucket,
       multipartThresholdBytes: 5 * BYTES_IN_MIB,
@@ -279,7 +280,7 @@ describe("r2 binding storage adapter", () => {
   });
 
   test("uses multipart uploads above threshold and persists assembled content", async () => {
-    const inMemory = createInMemoryBucket({ multipart: true });
+    const inMemory = createInMemoryBucket();
     const adapter = createR2BindingStorageAdapter({
       bucket: inMemory.bucket,
       multipartThresholdBytes: 5 * BYTES_IN_MIB,
@@ -317,7 +318,6 @@ describe("r2 binding storage adapter", () => {
 
   test("aborts multipart upload when a part fails", async () => {
     const inMemory = createInMemoryBucket({
-      multipart: true,
       failPartNumber: 2,
     });
     const adapter = createR2BindingStorageAdapter({
@@ -349,39 +349,42 @@ describe("r2 binding storage adapter", () => {
     expect(inMemory.stats.abortCalls).toBe(1);
   });
 
-  test("fails when multipart is required but the binding lacks multipart APIs", async () => {
-    const { bucket } = createInMemoryBucket();
-    const adapter = createR2BindingStorageAdapter({
-      bucket,
-      maxSingleUploadBytes: 1,
-      maxMultipartUploadBytes: 16,
-      multipartPartSizeBytes: 5 * BYTES_IN_MIB,
-    });
-    const fileKey = "users/7/avatar";
-    const storageKey = adapter.resolveStorageKey({ provider, fileKey });
-
-    if (!adapter.writeStream) {
-      throw new Error("Expected writeStream for proxy adapter");
-    }
-
-    await expect(
-      adapter.writeStream({
-        storageKey,
-        body: streamFromBytes(new Uint8Array([1, 2])),
-        contentType: "application/octet-stream",
-        sizeBytes: 2n,
-      }),
-    ).rejects.toThrow("R2 bucket binding does not support multipart uploads");
-  });
-
   test("rejects multipart part sizes smaller than the R2 minimum", () => {
-    const { bucket } = createInMemoryBucket({ multipart: true });
+    const { bucket } = createInMemoryBucket();
     expect(() =>
       createR2BindingStorageAdapter({
         bucket,
         multipartPartSizeBytes: BYTES_IN_MIB,
       }),
     ).toThrow("Multipart part size must be at least 5242880 bytes for R2 uploads");
+  });
+
+  test("falls back to TextEncoder when Buffer is unavailable", async () => {
+    const { bucket } = createInMemoryBucket();
+    vi.stubGlobal("Buffer", undefined);
+
+    const adapter = createR2BindingStorageAdapter({
+      bucket,
+      maxMetadataBytes: 128,
+      maxStorageKeyLengthBytes: 128,
+    });
+    const fileKey = "users/8/avatar";
+
+    expect(adapter.resolveStorageKey({ provider, fileKey })).toBe("r2-binding/users/8/avatar");
+
+    await expect(
+      adapter.initUpload({
+        provider,
+        fileKey,
+        sizeBytes: 16n,
+        contentType: "text/plain",
+        metadata: {
+          source: "edge-runtime",
+        },
+      }),
+    ).resolves.toMatchObject({
+      strategy: "proxy",
+    });
   });
 });
 
@@ -402,6 +405,19 @@ describe("resolveR2BindingBucket", () => {
       resolveR2BindingBucket(
         {
           UPLOAD_BUCKET: {},
+        },
+        "UPLOAD_BUCKET",
+      ),
+    ).toThrow("Upload R2 bucket binding 'UPLOAD_BUCKET' is not configured.");
+
+    expect(() =>
+      resolveR2BindingBucket(
+        {
+          UPLOAD_BUCKET: {
+            put: bucket.put,
+            get: bucket.get,
+            delete: bucket.delete,
+          },
         },
         "UPLOAD_BUCKET",
       ),

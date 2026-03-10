@@ -50,7 +50,7 @@ export type R2BindingBucket = {
   ) => Promise<R2BindingPutResult>;
   get: (key: string) => Promise<R2BindingGetResult | null>;
   delete: (key: string) => Promise<void>;
-  createMultipartUpload?: (
+  createMultipartUpload: (
     key: string,
     options?: {
       httpMetadata?: {
@@ -111,7 +111,7 @@ const resolveMetadataSize = (metadata?: Record<string, unknown> | null) => {
   }
 
   const serialized = JSON.stringify(metadata);
-  return Buffer.byteLength(serialized, "utf8");
+  return new TextEncoder().encode(serialized).byteLength;
 };
 
 const divideCeil = (numerator: bigint, denominator: bigint) =>
@@ -217,7 +217,7 @@ export function createR2BindingStorageAdapter(
       throw new Error("Storage key cannot be empty");
     }
 
-    if (Buffer.byteLength(storageKey, "utf8") > maxStorageKeyLengthBytes) {
+    if (new TextEncoder().encode(storageKey).byteLength > maxStorageKeyLengthBytes) {
       throw new Error("Storage key exceeds maximum length");
     }
 
@@ -247,6 +247,9 @@ export function createR2BindingStorageAdapter(
     return partSize;
   };
 
+  // FIXME: This decision currently trusts caller-provided sizeBytes. To enforce
+  // maxSingleUploadBytes/maxMultipartUploadBytes for unknown or underreported streams,
+  // the proxy path needs real byte counting while reading the body.
   const shouldUseMultipartUpload = (sizeBytes?: bigint | null) => {
     if (sizeBytes === undefined || sizeBytes === null || sizeBytes <= 0n) {
       return false;
@@ -270,10 +273,6 @@ export function createR2BindingStorageAdapter(
     sizeBytes?: bigint | null;
     partSizeBytes: number;
   }) => {
-    if (!options.bucket.createMultipartUpload) {
-      throw new Error("R2 bucket binding does not support multipart uploads");
-    }
-
     const multipartUpload = await options.bucket.createMultipartUpload(input.storageKey, {
       httpMetadata: input.contentType ? { contentType: input.contentType } : undefined,
     });
@@ -300,6 +299,8 @@ export function createR2BindingStorageAdapter(
         }
 
         uploadedBytes += BigInt(value.byteLength);
+        // TODO: Enforce the effective max upload bytes from uploadedBytes while streaming,
+        // instead of relying on input.sizeBytes to reject oversized proxy uploads.
         bufferedChunks.push(value);
         bufferedBytes += value.byteLength;
 
@@ -414,6 +415,8 @@ export function createR2BindingStorageAdapter(
         });
       }
 
+      // TODO: Wrap the single-put body in a counting/limiting stream so unknown or
+      // underreported sizeBytes cannot bypass configured max upload limits.
       const result = await options.bucket.put(storageKey, body, {
         httpMetadata: contentType ? { contentType } : undefined,
       });
@@ -455,7 +458,8 @@ const isR2BindingBucket = (candidate: unknown): candidate is R2BindingBucket => 
   return (
     typeof bucket.put === "function" &&
     typeof bucket.get === "function" &&
-    typeof bucket.delete === "function"
+    typeof bucket.delete === "function" &&
+    typeof bucket.createMultipartUpload === "function"
   );
 };
 

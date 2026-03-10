@@ -37,6 +37,7 @@ export type CompletePartsInput = {
 export type CreateUploadResult = {
   uploadId: string;
   fileKey: string;
+  provider: string;
   status: "created" | "in_progress";
   strategy: UploadStrategy;
   expiresAt: Date;
@@ -47,8 +48,12 @@ export type CreateUploadResult = {
     uploadHeaders?: Record<string, string>;
     partSizeBytes?: number;
     maxParts?: number;
+    statusEndpoint: string;
+    progressEndpoint: string;
     partsEndpoint?: string;
+    partsCompleteEndpoint?: string;
     completeEndpoint: string;
+    abortEndpoint: string;
     contentEndpoint?: string;
   };
 };
@@ -155,6 +160,55 @@ const uploadMetadataMatches = (upload: UploadRow, input: NormalizedUploadInput) 
   );
 };
 
+type BuildUploadSessionRouteDataInput = {
+  uploadId: string;
+  provider: string;
+  strategy: UploadStrategy;
+  uploadUrl?: string;
+  uploadHeaders?: Record<string, string>;
+  partSizeBytes?: number;
+};
+
+const buildProviderStickyUploadEndpoint = (uploadId: string, provider: string, suffix = "") => {
+  const query = new URLSearchParams({ provider }).toString();
+  return `/uploads/${uploadId}${suffix}?${query}`;
+};
+
+export const buildUploadSessionRouteData = (
+  storage: UploadFragmentResolvedConfig["storage"],
+  input: BuildUploadSessionRouteDataInput,
+): Pick<CreateUploadResult, "provider" | "upload"> => {
+  const { uploadId, provider, strategy } = input;
+
+  return {
+    provider,
+    upload: {
+      mode: strategy === "direct-multipart" ? "multipart" : "single",
+      transport: strategy === "proxy" ? "proxy" : "direct",
+      uploadUrl: input.uploadUrl,
+      uploadHeaders: input.uploadHeaders,
+      partSizeBytes: input.partSizeBytes,
+      maxParts: storage.limits?.maxMultipartParts,
+      statusEndpoint: buildProviderStickyUploadEndpoint(uploadId, provider),
+      progressEndpoint: buildProviderStickyUploadEndpoint(uploadId, provider, "/progress"),
+      partsEndpoint:
+        strategy === "direct-multipart"
+          ? buildProviderStickyUploadEndpoint(uploadId, provider, "/parts")
+          : undefined,
+      partsCompleteEndpoint:
+        strategy === "direct-multipart"
+          ? buildProviderStickyUploadEndpoint(uploadId, provider, "/parts/complete")
+          : undefined,
+      completeEndpoint: buildProviderStickyUploadEndpoint(uploadId, provider, "/complete"),
+      abortEndpoint: buildProviderStickyUploadEndpoint(uploadId, provider, "/abort"),
+      contentEndpoint:
+        strategy === "proxy"
+          ? buildProviderStickyUploadEndpoint(uploadId, provider, "/content")
+          : undefined,
+    },
+  };
+};
+
 const buildCreateUploadResult = (
   storage: UploadFragmentResolvedConfig["storage"],
   upload: UploadRow,
@@ -166,25 +220,23 @@ const buildCreateUploadResult = (
   return {
     uploadId,
     fileKey: upload.key,
-    status: upload.status as CreateUploadResult["status"],
-    strategy,
-    expiresAt: upload.expiresAt,
-    upload: {
-      mode: strategy === "direct-multipart" ? "multipart" : "single",
-      transport: strategy === "proxy" ? "proxy" : "direct",
+    ...buildUploadSessionRouteData(storage, {
+      uploadId,
+      provider: upload.provider,
+      strategy,
       uploadUrl: upload.uploadUrl ?? undefined,
       uploadHeaders: uploadHeaders ?? undefined,
       partSizeBytes: upload.partSizeBytes ?? undefined,
-      maxParts: storage.limits?.maxMultipartParts,
-      partsEndpoint: strategy === "direct-multipart" ? `/uploads/${uploadId}/parts` : undefined,
-      completeEndpoint: `/uploads/${uploadId}/complete`,
-      contentEndpoint: strategy === "proxy" ? `/uploads/${uploadId}/content` : undefined,
-    },
+    }),
+    status: upload.status as CreateUploadResult["status"],
+    strategy,
+    expiresAt: upload.expiresAt,
   };
 };
 
 const buildCreateUploadResultFromInit = (
   storage: UploadFragmentResolvedConfig["storage"],
+  provider: string,
   resolved: ReturnType<typeof resolveFileKeyInput>,
   storageInit: Awaited<ReturnType<UploadFragmentResolvedConfig["storage"]["initUpload"]>>,
   uploadId: string,
@@ -194,20 +246,17 @@ const buildCreateUploadResultFromInit = (
   return {
     uploadId,
     fileKey: resolved.fileKey,
-    status: "created",
-    strategy,
-    expiresAt: storageInit.expiresAt,
-    upload: {
-      mode: strategy === "direct-multipart" ? "multipart" : "single",
-      transport: strategy === "proxy" ? "proxy" : "direct",
+    ...buildUploadSessionRouteData(storage, {
+      uploadId,
+      provider,
+      strategy,
       uploadUrl: storageInit.uploadUrl,
       uploadHeaders: storageInit.uploadHeaders,
       partSizeBytes: storageInit.partSizeBytes,
-      maxParts: storage.limits?.maxMultipartParts,
-      partsEndpoint: strategy === "direct-multipart" ? `/uploads/${uploadId}/parts` : undefined,
-      completeEndpoint: `/uploads/${uploadId}/complete`,
-      contentEndpoint: strategy === "proxy" ? `/uploads/${uploadId}/content` : undefined,
-    },
+    }),
+    status: "created",
+    strategy,
+    expiresAt: storageInit.expiresAt,
   };
 };
 
@@ -362,6 +411,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             reused: false as const,
             uploadId: uploadId.toString(),
             resolved,
+            provider: normalized.provider,
             storageInit,
           };
         })
@@ -377,6 +427,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             reused: false as const,
             result: buildCreateUploadResultFromInit(
               storage,
+              mutateResult.provider,
               mutateResult.resolved,
               mutateResult.storageInit,
               mutateResult.uploadId,
