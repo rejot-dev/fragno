@@ -96,6 +96,16 @@ const TraceSchema = z.object({
   timestamp: z.number().optional(),
 });
 
+const EventSchema = z.object({
+  id: z.string(),
+  runNumber: z.number(),
+  type: z.string(),
+  payload: z.unknown().nullable(),
+  createdAt: z.date(),
+  deliveredAt: z.date().nullable(),
+  consumedByStepKey: z.string().nullable(),
+});
+
 const workflowStatusSchema = z.object({
   status: z.enum(SESSION_STATUSES),
   error: z
@@ -110,6 +120,7 @@ const workflowStatusSchema = z.object({
 const sessionDetailSchema = sessionBaseSchema.extend({
   workflow: workflowStatusSchema,
   messages: z.array(MessageSchema),
+  events: z.array(EventSchema),
   trace: z.array(TraceSchema),
   summaries: z.array(
     z.object({

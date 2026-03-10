@@ -95,7 +95,9 @@ sessions create:
 
 sessions get:
   -s, --session <id>          Session id (or positional)
-  --status-only               Only output status fields
+  --status-only               Only output status fields (+events)
+                               Default fetch: events=true, trace=false, summaries=false
+                               Non-JSON output includes all messages and events with timestamps
 
 sessions send-message:
   -s, --session <id>          Session id (or positional)
@@ -252,6 +254,251 @@ const buildDetailOutput = (data: unknown, json: boolean): CliActionResult => {
   return { output: { format: "pretty-json", data } };
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const toPrettyJson = (value: unknown): string => JSON.stringify(value, null, 2);
+
+const pad = (value: string, width: number): string => value.padEnd(width, " ");
+
+const buildTableText = (columns: string[], rows: string[][]): string => {
+  const widths = columns.map((column, index) => {
+    return rows.reduce((max, row) => Math.max(max, row[index]?.length ?? 0), column.length);
+  });
+
+  const header = columns
+    .map((column, index) => pad(column, widths[index] ?? column.length))
+    .join("  ");
+  const divider = columns
+    .map((column, index) => "-".repeat(widths[index] ?? column.length))
+    .join("  ");
+  const body = rows.map((row) =>
+    columns.map((_, index) => pad(row[index] ?? "", widths[index] ?? 0)).join("  "),
+  );
+
+  return [header, divider, ...body].join("\n");
+};
+
+const toOneLine = (value: string): string => value.replace(/\s+/g, " ").trim();
+
+const truncate = (value: string, max = 240): string => {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, max - 3))}...`;
+};
+
+const toDisplayValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+};
+
+const SYSTEM_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZoneName: "short",
+});
+
+const toDateFromTimestamp = (value: unknown): Date | null => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millisecondCandidate = Math.abs(value) < 100_000_000_000 ? value * 1000 : value;
+    const date = new Date(millisecondCandidate);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+};
+
+const toTimestampLabel = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") {
+    return "-";
+  }
+  const date = toDateFromTimestamp(value);
+  if (date) {
+    return SYSTEM_TIME_FORMATTER.format(date);
+  }
+  return toDisplayValue(value);
+};
+
+const buildSection = (title: string): string[] => [title, "-".repeat(title.length)];
+
+const compactJson = (value: unknown): string => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const extractMessageText = (message: unknown): string => {
+  if (!isRecord(message)) {
+    return toDisplayValue(message);
+  }
+
+  const content = message["content"];
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    const details = message["details"];
+    if (isRecord(details)) {
+      const stdout = details["stdout"];
+      if (typeof stdout === "string" && stdout.trim()) {
+        return stdout;
+      }
+    }
+    return "";
+  }
+
+  const parts: string[] = [];
+
+  for (const block of content) {
+    if (!isRecord(block)) {
+      continue;
+    }
+    const type = block["type"];
+    if (type === "text" && typeof block["text"] === "string" && block["text"]) {
+      parts.push(block["text"]);
+      continue;
+    }
+    if (type === "toolCall") {
+      const name = typeof block["name"] === "string" ? block["name"] : "unknown";
+      const args = block["arguments"];
+      let argsText = "";
+      if (isRecord(args) && typeof args["script"] === "string") {
+        argsText = args["script"];
+      } else if (args !== undefined) {
+        argsText = compactJson(args);
+      }
+      parts.push(argsText ? `[toolCall:${name}] ${argsText}` : `[toolCall:${name}]`);
+      continue;
+    }
+    if (type === "image") {
+      const mimeType = typeof block["mimeType"] === "string" ? block["mimeType"] : "unknown";
+      parts.push(`[image:${mimeType}]`);
+      continue;
+    }
+  }
+
+  return parts.join(" | ");
+};
+
+const extractEventPayload = (payload: unknown): string => {
+  if (payload === null || payload === undefined) {
+    return "";
+  }
+  if (typeof payload === "string" || typeof payload === "number" || typeof payload === "boolean") {
+    return String(payload);
+  }
+  if (isRecord(payload) && typeof payload["text"] === "string") {
+    return payload["text"];
+  }
+  return compactJson(payload);
+};
+
+const buildSessionsGetTextOutput = (data: unknown): string => {
+  if (!isRecord(data)) {
+    return typeof data === "string" ? data : toPrettyJson(data);
+  }
+
+  const lines: string[] = [];
+
+  lines.push(...buildSection("Session"));
+  if (data["id"] !== undefined) {
+    lines.push(`ID       ${toDisplayValue(data["id"])}`);
+  }
+  if (data["agent"] !== undefined) {
+    lines.push(`Agent    ${toDisplayValue(data["agent"])}`);
+  }
+  if (data["status"] !== undefined) {
+    lines.push(`Status   ${toDisplayValue(data["status"])}`);
+  }
+  if (data["steeringMode"] !== undefined) {
+    lines.push(`Steering ${toDisplayValue(data["steeringMode"])}`);
+  }
+  if (data["createdAt"] !== undefined) {
+    lines.push(`Created  ${toTimestampLabel(data["createdAt"])}`);
+  }
+  if (data["updatedAt"] !== undefined) {
+    lines.push(`Updated  ${toTimestampLabel(data["updatedAt"])}`);
+  }
+
+  const workflow = isRecord(data["workflow"]) ? data["workflow"] : null;
+  if (workflow?.["status"] !== undefined) {
+    lines.push(`Workflow ${toDisplayValue(workflow["status"])}`);
+  }
+
+  const messages = Array.isArray(data["messages"]) ? data["messages"] : [];
+  lines.push("");
+  lines.push(...buildSection(`Messages (${messages.length})`));
+  if (messages.length === 0) {
+    lines.push("(none)");
+  } else {
+    const rows = messages.map((message, index) => {
+      const record = isRecord(message) ? message : null;
+      const role = typeof record?.["role"] === "string" ? record["role"] : "unknown";
+      const timestamp = toTimestampLabel(record?.["timestamp"]);
+      const text = truncate(toOneLine(extractMessageText(message) || "(no text content)"));
+      return [String(index + 1), role, timestamp, text];
+    });
+    lines.push(buildTableText(["#", "Writer", "Timestamp", "Message"], rows));
+  }
+
+  const events = Array.isArray(data["events"]) ? data["events"] : [];
+  lines.push("");
+  lines.push(...buildSection(`Events (${events.length})`));
+  if (events.length === 0) {
+    lines.push("(none)");
+  } else {
+    const rows = events.map((event, index) => {
+      const record = isRecord(event) ? event : null;
+      const type = typeof record?.["type"] === "string" ? record["type"] : "unknown";
+      const createdAt = toTimestampLabel(record?.["createdAt"] ?? record?.["timestamp"]);
+      const deliveredAt = toTimestampLabel(record?.["deliveredAt"]);
+      const consumedBy = toDisplayValue(record?.["consumedByStepKey"]) || "-";
+      const payload = truncate(toOneLine(extractEventPayload(record?.["payload"]) || "-"), 160);
+      return [String(index + 1), type, createdAt, deliveredAt, consumedBy, payload];
+    });
+    lines.push(
+      buildTableText(["#", "Type", "Created", "Delivered", "Consumed By", "Payload"], rows),
+    );
+  }
+
+  return lines.join("\n");
+};
+
+const buildSessionsGetOutput = (data: unknown, json: boolean): CliActionResult => {
+  if (json) {
+    return { output: { format: "json", data } };
+  }
+  return { output: { format: "text", text: buildSessionsGetTextOutput(data) } };
+};
+
+const stripSessionDetailDefaults = (data: unknown): unknown => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return data;
+  }
+  const { trace: _trace, summaries: _summaries, ...rest } = data as Record<string, unknown>;
+  return rest;
+};
+
 const buildSendMessageOutput = (data: unknown, json: boolean): CliActionResult => {
   if (json) {
     return { output: { format: "json", data } };
@@ -348,21 +595,26 @@ const defaultActions: CliActions = {
     return buildDetailOutput(response.data, ctx.config.json);
   },
   sessionsGet: async (args, ctx) => {
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}`;
+    const query = new URLSearchParams({
+      events: "true",
+      trace: "false",
+      summaries: "false",
+    });
+    const path = `/sessions/${encodeURIComponent(args.sessionId)}?${query.toString()}`;
     const response = await requestJson(ctx.config, ctx.logger, { method: "GET", path });
     if (!response.ok) {
       return response.error;
     }
-    const data = response.data;
+    const data = stripSessionDetailDefaults(response.data);
     const outputData =
       args.statusOnly && data && typeof data === "object"
         ? {
             status: (data as Record<string, unknown>)["status"],
             workflow: (data as Record<string, unknown>)["workflow"],
-            summaries: (data as Record<string, unknown>)["summaries"],
+            events: (data as Record<string, unknown>)["events"],
           }
         : data;
-    return buildDetailOutput(outputData, ctx.config.json);
+    return buildSessionsGetOutput(outputData, ctx.config.json);
   },
   sessionsSendMessage: async (args, ctx) => {
     const resolved = await resolveMessageText(args);
