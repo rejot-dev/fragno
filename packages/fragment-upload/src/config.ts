@@ -8,6 +8,7 @@ import type {
 export type FileHookPayload = {
   provider: string;
   fileKey: FileKey;
+  objectKey?: string;
   uploadId?: string;
   uploaderId?: string | null;
   sizeBytes: number;

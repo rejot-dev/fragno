@@ -444,6 +444,275 @@ describe("upload fragment direct single flows", () => {
     });
   });
 
+  it("runs file deletion and notification through durable hooks", async () => {
+    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-delete-hook-"));
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      deleteObject,
+    } satisfies StorageAdapter;
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments }) => {
+        const { fragment } = fragments.upload;
+        const form = new FormData();
+        const file = new File([Buffer.from("delete me")], "delete-me.txt", {
+          type: "text/plain",
+        });
+        form.set("file", file);
+        form.set("provider", storage.name);
+        form.set("keyParts", JSON.stringify(["users", 99, "delete-me"]));
+
+        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        assert(createResponse.type === "json");
+
+        const storageKey = storage.resolveStorageKey({
+          provider: storage.name,
+          fileKey: createResponse.data.fileKey,
+        });
+
+        const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+          query: { provider: storage.name, key: createResponse.data.fileKey },
+        });
+
+        assert(deleteResponse.type === "json");
+        expect(deleteResponse.data).toEqual({ ok: true });
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        await drainDurableHooks(fragment);
+
+        expect(deleteObject).toHaveBeenCalledWith({ storageKey });
+        expect(onFileDeleted).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider: storage.name,
+            fileKey: createResponse.data.fileKey,
+            objectKey: storageKey,
+          }),
+          expect.any(String),
+        );
+      });
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the persisted file objectKey when the deletion hook payload omits it", async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "fragno-upload-delete-hook-persisted-key-"),
+    );
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const resolveStorageKey = vi.fn(() => "recomputed/should-not-be-used");
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      resolveStorageKey,
+      deleteObject,
+    } satisfies StorageAdapter;
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments, test }) => {
+        const { fragment, db } = fragments.upload;
+        const form = new FormData();
+        const file = new File([Buffer.from("delete me")], "delete-me.txt", {
+          type: "text/plain",
+        });
+        form.set("file", file);
+        form.set("provider", storage.name);
+        form.set("keyParts", JSON.stringify(["users", 100, "delete-me-missing-payload-key"]));
+
+        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        assert(createResponse.type === "json");
+
+        const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+          query: { provider: storage.name, key: createResponse.data.fileKey },
+        });
+
+        assert(deleteResponse.type === "json");
+
+        const persistedFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
+          ),
+        );
+
+        expect(persistedFile?.objectKey).toBeDefined();
+        if (!persistedFile?.objectKey) {
+          throw new Error("Persisted deleted file is missing objectKey");
+        }
+
+        const internalFragment = getInternalFragment(test.adapter);
+        const hooks = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+
+        const deleteHook = hooks.find((hook) => {
+          const hookPayload = hook.payload as { fileKey?: string } | null;
+          return (
+            hook.hookName === "onFileDeleted" &&
+            hookPayload?.fileKey === createResponse.data.fileKey
+          );
+        });
+
+        expect(deleteHook).toBeDefined();
+        if (!deleteHook) {
+          throw new Error("Delete hook missing");
+        }
+
+        const hookPayload = deleteHook.payload as { objectKey?: string } & Record<string, unknown>;
+        const { objectKey: _objectKey, ...payloadWithoutObjectKey } = hookPayload;
+
+        await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalFragment.$internal.deps.schema);
+              uow.update("fragno_hooks", deleteHook.id, (b) =>
+                b.set({ payload: payloadWithoutObjectKey }),
+              );
+            })
+            .execute();
+        });
+
+        await drainDurableHooks(fragment);
+
+        expect(resolveStorageKey).not.toHaveBeenCalled();
+        expect(deleteObject).toHaveBeenCalledWith({ storageKey: persistedFile.objectKey });
+        expect(onFileDeleted).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider: storage.name,
+            fileKey: createResponse.data.fileKey,
+            objectKey: persistedFile.objectKey,
+          }),
+          expect.any(String),
+        );
+      });
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("records a clear error when file deletion cannot resolve a persisted objectKey", async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "fragno-upload-delete-hook-missing-persisted-key-"),
+    );
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const resolveStorageKey = vi.fn(() => "recomputed/should-not-be-used");
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      resolveStorageKey,
+      deleteObject,
+    } satisfies StorageAdapter;
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments, test }) => {
+        const { fragment, db } = fragments.upload;
+        const form = new FormData();
+        const file = new File([Buffer.from("delete me")], "delete-me.txt", {
+          type: "text/plain",
+        });
+        form.set("file", file);
+        form.set("provider", storage.name);
+        form.set("keyParts", JSON.stringify(["users", 101, "delete-me-missing-record"]));
+
+        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        assert(createResponse.type === "json");
+
+        const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+          query: { provider: storage.name, key: createResponse.data.fileKey },
+        });
+
+        assert(deleteResponse.type === "json");
+
+        const deletedFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
+          ),
+        );
+
+        expect(deletedFile).toBeDefined();
+        if (!deletedFile) {
+          throw new Error("Deleted file row missing");
+        }
+
+        const internalFragment = getInternalFragment(test.adapter);
+        const hooks = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+
+        const deleteHook = hooks.find((hook) => {
+          const hookPayload = hook.payload as { fileKey?: string } | null;
+          return (
+            hook.hookName === "onFileDeleted" &&
+            hookPayload?.fileKey === createResponse.data.fileKey
+          );
+        });
+
+        expect(deleteHook).toBeDefined();
+        if (!deleteHook) {
+          throw new Error("Delete hook missing");
+        }
+
+        const hookPayload = deleteHook.payload as { objectKey?: string } & Record<string, unknown>;
+        const { objectKey: _objectKey, ...payloadWithoutObjectKey } = hookPayload;
+
+        await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const internalUow = forSchema(internalFragment.$internal.deps.schema);
+              internalUow.update("fragno_hooks", deleteHook.id, (b) =>
+                b.set({ payload: payloadWithoutObjectKey }),
+              );
+            })
+            .execute();
+        });
+
+        await fragment.inContext(async function () {
+          return await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              forSchema(uploadSchema).delete("file", deletedFile.id);
+            })
+            .execute();
+        });
+
+        await drainDurableHooks(fragment, { mode: "singlePass" });
+
+        expect(resolveStorageKey).not.toHaveBeenCalled();
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        const updatedHook = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () => [internalFragment.services.hookService.getHookById(deleteHook.id)] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+
+        expect(updatedHook?.status).toBe("pending");
+        expect(updatedHook?.error).toContain("Missing persisted objectKey");
+        expect(updatedHook?.error).toContain("Refusing to reconstruct storage key");
+      });
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not overwrite a completed retry when the timeout hook runs", async () => {
     const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {

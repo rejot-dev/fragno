@@ -4,12 +4,18 @@ import { z } from "zod";
 import { uploadFragmentDefinition } from "../definition";
 import { resolveUploadFragmentConfig } from "../config";
 import { resolveFileKeyInput } from "../services/helpers";
-import { checksumSchema, fileMetadataSchema, toFileMetadata, visibilitySchema } from "./shared";
+import {
+  checksumSchema,
+  fileMetadataSchema,
+  providerNamespaceSchema,
+  toFileMetadata,
+  visibilitySchema,
+} from "./shared";
 
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
 const listQuerySchema = z.object({
-  provider: z.string().optional(),
+  provider: providerNamespaceSchema.optional(),
   prefix: z.string().optional(),
   cursor: z.string().optional(),
   pageSize: z.coerce.number().min(1).max(100).catch(25),
@@ -18,7 +24,7 @@ const listQuerySchema = z.object({
 });
 
 const byKeyQuerySchema = z.object({
-  provider: z.string().min(1),
+  provider: providerNamespaceSchema,
   key: z.string().min(1),
 });
 
@@ -34,6 +40,7 @@ const errorCodes = [
   "UPLOAD_ALREADY_ACTIVE",
   "FILE_ALREADY_EXISTS",
   "FILE_NOT_FOUND",
+  "FILE_DELETED",
   "UPLOAD_EXPIRED",
   "UPLOAD_INVALID_STATE",
   "SIGNED_URL_UNSUPPORTED",
@@ -60,6 +67,8 @@ const handleServiceError = <Code extends FileErrorCode>(
   switch (err.message) {
     case "FILE_NOT_FOUND":
       return error({ message: "File not found", code: "FILE_NOT_FOUND" as Code }, 404);
+    case "FILE_DELETED":
+      return error({ message: "File deleted", code: "FILE_DELETED" as Code }, 410);
     case "UPLOAD_NOT_FOUND":
       return error({ message: "Upload not found", code: "UPLOAD_NOT_FOUND" as Code }, 404);
     case "FILE_ALREADY_EXISTS":
@@ -120,13 +129,20 @@ const parseMetadata = (value: FormDataEntryValue | null): Record<string, unknown
   return undefined;
 };
 
+const assertFileAvailable = <T extends { status: string }>(file: T) => {
+  if (file.status === "deleted") {
+    throw new Error("FILE_DELETED");
+  }
+  return file;
+};
+
 export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
     const getResolvedConfig = () => resolveUploadFragmentConfig(config);
 
     const parseListQuery = (query: URLSearchParams) => {
       const result = listQuerySchema.safeParse({
-        provider: query.get("provider") || undefined,
+        provider: query.has("provider") ? query.get("provider") : undefined,
         prefix: query.get("prefix") || undefined,
         cursor: query.get("cursor") || undefined,
         pageSize: query.get("pageSize"),
@@ -175,10 +191,11 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           }
 
           const providerValue = form.get("provider");
-          const provider = typeof providerValue === "string" ? providerValue : undefined;
-          if (!provider || provider !== resolvedConfig.storage.name) {
+          const providerResult = providerNamespaceSchema.safeParse(providerValue);
+          if (!providerResult.success) {
             return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
           }
+          const provider = providerResult.data;
 
           let keyParts: z.infer<typeof legacyFileKeyPartsSchema> | undefined;
           if (form.has("keyParts")) {
@@ -390,16 +407,11 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: fileMetadataSchema,
         errorCodes,
         handler: async function ({ query }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           let byKey;
           try {
             byKey = parseByKeyQuery(query);
           } catch (err) {
             return handleServiceError(err, error);
-          }
-
-          if (byKey.provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
           }
 
           try {
@@ -423,17 +435,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: fileMetadataSchema,
         errorCodes,
         handler: async function ({ query, input }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           const payload = await input.valid();
           let byKey;
           try {
             byKey = parseByKeyQuery(query);
           } catch (err) {
             return handleServiceError(err, error);
-          }
-
-          if (byKey.provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
           }
 
           try {
@@ -456,7 +463,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes,
         handler: async function ({ query }, { json, error }) {
-          const resolvedConfig = getResolvedConfig();
           let byKey;
           try {
             byKey = parseByKeyQuery(query);
@@ -464,22 +470,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
-          if (byKey.provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
-
           try {
-            const file = await this.handlerTx()
-              .withServiceCalls(() => [services.getFileByKey(byKey)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-
-            try {
-              await resolvedConfig.storage.deleteObject({ storageKey: file.objectKey });
-            } catch {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-            }
-
             await this.handlerTx()
               .withServiceCalls(() => [services.markFileDeleted(byKey)])
               .execute();
@@ -510,10 +501,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
-          if (byKey.provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
-
           if (!resolvedConfig.storage.getDownloadUrl) {
             return error(
               { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
@@ -522,10 +509,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           }
 
           try {
-            const file = await this.handlerTx()
-              .withServiceCalls(() => [services.getFileByKey(byKey)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
+            const file = assertFileAvailable(
+              await this.handlerTx()
+                .withServiceCalls(() => [services.getFileByKey(byKey)])
+                .transform(({ serviceResult: [result] }) => result)
+                .execute(),
+            );
 
             let result;
             try {
@@ -559,10 +548,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
-          if (byKey.provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
-
           if (!resolvedConfig.storage.getDownloadStream) {
             return error(
               { message: "Download streaming unsupported", code: "SIGNED_URL_UNSUPPORTED" },
@@ -571,10 +556,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           }
 
           try {
-            const file = await this.handlerTx()
-              .withServiceCalls(() => [services.getFileByKey(byKey)])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
+            const file = assertFileAvailable(
+              await this.handlerTx()
+                .withServiceCalls(() => [services.getFileByKey(byKey)])
+                .transform(({ serviceResult: [result] }) => result)
+                .execute(),
+            );
 
             try {
               return await resolvedConfig.storage.getDownloadStream({

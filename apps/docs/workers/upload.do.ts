@@ -1,6 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { migrate } from "@fragno-dev/db";
 import {
+  createDurableHooksProcessor,
+  type DurableHooksDispatcherDurableObjectHandler,
+} from "@fragno-dev/db/dispatchers/cloudflare-do";
+import {
   UPLOAD_ADMIN_CONFIG_KEY,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
@@ -46,6 +50,9 @@ const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): U
   return providers;
 };
 
+const resolveHooksProvider = (response: UploadAdminConfigResponse): UploadProvider | null =>
+  response.defaultProvider ?? configuredProvidersFromResponse(response)[0] ?? null;
+
 type ProviderResolution = {
   provider: UploadProvider | null;
   invalidProvider: string | null;
@@ -56,6 +63,8 @@ export class Upload extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #fragmentsByProvider = new Map<UploadProvider, UploadFragment>();
   #fragmentConfigHash: string | null = null;
+  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
+  #dispatcherProvider: UploadProvider | null = null;
   #migrated = false;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -154,6 +163,8 @@ export class Upload extends DurableObject<CloudflareEnv> {
     if (!stored || configuredProviders.length === 0) {
       this.#fragmentsByProvider.clear();
       this.#fragmentConfigHash = null;
+      this.#dispatcher = null;
+      this.#dispatcherProvider = null;
       this.#migrated = false;
       return null;
     }
@@ -173,6 +184,8 @@ export class Upload extends DurableObject<CloudflareEnv> {
       }
       this.#fragmentsByProvider = nextFragments;
       this.#fragmentConfigHash = nextConfigHash;
+      this.#dispatcher = null;
+      this.#dispatcherProvider = null;
       this.#migrated = false;
     }
 
@@ -186,10 +199,46 @@ export class Upload extends DurableObject<CloudflareEnv> {
       this.#migrated = true;
     }
 
+    this.#ensureDispatcher(response);
+
     return {
       config: stored,
       response,
     };
+  }
+
+  #ensureDispatcher(response: UploadAdminConfigResponse) {
+    const provider = resolveHooksProvider(response);
+    if (!provider) {
+      this.#dispatcher = null;
+      this.#dispatcherProvider = null;
+      return;
+    }
+
+    if (this.#dispatcher && this.#dispatcherProvider === provider) {
+      return;
+    }
+
+    const fragment = this.#fragmentsByProvider.get(provider);
+    if (!fragment) {
+      this.#dispatcher = null;
+      this.#dispatcherProvider = null;
+      return;
+    }
+
+    try {
+      const dispatcherFactory = createDurableHooksProcessor([fragment], {
+        onProcessError: (error) => {
+          console.error("Upload hook processor error", error);
+        },
+      });
+      this.#dispatcher = dispatcherFactory(this.#state, this.#env);
+      this.#dispatcherProvider = provider;
+    } catch (error) {
+      console.warn("Upload hook processor disabled", error);
+      this.#dispatcher = null;
+      this.#dispatcherProvider = null;
+    }
   }
 
   async getAdminConfig(): Promise<UploadAdminConfigResponse> {
@@ -217,6 +266,8 @@ export class Upload extends DurableObject<CloudflareEnv> {
 
     this.#fragmentsByProvider.clear();
     this.#fragmentConfigHash = null;
+    this.#dispatcher = null;
+    this.#dispatcherProvider = null;
     this.#migrated = false;
 
     try {
@@ -242,10 +293,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
       };
     }
 
-    const provider =
-      ensured.response.defaultProvider ??
-      configuredProvidersFromResponse(ensured.response)[0] ??
-      null;
+    const provider = resolveHooksProvider(ensured.response);
     if (!provider) {
       return {
         configured: false,
@@ -270,6 +318,16 @@ export class Upload extends DurableObject<CloudflareEnv> {
     }
 
     return await loadDurableHookQueue(fragment, options);
+  }
+
+  async alarm(): Promise<void> {
+    const ensured = await this.#ensureFragments();
+    const dispatcher = this.#dispatcher;
+    if (!ensured || !dispatcher?.alarm) {
+      return;
+    }
+
+    await dispatcher.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -313,6 +371,13 @@ export class Upload extends DurableObject<CloudflareEnv> {
       );
     }
 
-    return fragment.handler(request);
+    const waitUntil = this.#state.waitUntil.bind(this.#state);
+    try {
+      return await fragment.handler(request, { waitUntil });
+    } finally {
+      if (providerResolution.provider !== this.#dispatcherProvider && this.#dispatcher?.notify) {
+        void this.#dispatcher.notify({ source: "request", waitUntil });
+      }
+    }
   }
 }

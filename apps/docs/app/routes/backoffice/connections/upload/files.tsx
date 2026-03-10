@@ -42,11 +42,13 @@ import {
   fetchUploadFiles,
   type UploadFileRecord,
 } from "./data";
-import { formatTimestamp, type UploadLayoutContext } from "./shared";
+import { DELETED_SELECTED_FILE_MESSAGE, getVisibleSelectedFileError } from "./files-view-state";
+import { formatTimestamp, type UploadConfigState, type UploadLayoutContext } from "./shared";
 
 type ExplorerSelectionKind = "root" | "folder" | "file";
 
 type FilesLoaderData = {
+  configState: UploadConfigState | null;
   configError: string | null;
   filesError: string | null;
   files: UploadFileRecord[];
@@ -58,9 +60,14 @@ type FilesLoaderData = {
   selectedPrefix: string;
 };
 
+type FilesActionIntent = "inspect-file" | "download-url" | "delete-file";
+
 type FilesActionData = {
   ok: boolean;
   message: string;
+  intent?: FilesActionIntent;
+  provider?: string;
+  fileKey?: string;
   selectedFile?: UploadFileRecord | null;
   downloadUrl?: {
     url: string;
@@ -477,6 +484,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { configState, configError } = await fetchUploadConfig(context, params.orgId);
   if (configError) {
     return {
+      configState,
       configError,
       filesError: null,
       files: [],
@@ -509,10 +517,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   const filesResult = await fetchUploadFiles(request, context, params.orgId, {
     pageSize: FILE_PAGE_SIZE,
+    status: "ready",
   });
 
   if (selectedNodeKind !== "file" || !requestedFileKey) {
     return {
+      configState,
       configError: null,
       filesError: filesResult.filesError,
       files: filesResult.files,
@@ -532,6 +542,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   if (!providerForSelection) {
     return {
+      configState,
       configError: null,
       filesError: filesResult.filesError,
       files: filesResult.files,
@@ -551,13 +562,17 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     providerForSelection,
     requestedFileKey,
   );
+  const selectedFile = selected.file?.status === "deleted" ? null : selected.file;
+  const selectedFileError =
+    selected.file?.status === "deleted" ? DELETED_SELECTED_FILE_MESSAGE : selected.error;
 
   return {
+    configState,
     configError: null,
     filesError: filesResult.filesError,
     files: filesResult.files,
-    selectedFile: selected.file,
-    selectedFileError: selected.error,
+    selectedFile,
+    selectedFileError,
     selectedFileProvider: providerForSelection,
     selectedFileKey: requestedFileKey,
     selectedNodeKind: "file",
@@ -603,6 +618,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return {
       ok: true,
       message: "Loaded file details.",
+      intent: "inspect-file",
+      provider,
+      fileKey,
       selectedFile: result.file,
     } satisfies FilesActionData;
   }
@@ -621,6 +639,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return {
       ok: true,
       message: "Download URL generated.",
+      intent: "download-url",
+      provider,
+      fileKey,
       selectedFile: selected.file,
       downloadUrl: result.result,
     } satisfies FilesActionData;
@@ -638,6 +659,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return {
       ok: true,
       message: "File deleted.",
+      intent: "delete-file",
+      provider,
+      fileKey,
       selectedFile: null,
       downloadUrl: null,
     } satisfies FilesActionData;
@@ -651,6 +675,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 export default function BackofficeOrganisationUploadFiles() {
   const {
+    configState,
     configError,
     filesError,
     files,
@@ -665,7 +690,7 @@ export default function BackofficeOrganisationUploadFiles() {
   const navigation = useNavigation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { orgId, configState } = useOutletContext<UploadLayoutContext>();
+  const { orgId } = useOutletContext<UploadLayoutContext>();
   const uploadClient = useMemo(() => createUploadClient(orgId), [orgId]);
   const uploadHelpers = uploadClient.useUploadHelpers();
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
@@ -688,6 +713,15 @@ export default function BackofficeOrganisationUploadFiles() {
       ? (actionData.selectedFile ?? null)
       : undefined;
   const selectedFile = actionSelectedFile === undefined ? loaderSelectedFile : actionSelectedFile;
+  const visibleSelectedFileError = getVisibleSelectedFileError({
+    selectedFileError,
+    actionOk: actionData?.ok ?? false,
+    actionIntent: actionData?.intent,
+    actionFileKey: actionData?.fileKey,
+    actionProvider: actionData?.provider,
+    selectedFileKey,
+    selectedFileProvider,
+  });
   const selectedProvider = selectedFile?.provider ?? selectedFileProvider ?? null;
   const supportsSignedDownload = selectedProvider === "r2";
   const defaultProvider = configState?.defaultProvider;
@@ -1062,7 +1096,9 @@ export default function BackofficeOrganisationUploadFiles() {
   return (
     <div className="space-y-4">
       {filesError ? <p className="text-xs text-red-500">{filesError}</p> : null}
-      {selectedFileError ? <p className="text-xs text-red-500">{selectedFileError}</p> : null}
+      {visibleSelectedFileError ? (
+        <p className="text-xs text-red-500">{visibleSelectedFileError}</p>
+      ) : null}
       {actionError ? <p className="text-xs text-red-500">{actionError}</p> : null}
       {actionSuccess ? <p className="text-xs text-green-500">{actionSuccess}</p> : null}
       {uploadError ? <p className="text-xs text-red-500">{uploadError}</p> : null}

@@ -265,6 +265,7 @@ const buildUploadHookPayload = (upload: UploadRow, sizeBytes?: bigint): FileHook
   return {
     provider: upload.provider,
     fileKey: upload.key,
+    objectKey: upload.objectKey,
     uploadId: upload.id.toString(),
     uploaderId: upload.uploaderId ?? null,
     sizeBytes: toSafeNumber(resolvedSizeBytes),
@@ -410,8 +411,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           return {
             reused: false as const,
             uploadId: uploadId.toString(),
-            resolved,
             provider: normalized.provider,
+            resolved,
             storageInit,
           };
         })
@@ -773,93 +774,6 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           return {
             partsUploaded: nextParts,
             bytesUploaded: nextBytes,
-          };
-        })
-        .build();
-    },
-
-    markUploadComplete: function (
-      this: UploadServiceContext,
-      uploadId: string,
-      fileKey: string,
-      options?: { sizeBytes?: bigint },
-    ) {
-      const now = new Date();
-
-      return this.serviceTx(uploadSchema)
-        .retrieve((uow) =>
-          uow
-            .findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId)))
-            .findFirst("file", (b) =>
-              b.whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "starts with", ""), eb("key", "=", fileKey)),
-              ),
-            ),
-        )
-        .mutate(({ uow, retrieveResult: [upload, existingFile] }) => {
-          if (!upload) {
-            throw new Error("UPLOAD_NOT_FOUND");
-          }
-
-          ensureActiveUpload(upload, now);
-
-          if (existingFile && existingFile.provider === upload.provider) {
-            throw new Error("FILE_ALREADY_EXISTS");
-          }
-
-          const finalSizeBytes = options?.sizeBytes ?? upload.expectedSizeBytes;
-
-          const updatedUpload = {
-            ...upload,
-            status: "completed" as UploadStatus,
-            updatedAt: now,
-            completedAt: now,
-            bytesUploaded: finalSizeBytes,
-          };
-
-          uow.update("upload", upload.id, (b) =>
-            b
-              .set({
-                status: updatedUpload.status,
-                updatedAt: updatedUpload.updatedAt,
-                completedAt: updatedUpload.completedAt,
-                bytesUploaded: updatedUpload.bytesUploaded,
-              })
-              .check(),
-          );
-
-          const createdFile = {
-            key: upload.key,
-            provider: upload.provider,
-            uploaderId: upload.uploaderId ?? null,
-            filename: upload.filename,
-            sizeBytes: finalSizeBytes,
-            contentType: upload.contentType,
-            checksum: upload.checksum ?? null,
-            visibility: upload.visibility,
-            tags: upload.tags ?? null,
-            metadata: upload.metadata ?? null,
-            status: "ready" as FileStatus,
-            objectKey: upload.objectKey,
-            createdAt: now,
-            updatedAt: now,
-            completedAt: now,
-            deletedAt: null,
-            errorCode: null,
-            errorMessage: null,
-          };
-
-          // TODO(#277): map unique constraint errors to FILE_ALREADY_EXISTS once fragno surfaces duplicates.
-          const fileId = uow.create("file", createdFile);
-
-          uow.triggerHook("onFileReady", buildUploadHookPayload(upload, finalSizeBytes));
-
-          return {
-            upload: updatedUpload,
-            file: {
-              id: fileId,
-              ...createdFile,
-            },
           };
         })
         .build();
