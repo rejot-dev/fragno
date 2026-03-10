@@ -106,6 +106,8 @@ describe("sessions actions", () => {
           id: "session-2",
           status: "running",
           workflow: { status: "running" },
+          events: [{ type: "user_message" }],
+          trace: [{ type: "llm_start" }],
           summaries: [{ turn: 1, summary: "hello" }],
           extra: "ignored",
         }),
@@ -121,12 +123,109 @@ describe("sessions actions", () => {
     );
 
     expect(exitCode).toBe(0);
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(JSON.parse(output)).toEqual({
       status: "running",
       workflow: { status: "running" },
-      summaries: [{ turn: 1, summary: "hello" }],
+      events: [{ type: "user_message" }],
     });
+  });
+
+  it("fetches session detail without trace and summaries by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "session-2",
+          status: "running",
+          workflow: { status: "running" },
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+          events: [{ type: "user_message", payload: { text: "hello" } }],
+          trace: [{ type: "llm_start" }],
+          summaries: [{ turn: 1, summary: "hello" }],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const logger = createLogger();
+    const exitCode = await run(
+      ["node", "fragno-pi", "sessions", "get", "--session", "session-2", "--json"],
+      { logger },
+    );
+
+    expect(exitCode).toBe(0);
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
+    const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
+    expect(output).toMatchObject({
+      id: "session-2",
+      status: "running",
+      events: [{ type: "user_message", payload: { text: "hello" } }],
+    });
+    expect(output).not.toHaveProperty("trace");
+    expect(output).not.toHaveProperty("summaries");
+  });
+
+  it("renders session detail text output with all message and event timestamps", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "session-2",
+          name: "Support",
+          agent: "agent-1",
+          status: "running",
+          steeringMode: "all",
+          createdAt: "2026-03-06T09:00:00.000Z",
+          updatedAt: "2026-03-06T09:01:00.000Z",
+          workflow: { status: "running" },
+          messages: [
+            { role: "user", content: "hello", timestamp: 1_700_000_000 },
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "hi" }],
+              timestamp: 1_700_000_005,
+            },
+          ],
+          events: [
+            { type: "user_message", timestamp: 1_700_000_000, payload: { text: "hello" } },
+            { type: "assistant_reply", timestamp: 1_700_000_005 },
+          ],
+          trace: [{ type: "llm_start" }],
+          summaries: [{ turn: 1, summary: "hello" }],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const logger = createLogger();
+    const exitCode = await run(["node", "fragno-pi", "sessions", "get", "--session", "session-2"], {
+      logger,
+    });
+
+    expect(exitCode).toBe(0);
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`${BASE_URL}/sessions/session-2?events=true&trace=false&summaries=false`);
+
+    const output = logger.log.mock.calls[0]?.[0] ?? "";
+    expect(output).toContain("Session");
+    expect(output).toContain("Messages (2)");
+    expect(output).toContain("Events (2)");
+    expect(output).toContain("Writer");
+    expect(output).toContain("Timestamp");
+    expect(output).toContain("Message");
+    expect(output).toContain("user_message");
+    expect(output).toContain("assistant_reply");
+    expect(output).toMatch(/\d{2}:\d{2}:\d{2}/);
+    expect(output).not.toContain("1700000000");
+    expect(output).not.toContain("1700000005");
+    expect(output).not.toContain("2026-03-06T09:00:00.000Z");
+    expect(output).not.toContain("2026-03-06T09:01:00.000Z");
+    expect(output).not.toContain("llm_start");
+    expect(output).not.toContain("summary");
   });
 
   it("returns exit code 2 on server errors", async () => {
