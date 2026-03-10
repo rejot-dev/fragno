@@ -13,8 +13,8 @@ export type {
 } from "./config";
 export { resolveUploadFragmentConfig } from "./config";
 export { uploadSchema } from "./schema";
-export type { FileKeyEncoded, FileKeyPart, FileKeyParts } from "./keys";
-export { decodeFileKey, encodeFileKey, encodeFileKeyPrefix } from "./keys";
+export type { FileKey, FileKeyValidationResult, ValidateFileKeyOptions } from "./file-key";
+export { assertFileKey, splitFileKey, validateFileKey } from "./file-key";
 export type {
   StorageAdapter,
   StorageAdapterCapabilities,
@@ -32,8 +32,16 @@ export {
   type S3SignerInput,
 } from "./storage/s3";
 export { createR2StorageAdapter, type R2StorageAdapterOptions } from "./storage/r2";
+export {
+  createR2BindingStorageAdapter,
+  resolveR2BindingBucket,
+  type R2BindingBucket,
+  type R2BindingStorageAdapterOptions,
+} from "./storage/r2-binding";
 export type {
   CreateUploadAndTransferOptions,
+  DownloadFileOptions,
+  DownloadMethod,
   UploadHelpers,
   UploadProgress,
 } from "./client/helpers";

@@ -19,11 +19,11 @@ const createDirectAdapter = (
   const finalizeUpload = vi.fn(async () => ({ etag: "etag-final" }));
   const completeMultipartUpload = vi.fn(async () => ({ etag: "etag-complete" }));
   const expiresAt = expiresAtOverride ?? new Date(Date.now() + 60_000);
-  const initUploadMock = vi.fn<StorageAdapter["initUpload"]>(async ({ fileKey }) => {
+  const initUploadMock = vi.fn<StorageAdapter["initUpload"]>(async ({ provider, fileKey }) => {
     if (strategy === "direct-multipart") {
       return {
         strategy: "direct-multipart" as const,
-        storageKey: `store/${fileKey}`,
+        storageKey: `store/${provider}/${fileKey}`,
         storageUploadId: "upload-123",
         partSizeBytes: 3,
         expiresAt,
@@ -32,7 +32,7 @@ const createDirectAdapter = (
 
     return {
       strategy: "direct-single" as const,
-      storageKey: `store/${fileKey}`,
+      storageKey: `store/${provider}/${fileKey}`,
       expiresAt,
       uploadUrl: "https://storage.local/upload",
       uploadHeaders: { "Content-Type": "text/plain" },
@@ -47,7 +47,7 @@ const createDirectAdapter = (
       signedDownload: false,
       proxyUpload: false,
     },
-    resolveStorageKey: ({ fileKey }) => `store/${fileKey}`,
+    resolveStorageKey: ({ provider, fileKey }) => `store/${provider}/${fileKey}`,
     initUpload: initUploadMock,
     getPartUploadUrls: async ({ partNumbers }) =>
       partNumbers.map((partNumber) => ({
@@ -134,7 +134,9 @@ describe("upload fragment direct single flows", () => {
     expect(finalizeUpload).toHaveBeenCalled();
 
     const stored = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", createResponse.data.fileKey)),
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", createResponse.data.fileKey)),
+      ),
     );
 
     expect(stored?.status).toBe("ready");
@@ -304,7 +306,8 @@ describe("upload fragment direct single flows", () => {
 
     const now = new Date();
     await db.create("file", {
-      fileKey: upload.fileKey,
+      key: upload.key,
+      provider: upload.provider,
       uploaderId: upload.uploaderId,
       filename: upload.filename,
       sizeBytes: upload.expectedSizeBytes,
@@ -314,8 +317,7 @@ describe("upload fragment direct single flows", () => {
       tags: upload.tags,
       metadata: upload.metadata,
       status: "ready",
-      storageProvider: upload.storageProvider,
-      storageKey: upload.storageKey,
+      objectKey: upload.objectKey,
       createdAt: now,
       updatedAt: now,
       completedAt: now,
@@ -428,7 +430,12 @@ describe("upload fragment direct single flows", () => {
       );
 
       const file = await expiredDb.findFirst("file", (b) =>
-        b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", createResponse.data.fileKey)),
+        b.whereIndex("idx_file_provider_key", (eb) =>
+          eb.and(
+            eb("provider", "=", expiredAdapter.name),
+            eb("key", "=", createResponse.data.fileKey),
+          ),
+        ),
       );
 
       expect(upload?.status).toBe("expired");
@@ -522,7 +529,9 @@ describe("upload fragment direct single flows", () => {
     await drainDurableHooks(fragment);
 
     const file = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", retryResponse.data.fileKey)),
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", retryResponse.data.fileKey)),
+      ),
     );
 
     expect(file?.status).toBe("ready");
@@ -595,7 +604,7 @@ describe("upload fragment direct multipart flows", () => {
     assert(completeResponse.type === "json");
     expect(completeResponse.data.status).toBe("ready");
     expect(completeMultipartUpload).toHaveBeenCalledWith({
-      storageKey: `store/${createResponse.data.fileKey}`,
+      storageKey: `store/${adapter.name}/${createResponse.data.fileKey}`,
       storageUploadId: "upload-123",
       parts: [
         { partNumber: 1, etag: "etag-1" },

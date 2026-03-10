@@ -14,7 +14,6 @@ export type UploadStrategy = "direct-single" | "direct-multipart" | "proxy";
 
 export type FileMetadata = {
   fileKey: string;
-  fileKeyParts: (string | number)[];
   uploaderId: string | null;
   filename: string;
   sizeBytes: number;
@@ -24,7 +23,7 @@ export type FileMetadata = {
   tags: string[] | null;
   metadata: Record<string, unknown> | null;
   status: FileStatus;
-  storageProvider: string;
+  provider: string;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

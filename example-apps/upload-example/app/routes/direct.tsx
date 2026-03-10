@@ -15,6 +15,7 @@ export default function DirectUploads() {
       description="Upload files directly to S3-compatible storage. Configure UPLOAD_S3_* env vars, then the client helper handles multipart splitting, progress updates, and completion."
       client={directUploadClient}
       defaultCollection="direct"
+      defaultProvider="s3"
       accent="amber"
     />
   );

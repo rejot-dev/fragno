@@ -47,6 +47,9 @@ Format:
   fragments.
 - [Fragno Upload Fragment - Spec](./spec-upload-fragment.md) — Generic file upload + management
   fragment: storage adapters, key system, routes, DB schema, hooks, and client API.
+- [Upload Fragment V2 — Plain Keys + Provider-Aware Storage — Spec](./spec-upload-fragment-v2-plain-keys.md)
+  — Breaking redesign of upload key model and contracts: remove encoded key parts, make provider
+  explicit, simplify storage key mapping, add provider-scoped schema uniqueness, and update docs.
 - [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment
   design: public API shape, database schema and indexes, lifecycle semantics (run/replay/wait/
   sleep), runner/tick behavior, durable hooks wiring, HTTP routes, and CLI/management surface.

@@ -15,7 +15,7 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
 
   return {
     useFiles: builder.createHook("/files"),
-    useFile: builder.createHook("/files/:fileKey"),
+    useFile: builder.createHook("/files/by-key"),
     useCreateUpload: builder.createMutator("POST", "/uploads"),
     useUploadStatus: builder.createHook("/uploads/:uploadId"),
     useCompleteUpload: builder.createMutator(
@@ -41,20 +41,22 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
         invalidate("GET", "/uploads/:uploadId", { pathParams: { uploadId } });
       },
     ),
-    useUpdateFile: builder.createMutator("PATCH", "/files/:fileKey", (invalidate, params) => {
-      const fileKey = params.pathParams.fileKey;
-      if (!fileKey) {
+    useUpdateFile: builder.createMutator("PATCH", "/files/by-key", (invalidate, params) => {
+      const provider = params.queryParams?.["provider"];
+      const key = params.queryParams?.["key"];
+      if (!provider || !key) {
         return;
       }
-      invalidate("GET", "/files/:fileKey", { pathParams: { fileKey } });
+      invalidate("GET", "/files/by-key", { queryParams: { provider, key } });
       invalidate("GET", "/files", {});
     }),
-    useDeleteFile: builder.createMutator("DELETE", "/files/:fileKey", (invalidate, params) => {
-      const fileKey = params.pathParams.fileKey;
-      if (!fileKey) {
+    useDeleteFile: builder.createMutator("DELETE", "/files/by-key", (invalidate, params) => {
+      const provider = params.queryParams?.["provider"];
+      const key = params.queryParams?.["key"];
+      if (!provider || !key) {
         return;
       }
-      invalidate("GET", "/files/:fileKey", { pathParams: { fileKey } });
+      invalidate("GET", "/files/by-key", { queryParams: { provider, key } });
       invalidate("GET", "/files", {});
     }),
     useUploadHelpers: builder.createStore(helpers),

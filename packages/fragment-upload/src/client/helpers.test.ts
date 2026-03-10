@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createUploadHelpers } from "./helpers";
-import { encodeFileKey } from "../keys";
 
 const jsonResponse = (data: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(data), {
@@ -44,6 +43,14 @@ const getHeaderValue = (headers: HeadersInit | undefined, name: string): string 
   return undefined;
 };
 
+const TEST_PROVIDER = "filesystem";
+
+const byKeyDownloadUrlPath = (provider: string, fileKey: string) =>
+  `/files/by-key/download-url?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
+
+const byKeyContentPath = (provider: string, fileKey: string) =>
+  `/files/by-key/content?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
+
 describe("upload client helpers", () => {
   it("splits multipart uploads, tracks progress, and completes", async () => {
     const progress: number[] = [];
@@ -54,6 +61,9 @@ describe("upload client helpers", () => {
       calls.push(`${_init?.method ?? "GET"} ${url}`);
 
       if (url.endsWith("/uploads")) {
+        const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.users.1.avatar");
         return jsonResponse({
           uploadId: "123",
           fileKey: "files.users.1.avatar",
@@ -126,7 +136,8 @@ describe("upload client helpers", () => {
     const file = new Blob(["abcdefghij"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      keyParts: ["files", "users", 1, "avatar"],
+      provider: TEST_PROVIDER,
+      fileKey: "files.users.1.avatar",
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
@@ -144,6 +155,8 @@ describe("upload client helpers", () => {
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.assets.banner");
         expect(body.contentType).toBe("text/plain");
         return jsonResponse({
           uploadId: "proxy-1",
@@ -180,7 +193,8 @@ describe("upload client helpers", () => {
     const file = new Blob(["hello"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      keyParts: ["files", "assets", "banner"],
+      provider: TEST_PROVIDER,
+      fileKey: "files.assets.banner",
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
@@ -195,6 +209,9 @@ describe("upload client helpers", () => {
       const url = typeof input === "string" ? input : input.toString();
 
       if (url.endsWith("/uploads")) {
+        const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.sample.date");
         return jsonResponse({
           uploadId: "single-1",
           fileKey: "files.sample.date",
@@ -252,7 +269,8 @@ describe("upload client helpers", () => {
     const file = new Blob(["hey"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      keyParts: ["files", "sample", "date"],
+      provider: TEST_PROVIDER,
+      fileKey: "files.sample.date",
     });
 
     expect(typeof result.file.createdAt).toBe("string");
@@ -269,6 +287,9 @@ describe("upload client helpers", () => {
       const url = typeof input === "string" ? input : input.toString();
 
       if (url.endsWith("/uploads")) {
+        const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.assets.logo");
         return jsonResponse({
           uploadId: "proxy-2",
           fileKey: "files.assets.logo",
@@ -306,7 +327,8 @@ describe("upload client helpers", () => {
     const file = new Blob(["hello"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      keyParts: ["files", "assets", "logo"],
+      provider: TEST_PROVIDER,
+      fileKey: "files.assets.logo",
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
@@ -314,19 +336,124 @@ describe("upload client helpers", () => {
     expect(progress[progress.length - 1]).toBe(5);
   });
 
-  it("falls back to streaming when signed download urls are unsupported", async () => {
-    const fileKey = encodeFileKey(["files", "sample", "download"]);
+  it("throws actionable guidance when proxy transport fails for both attempts", async () => {
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
 
-      if (url.endsWith(`/files/${fileKey}/download-url`)) {
+      if (url.endsWith("/uploads")) {
+        const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.assets.fail");
+        return jsonResponse({
+          uploadId: "proxy-3",
+          fileKey: "files.assets.fail",
+          status: "created",
+          strategy: "proxy",
+          expiresAt: new Date().toISOString(),
+          upload: {
+            mode: "single",
+            transport: "proxy",
+            contentEndpoint: "/uploads/proxy-3/content",
+            completeEndpoint: "/uploads/proxy-3/complete",
+          },
+        });
+      }
+
+      if (url.endsWith("/uploads/proxy-3/content")) {
+        throw new TypeError("ALPN negotiation failed");
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `http://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    const file = new Blob(["hello"], { type: "text/plain" });
+
+    await expect(
+      helpers.createUploadAndTransfer(file, {
+        provider: TEST_PROVIDER,
+        fileKey: "files.assets.fail",
+      }),
+    ).rejects.toThrow(/Server selected proxy upload strategy/);
+
+    await expect(
+      helpers.createUploadAndTransfer(file, {
+        provider: TEST_PROVIDER,
+        fileKey: "files.assets.fail",
+      }),
+    ).rejects.toThrow(/\/uploads\/:uploadId\/content/);
+  });
+
+  it("fails fast when proxy endpoint uses an unsupported protocol", async () => {
+    let contentEndpointCalled = false;
+
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/uploads")) {
+        const body = JSON.parse(_init?.body as string);
+        expect(body.provider).toBe(TEST_PROVIDER);
+        expect(body.fileKey).toBe("files.assets.protocol");
+        return jsonResponse({
+          uploadId: "proxy-4",
+          fileKey: "files.assets.protocol",
+          status: "created",
+          strategy: "proxy",
+          expiresAt: new Date().toISOString(),
+          upload: {
+            mode: "single",
+            transport: "proxy",
+            contentEndpoint: "/uploads/proxy-4/content",
+            completeEndpoint: "/uploads/proxy-4/complete",
+          },
+        });
+      }
+
+      if (url.endsWith("/uploads/proxy-4/content")) {
+        contentEndpointCalled = true;
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `ws://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    const file = new Blob(["hello"], { type: "text/plain" });
+
+    await expect(
+      helpers.createUploadAndTransfer(file, {
+        provider: TEST_PROVIDER,
+        fileKey: "files.assets.protocol",
+      }),
+    ).rejects.toThrow(/must use http:\/\/ or https:\/\//);
+
+    expect(contentEndpointCalled).toBe(false);
+  });
+
+  it("downloads through /content when content method is selected", async () => {
+    const fileKey = "files.sample.download";
+    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
+    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
+    const calls: string[] = [];
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+
+      if (url.endsWith(downloadUrlPath)) {
         return jsonResponse(
           { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
           { status: 400 },
         );
       }
 
-      if (url.endsWith(`/files/${fileKey}/content`)) {
+      if (url.endsWith(contentPath)) {
         return new Response("payload", { status: 200 });
       }
 
@@ -338,7 +465,135 @@ describe("upload client helpers", () => {
       fetcher: fetcher as typeof fetch,
     });
 
-    const response = await helpers.downloadFile(["files", "sample", "download"]);
+    const response = await helpers.downloadFile(fileKey, {
+      provider: TEST_PROVIDER,
+      method: "content",
+    });
     expect(await response.text()).toBe("payload");
+    expect(calls.some((url) => url.endsWith(downloadUrlPath))).toBe(false);
+  });
+
+  it("throws programming guidance when signed-url method is unsupported", async () => {
+    const fileKey = "files.sample.download-mismatch";
+    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith(downloadUrlPath)) {
+        return jsonResponse(
+          { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
+          { status: 400 },
+        );
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile(fileKey, {
+        provider: TEST_PROVIDER,
+        method: "signed-url",
+      }),
+    ).rejects.toThrow(/programming error/i);
+  });
+
+  it("throws actionable context when content download request fails", async () => {
+    const fileKey = "files.sample.download-fail";
+    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith(contentPath)) {
+        throw new TypeError("Failed to fetch");
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "content" }),
+    ).rejects.toThrow(/\/files\/by-key\/content/);
+  });
+
+  it("throws actionable context when signed URL download request fails", async () => {
+    const fileKey = "files.sample.download-url";
+    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith(downloadUrlPath)) {
+        return jsonResponse({
+          url: "https://storage.example.com/object",
+        });
+      }
+
+      if (url === "https://storage.example.com/object") {
+        throw new TypeError("Network dropped");
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" }),
+    ).rejects.toThrow(/https:\/\/storage\.example\.com\/object/);
+  });
+
+  it("requires callers to specify an explicit download method", async () => {
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile("files.sample.download-missing", { provider: TEST_PROVIDER } as never),
+    ).rejects.toThrow(/Download method is required/);
+  });
+
+  it("requires callers to specify an explicit download provider", async () => {
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile("files.sample.download-missing-provider", {
+        method: "content",
+      } as never),
+    ).rejects.toThrow(/Download provider is required/);
+  });
+
+  it("requires callers to specify provider and file key when creating uploads", async () => {
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
+    });
+
+    await expect(
+      helpers.createUploadAndTransfer(new Blob(["data"]), {
+        fileKey: "files.sample.upload-missing-provider",
+      } as never),
+    ).rejects.toThrow(/Provider is required/);
+
+    await expect(
+      helpers.createUploadAndTransfer(new Blob(["data"]), {
+        provider: TEST_PROVIDER,
+      } as never),
+    ).rejects.toThrow(/File key is required/);
   });
 });

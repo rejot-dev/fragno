@@ -200,6 +200,11 @@ async function requestJson<T>(
 }
 
 export function createClient(config: ClientConfig) {
+  const buildByKeyQuery = (provider: string, fileKey: string) => ({
+    provider,
+    key: fileKey,
+  });
+
   return {
     buildUrl: (path: string, query?: Record<string, string | number | boolean | undefined>) =>
       buildUrl(config.baseUrl, path, query),
@@ -252,12 +257,31 @@ export function createClient(config: ClientConfig) {
     },
     listFiles: (query: Record<string, string | number | boolean | undefined>) =>
       requestJson(config, "/files", { method: "GET", query }),
-    getFile: (fileKey: string) => requestJson(config, `/files/${fileKey}`),
-    updateFile: (fileKey: string, payload: Record<string, unknown>) =>
-      requestJson(config, `/files/${fileKey}`, { method: "PATCH", body: payload }),
-    deleteFile: (fileKey: string) => requestJson(config, `/files/${fileKey}`, { method: "DELETE" }),
-    getDownloadUrl: (fileKey: string) => requestJson(config, `/files/${fileKey}/download-url`),
-    downloadContent: (fileKey: string) =>
-      requestResponse(config, `/files/${fileKey}/content`, { method: "GET" }),
+    getFile: (provider: string, fileKey: string) =>
+      requestJson(config, "/files/by-key", {
+        method: "GET",
+        query: buildByKeyQuery(provider, fileKey),
+      }),
+    updateFile: (provider: string, fileKey: string, payload: Record<string, unknown>) =>
+      requestJson(config, "/files/by-key", {
+        method: "PATCH",
+        query: buildByKeyQuery(provider, fileKey),
+        body: payload,
+      }),
+    deleteFile: (provider: string, fileKey: string) =>
+      requestJson(config, "/files/by-key", {
+        method: "DELETE",
+        query: buildByKeyQuery(provider, fileKey),
+      }),
+    getDownloadUrl: (provider: string, fileKey: string) =>
+      requestJson(config, "/files/by-key/download-url", {
+        method: "GET",
+        query: buildByKeyQuery(provider, fileKey),
+      }),
+    downloadContent: (provider: string, fileKey: string) =>
+      requestResponse(config, "/files/by-key/content", {
+        method: "GET",
+        query: buildByKeyQuery(provider, fileKey),
+      }),
   };
 }

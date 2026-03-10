@@ -1,4 +1,4 @@
-import type { FileKeyEncoded, FileKeyParts } from "../keys";
+import type { FileKey } from "../file-key";
 
 export type UploadTransport = "direct" | "proxy";
 export type UploadMode = "single" | "multipart";
@@ -37,12 +37,12 @@ export interface StorageAdapter {
   recommendations?: StorageAdapterRecommendations;
 
   // Build or validate storage key for this adapter (apply storageKeyPrefix)
-  resolveStorageKey(input: { fileKey: FileKeyEncoded; fileKeyParts: FileKeyParts }): string;
+  resolveStorageKey(input: { provider: string; fileKey: FileKey }): string;
 
   // Create an upload session and decide strategy
   initUpload(input: {
-    fileKey: FileKeyEncoded;
-    fileKeyParts: FileKeyParts;
+    provider: string;
+    fileKey: FileKey;
     sizeBytes: bigint;
     contentType: string;
     checksum?: UploadChecksum | null;

@@ -67,8 +67,8 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
             return {
               shouldNotify: true as const,
               payload: {
-                fileKey: upload.fileKey,
-                fileKeyParts: payload.fileKeyParts,
+                provider: upload.provider,
+                fileKey: upload.key,
                 uploadId: payload.uploadId,
                 uploaderId: upload.uploaderId,
                 sizeBytes: Number(upload.expectedSizeBytes),

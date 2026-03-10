@@ -1,4 +1,4 @@
-import type { FileKeyEncoded, FileKeyParts } from "./keys";
+import type { FileKey } from "./file-key";
 import type {
   StorageAdapter,
   StorageAdapterLimits,
@@ -6,8 +6,8 @@ import type {
 } from "./storage/types";
 
 export type FileHookPayload = {
-  fileKey: FileKeyEncoded;
-  fileKeyParts: FileKeyParts;
+  provider: string;
+  fileKey: FileKey;
   uploadId?: string;
   uploaderId?: string | null;
   sizeBytes: number;
@@ -16,8 +16,8 @@ export type FileHookPayload = {
 
 export type UploadTimeoutPayload = {
   uploadId: string;
-  fileKey: FileKeyEncoded;
-  fileKeyParts: FileKeyParts;
+  provider: string;
+  fileKey: FileKey;
 };
 
 export interface UploadFragmentConfig {

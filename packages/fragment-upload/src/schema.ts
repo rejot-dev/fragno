@@ -5,7 +5,8 @@ export const uploadSchema = schema("upload", (s) => {
     .addTable("file", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("fileKey", column("string"))
+        .addColumn("key", column("string"))
+        .addColumn("provider", column("string"))
         .addColumn("uploaderId", column("string").nullable())
         .addColumn("filename", column("string"))
         .addColumn("sizeBytes", column("bigint"))
@@ -15,8 +16,7 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("tags", column("json").nullable())
         .addColumn("metadata", column("json").nullable())
         .addColumn("status", column("string"))
-        .addColumn("storageProvider", column("string"))
-        .addColumn("storageKey", column("string"))
+        .addColumn("objectKey", column("string"))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -29,10 +29,15 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("deletedAt", column("timestamp").nullable())
         .addColumn("errorCode", column("string").nullable())
         .addColumn("errorMessage", column("string").nullable())
-        .createIndex("idx_file_key", ["fileKey"], { unique: true })
-        .createIndex("idx_file_key_status", ["fileKey", "status"])
-        .createIndex("idx_file_key_uploaderId", ["fileKey", "uploaderId"])
-        .createIndex("idx_file_key_status_uploaderId", ["fileKey", "status", "uploaderId"])
+        .createIndex("idx_file_provider_key", ["provider", "key"], { unique: true })
+        .createIndex("idx_file_provider_key_status", ["provider", "key", "status"])
+        .createIndex("idx_file_provider_key_uploaderId", ["provider", "key", "uploaderId"])
+        .createIndex("idx_file_provider_key_status_uploaderId", [
+          "provider",
+          "key",
+          "status",
+          "uploaderId",
+        ])
         .createIndex("idx_file_uploaderId", ["uploaderId"])
         .createIndex("idx_file_createdAt", ["createdAt"])
         .createIndex("idx_file_status_createdAt", ["status", "createdAt"]);
@@ -40,7 +45,8 @@ export const uploadSchema = schema("upload", (s) => {
     .addTable("upload", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("fileKey", column("string"))
+        .addColumn("key", column("string"))
+        .addColumn("provider", column("string"))
         .addColumn("uploaderId", column("string").nullable())
         .addColumn("filename", column("string"))
         .addColumn("expectedSizeBytes", column("bigint"))
@@ -51,8 +57,7 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("metadata", column("json").nullable())
         .addColumn("status", column("string"))
         .addColumn("strategy", column("string"))
-        .addColumn("storageProvider", column("string"))
-        .addColumn("storageKey", column("string"))
+        .addColumn("objectKey", column("string"))
         .addColumn("storageUploadId", column("string").nullable())
         .addColumn("uploadUrl", column("string").nullable())
         .addColumn("uploadHeaders", column("json").nullable())
@@ -71,7 +76,7 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("completedAt", column("timestamp").nullable())
         .addColumn("errorCode", column("string").nullable())
         .addColumn("errorMessage", column("string").nullable())
-        .createIndex("idx_upload_file_key", ["fileKey"])
+        .createIndex("idx_upload_provider_key", ["provider", "key"])
         .createIndex("idx_upload_status", ["status"])
         .createIndex("idx_upload_expiresAt", ["expiresAt"]);
     })

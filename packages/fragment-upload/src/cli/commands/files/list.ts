@@ -6,13 +6,13 @@ export const filesListCommand = define({
   description: "List files",
   args: {
     ...baseArgs,
+    provider: {
+      type: "string",
+      description: "Filter by storage provider",
+    },
     prefix: {
       type: "string",
-      description: "File key prefix (must end with '.')",
-    },
-    "prefix-parts": {
-      type: "string",
-      description: "File key prefix parts as JSON array",
+      description: "File key prefix",
     },
     cursor: {
       type: "string",
@@ -34,11 +34,11 @@ export const filesListCommand = define({
   run: async (ctx) => {
     const prefix = resolvePrefixValue({
       prefix: ctx.values["prefix"] as string | undefined,
-      prefixParts: ctx.values["prefix-parts"] as string | undefined,
     });
 
     const client = createClientFromContext(ctx);
     const response = await client.listFiles({
+      provider: ctx.values["provider"] as string | undefined,
       prefix,
       cursor: ctx.values["cursor"] as string | undefined,
       pageSize: ctx.values["page-size"] as number | undefined,

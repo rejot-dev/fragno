@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import type { UploadClient } from "~/uploads/upload-client";
+import {
+  buildUploadFileKey,
+  buildUploadKeyPrefix,
+  validateUploadKeySegment,
+} from "./upload-panel-state";
 
 type UploadProgress = {
   bytesUploaded: number;
@@ -10,63 +15,9 @@ type UploadProgress = {
 
 type FileListItem = {
   fileKey: string;
-  fileKeyParts: (string | number)[];
+  provider: string;
   filename: string;
   status: string;
-};
-
-const base64UrlEncode = (value: string): string => {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-};
-
-const encodePart = (part: string | number): string => {
-  if (typeof part === "string") {
-    return `s~${base64UrlEncode(part)}`;
-  }
-
-  if (!Number.isFinite(part)) {
-    throw new Error("File key number parts must be finite");
-  }
-
-  const serialized = String(part);
-  if (serialized.includes(".") || serialized.includes("e") || serialized.includes("E")) {
-    throw new Error("File key number parts must be integers");
-  }
-
-  return `n~${serialized}`;
-};
-
-const encodeFileKey = (parts: (string | number)[]) => {
-  if (parts.length === 0) {
-    return "";
-  }
-
-  return parts.map((part) => encodePart(part)).join(".");
-};
-
-const encodeFileKeyPrefix = (parts: (string | number)[]) => {
-  if (parts.length === 0) {
-    return "";
-  }
-
-  return `${encodeFileKey(parts)}.`;
-};
-
-const parseKeyPart = (value: string) => {
-  if (!value) {
-    return null;
-  }
-  const asNumber = Number(value);
-  if (!Number.isNaN(asNumber) && value.trim() !== "") {
-    return asNumber;
-  }
-  return value;
 };
 
 export type UploadPanelProps = {
@@ -74,6 +25,7 @@ export type UploadPanelProps = {
   description: string;
   client: UploadClient;
   defaultCollection: string;
+  defaultProvider: string;
   accent: "amber" | "emerald" | "sky";
 };
 
@@ -88,12 +40,14 @@ export function UploadPanel({
   description,
   client,
   defaultCollection,
+  defaultProvider,
   accent,
 }: UploadPanelProps) {
   const { useFiles, useUploadHelpers } = client;
 
   const helpers = useUploadHelpers();
   const [file, setFile] = useState<File | null>(null);
+  const [provider, setProvider] = useState(defaultProvider);
   const [collection, setCollection] = useState(defaultCollection);
   const [entityId, setEntityId] = useState("1");
   const [filterByPrefix, setFilterByPrefix] = useState(true);
@@ -101,24 +55,26 @@ export function UploadPanel({
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const collectionError = validateUploadKeySegment("Collection", collection);
+  const entityIdError = validateUploadKeySegment("Entity ID", entityId);
+  const keyPrefixState = useMemo(
+    () =>
+      buildUploadKeyPrefix([
+        { label: "Collection", value: collection },
+        { label: "Entity ID", value: entityId },
+      ]),
+    [collection, entityId],
+  );
+  const fileNameError = file ? validateUploadKeySegment("File name", file.name) : null;
 
-  const prefixParts = useMemo(() => {
-    const parts = [] as (string | number)[];
-    if (collection) {
-      parts.push(collection);
-    }
-    const parsedId = parseKeyPart(entityId);
-    if (parsedId !== null) {
-      parts.push(parsedId);
-    }
-    return parts;
-  }, [collection, entityId]);
+  const keyPrefix = keyPrefixState.keyPrefix;
 
   const prefix =
-    filterByPrefix && prefixParts.length > 0 ? encodeFileKeyPrefix(prefixParts) : undefined;
+    filterByPrefix && !keyPrefixState.error && keyPrefix.length > 0 ? keyPrefix : undefined;
 
   const listResponse = useFiles({
     query: {
+      provider,
       prefix: prefix ?? undefined,
       pageSize: "10",
     },
@@ -132,16 +88,24 @@ export function UploadPanel({
       return;
     }
 
+    const uploadKey = buildUploadFileKey(keyPrefix, file.name);
+    const validationError = keyPrefixState.error ?? uploadKey.error;
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setUploading(true);
     setError(null);
     setSuccess(null);
     setProgress(null);
 
-    const keyParts = [...prefixParts, file.name];
+    const fileKey = uploadKey.fileKey;
 
     try {
       const result = await helpers.createUploadAndTransfer(file, {
-        keyParts,
+        provider,
+        fileKey: fileKey!,
         onProgress: (value: UploadProgress) => setProgress(value),
       });
 
@@ -153,9 +117,12 @@ export function UploadPanel({
     }
   };
 
-  const handleDownload = async (fileKeyParts: (string | number)[], filename: string) => {
+  const handleDownload = async (input: { provider: string; fileKey: string; filename: string }) => {
     try {
-      const response = await helpers.downloadFile(fileKeyParts);
+      const response = await helpers.downloadFile(input.fileKey, {
+        provider: input.provider,
+        method: "content",
+      });
       if (!response.ok) {
         const text = await response.text();
         let message = `Download failed (${response.status})`;
@@ -173,7 +140,7 @@ export function UploadPanel({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename;
+      link.download = input.filename;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -195,12 +162,23 @@ export function UploadPanel({
           </h2>
           <div className="mt-4 grid gap-4">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Provider
+              <input
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                value={provider}
+                onChange={(event) => setProvider(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
               Collection
               <input
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={collection}
                 onChange={(event) => setCollection(event.target.value)}
               />
+              {collectionError ? (
+                <span className="text-xs text-rose-600">{collectionError}</span>
+              ) : null}
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Entity ID
@@ -209,6 +187,9 @@ export function UploadPanel({
                 value={entityId}
                 onChange={(event) => setEntityId(event.target.value)}
               />
+              {entityIdError ? (
+                <span className="text-xs text-rose-600">{entityIdError}</span>
+              ) : null}
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               File
@@ -217,6 +198,9 @@ export function UploadPanel({
                 type="file"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               />
+              {fileNameError ? (
+                <span className="text-xs text-rose-600">{fileNameError}</span>
+              ) : null}
             </label>
 
             <button
@@ -261,7 +245,13 @@ export function UploadPanel({
                 Files
               </h2>
               <p className="mt-2 text-xs text-slate-500">
-                {filterByPrefix && prefix ? `Filtered by ${prefix}` : "Showing latest uploads"}
+                {filterByPrefix
+                  ? keyPrefixState.error
+                    ? "Prefix filter unavailable until the collection and entity ID are valid."
+                    : prefix
+                      ? `Filtered by ${prefix}`
+                      : "Showing latest uploads"
+                  : "Showing latest uploads"}
               </p>
             </div>
             <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -275,6 +265,10 @@ export function UploadPanel({
           </div>
 
           {listResponse.loading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
+
+          {filterByPrefix && keyPrefixState.error ? (
+            <p className="mt-4 text-sm text-rose-600">{keyPrefixState.error}</p>
+          ) : null}
 
           {!listResponse.loading && files.length === 0 && (
             <p className="mt-4 text-sm text-slate-500">No files yet.</p>
@@ -295,7 +289,13 @@ export function UploadPanel({
                   <button
                     type="button"
                     className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"
-                    onClick={() => handleDownload(fileItem.fileKeyParts, fileItem.filename)}
+                    onClick={() =>
+                      handleDownload({
+                        provider: fileItem.provider,
+                        fileKey: fileItem.fileKey,
+                        filename: fileItem.filename,
+                      })
+                    }
                   >
                     Download
                   </button>

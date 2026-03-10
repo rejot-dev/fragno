@@ -4,11 +4,16 @@ import type {
   UploadFragmentResolvedConfig,
   UploadTimeoutPayload,
 } from "../config";
-import type { FileKeyEncoded, FileKeyParts } from "../keys";
 import { uploadSchema } from "../schema";
 import type { FileStatus } from "../types";
 
+export type FileByKeyInput = {
+  provider: string;
+  fileKey: string;
+};
+
 export type ListFilesInput = {
+  provider?: string;
   prefix?: string;
   pageSize: number;
   cursor?: string;
@@ -34,22 +39,26 @@ type UploadServiceContext = DatabaseServiceContext<UploadHooks>;
 
 export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
   return {
-    findFileByKey: function (this: UploadServiceContext, fileKey: FileKeyEncoded) {
+    findFileByKey: function (this: UploadServiceContext, input: FileByKeyInput) {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", input.provider), eb("key", "=", input.fileKey)),
+            ),
           ),
         )
         .transformRetrieve(([file]) => file ?? null)
         .build();
     },
 
-    getFileByKey: function (this: UploadServiceContext, fileKey: FileKeyEncoded) {
+    getFileByKey: function (this: UploadServiceContext, input: FileByKeyInput) {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", input.provider), eb("key", "=", input.fileKey)),
+            ),
           ),
         )
         .transformRetrieve(([file]) => {
@@ -66,48 +75,71 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
         .retrieve((uow) =>
           uow.findWithCursor("file", (b) => {
             const prefix = input.prefix ?? "";
+
             if (input.status && input.uploaderId) {
               const status = input.status;
               const uploaderId = input.uploaderId;
-              const query = b.whereIndex("idx_file_key_status_uploaderId", (eb) =>
+              const query = b.whereIndex("idx_file_provider_key_status_uploaderId", (eb) =>
                 eb.and(
-                  eb("fileKey", "starts with", prefix),
+                  input.provider
+                    ? eb("provider", "=", input.provider)
+                    : eb("provider", "starts with", ""),
+                  eb("key", "starts with", prefix),
                   eb("status", "=", status),
                   eb("uploaderId", "=", uploaderId),
                 ),
               );
               const ordered = query
-                .orderByIndex("idx_file_key_status_uploaderId", "asc")
+                .orderByIndex("idx_file_provider_key_status_uploaderId", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
             if (input.status) {
               const status = input.status;
-              const query = b.whereIndex("idx_file_key_status", (eb) =>
-                eb.and(eb("fileKey", "starts with", prefix), eb("status", "=", status)),
+              const query = b.whereIndex("idx_file_provider_key_status", (eb) =>
+                eb.and(
+                  input.provider
+                    ? eb("provider", "=", input.provider)
+                    : eb("provider", "starts with", ""),
+                  eb("key", "starts with", prefix),
+                  eb("status", "=", status),
+                ),
               );
               const ordered = query
-                .orderByIndex("idx_file_key_status", "asc")
+                .orderByIndex("idx_file_provider_key_status", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
             if (input.uploaderId) {
               const uploaderId = input.uploaderId;
-              const query = b.whereIndex("idx_file_key_uploaderId", (eb) =>
-                eb.and(eb("fileKey", "starts with", prefix), eb("uploaderId", "=", uploaderId)),
+              const query = b.whereIndex("idx_file_provider_key_uploaderId", (eb) =>
+                eb.and(
+                  input.provider
+                    ? eb("provider", "=", input.provider)
+                    : eb("provider", "starts with", ""),
+                  eb("key", "starts with", prefix),
+                  eb("uploaderId", "=", uploaderId),
+                ),
               );
               const ordered = query
-                .orderByIndex("idx_file_key_uploaderId", "asc")
+                .orderByIndex("idx_file_provider_key_uploaderId", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
-            const query = b.whereIndex("idx_file_key", (eb) =>
-              eb("fileKey", "starts with", prefix),
+            const query = b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(
+                input.provider
+                  ? eb("provider", "=", input.provider)
+                  : eb("provider", "starts with", ""),
+                eb("key", "starts with", prefix),
+              ),
             );
-            const ordered = query.orderByIndex("idx_file_key", "asc").pageSize(input.pageSize);
+            const ordered = query
+              .orderByIndex("idx_file_provider_key", "asc")
+              .pageSize(input.pageSize);
             return input.cursor ? ordered.after(input.cursor) : ordered;
           }),
         )
@@ -117,14 +149,16 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
 
     updateFile: function (
       this: UploadServiceContext,
-      fileKey: FileKeyEncoded,
+      fileByKey: FileByKeyInput,
       input: UpdateFileInput,
     ) {
       const now = new Date();
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", fileByKey.provider), eb("key", "=", fileByKey.fileKey)),
+            ),
           ),
         )
         .mutate(({ uow, retrieveResult: [file] }) => {
@@ -164,15 +198,16 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
 
     markFileDeleted: function (
       this: UploadServiceContext,
-      fileKey: FileKeyEncoded,
-      fileKeyParts: FileKeyParts,
+      fileByKey: FileByKeyInput,
       uploadId?: string,
     ) {
       const now = new Date();
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", fileByKey.provider), eb("key", "=", fileByKey.fileKey)),
+            ),
           ),
         )
         .mutate(({ uow, retrieveResult: [file] }) => {
@@ -202,8 +237,8 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
           );
 
           uow.triggerHook("onFileDeleted", {
-            fileKey: file.fileKey,
-            fileKeyParts,
+            provider: file.provider,
+            fileKey: file.key,
             uploadId,
             uploaderId: file.uploaderId,
             sizeBytes: Number(file.sizeBytes),

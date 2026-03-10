@@ -1,19 +1,24 @@
 ---
 title: Key System
-description: Encode file keys for stable IDs and prefix queries.
+description: Plain file keys and prefix filtering.
 ---
 
 ## File keys
 
-Every file has a `fileKey` that is derived from an ordered list of `fileKeyParts`. Keys are URL-safe
-and lexicographically sortable, which makes prefix queries reliable.
+Every file has a plain string `fileKey`. Use readable slash-delimited values that reflect your
+domain model:
 
 ```ts
-import { encodeFileKey, decodeFileKey } from "@fragno-dev/upload";
-
-const key = encodeFileKey(["users", 42, "avatar"]);
-const parts = decodeFileKey(key);
+const fileKey = "users/42/avatar";
 ```
+
+Validation rules:
+
+- `fileKey` must be non-empty.
+- Path segments are `/` delimited.
+- Empty segments are rejected.
+- `.` and `..` segments are rejected.
+- Control characters are rejected.
 
 ## Prefix queries
 
@@ -24,9 +29,8 @@ const { useFiles } = uploadClient;
 
 const { data } = useFiles({
   query: {
-    prefix: encodeFileKey(["users", 42]) + ".",
+    provider: "r2-binding",
+    prefix: "users/42/",
   },
 });
 ```
-
-Prefix values must end with a trailing `.` to avoid partial matches.
