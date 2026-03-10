@@ -7,11 +7,11 @@ import { promises as fs } from "node:fs";
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
 import { createFilesystemStorageAdapter } from "../storage/fs";
-import { encodeFileKeyPrefix } from "../keys";
 
 describe("upload file routes", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
   const storage = createFilesystemStorageAdapter({ rootDir });
+  const provider = storage.name;
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
@@ -41,6 +41,7 @@ describe("upload file routes", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("hello")], "hello.txt", { type: "text/plain" });
     form.set("file", file);
+    form.set("provider", provider);
     form.set("keyParts", JSON.stringify(["users", 1, "avatar"]));
     form.set("metadata", JSON.stringify({ purpose: "test" }));
     form.set("tags", JSON.stringify(["profile"]));
@@ -51,15 +52,15 @@ describe("upload file routes", async () => {
     expect(response.data.status).toBe("ready");
     const { fileKey } = response.data;
 
-    const getResponse = await fragment.callRoute("GET", "/files/:fileKey", {
-      pathParams: { fileKey },
+    const getResponse = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: fileKey },
     });
     assert(getResponse.type === "json");
     expect(getResponse.data.fileKey).toBe(fileKey);
     expect(getResponse.data.filename).toBe("hello.txt");
 
-    const contentResponse = await fragment.callRouteRaw("GET", "/files/:fileKey/content", {
-      pathParams: { fileKey },
+    const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: fileKey },
     });
     expect(contentResponse.status).toBe(200);
     expect(await contentResponse.text()).toBe("hello");
@@ -70,6 +71,7 @@ describe("upload file routes", async () => {
       const form = new FormData();
       const file = new File([Buffer.from(name)], `${name}.txt`, { type: "text/plain" });
       form.set("file", file);
+      form.set("provider", provider);
       form.set("keyParts", JSON.stringify(keyParts));
       return form;
     };
@@ -86,28 +88,29 @@ describe("upload file routes", async () => {
 
     const response = await fragment.callRoute("GET", "/files", {
       query: {
-        prefix: encodeFileKeyPrefix(["users", 1]),
+        prefix: "users/1/",
         pageSize: "1",
       },
     });
     assert(response.type === "json");
     expect(response.data.files).toHaveLength(1);
     expect(response.data.hasNextPage).toBe(true);
-    expect(response.data.files[0]?.fileKeyParts[0]).toBe("users");
+    expect(response.data.files[0]?.fileKey.startsWith("users/1/")).toBe(true);
   });
 
-  it("GET /files/:fileKey/download-url returns unsupported for filesystem adapter", async () => {
+  it("GET /files/by-key/download-url returns unsupported for filesystem adapter", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("hello")], "hello.txt", { type: "text/plain" });
     form.set("file", file);
+    form.set("provider", provider);
     form.set("keyParts", JSON.stringify(["users", 3, "avatar"]));
 
     const response = await fragment.callRoute("POST", "/files", { body: form });
     assert(response.type === "json");
     const { fileKey } = response.data;
 
-    const downloadResponse = await fragment.callRoute("GET", "/files/:fileKey/download-url", {
-      pathParams: { fileKey },
+    const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
+      query: { provider, key: fileKey },
     });
     assert(downloadResponse.type === "error");
     expect(downloadResponse.error.code).toBe("SIGNED_URL_UNSUPPORTED");

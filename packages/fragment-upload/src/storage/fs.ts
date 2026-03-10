@@ -3,7 +3,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
-import { encodeFileKey, type FileKeyEncoded, type FileKeyParts } from "../keys";
+import { assertFileKey } from "../file-key";
 import type { StorageAdapter } from "./types";
 
 const DEFAULT_MAX_STORAGE_KEY_LENGTH_BYTES = 1024;
@@ -33,12 +33,19 @@ const normalizePrefix = (prefix: string): string => {
   return segments.join("/");
 };
 
-const resolveStorageKeyFromParts = (input: {
-  fileKey: FileKeyEncoded;
-  fileKeyParts: FileKeyParts;
-}): string => {
-  const encoded = input.fileKeyParts.length > 0 ? encodeFileKey(input.fileKeyParts) : input.fileKey;
-  return encoded.length > 0 ? encoded.split(".").join("/") : "";
+const normalizeProvider = (provider: string): string => {
+  const normalized = provider.trim();
+  if (
+    normalized.length === 0 ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.includes("/") ||
+    normalized.includes("\\")
+  ) {
+    throw new Error("Invalid provider");
+  }
+
+  return normalized;
 };
 
 export function createFilesystemStorageAdapter(
@@ -52,9 +59,10 @@ export function createFilesystemStorageAdapter(
     options.uploadExpiresInSeconds ?? DEFAULT_UPLOAD_EXPIRES_IN_SECONDS;
   const defaultContentType = options.defaultContentType ?? DEFAULT_CONTENT_TYPE;
 
-  const resolveStorageKey = (input: { fileKey: FileKeyEncoded; fileKeyParts: FileKeyParts }) => {
-    const baseKey = resolveStorageKeyFromParts(input);
-    const storageKey = [storageKeyPrefix, baseKey].filter(Boolean).join("/");
+  const resolveStorageKey = (input: { provider: string; fileKey: string }) => {
+    const provider = normalizeProvider(input.provider);
+    const fileKey = assertFileKey(input.fileKey);
+    const storageKey = [storageKeyPrefix, provider, fileKey].filter(Boolean).join("/");
 
     if (storageKey.length === 0) {
       throw new Error("Storage key cannot be empty");
@@ -101,8 +109,8 @@ export function createFilesystemStorageAdapter(
       uploadExpiresInSeconds,
     },
     resolveStorageKey,
-    initUpload: async ({ fileKey, fileKeyParts }) => {
-      const storageKey = resolveStorageKey({ fileKey, fileKeyParts });
+    initUpload: async ({ provider, fileKey }) => {
+      const storageKey = resolveStorageKey({ provider, fileKey });
       await fs.mkdir(rootDir, { recursive: true });
 
       return {

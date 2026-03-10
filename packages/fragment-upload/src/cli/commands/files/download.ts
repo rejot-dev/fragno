@@ -3,20 +3,25 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
-import { baseArgs, createClientFromContext, resolveFileKeyValue } from "../../utils/options.js";
+import {
+  baseArgs,
+  createClientFromContext,
+  resolveFileKeyValue,
+  resolveProviderValue,
+} from "../../utils/options.js";
 
 export const filesDownloadCommand = define({
   name: "download",
   description: "Download file contents",
   args: {
     ...baseArgs,
+    provider: {
+      type: "string",
+      description: "Storage provider",
+    },
     "file-key": {
       type: "string",
-      description: "File key (encoded)",
-    },
-    "key-parts": {
-      type: "string",
-      description: "File key parts as JSON array",
+      description: "File key",
     },
     output: {
       type: "string",
@@ -29,9 +34,9 @@ export const filesDownloadCommand = define({
     },
   },
   run: async (ctx) => {
+    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
-      keyParts: ctx.values["key-parts"] as string | undefined,
     });
 
     const outputPath = ctx.values["output"] as string | undefined;
@@ -45,7 +50,7 @@ export const filesDownloadCommand = define({
 
     let response: Response;
     try {
-      const download = (await client.getDownloadUrl(resolvedKey.fileKey)) as {
+      const download = (await client.getDownloadUrl(provider, resolvedKey.fileKey)) as {
         url: string;
         headers?: Record<string, string>;
       };
@@ -61,7 +66,7 @@ export const filesDownloadCommand = define({
       if (code !== "SIGNED_URL_UNSUPPORTED") {
         throw error;
       }
-      response = await client.downloadContent(resolvedKey.fileKey);
+      response = await client.downloadContent(provider, resolvedKey.fileKey);
     }
 
     if (!response.body) {

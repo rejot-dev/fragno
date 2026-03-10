@@ -1,4 +1,3 @@
-import { encodeFileKey, encodeFileKeyPrefix, type FileKeyParts } from "../../keys.js";
 import { createClient, type ClientConfig } from "./client.js";
 
 type CommandContext = { values: Record<string, unknown> };
@@ -133,75 +132,24 @@ export const parseJsonValue = (label: string, value: string | undefined) => {
   }
 };
 
-export const parseFileKeyParts = (label: string, value: string | undefined): FileKeyParts => {
-  const parsed = parseJsonValue(label, value);
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${label} must be a JSON array`);
-  }
-  for (const part of parsed) {
-    if (typeof part !== "string" && typeof part !== "number") {
-      throw new Error(`${label} must contain only strings or numbers`);
-    }
-  }
-  return parsed as FileKeyParts;
-};
-
-export const resolveFileKeyValue = (input: {
-  fileKey: string | undefined;
-  keyParts: string | undefined;
-}) => {
-  if (input.fileKey && input.keyParts) {
-    throw new Error("Provide either --file-key or --key-parts, not both.");
-  }
-
+export const resolveFileKeyValue = (input: { fileKey: string | undefined }) => {
   if (input.fileKey) {
-    return { fileKey: input.fileKey, keyParts: undefined };
+    return { fileKey: input.fileKey };
   }
 
-  if (input.keyParts) {
-    const parts = parseFileKeyParts("key-parts", input.keyParts);
-    return { fileKey: encodeFileKey(parts), keyParts: parts };
-  }
-
-  throw new Error("Missing file key. Provide --file-key or --key-parts.");
+  throw new Error("Missing file key. Provide --file-key.");
 };
 
-export const resolveOptionalFileKeyValue = (input: {
-  fileKey: string | undefined;
-  keyParts: string | undefined;
-}) => {
-  if (input.fileKey && input.keyParts) {
-    throw new Error("Provide either --file-key or --key-parts, not both.");
-  }
-
-  if (input.fileKey) {
-    return { fileKey: input.fileKey, keyParts: undefined };
-  }
-
-  if (input.keyParts) {
-    const parts = parseFileKeyParts("key-parts", input.keyParts);
-    return { fileKey: encodeFileKey(parts), keyParts: parts };
-  }
-
-  return { fileKey: undefined, keyParts: undefined };
+export const resolveOptionalFileKeyValue = (input: { fileKey: string | undefined }) => {
+  return { fileKey: input.fileKey };
 };
 
-export const resolvePrefixValue = (input: {
-  prefix: string | undefined;
-  prefixParts: string | undefined;
-}) => {
-  if (input.prefix && input.prefixParts) {
-    throw new Error("Provide either --prefix or --prefix-parts, not both.");
+export const resolvePrefixValue = (input: { prefix: string | undefined }) => input.prefix;
+
+export const resolveProviderValue = (provider: string | undefined) => {
+  if (!provider) {
+    throw new Error("Missing provider. Provide --provider.");
   }
 
-  if (input.prefix) {
-    return input.prefix;
-  }
-
-  if (input.prefixParts) {
-    const parts = parseFileKeyParts("prefix-parts", input.prefixParts);
-    return encodeFileKeyPrefix(parts);
-  }
-
-  return undefined;
+  return provider;
 };

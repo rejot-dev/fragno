@@ -3,13 +3,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { encodeFileKey, type FileKeyParts } from "../../keys";
 import type { StorageAdapter } from "../types";
 import { createFilesystemStorageAdapter } from "../fs";
 
 type AdapterContractContext = {
   adapter: StorageAdapter;
-  fileKeyParts: FileKeyParts;
+  provider: string;
   fileKey: string;
   contentType: string;
   sizeBytes: bigint;
@@ -35,16 +34,16 @@ export function describeStorageAdapterContract(
     });
 
     test("initUpload returns a strategy compatible with capabilities", async () => {
-      const { adapter, fileKey, fileKeyParts, sizeBytes, contentType } = context;
+      const { adapter, provider, fileKey, sizeBytes, contentType } = context;
       const result = await adapter.initUpload({
+        provider,
         fileKey,
-        fileKeyParts,
         sizeBytes,
         contentType,
         metadata: null,
       });
 
-      const resolved = adapter.resolveStorageKey({ fileKey, fileKeyParts });
+      const resolved = adapter.resolveStorageKey({ provider, fileKey });
       expect(result.storageKey).toBe(resolved);
       expect(result.expiresAt).toBeInstanceOf(Date);
 
@@ -59,12 +58,12 @@ export function describeStorageAdapterContract(
     });
 
     test("proxy upload writes data and download stream returns it", async () => {
-      const { adapter, fileKey, fileKeyParts, contentType } = context;
+      const { adapter, provider, fileKey, contentType } = context;
       if (!adapter.capabilities.proxyUpload || !adapter.writeStream) {
         return;
       }
 
-      const storageKey = adapter.resolveStorageKey({ fileKey, fileKeyParts });
+      const storageKey = adapter.resolveStorageKey({ provider, fileKey });
       const payload = new TextEncoder().encode(`contract-${randomUUID()}`);
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
@@ -86,7 +85,7 @@ export function describeStorageAdapterContract(
     });
 
     test("signed downloads return urls and expirations when enabled", async () => {
-      const { adapter, fileKey, fileKeyParts } = context;
+      const { adapter, provider, fileKey } = context;
       if (!adapter.capabilities.signedDownload) {
         return;
       }
@@ -95,7 +94,7 @@ export function describeStorageAdapterContract(
         throw new Error("Expected getDownloadUrl when signedDownload is enabled");
       }
 
-      const storageKey = adapter.resolveStorageKey({ fileKey, fileKeyParts });
+      const storageKey = adapter.resolveStorageKey({ provider, fileKey });
       const result = await adapter.getDownloadUrl({
         storageKey,
         expiresInSeconds: 60,
@@ -106,14 +105,14 @@ export function describeStorageAdapterContract(
     });
 
     test("deleteObject removes stored objects", async () => {
-      const { adapter, fileKey, fileKeyParts, contentType } = context;
+      const { adapter, provider, fileKey, contentType } = context;
       if (!adapter.capabilities.proxyUpload || !adapter.writeStream || !adapter.getDownloadStream) {
         return;
       }
 
       const storageKey = adapter.resolveStorageKey({
+        provider,
         fileKey,
-        fileKeyParts,
       });
       const payload = new TextEncoder().encode(`delete-${randomUUID()}`);
       const body = new ReadableStream<Uint8Array>({
@@ -138,12 +137,12 @@ describeStorageAdapterContract("Filesystem", async () => {
     storageKeyPrefix: "uploads",
     uploadExpiresInSeconds: 120,
   });
-  const fileKeyParts: FileKeyParts = ["users", randomUUID(), "avatar"];
+  const provider = "filesystem";
 
   return {
     adapter,
-    fileKeyParts,
-    fileKey: encodeFileKey(fileKeyParts),
+    provider,
+    fileKey: `users/${randomUUID()}/avatar`,
     contentType: "text/plain",
     sizeBytes: 5n,
     cleanup: async () => {
@@ -157,7 +156,7 @@ describeStorageAdapterContract("Filesystem", async () => {
 });
 
 describe("filesystem adapter storage keys", () => {
-  test("uses key parts as path segments and applies prefix", async () => {
+  test("uses provider + file key path segments and applies prefix", async () => {
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-keys-"));
     try {
       const adapter = createFilesystemStorageAdapter({
@@ -165,12 +164,13 @@ describe("filesystem adapter storage keys", () => {
         storageKeyPrefix: "files/uploads",
       });
 
-      const fileKeyParts: FileKeyParts = ["users", 12, "avatar"];
-      const fileKey = encodeFileKey(fileKeyParts);
-      const storageKey = adapter.resolveStorageKey({ fileKey, fileKeyParts });
+      const storageKey = adapter.resolveStorageKey({
+        provider: "r2",
+        fileKey: "users/12/avatar",
+      });
 
       expect(storageKey.startsWith("files/uploads/")).toBe(true);
-      expect(storageKey.split("/").length).toBe(5);
+      expect(storageKey).toBe("files/uploads/r2/users/12/avatar");
     } finally {
       await fs.rm(rootDir, { recursive: true, force: true });
     }

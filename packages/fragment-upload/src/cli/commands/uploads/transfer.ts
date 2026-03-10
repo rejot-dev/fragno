@@ -6,7 +6,8 @@ import {
   baseArgs,
   createClientFromContext,
   parseJsonValue,
-  resolveOptionalFileKeyValue,
+  resolveFileKeyValue,
+  resolveProviderValue,
 } from "../../utils/options.js";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -21,13 +22,13 @@ export const uploadsTransferCommand = define({
       short: "f",
       description: "Path to file",
     },
+    provider: {
+      type: "string",
+      description: "Storage provider",
+    },
     "file-key": {
       type: "string",
-      description: "File key (encoded)",
-    },
-    "key-parts": {
-      type: "string",
-      description: "File key parts as JSON array",
+      description: "File key",
     },
     filename: {
       type: "string",
@@ -64,14 +65,10 @@ export const uploadsTransferCommand = define({
       throw new Error("Missing --file");
     }
 
-    const resolvedKey = resolveOptionalFileKeyValue({
+    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
+    const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
-      keyParts: ctx.values["key-parts"] as string | undefined,
     });
-
-    if (!resolvedKey.fileKey && !resolvedKey.keyParts) {
-      throw new Error("Missing file key. Provide --file-key or --key-parts.");
-    }
 
     const stats = await fs.stat(filePath);
     const sizeBytes = stats.size;
@@ -84,8 +81,8 @@ export const uploadsTransferCommand = define({
 
     const client = createClientFromContext(ctx);
     const upload = (await client.createUpload({
+      provider,
       fileKey: resolvedKey.fileKey,
-      keyParts: resolvedKey.keyParts,
       filename,
       sizeBytes,
       contentType,

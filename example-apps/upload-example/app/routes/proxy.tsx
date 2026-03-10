@@ -15,6 +15,7 @@ export default function ProxyUploads() {
       description="Stream files through the server to the filesystem adapter. This is a great default for local development."
       client={proxyUploadClient}
       defaultCollection="proxy"
+      defaultProvider="filesystem"
       accent="emerald"
     />
   );

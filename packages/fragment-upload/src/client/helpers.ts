@@ -1,4 +1,3 @@
-import { encodeFileKey, type FileKeyEncoded, type FileKeyParts } from "../keys";
 import type { UploadChecksum } from "../storage/types";
 import type { FileMetadata, FileVisibility, UploadStrategy } from "../types";
 
@@ -10,8 +9,8 @@ export type UploadProgress = {
 };
 
 export type CreateUploadAndTransferOptions = {
-  keyParts?: FileKeyParts;
-  fileKey?: FileKeyEncoded;
+  provider: string;
+  fileKey: string;
   filename?: string;
   contentType?: string;
   checksum?: UploadChecksum | null;
@@ -20,6 +19,13 @@ export type CreateUploadAndTransferOptions = {
   uploaderId?: string;
   metadata?: Record<string, unknown>;
   onProgress?: (progress: UploadProgress) => void;
+};
+
+export type DownloadMethod = "signed-url" | "content";
+
+export type DownloadFileOptions = {
+  provider: string;
+  method: DownloadMethod;
 };
 
 export type UploadCreateResponse = {
@@ -46,10 +52,16 @@ export type UploadHelpers = {
     file: Blob,
     options: CreateUploadAndTransferOptions,
   ) => Promise<{ upload: UploadCreateResponse; file: FileMetadata }>;
-  downloadFile: (fileKeyOrParts: FileKeyEncoded | FileKeyParts) => Promise<Response>;
+  downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
 };
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
+const PROXY_UPLOAD_STRATEGY_HINT =
+  "Server selected proxy upload strategy for this file (no direct upload URL was returned). If you expected direct-to-storage upload, your active provider/config does not support direct upload for this request.";
+const PROXY_UPLOAD_RECOVERY_HINT =
+  "Verify the /uploads/:uploadId/content endpoint is reachable from the client, or switch provider/config so /uploads returns a direct strategy.";
+const DOWNLOAD_METHOD_HINT =
+  "Pick the download method explicitly: use 'signed-url' for GET /files/by-key/download-url, otherwise use 'content' for GET /files/by-key/content.";
 
 const mergeHeaders = (base?: HeadersInit, next?: HeadersInit) => {
   const merged = new Headers(base ?? undefined);
@@ -94,6 +106,129 @@ const readJsonSafely = async (response: Response) => {
     return null;
   }
 };
+
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+
+  return "Unknown network error";
+};
+
+const readMessageFromPayload = (payload: unknown): string | null => {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string" &&
+    payload.message.length > 0
+  ) {
+    return payload.message;
+  }
+
+  return null;
+};
+
+const toAbsoluteUrl = (url: string): URL | null => {
+  try {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return new URL(url, window.location.origin);
+    }
+
+    return new URL(url, "http://fragno.local");
+  } catch {
+    return null;
+  }
+};
+
+const validateProxyContentUrl = (url: string): string | null => {
+  const parsed = toAbsoluteUrl(url);
+  if (!parsed) {
+    return `Proxy upload endpoint '${url}' is not a valid URL.`;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `Proxy upload endpoint '${url}' must use http:// or https://.`;
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.location?.protocol === "https:" &&
+    parsed.protocol === "http:"
+  ) {
+    return `Proxy upload endpoint '${url}' uses http:// on a https:// page.`;
+  }
+
+  return null;
+};
+
+const buildProxyUploadErrorMessage = (input: {
+  endpointUrl: string;
+  status?: number;
+  streamError?: unknown;
+  fallbackError?: unknown;
+}) => {
+  const detailLines: string[] = [];
+  if (typeof input.status === "number") {
+    detailLines.push(`response status ${input.status}`);
+  }
+  if (input.streamError !== undefined) {
+    detailLines.push(`streamed upload error: ${toErrorMessage(input.streamError)}`);
+  }
+  if (input.fallbackError !== undefined) {
+    detailLines.push(`buffered upload error: ${toErrorMessage(input.fallbackError)}`);
+  }
+
+  const details = detailLines.length > 0 ? ` Details: ${detailLines.join(" | ")}.` : "";
+  return `${PROXY_UPLOAD_STRATEGY_HINT} Proxy upload to '${input.endpointUrl}' failed.${details} ${PROXY_UPLOAD_RECOVERY_HINT}`;
+};
+
+const buildDownloadRequestErrorMessage = (input: {
+  endpointUrl: string;
+  status?: number;
+  payload?: unknown;
+  requestError?: unknown;
+  hint?: string;
+}) => {
+  const detailLines: string[] = [];
+  if (typeof input.status === "number") {
+    detailLines.push(`response status ${input.status}`);
+  }
+
+  const payloadMessage = readMessageFromPayload(input.payload);
+  if (payloadMessage) {
+    detailLines.push(`message: ${payloadMessage}`);
+  }
+
+  if (input.requestError !== undefined) {
+    detailLines.push(`request error: ${toErrorMessage(input.requestError)}`);
+  }
+
+  const details = detailLines.length > 0 ? ` Details: ${detailLines.join(" | ")}.` : "";
+  const hint = input.hint ? ` ${input.hint}` : "";
+  return `Download request to '${input.endpointUrl}' failed.${details}${hint}`;
+};
+
+const readErrorCodeFromPayload = (payload: unknown): string | null => {
+  if (payload && typeof payload === "object" && "code" in payload) {
+    const code = (payload as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) {
+      return code;
+    }
+  }
+
+  return null;
+};
+
+const hasText = (value: string | undefined | null): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const buildByKeyQuery = (provider: string, fileKey: string) =>
+  new URLSearchParams({ provider, key: fileKey }).toString();
 
 export const createUploadHelpers = (input: {
   buildUrl: (path: string) => string;
@@ -158,15 +293,19 @@ export const createUploadHelpers = (input: {
       DEFAULT_CONTENT_TYPE;
     const sizeBytes = file.size;
 
-    if (!options.keyParts && !options.fileKey) {
-      throw new Error("File key parts or file key is required");
+    if (!hasText(options.provider)) {
+      throw new Error("Provider is required");
+    }
+
+    if (!hasText(options.fileKey)) {
+      throw new Error("File key is required");
     }
 
     const upload = await fetchJson<UploadCreateResponse>("/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        keyParts: options.keyParts,
+        provider: options.provider,
         fileKey: options.fileKey,
         filename,
         sizeBytes,
@@ -304,6 +443,12 @@ export const createUploadHelpers = (input: {
       throw new Error("Missing proxy content endpoint for upload");
     }
 
+    const proxyContentUrl = buildUrl(upload.upload.contentEndpoint);
+    const proxyUrlValidationError = validateProxyContentUrl(proxyContentUrl);
+    if (proxyUrlValidationError) {
+      throw new Error(`${proxyUrlValidationError} ${PROXY_UPLOAD_RECOVERY_HINT}`);
+    }
+
     const source = file.stream();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -348,19 +493,36 @@ export const createUploadHelpers = (input: {
 
     let proxyResponse: Response;
     try {
-      proxyResponse = await fetcher(buildUrl(upload.upload.contentEndpoint), requestInit);
-    } catch (_error) {
-      const fallbackResponse = await fetcher(
-        buildUrl(upload.upload.contentEndpoint),
-        buildRequestInit(defaultOptions, {
-          method: "PUT",
-          headers: { "Content-Type": DEFAULT_CONTENT_TYPE },
-          body: file,
-        }),
-      );
+      proxyResponse = await fetcher(proxyContentUrl, requestInit);
+    } catch (streamError) {
+      let fallbackResponse: Response;
+      try {
+        fallbackResponse = await fetcher(
+          proxyContentUrl,
+          buildRequestInit(defaultOptions, {
+            method: "PUT",
+            headers: { "Content-Type": DEFAULT_CONTENT_TYPE },
+            body: file,
+          }),
+        );
+      } catch (fallbackError) {
+        throw new Error(
+          buildProxyUploadErrorMessage({
+            endpointUrl: proxyContentUrl,
+            streamError,
+            fallbackError,
+          }),
+        );
+      }
 
       if (!fallbackResponse.ok) {
-        throw new Error(`Proxy upload failed (${fallbackResponse.status})`);
+        throw new Error(
+          buildProxyUploadErrorMessage({
+            endpointUrl: proxyContentUrl,
+            status: fallbackResponse.status,
+            streamError,
+          }),
+        );
       }
 
       options.onProgress?.({
@@ -374,7 +536,12 @@ export const createUploadHelpers = (input: {
     }
 
     if (!proxyResponse.ok) {
-      throw new Error(`Proxy upload failed (${proxyResponse.status})`);
+      throw new Error(
+        buildProxyUploadErrorMessage({
+          endpointUrl: proxyContentUrl,
+          status: proxyResponse.status,
+        }),
+      );
     }
 
     const proxyMetadata = (await proxyResponse.json()) as FileMetadata;
@@ -382,44 +549,124 @@ export const createUploadHelpers = (input: {
     return { upload, file: proxyMetadata };
   };
 
-  const downloadFile: UploadHelpers["downloadFile"] = async (fileKeyOrParts) => {
-    const fileKey = Array.isArray(fileKeyOrParts) ? encodeFileKey(fileKeyOrParts) : fileKeyOrParts;
+  const downloadFile: UploadHelpers["downloadFile"] = async (fileKey, options) => {
+    if (!hasText(fileKey)) {
+      throw new Error("File key is required");
+    }
 
-    const downloadUrlResponse = await fetcher(
-      buildUrl(`/files/${fileKey}/download-url`),
-      buildRequestInit(defaultOptions, { method: "GET" }),
-    );
+    if (!options || !hasText(options.provider)) {
+      throw new Error("Download provider is required");
+    }
 
-    if (downloadUrlResponse.ok) {
+    if (!options || (options.method !== "signed-url" && options.method !== "content")) {
+      throw new Error(`Download method is required. ${DOWNLOAD_METHOD_HINT}`);
+    }
+
+    const byKeyQuery = buildByKeyQuery(options.provider, fileKey);
+
+    if (options.method === "signed-url") {
+      const downloadUrlEndpoint = buildUrl(`/files/by-key/download-url?${byKeyQuery}`);
+
+      let downloadUrlResponse: Response;
+      try {
+        downloadUrlResponse = await fetcher(
+          downloadUrlEndpoint,
+          buildRequestInit(defaultOptions, { method: "GET" }),
+        );
+      } catch (error) {
+        throw new Error(
+          buildDownloadRequestErrorMessage({
+            endpointUrl: downloadUrlEndpoint,
+            requestError: error,
+          }),
+        );
+      }
+
+      if (!downloadUrlResponse.ok) {
+        const errorPayload = await readJsonSafely(downloadUrlResponse);
+        const errorCode = readErrorCodeFromPayload(errorPayload);
+        const hint =
+          errorCode === "SIGNED_URL_UNSUPPORTED"
+            ? "Requested method 'signed-url' is unsupported by this storage adapter. This is a programming error. Use method 'content' when streaming downloads are available."
+            : undefined;
+        throw new Error(
+          buildDownloadRequestErrorMessage({
+            endpointUrl: downloadUrlEndpoint,
+            status: downloadUrlResponse.status,
+            payload: errorPayload,
+            hint,
+          }),
+        );
+      }
+
       const payload = (await downloadUrlResponse.json()) as {
         url: string;
         headers?: Record<string, string>;
       };
 
-      return fetcher(payload.url, {
-        method: "GET",
-        headers: payload.headers,
-      });
+      let response: Response;
+      try {
+        response = await fetcher(payload.url, {
+          method: "GET",
+          headers: payload.headers,
+        });
+      } catch (error) {
+        throw new Error(
+          buildDownloadRequestErrorMessage({
+            endpointUrl: payload.url,
+            requestError: error,
+          }),
+        );
+      }
+
+      if (!response.ok) {
+        const payloadError = await readJsonSafely(response);
+        throw new Error(
+          buildDownloadRequestErrorMessage({
+            endpointUrl: payload.url,
+            status: response.status,
+            payload: payloadError,
+          }),
+        );
+      }
+
+      return response;
     }
 
-    const errorPayload = await readJsonSafely(downloadUrlResponse);
-    const errorCode =
-      typeof errorPayload === "object" && errorPayload
-        ? (errorPayload as { code?: string }).code
-        : undefined;
-
-    if (errorCode !== "SIGNED_URL_UNSUPPORTED") {
-      const message =
-        typeof errorPayload === "object" && errorPayload && "message" in errorPayload
-          ? String((errorPayload as { message?: string }).message)
-          : `Download failed (${downloadUrlResponse.status})`;
-      throw new Error(message);
+    const contentEndpoint = buildUrl(`/files/by-key/content?${byKeyQuery}`);
+    let contentResponse: Response;
+    try {
+      contentResponse = await fetcher(
+        contentEndpoint,
+        buildRequestInit(defaultOptions, { method: "GET" }),
+      );
+    } catch (error) {
+      throw new Error(
+        buildDownloadRequestErrorMessage({
+          endpointUrl: contentEndpoint,
+          requestError: error,
+        }),
+      );
     }
 
-    return fetcher(
-      buildUrl(`/files/${fileKey}/content`),
-      buildRequestInit(defaultOptions, { method: "GET" }),
-    );
+    if (!contentResponse.ok) {
+      const contentError = await readJsonSafely(contentResponse);
+      const errorCode = readErrorCodeFromPayload(contentError);
+      const hint =
+        errorCode === "SIGNED_URL_UNSUPPORTED"
+          ? "Requested method 'content' is unsupported by this storage adapter. This is a programming error. Use method 'signed-url' when signed downloads are available."
+          : undefined;
+      throw new Error(
+        buildDownloadRequestErrorMessage({
+          endpointUrl: contentEndpoint,
+          status: contentResponse.status,
+          payload: contentError,
+          hint,
+        }),
+      );
+    }
+
+    return contentResponse;
   };
 
   return {

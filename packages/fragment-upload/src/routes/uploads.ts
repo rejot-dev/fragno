@@ -4,15 +4,17 @@ import { z } from "zod";
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { resolveFileKeyInput } from "../services/helpers";
-import { checksumSchema, fileKeyPartsSchema, fileMetadataSchema, toFileMetadata } from "./shared";
+import { checksumSchema, fileMetadataSchema, toFileMetadata } from "./shared";
 import type { UploadStatus, UploadStrategy } from "../types";
 import type { UploadChecksum } from "../storage/types";
 
 const uploadStrategySchema = z.enum(["direct-single", "direct-multipart", "proxy"]);
 const safeIntSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
 const createUploadInputSchema = z.object({
-  keyParts: fileKeyPartsSchema.optional(),
+  provider: z.string().min(1).optional(),
+  keyParts: legacyFileKeyPartsSchema.optional(),
   fileKey: z.string().optional(),
   filename: z.string().min(1),
   sizeBytes: safeIntSchema,
@@ -184,6 +186,11 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
+          const provider = payload.provider ?? resolvedConfig.storage.name;
+
+          if (provider !== resolvedConfig.storage.name) {
+            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
+          }
 
           let resolvedKey;
           try {
@@ -198,8 +205,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
           let storageInit;
           try {
             storageInit = await resolvedConfig.storage.initUpload({
+              provider,
               fileKey: resolvedKey.fileKey,
-              fileKeyParts: resolvedKey.fileKeyParts,
               sizeBytes: BigInt(payload.sizeBytes),
               contentType: payload.contentType,
               checksum: payload.checksum ?? null,
@@ -217,6 +224,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .withServiceCalls(() => [
                 services.createUploadRecord({
                   ...payload,
+                  provider,
                   storageInit,
                   allowIdempotentReuse: true,
                 }),
@@ -275,7 +283,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
 
             return json({
               uploadId: upload.id.toString(),
-              fileKey: upload.fileKey,
+              fileKey: upload.key,
               status: upload.status as UploadStatus,
               strategy: upload.strategy as UploadStrategy,
               expectedSizeBytes: Number(upload.expectedSizeBytes),
@@ -355,7 +363,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             }
 
             const parts = await resolvedConfig.storage.getPartUploadUrls({
-              storageKey: upload.storageKey,
+              storageKey: upload.objectKey,
               storageUploadId: upload.storageUploadId ?? "",
               partNumbers: payload.partNumbers,
               partSizeBytes: upload.partSizeBytes ?? 0,
@@ -476,13 +484,13 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               }
 
               await resolvedConfig.storage.completeMultipartUpload({
-                storageKey: upload.storageKey,
+                storageKey: upload.objectKey,
                 storageUploadId: upload.storageUploadId ?? "",
                 parts: payload.parts,
               });
             } else if (resolvedConfig.storage.finalizeUpload) {
               finalizeResult = await resolvedConfig.storage.finalizeUpload({
-                storageKey: upload.storageKey,
+                storageKey: upload.objectKey,
                 expectedSizeBytes: upload.expectedSizeBytes,
                 checksum: upload.checksum as UploadChecksum | null,
               });
@@ -524,7 +532,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               resolvedConfig.storage.abortMultipartUpload
             ) {
               await resolvedConfig.storage.abortMultipartUpload({
-                storageKey: upload.storageKey,
+                storageKey: upload.objectKey,
                 storageUploadId: upload.storageUploadId ?? "",
               });
             }
@@ -575,7 +583,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             let result: Awaited<ReturnType<NonNullable<typeof resolvedConfig.storage.writeStream>>>;
             try {
               result = await resolvedConfig.storage.writeStream({
-                storageKey: upload.storageKey,
+                storageKey: upload.objectKey,
                 body: context.bodyStream(),
                 contentType: upload.contentType,
                 sizeBytes: upload.expectedSizeBytes,

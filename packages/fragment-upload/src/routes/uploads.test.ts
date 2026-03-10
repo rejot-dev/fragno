@@ -11,6 +11,7 @@ import { createFilesystemStorageAdapter } from "../storage/fs";
 describe("upload routes", () => {
   let rootDir: string;
   let storage: ReturnType<typeof createFilesystemStorageAdapter>;
+  let provider: string;
   let testContext: { resetDatabase: () => Promise<void> };
   let fragment: UploadFragmentCaller;
 
@@ -53,6 +54,7 @@ describe("upload routes", () => {
   beforeAll(async () => {
     rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
     storage = createFilesystemStorageAdapter({ rootDir });
+    provider = storage.name;
 
     const build = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
@@ -84,6 +86,7 @@ describe("upload routes", () => {
     const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
+          provider,
           keyParts: ["users", 1, "avatar"],
           filename: "hello.txt",
           sizeBytes: 5,
@@ -135,6 +138,7 @@ describe("upload routes", () => {
       const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
         await fragment.callRoute("POST", "/uploads", {
           body: {
+            provider,
             keyParts: ["users", 2, "avatar"],
             filename: "boom.txt",
             sizeBytes: 4,
@@ -175,8 +179,8 @@ describe("upload routes", () => {
       expect(statusResponse.data.errorCode).toBe("STORAGE_ERROR");
 
       const fileResponse = asErrorResponse(
-        await fragment.callRoute("GET", "/files/:fileKey", {
-          pathParams: { fileKey },
+        await fragment.callRoute("GET", "/files/by-key", {
+          query: { provider, key: fileKey },
         }),
       );
 
@@ -192,6 +196,7 @@ describe("upload routes", () => {
     const createResponse = asJsonResponse<{ uploadId: string }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
+          provider,
           keyParts: ["teams", 9, "logo"],
           filename: "logo.png",
           sizeBytes: 10,
@@ -248,6 +253,7 @@ describe("upload routes", () => {
     const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
+          provider,
           keyParts: ["users", 3, "avatar"],
           filename: "abort.txt",
           sizeBytes: 4,
@@ -278,8 +284,8 @@ describe("upload routes", () => {
     expect(statusResponse.data.status).toBe("aborted");
 
     const fileResponse = asErrorResponse(
-      await fragment.callRoute("GET", "/files/:fileKey", {
-        pathParams: { fileKey },
+      await fragment.callRoute("GET", "/files/by-key", {
+        query: { provider, key: fileKey },
       }),
     );
 
@@ -297,6 +303,7 @@ describe("upload routes", () => {
     const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
+          provider,
           keyParts: ["users", 4, "avatar"],
           filename: "retry.txt",
           sizeBytes: 5,
@@ -329,6 +336,7 @@ describe("upload routes", () => {
     const retryResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
+          provider,
           keyParts: ["users", 4, "avatar"],
           filename: "retry.txt",
           sizeBytes: 5,

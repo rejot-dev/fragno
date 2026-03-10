@@ -60,6 +60,13 @@ Note: If `initUpload` returns `direct-multipart`, this route responds with
 2. `POST /uploads/:uploadId/progress` records progress. Writes: `upload`.
 3. `POST /uploads/:uploadId/abort` cancels the upload. Writes: `upload`.
 
+Helper behavior note:
+
+- For proxy uploads (`PUT /uploads/:uploadId/content`), helpers try streamed upload first and then a
+  buffered fallback.
+- If both attempts fail at the transport layer, helpers throw an actionable error suggesting
+  `POST /files` (one-shot multipart) or switching to a direct strategy.
+
 ## Upload Flow Diagram
 
 ```mermaid
@@ -150,10 +157,10 @@ node packages/fragment-upload/bin/run.js --help
 ```bash
 # Use the CLI (base URL points to the mounted upload fragment)
 fragno-upload --help
-fragno-upload uploads create -b https://host.example.com/api/uploads --file-key s~Zm9v --filename demo.txt --size-bytes 10 --content-type text/plain
-fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./demo.txt --file-key s~Zm9v
-fragno-upload files list -b https://host.example.com/api/uploads --prefix s~Zm9v.
-fragno-upload files download -b https://host.example.com/api/uploads --file-key s~Zm9v -o ./download.txt
+fragno-upload uploads create -b https://host.example.com/api/uploads --provider r2-binding --file-key users/42/avatar --filename demo.txt --size-bytes 10 --content-type text/plain
+fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./demo.txt --provider r2-binding --file-key users/42/avatar
+fragno-upload files list -b https://host.example.com/api/uploads --provider r2-binding --prefix users/42/
+fragno-upload files download -b https://host.example.com/api/uploads --provider r2-binding --file-key users/42/avatar -o ./download.txt
 ```
 
 Environment defaults:

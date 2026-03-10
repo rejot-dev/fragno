@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import { encodeFileKey } from "./keys";
 import { uploadSchema } from "./schema";
 
 describe("uploadSchema", async () => {
@@ -24,11 +23,14 @@ describe("uploadSchema", async () => {
       return this.handlerTx()
         .mutate(({ forSchema }) => {
           const uow = forSchema(uploadSchema);
-          const fileKey = encodeFileKey(["users", 1, "avatar"]);
+          const fileKey = "users/1/avatar";
           const timestamp = new Date();
+          const provider = "test";
+          const objectKey = "uploads/test/users/1/avatar";
 
           const fileId = uow.create("file", {
-            fileKey,
+            key: fileKey,
+            provider,
             uploaderId: null,
             filename: "avatar.png",
             sizeBytes: 1024n,
@@ -38,8 +40,7 @@ describe("uploadSchema", async () => {
             tags: ["profile"],
             metadata: { purpose: "test" },
             status: "ready",
-            storageProvider: "test",
-            storageKey: "uploads/test/avatar.png",
+            objectKey,
             createdAt: timestamp,
             updatedAt: timestamp,
             completedAt: null,
@@ -49,7 +50,8 @@ describe("uploadSchema", async () => {
           });
 
           const uploadId = uow.create("upload", {
-            fileKey,
+            key: fileKey,
+            provider,
             uploaderId: null,
             filename: "avatar.png",
             expectedSizeBytes: 1024n,
@@ -60,8 +62,7 @@ describe("uploadSchema", async () => {
             metadata: { purpose: "test" },
             status: "created",
             strategy: "proxy",
-            storageProvider: "test",
-            storageKey: "uploads/test/avatar.png",
+            objectKey,
             storageUploadId: null,
             uploadUrl: null,
             uploadHeaders: null,

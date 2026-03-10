@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { encodeFileKey, type FileKeyParts } from "../../keys";
 import { createS3CompatibleStorageAdapter, type S3Signer, type S3SignerInput } from "../s3";
 
 const createSigner = () => {
@@ -57,12 +56,12 @@ afterEach(() => {
 describe("s3 storage adapter", () => {
   test("initUpload returns a signed direct upload url", async () => {
     const { adapter, presignCalls } = createAdapter();
-    const fileKeyParts: FileKeyParts = ["users", 1, "avatar"];
-    const fileKey = encodeFileKey(fileKeyParts);
+    const provider = "r2";
+    const fileKey = "users/1/avatar";
 
     const result = await adapter.initUpload({
+      provider,
       fileKey,
-      fileKeyParts,
       sizeBytes: 1024n,
       contentType: "text/plain",
       metadata: null,
@@ -72,7 +71,7 @@ describe("s3 storage adapter", () => {
     expect(result.uploadUrl).toContain("signed=1");
     expect(result.uploadHeaders?.["x-test-signed"]).toBe("true");
     expect(result.storageKey.startsWith("fragno/")).toBe(true);
-    expect(result.storageKey.split("/").length).toBe(4);
+    expect(result.storageKey).toBe("fragno/r2/users/1/avatar");
     expect(presignCalls[0]?.method).toBe("PUT");
   });
 
@@ -97,12 +96,11 @@ describe("s3 storage adapter", () => {
     const { adapter, presignCalls, signCalls } = createAdapter({
       maxSingleUploadBytes: 5 * 1024 * 1024,
     });
-    const fileKeyParts: FileKeyParts = ["orgs", 99, "asset"];
-    const fileKey = encodeFileKey(fileKeyParts);
+    const fileKey = "orgs/99/asset";
 
     const result = await adapter.initUpload({
+      provider: "s3",
       fileKey,
-      fileKeyParts,
       sizeBytes: 6n * 1024n * 1024n,
       contentType: "application/octet-stream",
       metadata: null,

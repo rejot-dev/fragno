@@ -23,12 +23,14 @@ Notes:
 
 ## Files
 
-- `GET /files` — list files with cursor pagination and optional prefix filtering.
-- `GET /files/:fileKey` — fetch file metadata.
-- `PATCH /files/:fileKey` — update file metadata.
-- `DELETE /files/:fileKey` — delete a file (idempotent).
-- `GET /files/:fileKey/download-url` — signed download URL (if supported).
-- `GET /files/:fileKey/content` — server-stream (proxy) downloads (if supported).
+- `GET /files` — list files with cursor pagination and optional `provider` + `prefix` filters.
+- `GET /files/by-key?provider=<provider>&key=<fileKey>` — fetch file metadata.
+- `PATCH /files/by-key?provider=<provider>&key=<fileKey>` — update file metadata.
+- `DELETE /files/by-key?provider=<provider>&key=<fileKey>` — delete a file (idempotent).
+- `GET /files/by-key/download-url?provider=<provider>&key=<fileKey>` — signed download URL (if
+  supported).
+- `GET /files/by-key/content?provider=<provider>&key=<fileKey>` — server-stream (proxy) downloads
+  (if supported).
 
 Notes:
 

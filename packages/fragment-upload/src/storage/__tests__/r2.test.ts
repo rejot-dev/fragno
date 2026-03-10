@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest";
-import { encodeFileKey, type FileKeyParts } from "../../keys";
 import { createR2StorageAdapter } from "../r2";
 import type { S3Signer } from "../s3";
 
@@ -33,14 +32,14 @@ describe("r2 storage adapter", () => {
       signer: createSigner(),
     });
 
-    const fileKeyParts: FileKeyParts = ["orgs", 42, "asset"];
-    const fileKey = encodeFileKey(fileKeyParts);
+    const provider = "r2";
+    const fileKey = "orgs/42/asset";
     const metadata = { note: "x".repeat(9000) };
 
     await expect(
       adapter.initUpload({
+        provider,
         fileKey,
-        fileKeyParts,
         sizeBytes: 1024n,
         contentType: "text/plain",
         metadata,

@@ -6,6 +6,7 @@ import {
   createClientFromContext,
   parseJsonValue,
   resolveFileKeyValue,
+  resolveProviderValue,
 } from "../../utils/options.js";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -20,13 +21,13 @@ export const filesUploadCommand = define({
       short: "f",
       description: "Path to file",
     },
+    provider: {
+      type: "string",
+      description: "Storage provider",
+    },
     "file-key": {
       type: "string",
-      description: "File key (encoded)",
-    },
-    "key-parts": {
-      type: "string",
-      description: "File key parts as JSON array",
+      description: "File key",
     },
     filename: {
       type: "string",
@@ -66,10 +67,10 @@ export const filesUploadCommand = define({
     const fileBuffer = await fs.readFile(filePath);
     const filename = (ctx.values["filename"] as string | undefined) ?? path.basename(filePath);
     const contentType = (ctx.values["content-type"] as string | undefined) ?? DEFAULT_CONTENT_TYPE;
+    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
 
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
-      keyParts: ctx.values["key-parts"] as string | undefined,
     });
 
     const checksum = parseJsonValue("checksum", ctx.values["checksum"] as string | undefined);
@@ -78,13 +79,9 @@ export const filesUploadCommand = define({
 
     const form = new FormData();
     form.append("file", new File([fileBuffer], filename, { type: contentType }));
+    form.append("provider", provider);
 
-    if (resolvedKey.fileKey) {
-      form.append("fileKey", resolvedKey.fileKey);
-    }
-    if (resolvedKey.keyParts) {
-      form.append("keyParts", JSON.stringify(resolvedKey.keyParts));
-    }
+    form.append("fileKey", resolvedKey.fileKey);
     if (checksum !== undefined) {
       form.append("checksum", JSON.stringify(checksum));
     }

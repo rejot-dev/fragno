@@ -28,7 +28,8 @@ const { useUploadHelpers } = uploadClient;
 const helpers = useUploadHelpers();
 
 await helpers.createUploadAndTransfer(file, {
-  keyParts: ["teams", teamId, "logo"],
+  provider: "r2-binding",
+  fileKey: `teams/${teamId}/logo`,
   onProgress: ({ bytesUploaded, totalBytes }) => {
     console.log(bytesUploaded, totalBytes);
   },
@@ -45,8 +46,16 @@ await helpers.createUploadAndTransfer(file, {
 ### `downloadFile`
 
 ```ts
-const response = await helpers.downloadFile(["teams", teamId, "logo"]);
+const response = await helpers.downloadFile(`teams/${teamId}/logo`, {
+  provider: "r2-binding",
+  method: "signed-url", // or "content"
+});
 const blob = await response.blob();
 ```
 
-Uses signed download URLs when supported, otherwise falls back to `/files/:fileKey/content`.
+Download method selection is explicit:
+
+- `method: "signed-url"` calls `GET /files/by-key/download-url?provider=...&key=...`.
+- `method: "content"` calls `GET /files/by-key/content?provider=...&key=...`.
+
+No automatic fallback happens between methods.

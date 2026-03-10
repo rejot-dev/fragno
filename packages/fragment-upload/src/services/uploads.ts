@@ -6,15 +6,15 @@ import type {
   UploadFragmentResolvedConfig,
   UploadTimeoutPayload,
 } from "../config";
-import type { FileKeyEncoded, FileKeyParts } from "../keys";
 import { uploadSchema } from "../schema";
 import type { UploadChecksum } from "../storage/types";
 import type { FileStatus, FileVisibility, UploadStatus, UploadStrategy } from "../types";
 import { resolveFileKeyInput } from "./helpers";
 
 export type CreateUploadInput = {
-  keyParts?: FileKeyParts;
-  fileKey?: FileKeyEncoded;
+  provider: string;
+  keyParts?: readonly (string | number)[];
+  fileKey?: string;
   filename: string;
   sizeBytes: number;
   contentType: string;
@@ -36,8 +36,7 @@ export type CompletePartsInput = {
 
 export type CreateUploadResult = {
   uploadId: string;
-  fileKey: FileKeyEncoded;
-  fileKeyParts: FileKeyParts;
+  fileKey: string;
   status: "created" | "in_progress";
   strategy: UploadStrategy;
   expiresAt: Date;
@@ -104,8 +103,9 @@ const ensureMultipartUpload = (upload: UploadRow) => {
 };
 
 type NormalizedUploadInput = {
-  keyParts?: FileKeyParts;
-  fileKey?: FileKeyEncoded;
+  provider: string;
+  keyParts?: readonly (string | number)[];
+  fileKey?: string;
   filename: string;
   sizeBytes: number;
   contentType: string;
@@ -120,6 +120,7 @@ type NormalizedUploadInput = {
 const normalizeUploadInput = (input: CreateUploadInput): NormalizedUploadInput => {
   return {
     ...input,
+    provider: input.provider,
     uploaderId: input.uploaderId ?? null,
     visibility: input.visibility ?? DEFAULT_VISIBILITY,
     checksum: input.checksum ?? null,
@@ -160,13 +161,11 @@ const buildCreateUploadResult = (
 ): CreateUploadResult => {
   const uploadId = upload.id.toString();
   const strategy = upload.strategy as UploadStrategy;
-  const resolved = resolveFileKeyInput({ fileKey: upload.fileKey });
   const uploadHeaders = upload.uploadHeaders as Record<string, string> | null;
 
   return {
     uploadId,
-    fileKey: upload.fileKey,
-    fileKeyParts: resolved.fileKeyParts,
+    fileKey: upload.key,
     status: upload.status as CreateUploadResult["status"],
     strategy,
     expiresAt: upload.expiresAt,
@@ -195,7 +194,6 @@ const buildCreateUploadResultFromInit = (
   return {
     uploadId,
     fileKey: resolved.fileKey,
-    fileKeyParts: resolved.fileKeyParts,
     status: "created",
     strategy,
     expiresAt: storageInit.expiresAt,
@@ -214,11 +212,10 @@ const buildCreateUploadResultFromInit = (
 };
 
 const buildUploadHookPayload = (upload: UploadRow, sizeBytes?: bigint): FileHookPayload => {
-  const fileKeyParts = resolveFileKeyInput({ fileKey: upload.fileKey }).fileKeyParts;
   const resolvedSizeBytes = sizeBytes ?? upload.expectedSizeBytes;
   return {
-    fileKey: upload.fileKey,
-    fileKeyParts,
+    provider: upload.provider,
+    fileKey: upload.key,
     uploadId: upload.id.toString(),
     uploaderId: upload.uploaderId ?? null,
     sizeBytes: toSafeNumber(resolvedSizeBytes),
@@ -244,10 +241,14 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
         .retrieve((uow) =>
           uow
             .findFirst("file", (b) =>
-              b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", resolved.fileKey)),
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+              ),
             )
             .find("upload", (b) =>
-              b.whereIndex("idx_upload_file_key", (eb) => eb("fileKey", "=", resolved.fileKey)),
+              b.whereIndex("idx_upload_provider_key", (eb) =>
+                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+              ),
             ),
         )
         .transformRetrieve(([file, uploads]) => {
@@ -286,10 +287,14 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
         .retrieve((uow) =>
           uow
             .findFirst("file", (b) =>
-              b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", resolved.fileKey)),
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+              ),
             )
             .find("upload", (b) =>
-              b.whereIndex("idx_upload_file_key", (eb) => eb("fileKey", "=", resolved.fileKey)),
+              b.whereIndex("idx_upload_provider_key", (eb) =>
+                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+              ),
             ),
         )
         .mutate(({ uow, retrieveResult: [existingFile, uploads] }) => {
@@ -316,7 +321,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           const storageInit = input.storageInit;
 
           const uploadId = uow.create("upload", {
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -327,8 +333,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             metadata: normalized.metadata,
             status: "created",
             strategy: storageInit.strategy,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             storageUploadId: storageInit.storageUploadId ?? null,
             uploadUrl: storageInit.uploadUrl ?? null,
             uploadHeaders: storageInit.uploadHeaders ?? null,
@@ -347,8 +352,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             "onUploadTimeout",
             {
               uploadId: uploadId.toString(),
+              provider: normalized.provider,
               fileKey: resolved.fileKey,
-              fileKeyParts: resolved.fileKeyParts,
             },
             { processAt: storageInit.expiresAt },
           );
@@ -396,7 +401,9 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", resolved.fileKey)),
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
+            ),
           ),
         )
         .mutate(({ uow, retrieveResult: [existingFile] }) => {
@@ -407,7 +414,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           const finalSizeBytes = input.completedSizeBytes;
 
           const uploadId = uow.create("upload", {
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -418,8 +426,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             metadata: normalized.metadata,
             status: "completed",
             strategy: storageInit.strategy,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             storageUploadId: storageInit.storageUploadId ?? null,
             uploadUrl: storageInit.uploadUrl ?? null,
             uploadHeaders: storageInit.uploadHeaders ?? null,
@@ -435,7 +442,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           });
 
           const fileRecord = {
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             sizeBytes: finalSizeBytes,
@@ -445,8 +453,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             tags: normalized.tags,
             metadata: normalized.metadata,
             status: "ready" as FileStatus,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             createdAt: now,
             updatedAt: now,
             completedAt: now,
@@ -459,7 +466,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
           const uploadRow = {
             id: uploadId,
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -470,8 +478,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             metadata: normalized.metadata,
             status: "completed" as UploadStatus,
             strategy: storageInit.strategy,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             storageUploadId: storageInit.storageUploadId ?? null,
             uploadUrl: storageInit.uploadUrl ?? null,
             uploadHeaders: storageInit.uploadHeaders ?? null,
@@ -515,7 +522,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
       return this.serviceTx(uploadSchema)
         .mutate(({ uow }) => {
           const uploadId = uow.create("upload", {
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -526,8 +534,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             metadata: normalized.metadata,
             status: "failed",
             strategy: storageInit.strategy,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             storageUploadId: storageInit.storageUploadId ?? null,
             uploadUrl: storageInit.uploadUrl ?? null,
             uploadHeaders: storageInit.uploadHeaders ?? null,
@@ -544,7 +551,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
           const uploadRow = {
             id: uploadId,
-            fileKey: resolved.fileKey,
+            key: resolved.fileKey,
+            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -555,8 +563,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             metadata: normalized.metadata,
             status: "failed" as UploadStatus,
             strategy: storageInit.strategy,
-            storageProvider: storage.name,
-            storageKey: storageInit.storageKey,
+            objectKey: storageInit.storageKey,
             storageUploadId: storageInit.storageUploadId ?? null,
             uploadUrl: storageInit.uploadUrl ?? null,
             uploadHeaders: storageInit.uploadHeaders ?? null,
@@ -723,7 +730,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
     markUploadComplete: function (
       this: UploadServiceContext,
       uploadId: string,
-      fileKey: FileKeyEncoded,
+      fileKey: string,
       options?: { sizeBytes?: bigint },
     ) {
       const now = new Date();
@@ -733,7 +740,9 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           uow
             .findFirst("upload", (b) => b.whereIndex("primary", (eb) => eb("id", "=", uploadId)))
             .findFirst("file", (b) =>
-              b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "starts with", ""), eb("key", "=", fileKey)),
+              ),
             ),
         )
         .mutate(({ uow, retrieveResult: [upload, existingFile] }) => {
@@ -743,7 +752,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
           ensureActiveUpload(upload, now);
 
-          if (existingFile) {
+          if (existingFile && existingFile.provider === upload.provider) {
             throw new Error("FILE_ALREADY_EXISTS");
           }
 
@@ -769,7 +778,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           );
 
           const createdFile = {
-            fileKey: upload.fileKey,
+            key: upload.key,
+            provider: upload.provider,
             uploaderId: upload.uploaderId ?? null,
             filename: upload.filename,
             sizeBytes: finalSizeBytes,
@@ -779,8 +789,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             tags: upload.tags ?? null,
             metadata: upload.metadata ?? null,
             status: "ready" as FileStatus,
-            storageProvider: upload.storageProvider,
-            storageKey: upload.storageKey,
+            objectKey: upload.objectKey,
             createdAt: now,
             updatedAt: now,
             completedAt: now,
@@ -838,7 +847,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           );
 
           const createdFile = {
-            fileKey: upload.fileKey,
+            key: upload.key,
+            provider: upload.provider,
             uploaderId: upload.uploaderId ?? null,
             filename: upload.filename,
             sizeBytes: finalSizeBytes,
@@ -848,8 +858,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             tags: upload.tags ?? null,
             metadata: upload.metadata ?? null,
             status: "ready" as FileStatus,
-            storageProvider: upload.storageProvider,
-            storageKey: upload.storageKey,
+            objectKey: upload.objectKey,
             createdAt: now,
             updatedAt: now,
             completedAt: now,
