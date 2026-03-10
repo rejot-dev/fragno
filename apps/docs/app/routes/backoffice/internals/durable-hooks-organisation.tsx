@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 import type { Route } from "./+types/durable-hooks-organisation";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getResendDurableObject, getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+import {
+  getPiDurableObject,
+  getResendDurableObject,
+  getTelegramDurableObject,
+} from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
@@ -20,7 +24,33 @@ type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
   fragment: DurableHooksOrgFragment;
 };
 
-type DurableHooksOrgFragment = "telegram" | "resend";
+const DURABLE_HOOK_ORG_FRAGMENTS = ["telegram", "resend", "pi", "workflows"] as const;
+type DurableHooksOrgFragment = (typeof DURABLE_HOOK_ORG_FRAGMENTS)[number];
+
+const DURABLE_HOOK_FRAGMENT_META: Record<
+  DurableHooksOrgFragment,
+  {
+    label: string;
+    configurePath: (orgId: string) => string;
+  }
+> = {
+  telegram: {
+    label: "Telegram",
+    configurePath: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,
+  },
+  resend: {
+    label: "Resend",
+    configurePath: (orgId) => `/backoffice/connections/resend/${orgId}/configuration`,
+  },
+  pi: {
+    label: "Pi",
+    configurePath: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
+  },
+  workflows: {
+    label: "Workflows",
+    configurePath: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
+  },
+};
 
 const parsePageSize = (value: string | null) => {
   if (!value) {
@@ -31,8 +61,8 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (value === "telegram" || value === "resend") {
-    return value;
+  if (value && DURABLE_HOOK_ORG_FRAGMENTS.includes(value as DurableHooksOrgFragment)) {
+    return value as DurableHooksOrgFragment;
   }
   return null;
 };
@@ -67,16 +97,29 @@ export async function loader({
   }
 
   try {
-    const queue =
-      fragment === "resend"
-        ? ((await getResendDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          })) as DurableHookQueueResponse)
-        : ((await getTelegramDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          })) as DurableHookQueueResponse);
+    let queue: DurableHookQueueResponse;
+    switch (fragment) {
+      case "resend":
+        queue = (await getResendDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+        })) as DurableHookQueueResponse;
+        break;
+      case "telegram":
+        queue = (await getTelegramDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+        })) as DurableHookQueueResponse;
+        break;
+      case "pi":
+      case "workflows":
+        queue = (await getPiDurableObject(context, params.orgId).getHookQueue({
+          cursor,
+          pageSize,
+          fragment,
+        })) as DurableHookQueueResponse;
+        break;
+    }
     return {
       configured: queue.configured,
       hooksEnabled: queue.hooksEnabled,
@@ -90,7 +133,7 @@ export async function loader({
       fragment,
     } satisfies DurableHooksOrgLoaderData;
   } catch (error) {
-    const fragmentLabel = fragment === "resend" ? "Resend" : "Telegram";
+    const fragmentLabel = DURABLE_HOOK_FRAGMENT_META[fragment].label;
     return {
       configured: false,
       hooksEnabled: false,
@@ -137,11 +180,9 @@ export default function BackofficeDurableHooksOrganisation() {
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   const activeFragment = fragment;
-  const fragmentLabel = activeFragment === "resend" ? "Resend" : "Telegram";
-  const configurePath =
-    activeFragment === "resend"
-      ? `/backoffice/connections/resend/${orgId}/configuration`
-      : `/backoffice/connections/telegram/${orgId}/configuration`;
+  const fragmentMeta = DURABLE_HOOK_FRAGMENT_META[activeFragment];
+  const fragmentLabel = fragmentMeta.label;
+  const configurePath = fragmentMeta.configurePath(orgId);
   const queueCount = items.length;
   const nextCursor = cursor;
   const nextSearchParams = new URLSearchParams(searchParams);
@@ -161,20 +202,12 @@ export default function BackofficeDurableHooksOrganisation() {
     const tabBasePath = `${baseScopePath}/${fragmentId}`;
     return query ? `${tabBasePath}?${query}` : tabBasePath;
   };
-  const fragmentTabs = [
-    {
-      id: "telegram",
-      label: "Telegram",
-      to: fragmentTabHref("telegram"),
-      disabled: false,
-    },
-    {
-      id: "resend",
-      label: "Resend",
-      to: fragmentTabHref("resend"),
-      disabled: false,
-    },
-  ];
+  const fragmentTabs = DURABLE_HOOK_ORG_FRAGMENTS.map((fragmentId) => ({
+    id: fragmentId,
+    label: DURABLE_HOOK_FRAGMENT_META[fragmentId].label,
+    to: fragmentTabHref(fragmentId),
+    disabled: false,
+  }));
 
   useEffect(() => {
     setSelectedHookId(null);

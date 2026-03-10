@@ -39,6 +39,9 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),
+        ajv: path.resolve(__dirname, "./shims/ajv.ts"),
+        "ajv-formats": path.resolve(__dirname, "./shims/ajv-formats.ts"),
+        undici: path.resolve(__dirname, "./shims/undici.ts"),
       },
     },
     plugins: [
@@ -56,13 +59,16 @@ export default defineConfig(({ mode }) => {
           include: fumadocsDeps,
         }
       : undefined,
-    ssr: isDev
-      ? {
-          optimizeDeps: {
-            include: fumadocsDeps,
-          },
-        }
-      : undefined,
+    ssr: {
+      ...(isDev
+        ? {
+            optimizeDeps: {
+              include: fumadocsDeps,
+            },
+          }
+        : {}),
+      noExternal: ["@mariozechner/pi-ai"],
+    },
     server: {
       allowedHosts: ["local-wilco.recivo.email"],
     },

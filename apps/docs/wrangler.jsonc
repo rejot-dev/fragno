@@ -86,6 +86,10 @@
         "name": "SANDBOX_REGISTRY",
         "class_name": "SandboxRegistry",
       },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+      },
     ],
   },
   /**
@@ -120,6 +124,10 @@
     {
       "tag": "v7",
       "new_sqlite_classes": ["SandboxRegistry"],
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": ["Pi"],
     },
   ],
   "rules": [

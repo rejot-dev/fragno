@@ -11,6 +11,14 @@ const INTERNALS = [
     to: "/backoffice/internals/durable-hooks",
   },
   {
+    id: "workflows",
+    name: "Workflows",
+    description:
+      "Inspect workflow instances, state transitions, and step/event history by fragment.",
+    status: "Available",
+    to: "/backoffice/internals/workflows",
+  },
+  {
     id: "audit-log",
     name: "Audit log",
     description: "Review administrative events and operational metadata for each workspace.",

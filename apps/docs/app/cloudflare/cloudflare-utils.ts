@@ -6,6 +6,7 @@ import type { Auth } from "workers/auth.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Resend } from "workers/resend.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
+import type { Pi } from "workers/pi.do";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
@@ -76,6 +77,19 @@ export function getResendDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.RESEND.get(env.RESEND.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Pi Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getPiDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Pi> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.PI.get(env.PI.idFromName(orgId));
 }
 
 /**

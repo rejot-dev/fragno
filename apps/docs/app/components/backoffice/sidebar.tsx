@@ -17,6 +17,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/backoffice", end: true },
+  { label: "Sessions", to: "/backoffice/sessions" },
   {
     label: "Connections",
     to: "/backoffice/connections",
@@ -33,7 +34,10 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: "Internals",
     to: "/backoffice/internals",
-    children: [{ label: "Durable hooks", to: "/backoffice/internals/durable-hooks" }],
+    children: [
+      { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+      { label: "Workflows", to: "/backoffice/internals/workflows" },
+    ],
   },
 ];
 
