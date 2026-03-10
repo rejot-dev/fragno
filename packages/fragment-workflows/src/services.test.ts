@@ -7,6 +7,7 @@ import {
   instantiate,
   type InstantiatedFragmentFromDefinition,
 } from "@fragno-dev/core";
+import type { WorkflowsFragmentServices } from "./index";
 import { workflowsFragmentDefinition } from "./definition";
 import { createWorkflowsTestHarness } from "./test";
 import { defineWorkflow } from "./workflow";
@@ -92,6 +93,39 @@ describe("Workflows Fragment Services", () => {
     });
 
     expect(StatefulWorkflow.initialState).toBeTruthy();
+  });
+
+  test("restoreInstanceState infers the workflow state from the workflow name when the registry is known", () => {
+    const StatefulWorkflow = defineWorkflow(
+      {
+        name: "typed-service-restore-by-name",
+        initialState: { phase: "idle", seeded: false, approved: false },
+      },
+      async function (_event, step) {
+        this?.setState({ phase: "waiting", seeded: true });
+        await step.waitForEvent("ready", { type: "ready" });
+        this?.setState({ phase: "complete", approved: true });
+        return { ok: true };
+      },
+    );
+
+    type StatefulRegistry = {
+      stateful: typeof StatefulWorkflow;
+    };
+
+    const typecheck = <T>(_getValue: () => T): void => {};
+
+    typecheck(() => {
+      const services = null as unknown as WorkflowsFragmentServices<StatefulRegistry>;
+      const restored = services.restoreInstanceState("typed-service-restore-by-name", "stateful-1");
+      type RestoredState =
+        typeof restored extends TxResult<infer TResult, infer _> ? TResult : never;
+      const typed: RestoredState = { phase: "waiting", seeded: true, approved: false };
+
+      return typed;
+    });
+
+    expect(StatefulWorkflow.name).toBe("typed-service-restore-by-name");
   });
 
   test("createInstance should create instance records", async () => {

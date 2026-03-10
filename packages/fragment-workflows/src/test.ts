@@ -2,7 +2,6 @@ import {
   instantiate,
   type AnyFragnoInstantiatedFragment,
   type FragnoRuntime,
-  type InstantiatedFragmentFromDefinition,
 } from "@fragno-dev/core";
 import type {
   AnyFragmentResult,
@@ -12,6 +11,7 @@ import type {
 } from "@fragno-dev/test";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
@@ -74,22 +74,21 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
   time: WorkflowsTestClock;
 };
 
-type WorkflowsHarnessFragmentInstance = InstantiatedFragmentFromDefinition<
-  typeof workflowsFragmentDefinition
->;
-
-export type WorkflowsTestHarnessFragment = {
-  fragment: WorkflowsHarnessFragmentInstance;
-  db: SimpleQueryInterface<typeof workflowsSchema>;
-  services: WorkflowsHarnessFragmentInstance["services"];
-  deps: WorkflowsHarnessFragmentInstance["$internal"]["deps"];
-  callRoute: WorkflowsHarnessFragmentInstance["callRoute"];
-};
-
-type WorkflowsTestHarnessFragments<TFragments extends Record<string, AnyFragmentResult>> =
-  TFragments & {
-    workflows: WorkflowsTestHarnessFragment;
+export type WorkflowsTestHarnessFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
+  {
+    fragment: WorkflowsFragment<TRegistry>;
+    db: SimpleQueryInterface<typeof workflowsSchema>;
+    services: WorkflowsFragmentServices<TRegistry>;
+    deps: WorkflowsFragment<TRegistry>["$internal"]["deps"];
+    callRoute: WorkflowsFragment<TRegistry>["callRoute"];
   };
+
+type WorkflowsTestHarnessFragments<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult>,
+> = TFragments & {
+  workflows: WorkflowsTestHarnessFragment<TRegistry>;
+};
 
 export type WorkflowsTestHarnessOptions<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
@@ -117,8 +116,8 @@ export type WorkflowsTestHarness<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
 > = {
-  fragments: WorkflowsTestHarnessFragments<TFragments>;
-  fragment: WorkflowsHarnessFragmentInstance;
+  fragments: WorkflowsTestHarnessFragments<TRegistry, TFragments>;
+  fragment: WorkflowsFragment<TRegistry>;
   db: SimpleQueryInterface<typeof workflowsSchema>;
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
@@ -308,7 +307,10 @@ export async function createWorkflowsTestHarness<
     )
     .build();
 
-  const fragmentsWithWorkflows = fragments as WorkflowsTestHarnessFragments<TConfiguredFragments>;
+  const fragmentsWithWorkflows = fragments as unknown as WorkflowsTestHarnessFragments<
+    TRegistry,
+    TConfiguredFragments
+  >;
   const { fragment, db } = fragmentsWithWorkflows.workflows;
   const callRoute: AnyFragnoInstantiatedFragment["callRoute"] =
     fragmentsWithWorkflows.workflows.callRoute;
