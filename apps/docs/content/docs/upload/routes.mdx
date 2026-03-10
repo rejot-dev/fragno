@@ -18,8 +18,13 @@ Notes:
 
 - `POST /uploads` is idempotent only when a checksum is provided; if metadata matches, the existing
   upload is returned to support resume without creating a new storage session.
+- `POST /uploads` and `GET /uploads/:uploadId` return the resolved `provider` plus canonical
+  provider-sticky follow-up URLs (`statusEndpoint`, `progressEndpoint`, `completeEndpoint`,
+  `abortEndpoint`, and the strategy-specific upload endpoints).
 - If a file already exists for the key, `POST /uploads` and `POST /uploads/:uploadId/complete`
   return `FILE_ALREADY_EXISTS`.
+- Storage-touching follow-up routes return `PROVIDER_MISMATCH` before storage I/O if a request lands
+  on the wrong provider fragment.
 
 ## Files
 
@@ -46,6 +51,7 @@ Notes:
 - `FILE_ALREADY_EXISTS`
 - `UPLOAD_EXPIRED`
 - `UPLOAD_INVALID_STATE`
+- `PROVIDER_MISMATCH`
 - `SIGNED_URL_UNSUPPORTED`
 - `STORAGE_ERROR`
 - `INVALID_FILE_KEY`

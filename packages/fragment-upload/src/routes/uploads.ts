@@ -4,7 +4,13 @@ import { z } from "zod";
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { resolveFileKeyInput } from "../services/helpers";
-import { checksumSchema, fileMetadataSchema, toFileMetadata } from "./shared";
+import { buildUploadSessionRouteData } from "../services/uploads";
+import {
+  checksumSchema,
+  fileMetadataSchema,
+  providerNamespaceSchema,
+  toFileMetadata,
+} from "./shared";
 import type { UploadStatus, UploadStrategy } from "../types";
 import type { UploadChecksum } from "../storage/types";
 
@@ -13,7 +19,7 @@ const safeIntSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
 const createUploadInputSchema = z.object({
-  provider: z.string().min(1).optional(),
+  provider: providerNamespaceSchema.optional(),
   keyParts: legacyFileKeyPartsSchema.optional(),
   fileKey: z.string().optional(),
   filename: z.string().min(1),
@@ -58,7 +64,34 @@ const completeUploadSchema = z.object({
     .optional(),
 });
 
-const uploadStatusSchema = z.object({
+const uploadRouteDataSchema = z.object({
+  provider: z.string(),
+  upload: z.object({
+    mode: z.enum(["single", "multipart"]),
+    transport: z.enum(["direct", "proxy"]),
+    uploadUrl: z.string().optional(),
+    uploadHeaders: z.record(z.string(), z.string()).optional(),
+    partSizeBytes: z.number().optional(),
+    maxParts: z.number().optional(),
+    statusEndpoint: z.string(),
+    progressEndpoint: z.string(),
+    partsEndpoint: z.string().optional(),
+    partsCompleteEndpoint: z.string().optional(),
+    completeEndpoint: z.string(),
+    abortEndpoint: z.string(),
+    contentEndpoint: z.string().optional(),
+  }),
+});
+
+const createUploadOutputSchema = uploadRouteDataSchema.extend({
+  uploadId: z.string(),
+  fileKey: z.string(),
+  status: z.enum(["created", "in_progress"]),
+  strategy: uploadStrategySchema,
+  expiresAt: z.date(),
+});
+
+const uploadStatusSchema = uploadRouteDataSchema.extend({
   uploadId: z.string(),
   fileKey: z.string(),
   status: z.enum(["created", "in_progress", "completed", "aborted", "failed", "expired"]),
@@ -82,6 +115,7 @@ const errorCodes = [
   "FILE_ALREADY_EXISTS",
   "UPLOAD_EXPIRED",
   "UPLOAD_INVALID_STATE",
+  "PROVIDER_MISMATCH",
   "INVALID_FILE_KEY",
   "INVALID_CHECKSUM",
   "INVALID_REQUEST",
@@ -115,6 +149,18 @@ const rejectInactiveUpload = (
   return null;
 };
 
+const rejectProviderMismatch = (
+  upload: { provider: string },
+  activeProvider: string,
+  error: ErrorFn<UploadErrorCode>,
+): Response | null => {
+  if (upload.provider === activeProvider) {
+    return null;
+  }
+
+  return error({ message: "Upload provider mismatch", code: "PROVIDER_MISMATCH" }, 409);
+};
+
 const handleServiceError = <Code extends UploadErrorCode>(
   err: unknown,
   error: ErrorFn<Code>,
@@ -142,6 +188,8 @@ const handleServiceError = <Code extends UploadErrorCode>(
       return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
     case "UPLOAD_INVALID_STATE":
       return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" as Code }, 409);
+    case "PROVIDER_MISMATCH":
+      return error({ message: "Upload provider mismatch", code: "PROVIDER_MISMATCH" as Code }, 409);
     case "INVALID_FILE_KEY":
       return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
     case "INVALID_CHECKSUM":
@@ -164,33 +212,12 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         method: "POST",
         path: "/uploads",
         inputSchema: createUploadInputSchema,
-        outputSchema: z.object({
-          uploadId: z.string(),
-          fileKey: z.string(),
-          status: z.enum(["created", "in_progress"]),
-          strategy: uploadStrategySchema,
-          expiresAt: z.date(),
-          upload: z.object({
-            mode: z.enum(["single", "multipart"]),
-            transport: z.enum(["direct", "proxy"]),
-            uploadUrl: z.string().optional(),
-            uploadHeaders: z.record(z.string(), z.string()).optional(),
-            partSizeBytes: z.number().optional(),
-            maxParts: z.number().optional(),
-            partsEndpoint: z.string().optional(),
-            completeEndpoint: z.string(),
-            contentEndpoint: z.string().optional(),
-          }),
-        }),
+        outputSchema: createUploadOutputSchema,
         errorCodes,
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           const provider = payload.provider ?? resolvedConfig.storage.name;
-
-          if (provider !== resolvedConfig.storage.name) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
 
           let resolvedKey;
           try {
@@ -275,15 +302,26 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         outputSchema: uploadStatusSchema,
         errorCodes,
         handler: async function ({ pathParams }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStatus(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
+            const uploadHeaders = upload.uploadHeaders as Record<string, string> | null;
+
             return json({
               uploadId: upload.id.toString(),
               fileKey: upload.key,
+              ...buildUploadSessionRouteData(resolvedConfig.storage, {
+                uploadId: upload.id.toString(),
+                provider: upload.provider,
+                strategy: upload.strategy as UploadStrategy,
+                uploadUrl: upload.uploadUrl ?? undefined,
+                uploadHeaders: uploadHeaders ?? undefined,
+                partSizeBytes: upload.partSizeBytes ?? undefined,
+              }),
               status: upload.status as UploadStatus,
               strategy: upload.strategy as UploadStrategy,
               expectedSizeBytes: Number(upload.expectedSizeBytes),
@@ -353,6 +391,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
+
+            const providerMismatch = rejectProviderMismatch(
+              upload,
+              resolvedConfig.storage.name,
+              error,
+            );
+            if (providerMismatch) {
+              return providerMismatch;
+            }
 
             if (upload.strategy !== "direct-multipart") {
               return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
@@ -461,6 +508,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
+            const providerMismatch = rejectProviderMismatch(
+              upload,
+              resolvedConfig.storage.name,
+              error,
+            );
+            if (providerMismatch) {
+              return providerMismatch;
+            }
+
             const inactiveResponse = rejectInactiveUpload(
               { status: upload.status as UploadStatus, expiresAt: upload.expiresAt },
               error,
@@ -527,6 +583,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
+            const providerMismatch = rejectProviderMismatch(
+              upload,
+              resolvedConfig.storage.name,
+              error,
+            );
+            if (providerMismatch) {
+              return providerMismatch;
+            }
+
             if (
               upload.strategy === "direct-multipart" &&
               resolvedConfig.storage.abortMultipartUpload
@@ -563,6 +628,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
+
+            const providerMismatch = rejectProviderMismatch(
+              upload,
+              resolvedConfig.storage.name,
+              error,
+            );
+            if (providerMismatch) {
+              return providerMismatch;
+            }
 
             if (upload.strategy !== "proxy") {
               return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);

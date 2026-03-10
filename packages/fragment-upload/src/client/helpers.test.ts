@@ -51,6 +51,9 @@ const byKeyDownloadUrlPath = (provider: string, fileKey: string) =>
 const byKeyContentPath = (provider: string, fileKey: string) =>
   `/files/by-key/content?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
 
+const uploadRoutePath = (uploadId: string, suffix = "") =>
+  `/uploads/${uploadId}${suffix}?${new URLSearchParams({ provider: TEST_PROVIDER }).toString()}`;
+
 describe("upload client helpers", () => {
   it("splits multipart uploads, tracks progress, and completes", async () => {
     const progress: number[] = [];
@@ -67,6 +70,7 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "123",
           fileKey: "files.users.1.avatar",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "direct-multipart",
           expiresAt: new Date().toISOString(),
@@ -75,13 +79,17 @@ describe("upload client helpers", () => {
             transport: "direct",
             partSizeBytes: 4,
             maxParts: 10,
-            partsEndpoint: "/uploads/123/parts",
-            completeEndpoint: "/uploads/123/complete",
+            statusEndpoint: uploadRoutePath("123"),
+            progressEndpoint: uploadRoutePath("123", "/progress"),
+            partsEndpoint: uploadRoutePath("123", "/parts"),
+            partsCompleteEndpoint: uploadRoutePath("123", "/parts/complete"),
+            completeEndpoint: uploadRoutePath("123", "/complete"),
+            abortEndpoint: uploadRoutePath("123", "/abort"),
           },
         });
       }
 
-      if (url.endsWith("/uploads/123/parts")) {
+      if (url.endsWith(uploadRoutePath("123", "/parts"))) {
         const body = JSON.parse(_init?.body as string);
         expect(body.partNumbers).toEqual([1, 2, 3]);
         return jsonResponse({
@@ -93,11 +101,11 @@ describe("upload client helpers", () => {
         });
       }
 
-      if (url.includes("/uploads/123/progress")) {
+      if (url.endsWith(uploadRoutePath("123", "/progress"))) {
         return jsonResponse({ bytesUploaded: 0, partsUploaded: 0 });
       }
 
-      if (url.endsWith("/uploads/123/parts/complete")) {
+      if (url.endsWith(uploadRoutePath("123", "/parts/complete"))) {
         const body = JSON.parse(_init?.body as string);
         expect(body.parts).toEqual([
           { partNumber: 1, etag: "etag-1", sizeBytes: 4 },
@@ -107,7 +115,7 @@ describe("upload client helpers", () => {
         return jsonResponse({ bytesUploaded: 10, partsUploaded: 3 });
       }
 
-      if (url.endsWith("/uploads/123/complete")) {
+      if (url.endsWith(uploadRoutePath("123", "/complete"))) {
         const body = JSON.parse(_init?.body as string);
         expect(body.parts).toEqual([
           { partNumber: 1, etag: "etag-1" },
@@ -143,8 +151,10 @@ describe("upload client helpers", () => {
 
     expect(result.file.fileKey).toBe("files.users.1.avatar");
     expect(progress).toEqual([4, 8, 10]);
-    expect(calls).toContain("POST http://local/uploads/123/parts/complete");
-    expect(calls).toContain("POST http://local/uploads/123/complete");
+    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/progress")}`);
+    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/parts")}`);
+    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/parts/complete")}`);
+    expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/complete")}`);
   });
 
   it("streams proxy uploads and reports progress", async () => {
@@ -161,19 +171,23 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "proxy-1",
           fileKey: "files.assets.banner",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "proxy",
           expiresAt: new Date().toISOString(),
           upload: {
             mode: "single",
             transport: "proxy",
-            contentEndpoint: "/uploads/proxy-1/content",
-            completeEndpoint: "/uploads/proxy-1/complete",
+            statusEndpoint: uploadRoutePath("proxy-1"),
+            progressEndpoint: uploadRoutePath("proxy-1", "/progress"),
+            completeEndpoint: uploadRoutePath("proxy-1", "/complete"),
+            abortEndpoint: uploadRoutePath("proxy-1", "/abort"),
+            contentEndpoint: uploadRoutePath("proxy-1", "/content"),
           },
         });
       }
 
-      if (url.endsWith("/uploads/proxy-1/content")) {
+      if (url.endsWith(uploadRoutePath("proxy-1", "/content"))) {
         const init = _init as (RequestInit & { duplex?: string }) | undefined;
         expect(init?.duplex).toBe("half");
         expect(getHeaderValue(init?.headers, "content-type")).toBe("application/octet-stream");
@@ -204,9 +218,11 @@ describe("upload client helpers", () => {
 
   it("returns file metadata date fields as strings", async () => {
     const now = new Date("2024-01-01T12:00:00.000Z").toISOString();
+    const calls: string[] = [];
 
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
+      calls.push(`${_init?.method ?? "GET"} ${url}`);
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
@@ -215,6 +231,7 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "single-1",
           fileKey: "files.sample.date",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "direct-single",
           expiresAt: new Date().toISOString(),
@@ -222,7 +239,10 @@ describe("upload client helpers", () => {
             mode: "single",
             transport: "direct",
             uploadUrl: "https://storage.local/upload",
-            completeEndpoint: "/uploads/single-1/complete",
+            statusEndpoint: uploadRoutePath("single-1"),
+            progressEndpoint: uploadRoutePath("single-1", "/progress"),
+            completeEndpoint: uploadRoutePath("single-1", "/complete"),
+            abortEndpoint: uploadRoutePath("single-1", "/abort"),
           },
         });
       }
@@ -231,11 +251,11 @@ describe("upload client helpers", () => {
         return new Response(null, { status: 200 });
       }
 
-      if (url.includes("/uploads/single-1/progress")) {
+      if (url.endsWith(uploadRoutePath("single-1", "/progress"))) {
         return jsonResponse({ bytesUploaded: 0, partsUploaded: 0 });
       }
 
-      if (url.endsWith("/uploads/single-1/complete")) {
+      if (url.endsWith(uploadRoutePath("single-1", "/complete"))) {
         return jsonResponse({
           fileKey: "files.sample.date",
           fileKeyParts: ["files", "sample", "date"],
@@ -277,6 +297,8 @@ describe("upload client helpers", () => {
     expect(result.file.createdAt).toBe(now);
     expect(result.file.completedAt).toBe(now);
     expect(result.file.deletedAt).toBeNull();
+    expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/progress")}`);
+    expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/complete")}`);
   });
 
   it("falls back to buffered proxy uploads when streaming fails", async () => {
@@ -293,19 +315,23 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "proxy-2",
           fileKey: "files.assets.logo",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "proxy",
           expiresAt: new Date().toISOString(),
           upload: {
             mode: "single",
             transport: "proxy",
-            contentEndpoint: "/uploads/proxy-2/content",
-            completeEndpoint: "/uploads/proxy-2/complete",
+            statusEndpoint: uploadRoutePath("proxy-2"),
+            progressEndpoint: uploadRoutePath("proxy-2", "/progress"),
+            completeEndpoint: uploadRoutePath("proxy-2", "/complete"),
+            abortEndpoint: uploadRoutePath("proxy-2", "/abort"),
+            contentEndpoint: uploadRoutePath("proxy-2", "/content"),
           },
         });
       }
 
-      if (url.endsWith("/uploads/proxy-2/content")) {
+      if (url.endsWith(uploadRoutePath("proxy-2", "/content"))) {
         attempts += 1;
         if (attempts === 1) {
           throw new TypeError("Failed to fetch");
@@ -347,19 +373,23 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "proxy-3",
           fileKey: "files.assets.fail",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "proxy",
           expiresAt: new Date().toISOString(),
           upload: {
             mode: "single",
             transport: "proxy",
-            contentEndpoint: "/uploads/proxy-3/content",
-            completeEndpoint: "/uploads/proxy-3/complete",
+            statusEndpoint: uploadRoutePath("proxy-3"),
+            progressEndpoint: uploadRoutePath("proxy-3", "/progress"),
+            completeEndpoint: uploadRoutePath("proxy-3", "/complete"),
+            abortEndpoint: uploadRoutePath("proxy-3", "/abort"),
+            contentEndpoint: uploadRoutePath("proxy-3", "/content"),
           },
         });
       }
 
-      if (url.endsWith("/uploads/proxy-3/content")) {
+      if (url.endsWith(uploadRoutePath("proxy-3", "/content"))) {
         throw new TypeError("ALPN negotiation failed");
       }
 
@@ -401,19 +431,23 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "proxy-4",
           fileKey: "files.assets.protocol",
+          provider: TEST_PROVIDER,
           status: "created",
           strategy: "proxy",
           expiresAt: new Date().toISOString(),
           upload: {
             mode: "single",
             transport: "proxy",
-            contentEndpoint: "/uploads/proxy-4/content",
-            completeEndpoint: "/uploads/proxy-4/complete",
+            statusEndpoint: uploadRoutePath("proxy-4"),
+            progressEndpoint: uploadRoutePath("proxy-4", "/progress"),
+            completeEndpoint: uploadRoutePath("proxy-4", "/complete"),
+            abortEndpoint: uploadRoutePath("proxy-4", "/abort"),
+            contentEndpoint: uploadRoutePath("proxy-4", "/content"),
           },
         });
       }
 
-      if (url.endsWith("/uploads/proxy-4/content")) {
+      if (url.endsWith(uploadRoutePath("proxy-4", "/content"))) {
         contentEndpointCalled = true;
       }
 
@@ -502,6 +536,35 @@ describe("upload client helpers", () => {
     ).rejects.toThrow(/programming error/i);
   });
 
+  it("throws content-specific fallback guidance when content download is unsupported", async () => {
+    const fileKey = "files.sample.content-mismatch";
+    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith(contentPath)) {
+        return jsonResponse(
+          { message: "Download streaming unsupported", code: "SIGNED_URL_UNSUPPORTED" },
+          { status: 400 },
+        );
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    await expect(
+      helpers.downloadFile(fileKey, {
+        provider: TEST_PROVIDER,
+        method: "content",
+      }),
+    ).rejects.toThrow(/The 'content' download endpoint is unsupported.*Use method 'signed-url'/i);
+  });
+
   it("throws actionable context when content download request fails", async () => {
     const fileKey = "files.sample.download-fail";
     const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
@@ -528,16 +591,17 @@ describe("upload client helpers", () => {
   it("throws actionable context when signed URL download request fails", async () => {
     const fileKey = "files.sample.download-url";
     const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
+    const signedUrl = "https://storage.example.com/object?token=secret&X-Amz-Signature=abc123";
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
 
       if (url.endsWith(downloadUrlPath)) {
         return jsonResponse({
-          url: "https://storage.example.com/object",
+          url: signedUrl,
         });
       }
 
-      if (url === "https://storage.example.com/object") {
+      if (url === signedUrl) {
         throw new TypeError("Network dropped");
       }
 
@@ -549,9 +613,57 @@ describe("upload client helpers", () => {
       fetcher: fetcher as typeof fetch,
     });
 
-    await expect(
-      helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" }),
-    ).rejects.toThrow(/https:\/\/storage\.example\.com\/object/);
+    let thrown: Error | null = null;
+    try {
+      await helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" });
+    } catch (error) {
+      thrown = error as Error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown?.message).toContain("https://storage.example.com/object");
+    expect(thrown?.message).not.toContain("token=secret");
+    expect(thrown?.message).not.toContain("X-Amz-Signature=abc123");
+  });
+
+  it("redacts signed URL query params when the download response is not ok", async () => {
+    const fileKey = "files.sample.download-url-status";
+    const downloadUrlPath = byKeyDownloadUrlPath(TEST_PROVIDER, fileKey);
+    const signedUrl = "https://storage.example.com/object?token=secret&X-Amz-Signature=abc123";
+    const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith(downloadUrlPath)) {
+        return jsonResponse({
+          url: signedUrl,
+        });
+      }
+
+      if (url === signedUrl) {
+        return jsonResponse({ message: "Request expired" }, { status: 403 });
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    let thrown: Error | null = null;
+    try {
+      await helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" });
+    } catch (error) {
+      thrown = error as Error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown?.message).toContain("https://storage.example.com/object");
+    expect(thrown?.message).toContain("response status 403");
+    expect(thrown?.message).toContain("message: Request expired");
+    expect(thrown?.message).not.toContain("token=secret");
+    expect(thrown?.message).not.toContain("X-Amz-Signature=abc123");
   });
 
   it("requires callers to specify an explicit download method", async () => {

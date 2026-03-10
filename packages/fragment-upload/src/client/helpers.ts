@@ -31,7 +31,8 @@ export type DownloadFileOptions = {
 export type UploadCreateResponse = {
   uploadId: string;
   fileKey: string;
-  status: "created";
+  provider: string;
+  status: "created" | "in_progress";
   strategy: UploadStrategy;
   expiresAt: string;
   upload: {
@@ -41,8 +42,12 @@ export type UploadCreateResponse = {
     uploadHeaders?: Record<string, string>;
     partSizeBytes?: number;
     maxParts?: number;
+    statusEndpoint: string;
+    progressEndpoint: string;
     partsEndpoint?: string;
+    partsCompleteEndpoint?: string;
     completeEndpoint: string;
+    abortEndpoint: string;
     contentEndpoint?: string;
   };
 };
@@ -213,6 +218,17 @@ const buildDownloadRequestErrorMessage = (input: {
   return `Download request to '${input.endpointUrl}' failed.${details}${hint}`;
 };
 
+const sanitizeSignedDownloadUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return "<redacted-signed-url>";
+  }
+};
+
 const readErrorCodeFromPayload = (payload: unknown): string | null => {
   if (payload && typeof payload === "object" && "code" in payload) {
     const code = (payload as { code?: unknown }).code;
@@ -226,6 +242,14 @@ const readErrorCodeFromPayload = (payload: unknown): string | null => {
 
 const hasText = (value: string | undefined | null): value is string =>
   typeof value === "string" && value.trim().length > 0;
+
+const requireUploadEndpoint = (endpoint: string | undefined, label: string) => {
+  if (!hasText(endpoint)) {
+    throw new Error(`Missing ${label} endpoint for upload`);
+  }
+
+  return endpoint;
+};
 
 const buildByKeyQuery = (provider: string, fileKey: string) =>
   new URLSearchParams({ provider, key: fileKey }).toString();
@@ -262,22 +286,19 @@ export const createUploadHelpers = (input: {
   };
 
   const reportProgress = async (
-    uploadId: string,
+    progressEndpoint: string,
     progress: UploadProgress,
     onProgress?: (progress: UploadProgress) => void,
   ) => {
     onProgress?.(progress);
-    await fetchJson<{ bytesUploaded: number; partsUploaded: number }>(
-      `/uploads/${uploadId}/progress`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bytesUploaded: progress.bytesUploaded,
-          partsUploaded: progress.partsUploaded,
-        }),
-      },
-    );
+    await fetchJson<{ bytesUploaded: number; partsUploaded: number }>(progressEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bytesUploaded: progress.bytesUploaded,
+        partsUploaded: progress.partsUploaded,
+      }),
+    });
   };
 
   const createUploadAndTransfer: UploadHelpers["createUploadAndTransfer"] = async (
@@ -321,6 +342,7 @@ export const createUploadHelpers = (input: {
     const totalBytes = sizeBytes;
     let bytesUploaded = 0;
     let partsUploaded = 0;
+    const progressEndpoint = requireUploadEndpoint(upload.upload.progressEndpoint, "progress");
 
     if (upload.strategy === "direct-single") {
       if (!upload.upload.uploadUrl) {
@@ -340,7 +362,7 @@ export const createUploadHelpers = (input: {
       bytesUploaded = totalBytes;
       partsUploaded = 1;
       await reportProgress(
-        upload.uploadId,
+        progressEndpoint,
         {
           bytesUploaded,
           totalBytes,
@@ -364,6 +386,10 @@ export const createUploadHelpers = (input: {
       if (!partSizeBytes || !upload.upload.partsEndpoint) {
         throw new Error("Missing multipart configuration for upload");
       }
+      const partsCompleteEndpoint = requireUploadEndpoint(
+        upload.upload.partsCompleteEndpoint,
+        "multipart completion",
+      );
 
       const totalParts = Math.ceil(totalBytes / partSizeBytes);
       if (upload.upload.maxParts && totalParts > upload.upload.maxParts) {
@@ -410,7 +436,7 @@ export const createUploadHelpers = (input: {
         bytesUploaded += partSize;
         partsUploaded += 1;
         await reportProgress(
-          upload.uploadId,
+          progressEndpoint,
           {
             bytesUploaded,
             totalBytes,
@@ -421,14 +447,11 @@ export const createUploadHelpers = (input: {
         );
       }
 
-      await fetchJson<{ bytesUploaded: number; partsUploaded: number }>(
-        `/uploads/${upload.uploadId}/parts/complete`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ parts: completedParts }),
-        },
-      );
+      await fetchJson<{ bytesUploaded: number; partsUploaded: number }>(partsCompleteEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parts: completedParts }),
+      });
 
       const fileMetadata = await fetchJson<FileMetadata>(upload.upload.completeEndpoint, {
         method: "POST",
@@ -603,6 +626,7 @@ export const createUploadHelpers = (input: {
         url: string;
         headers?: Record<string, string>;
       };
+      const sanitizedUrl = sanitizeSignedDownloadUrl(payload.url);
 
       let response: Response;
       try {
@@ -613,7 +637,7 @@ export const createUploadHelpers = (input: {
       } catch (error) {
         throw new Error(
           buildDownloadRequestErrorMessage({
-            endpointUrl: payload.url,
+            endpointUrl: sanitizedUrl,
             requestError: error,
           }),
         );
@@ -623,7 +647,7 @@ export const createUploadHelpers = (input: {
         const payloadError = await readJsonSafely(response);
         throw new Error(
           buildDownloadRequestErrorMessage({
-            endpointUrl: payload.url,
+            endpointUrl: sanitizedUrl,
             status: response.status,
             payload: payloadError,
           }),
@@ -654,7 +678,7 @@ export const createUploadHelpers = (input: {
       const errorCode = readErrorCodeFromPayload(contentError);
       const hint =
         errorCode === "SIGNED_URL_UNSUPPORTED"
-          ? "Requested method 'content' is unsupported by this storage adapter. This is a programming error. Use method 'signed-url' when signed downloads are available."
+          ? "The 'content' download endpoint is unsupported by this storage adapter. This request used method 'content'. Use method 'signed-url' when signed downloads are available."
           : undefined;
       throw new Error(
         buildDownloadRequestErrorMessage({

@@ -6,11 +6,15 @@ uploads, and one-shot multipart form uploads. Strategy selection is driven by th
 
 ## Upload Inventory
 
-Routes below are relative to the fragment mount (for example, `/api/uploads`).
+Routes below are relative to the fragment mount (for example, `/api/uploads`). Upload session
+responses include the resolved `provider` plus canonical provider-sticky follow-up URLs:
+`statusEndpoint`, `progressEndpoint`, `completeEndpoint`, `abortEndpoint`, and the strategy-specific
+`partsEndpoint`, `partsCompleteEndpoint`, or `contentEndpoint` when applicable.
 
 **Direct single (signed URL to storage)** Steps:
 
-1. `POST /uploads` returns `uploadUrl` + `uploadHeaders`. Writes: `upload`.
+1. `POST /uploads` returns `uploadUrl`, `uploadHeaders`, and canonical follow-up URLs. Writes:
+   `upload`.
 2. Client `PUT` to the signed URL. Writes: none.
 3. `POST /uploads/:uploadId/complete`. Writes: `upload`, `file`.
 4. Optional `POST /uploads/:uploadId/progress`. Writes: `upload`.
@@ -21,7 +25,7 @@ completion writes). DB ops: after `initUpload`, read `file` + `upload` (availabi
 
 **Direct multipart (signed part URLs)** Steps:
 
-1. `POST /uploads` creates the upload. Writes: `upload`.
+1. `POST /uploads` creates the upload and returns canonical follow-up URLs. Writes: `upload`.
 2. `POST /uploads/:uploadId/parts` returns signed part URLs. Writes: none.
 3. Client `PUT` to part URLs. Writes: none.
 4. `POST /uploads/:uploadId/parts/complete`. Writes: `upload_part`, `upload`.
@@ -34,7 +38,7 @@ insert `file`.
 
 **Proxy stream (upload session)** Steps:
 
-1. `POST /uploads` creates the upload. Writes: `upload`.
+1. `POST /uploads` creates the upload and returns canonical follow-up URLs. Writes: `upload`.
 2. `PUT /uploads/:uploadId/content` streams content through the fragment. Writes: `upload`, `file`.
 
 Storage ops: `initUpload` (before DB availability checks), `writeStream`. DB ops: after
@@ -62,6 +66,8 @@ Note: If `initUpload` returns `direct-multipart`, this route responds with
 
 Helper behavior note:
 
+- Official helpers use the returned canonical follow-up URLs instead of reconstructing
+  `/uploads/:uploadId/...` paths locally.
 - For proxy uploads (`PUT /uploads/:uploadId/content`), helpers try streamed upload first and then a
   buffered fallback.
 - If both attempts fail at the transport layer, helpers throw an actionable error suggesting
