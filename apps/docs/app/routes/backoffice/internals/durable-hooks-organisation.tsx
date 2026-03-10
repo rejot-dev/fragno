@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 import type { Route } from "./+types/durable-hooks-organisation";
 import {
+  DURABLE_HOOK_ORG_FRAGMENTS,
+  FRAGMENT_CONFIGURE_META,
   FRAGMENT_LABELS,
   getDurableHooksLoaderErrorMessage,
   type DurableHooksOrgFragment,
@@ -10,6 +12,7 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import {
   getCloudflareWorkersDurableObject,
   getGitHubDurableObject,
+  getPiDurableObject,
   getResendDurableObject,
   getTelegramDurableObject,
   getUploadDurableObject,
@@ -32,35 +35,6 @@ type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
   fragment: DurableHooksOrgFragment;
 };
 
-const getFragmentConfigureState = (fragment: DurableHooksOrgFragment, orgId: string) => {
-  switch (fragment) {
-    case "cloudflare":
-      return {
-        path: "/backoffice/environments/workers",
-        label: "Open Workers control plane",
-      };
-    case "github":
-      return {
-        path: `/backoffice/connections/github/${orgId}/configuration`,
-        label: "Configure GitHub",
-      };
-    case "upload":
-      return {
-        path: `/backoffice/connections/upload/${orgId}/configuration`,
-        label: "Configure Upload",
-      };
-    case "resend":
-      return {
-        path: `/backoffice/connections/resend/${orgId}/configuration`,
-        label: "Configure Resend",
-      };
-    default:
-      return {
-        path: `/backoffice/connections/telegram/${orgId}/configuration`,
-        label: "Configure Telegram",
-      };
-  }
-};
 const parsePageSize = (value: string | null) => {
   if (!value) {
     return undefined;
@@ -70,14 +44,8 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (
-    value === "telegram" ||
-    value === "resend" ||
-    value === "github" ||
-    value === "upload" ||
-    value === "cloudflare"
-  ) {
-    return value;
+  if (value && DURABLE_HOOK_ORG_FRAGMENTS.includes(value as DurableHooksOrgFragment)) {
+    return value as DurableHooksOrgFragment;
   }
   return null;
 };
@@ -112,38 +80,44 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   try {
-    const queue = ((): Promise<DurableHookQueueResponse> => {
-      if (fragment === "cloudflare") {
-        return getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
-          orgId: params.orgId,
-          cursor,
-          pageSize,
-        }) as Promise<DurableHookQueueResponse>;
+    const queueData = await (async (): Promise<DurableHookQueueResponse> => {
+      switch (fragment) {
+        case "cloudflare":
+          return (await getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
+            orgId: params.orgId,
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "telegram":
+          return (await getTelegramDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "resend":
+          return (await getResendDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "github":
+          return (await getGitHubDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "upload":
+          return (await getUploadDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "pi":
+        case "workflows":
+          return (await getPiDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+            fragment,
+          })) as DurableHookQueueResponse;
       }
-      if (fragment === "resend") {
-        return getResendDurableObject(context, params.orgId).getHookQueue({
-          cursor,
-          pageSize,
-        }) as Promise<DurableHookQueueResponse>;
-      }
-      if (fragment === "github") {
-        return getGitHubDurableObject(context, params.orgId).getHookQueue({
-          cursor,
-          pageSize,
-        }) as Promise<DurableHookQueueResponse>;
-      }
-      if (fragment === "upload") {
-        return getUploadDurableObject(context, params.orgId).getHookQueue({
-          cursor,
-          pageSize,
-        }) as Promise<DurableHookQueueResponse>;
-      }
-      return getTelegramDurableObject(context, params.orgId).getHookQueue({
-        cursor,
-        pageSize,
-      }) as Promise<DurableHookQueueResponse>;
     })();
-    const queueData = await queue;
+
     return {
       configured: queueData.configured,
       hooksEnabled: queueData.hooksEnabled,
@@ -207,7 +181,8 @@ export default function BackofficeDurableHooksOrganisation() {
 
   const activeFragment = fragment;
   const fragmentLabel = FRAGMENT_LABELS[activeFragment];
-  const configureState = getFragmentConfigureState(activeFragment, orgId);
+  const configureMeta = FRAGMENT_CONFIGURE_META[activeFragment];
+  const configurePath = configureMeta.path(orgId);
   const queueCount = items.length;
   const nextCursor = cursor;
   const nextSearchParams = new URLSearchParams(searchParams);
@@ -227,43 +202,12 @@ export default function BackofficeDurableHooksOrganisation() {
     const tabBasePath = `${baseScopePath}/${fragmentId}`;
     return query ? `${tabBasePath}?${query}` : tabBasePath;
   };
-  const fragmentTabs: Array<{
-    id: DurableHooksOrgFragment;
-    label: string;
-    to: string;
-    disabled: boolean;
-  }> = [
-    {
-      id: "cloudflare",
-      label: "Workers",
-      to: fragmentTabHref("cloudflare"),
-      disabled: false,
-    },
-    {
-      id: "telegram",
-      label: "Telegram",
-      to: fragmentTabHref("telegram"),
-      disabled: false,
-    },
-    {
-      id: "resend",
-      label: "Resend",
-      to: fragmentTabHref("resend"),
-      disabled: false,
-    },
-    {
-      id: "github",
-      label: "GitHub",
-      to: fragmentTabHref("github"),
-      disabled: false,
-    },
-    {
-      id: "upload",
-      label: "Upload",
-      to: fragmentTabHref("upload"),
-      disabled: false,
-    },
-  ];
+  const fragmentTabs = DURABLE_HOOK_ORG_FRAGMENTS.map((fragmentId) => ({
+    id: fragmentId,
+    label: FRAGMENT_LABELS[fragmentId],
+    to: fragmentTabHref(fragmentId),
+    disabled: false,
+  }));
 
   useEffect(() => {
     setSelectedHookId(null);
@@ -380,10 +324,10 @@ export default function BackofficeDurableHooksOrganisation() {
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
                 {fragmentLabel} is not configured for this organisation yet.
                 <Link
-                  to={configureState.path}
+                  to={configurePath}
                   className="ml-2 inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
                 >
-                  {configureState.label}
+                  {configureMeta.label}
                 </Link>
               </div>
             ) : !hooksEnabled ? (

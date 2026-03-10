@@ -10,6 +10,7 @@ import type { Upload } from "workers/upload.do";
 import type { CloudflareWorkers } from "workers/cloudflare-wfp.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
 import { CloudflareContext } from "./cloudflare-context";
+import type { Pi } from "workers/pi.do";
 
 export const MAILING_LIST_SINGLETON_ID = "MAILING_LIST_SINGLETON_ID" as const;
 export const FORMS_SINGLETON_ID = "FORMS_SINGLETON_ID" as const;
@@ -107,6 +108,19 @@ export function getCloudflareWorkersDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.CLOUDFLARE_WORKERS.get(env.CLOUDFLARE_WORKERS.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Pi Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getPiDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Pi> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.PI.get(env.PI.idFromName(orgId));
 }
 
 /**

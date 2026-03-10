@@ -1,0 +1,96 @@
+diff --git a/dist/env-api-keys.js b/dist/env-api-keys.js
+index f7e3dc323a3453ff13af03e78f3b7e0d45a6c62d..9cfcd46f0960e9b32f049e9fc86f9dab60b28422 100644
+--- a/dist/env-api-keys.js
++++ b/dist/env-api-keys.js
+@@ -2,8 +2,12 @@
+ let _existsSync = null;
+ let _homedir = null;
+ let _join = null;
+-// Eagerly load in Node.js/Bun environment only
+-if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
++const isWorkersRuntime = typeof WebSocketPair !== "undefined" ||
++    (typeof navigator !== "undefined" &&
++        typeof navigator.userAgent === "string" &&
++        navigator.userAgent.includes("Cloudflare-Workers"));
++// Eagerly load in Node.js/Bun environment only (avoid Workers' node:os import failures)
++if (!isWorkersRuntime && typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+     import("node:fs").then((m) => {
+         _existsSync = m.existsSync;
+     });
+diff --git a/dist/providers/openai-codex-responses.js b/dist/providers/openai-codex-responses.js
+index f4b2decc5f338e00272115a80dbc4b85e68e369f..6a8590322dd0e2e512ab442038e2764e97caae13 100644
+--- a/dist/providers/openai-codex-responses.js
++++ b/dist/providers/openai-codex-responses.js
+@@ -1,6 +1,11 @@
+ // NEVER convert to top-level import - breaks browser/Vite builds (web-ui)
+ let _os = null;
+-if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
++const isWorkersRuntime = typeof WebSocketPair !== "undefined" ||
++    (typeof navigator !== "undefined" &&
++        typeof navigator.userAgent === "string" &&
++        navigator.userAgent.includes("Cloudflare-Workers"));
++// Skip node:os in Workers; nodejs_compat provides `process` but not `node:os`.
++if (!isWorkersRuntime && typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+     import("node:os").then((m) => {
+         _os = m;
+     });
+diff --git a/dist/providers/register-builtins.js b/dist/providers/register-builtins.js
+index 8b7edc55e4baff617dad25bb01e2fbac7e3d044d..17a9f54a5e3dce9ad297478bfe73445677debc88 100644
+--- a/dist/providers/register-builtins.js
++++ b/dist/providers/register-builtins.js
+@@ -1,5 +1,4 @@
+ import { clearApiProviders, registerApiProvider } from "../api-registry.js";
+-import { streamBedrock, streamSimpleBedrock } from "./amazon-bedrock.js";
+ import { streamAnthropic, streamSimpleAnthropic } from "./anthropic.js";
+ import { streamAzureOpenAIResponses, streamSimpleAzureOpenAIResponses } from "./azure-openai-responses.js";
+ import { streamGoogle, streamSimpleGoogle } from "./google.js";
+@@ -8,6 +7,8 @@ import { streamGoogleVertex, streamSimpleGoogleVertex } from "./google-vertex.js
+ import { streamOpenAICodexResponses, streamSimpleOpenAICodexResponses } from "./openai-codex-responses.js";
+ import { streamOpenAICompletions, streamSimpleOpenAICompletions } from "./openai-completions.js";
+ import { streamOpenAIResponses, streamSimpleOpenAIResponses } from "./openai-responses.js";
++// NOTE: Bedrock provider intentionally omitted in this patch to avoid pulling
++// AWS SDK Node-only deps (e.g. `node:os`) into Cloudflare Workers tests.
+ export function registerBuiltInApiProviders() {
+     registerApiProvider({
+         api: "anthropic-messages",
+@@ -49,11 +50,6 @@ export function registerBuiltInApiProviders() {
+         stream: streamGoogleVertex,
+         streamSimple: streamSimpleGoogleVertex,
+     });
+-    registerApiProvider({
+-        api: "bedrock-converse-stream",
+-        stream: streamBedrock,
+-        streamSimple: streamSimpleBedrock,
+-    });
+ }
+ export function resetApiProviders() {
+     clearApiProviders();
+diff --git a/dist/utils/json-parse.js b/dist/utils/json-parse.js
+index 643511d0c33848c983167a79b318fc2836270ebd..636273f26d793d62c9dc90a3e1dee02bc1624c27 100644
+--- a/dist/utils/json-parse.js
++++ b/dist/utils/json-parse.js
+@@ -1,4 +1,5 @@
+-import { parse as partialParse } from "partial-json";
++// NOTE: `partial-json` is CJS and fails under Cloudflare Workers' ESM loader.
++// We skip partial parsing in Workers-compatible builds and fall back to `{}`.
+ /**
+  * Attempts to parse potentially incomplete JSON during streaming.
+  * Always returns a valid object, even if the JSON is incomplete.
+@@ -15,15 +16,8 @@ export function parseStreamingJson(partialJson) {
+         return JSON.parse(partialJson);
+     }
+     catch {
+-        // Try partial-json for incomplete JSON
+-        try {
+-            const result = partialParse(partialJson);
+-            return (result ?? {});
+-        }
+-        catch {
+-            // If all parsing fails, return empty object
+-            return {};
+-        }
++        // If parsing fails, return empty object (skip partial parsing in Workers).
++        return {};
+     }
+ }
+ //# sourceMappingURL=json-parse.js.map
