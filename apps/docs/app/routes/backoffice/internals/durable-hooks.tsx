@@ -80,14 +80,16 @@ export default function BackofficeDurableHooksLanding() {
             </div>
           ) : (
             organizations.map(({ organization }) => {
-              const scopePath = `/backoffice/internals/durable-hooks/${organization.id}`;
-              const cloudflarePath = `/backoffice/internals/durable-hooks/${organization.id}/cloudflare`;
-              const telegramPath = `/backoffice/internals/durable-hooks/${organization.id}/telegram`;
-              const resendPath = `/backoffice/internals/durable-hooks/${organization.id}/resend`;
-              const githubPath = `/backoffice/internals/durable-hooks/${organization.id}/github`;
-              const uploadPath = `/backoffice/internals/durable-hooks/${organization.id}/upload`;
+              const organizationPath = `/backoffice/internals/durable-hooks/${organization.id}`;
+              const cloudflarePath = `${organizationPath}/cloudflare`;
+              const telegramPath = `${organizationPath}/telegram`;
+              const resendPath = `${organizationPath}/resend`;
+              const githubPath = `${organizationPath}/github`;
+              const uploadPath = `${organizationPath}/upload`;
+              const piPath = `${organizationPath}/pi`;
+              const workflowsPath = `${organizationPath}/workflows`;
               const handleOrgClick = () => {
-                navigate(scopePath);
+                navigate(organizationPath);
               };
 
               return (
@@ -139,6 +141,13 @@ export default function BackofficeDurableHooksLanding() {
                       Resend
                     </Link>
                     <Link
+                      to={githubPath}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      GitHub
+                    </Link>
+                    <Link
                       to={uploadPath}
                       onClick={(event) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
@@ -146,11 +155,18 @@ export default function BackofficeDurableHooksLanding() {
                       Upload
                     </Link>
                     <Link
-                      to={githubPath}
+                      to={piPath}
                       onClick={(event) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
-                      GitHub
+                      Pi
+                    </Link>
+                    <Link
+                      to={workflowsPath}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      Workflows
                     </Link>
                   </div>
                 </div>

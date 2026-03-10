@@ -92,9 +92,20 @@ export default [
           ]),
         ],
       ),
+      route("sessions", "routes/backoffice/sessions/index.tsx"),
+      route("sessions/:orgId", "routes/backoffice/sessions/organisation-layout.tsx", [
+        index("routes/backoffice/sessions/organisation-index.tsx"),
+        route("configuration", "routes/backoffice/sessions/configuration.tsx"),
+        route("harnesses", "routes/backoffice/sessions/harnesses.tsx"),
+        route("sessions", "routes/backoffice/sessions/sessions.tsx", [
+          index("routes/backoffice/sessions/sessions-index.tsx"),
+          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
+        ]),
+      ]),
       route("internals", "routes/backoffice/internals/index.tsx"),
       route("internals/github", "routes/backoffice/internals/github.tsx"),
       route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
+      route("internals/workflows", "routes/backoffice/internals/workflows.tsx"),
       route(
         "internals/durable-hooks/singletons",
         "routes/backoffice/internals/durable-hooks-singletons.tsx",
@@ -108,6 +119,21 @@ export default [
         "internals/durable-hooks/:orgId/:fragment",
         "routes/backoffice/internals/durable-hooks-organisation.tsx",
         [index("routes/backoffice/internals/durable-hooks-organisation-index.tsx")],
+      ),
+      route(
+        "internals/workflows/:orgId",
+        "routes/backoffice/internals/workflows-organisation-redirect.tsx",
+      ),
+      route(
+        "internals/workflows/:orgId/:fragment",
+        "routes/backoffice/internals/workflows-organisation.tsx",
+        [
+          index("routes/backoffice/internals/workflows-organisation-index.tsx"),
+          route(
+            ":workflowName/:instanceId",
+            "routes/backoffice/internals/workflows-organisation-detail.tsx",
+          ),
+        ],
       ),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
@@ -130,6 +156,8 @@ export default [
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgId/*", "routes/api/github.ts"),
     route("upload/:orgId/*", "routes/api/upload.ts"),
+    route("pi/:orgId/*", "routes/api/pi.ts"),
+    route("workflows/:orgId/*", "routes/api/workflows.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;

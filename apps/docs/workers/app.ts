@@ -1,16 +1,19 @@
 import { createRequestHandler, RouterContextProvider } from "react-router";
+import System from "typebox/system";
+
 import { CloudflareContext } from "../app/cloudflare/cloudflare-context";
-import { MailingList } from "./mailing-list.do";
-import { Forms } from "./forms.do";
 import { Auth } from "./auth.do";
-import { Telegram } from "./telegram.do";
+import { Forms } from "./forms.do";
+import { GitHub } from "./github.do";
+import { GitHubWebhookRouter } from "./github-webhook-router.do";
+import { MailingList } from "./mailing-list.do";
+import { Pi } from "./pi.do";
 import { Resend } from "./resend.do";
 import { Upload } from "./upload.do";
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
 import { SandboxRegistry } from "./sandbox-registry.do";
 import { Sandbox } from "./sandbox.do";
-import { GitHub } from "./github.do";
-import { GitHubWebhookRouter } from "./github-webhook-router.do";
+import { Telegram } from "./telegram.do";
 
 // Export Durable Object classes
 export { MailingList };
@@ -24,11 +27,14 @@ export { Sandbox };
 export { SandboxRegistry };
 export { GitHub };
 export { GitHubWebhookRouter };
+export { Pi };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
 );
+
+System.Settings.Set({ useAcceleration: false });
 
 export default {
   async fetch(request, env, ctx) {

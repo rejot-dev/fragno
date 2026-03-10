@@ -20,6 +20,7 @@ type NavItem = {
 function createNavItems(): NavItem[] {
   return [
     { label: "Dashboard", to: "/backoffice", end: true },
+    { label: "Sessions", to: "/backoffice/sessions" },
     {
       label: "Connections",
       to: "/backoffice/connections",
@@ -44,6 +45,7 @@ function createNavItems(): NavItem[] {
       children: [
         { label: "GitHub", to: "/backoffice/internals/github" },
         { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+        { label: "Workflows", to: "/backoffice/internals/workflows" },
       ],
     },
   ];

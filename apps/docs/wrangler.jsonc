@@ -115,6 +115,10 @@
         "name": "GITHUB_WEBHOOK_ROUTER",
         "class_name": "GitHubWebhookRouter",
       },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+      },
     ],
   },
   /**
@@ -165,6 +169,10 @@
     {
       "tag": "v11",
       "new_sqlite_classes": ["CloudflareWorkers"],
+    },
+    {
+      "tag": "v12",
+      "new_sqlite_classes": ["Pi"],
     },
   ],
   "rules": [
