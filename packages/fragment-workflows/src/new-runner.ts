@@ -10,6 +10,7 @@ import { workflowsSchema } from "./schema";
 import { isTerminalStatus } from "./runner/status";
 import { createRunnerState } from "./runner/state";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
+import { createWorkflowStateController } from "./runner/workflow-state";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -311,11 +312,18 @@ async function runTask(
     return { type: "errored", error: new Error("WORKFLOW_NOT_FOUND") };
   }
 
-  const step = new RunnerStep({ state, taskKind });
+  const workflowState = workflow.initialState
+    ? createWorkflowStateController(workflow.initialState)
+    : undefined;
+  const step = new RunnerStep({
+    state,
+    taskKind,
+  });
   const initialEvent = buildWorkflowEvent(instance, timestamp);
+  const runContext = workflowState ? { setState: workflowState.setState } : undefined;
 
   try {
-    const output = await workflow.run(initialEvent, step);
+    const output = await workflow.run.call(runContext, initialEvent, step);
     return { type: "completed", output };
   } catch (err) {
     if (err instanceof RunnerStepSuspended) {
