@@ -70,11 +70,42 @@ const parseAssistantTurn = (name: string): number | null => {
   return match ? Number.parseInt(match[1], 10) : null;
 };
 
-const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
+type PiWorkflowHistoryEvent = PiWorkflowsHistoryPage["events"][number];
+
+const parseBooleanQueryValue = (value: string | null, defaultValue: boolean): boolean => {
+  if (value === null) {
+    return defaultValue;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no") {
+    return false;
+  }
+  return defaultValue;
+};
+
+const deriveHistory = ({
+  steps,
+  events,
+  output,
+  includeTrace,
+  includeSummaries,
+  includeEvents,
+}: {
+  steps: PiWorkflowHistoryStep[];
+  events: PiWorkflowHistoryEvent[];
+  output: unknown;
+  includeTrace: boolean;
+  includeSummaries: boolean;
+  includeEvents: boolean;
+}) => {
   let messages: AgentMessage[] = [];
   const trace: AgentEvent[] = [];
   const summaries: PiTurnSummary[] = [];
   let lastAssistant: AgentMessage | null = null;
+  let lastMessages: AgentMessage[] = [];
 
   const sortedSteps = [...steps].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -85,11 +116,11 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
 
     const stepMessages = getArrayFromResult<AgentMessage>(step.result, "messages");
     if (stepMessages) {
-      messages = stepMessages;
+      lastMessages = stepMessages;
     }
 
     const stepTrace = getArrayFromResult<AgentEvent>(step.result, "trace");
-    if (stepTrace) {
+    if (includeTrace && stepTrace) {
       trace.push(...stepTrace);
     }
 
@@ -97,22 +128,31 @@ const deriveHistory = (steps: PiWorkflowHistoryStep[], output: unknown) => {
     const turn = parseAssistantTurn(step.name);
     if (assistant && turn !== null) {
       lastAssistant = assistant;
-      summaries.push({
-        turn,
-        assistant,
-        summary: extractAssistantTextFromMessage(assistant) || null,
-      });
+      if (includeSummaries) {
+        summaries.push({
+          turn,
+          assistant,
+          summary: extractAssistantTextFromMessage(assistant) || null,
+        });
+      }
     }
   }
 
-  if (messages.length === 0 && isRecord(output) && Array.isArray(output["messages"])) {
+  if (lastMessages.length > 0) {
+    messages = lastMessages;
+  } else if (isRecord(output) && Array.isArray(output["messages"])) {
     messages = output["messages"] as AgentMessage[];
   }
+
   if (lastAssistant && !messages.some((message) => message?.role === "assistant")) {
     messages = [...messages, lastAssistant];
   }
 
-  return { messages, trace, summaries };
+  const orderedEvents = includeEvents
+    ? [...events].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    : [];
+
+  return { messages, trace, summaries, events: orderedEvents };
 };
 
 const collectHistorySteps = (
@@ -120,6 +160,13 @@ const collectHistorySteps = (
   maxRunNumber: number,
 ): PiWorkflowHistoryStep[] => {
   return pages.filter((page) => page.runNumber <= maxRunNumber).flatMap((page) => page.steps);
+};
+
+const collectHistoryEvents = (
+  pages: PiWorkflowsHistoryPage[],
+  maxRunNumber: number,
+): PiWorkflowHistoryEvent[] => {
+  return pages.filter((page) => page.runNumber <= maxRunNumber).flatMap((page) => page.events);
 };
 
 export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
@@ -253,10 +300,14 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/sessions/:sessionId",
+        queryParameters: ["events", "trace", "summaries"],
         outputSchema: sessionDetailSchema,
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOWS_REQUIRED", "WORKFLOW_INSTANCE_MISSING"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function ({ pathParams, query }, { json, error }) {
           const sessionId = pathParams.sessionId;
+          const includeEvents = parseBooleanQueryValue(query.get("events"), true);
+          const includeTrace = parseBooleanQueryValue(query.get("trace"), true);
+          const includeSummaries = parseBooleanQueryValue(query.get("summaries"), true);
 
           const workflowsService = serviceDeps.workflows;
           if (!workflowsService) {
@@ -305,6 +356,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               .mutate(({ forSchema, serviceIntermediateResult }) => {
                 const [workflowStatus] = serviceIntermediateResult;
                 const uow = forSchema(piSchema);
+                // TODO: Why is this mutation here? This should be removed.
                 uow.update("session", sessionRow.id, (b) =>
                   b
                     .set({
@@ -322,7 +374,15 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   : 0;
                 const pages = historyPages.slice(0, maxRunNumber + 1);
                 const steps = collectHistorySteps(pages, maxRunNumber);
-                const history = deriveHistory(steps, workflowStatus.output);
+                const events = collectHistoryEvents(pages, maxRunNumber);
+                const history = deriveHistory({
+                  steps,
+                  events,
+                  output: workflowStatus.output,
+                  includeTrace,
+                  includeSummaries,
+                  includeEvents,
+                });
 
                 return { workflowStatus, history };
               })
@@ -339,6 +399,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 output: result.workflowStatus.output,
               },
               messages: result.history.messages,
+              events: result.history.events,
               trace: result.history.trace,
               summaries: result.history.summaries,
             });
