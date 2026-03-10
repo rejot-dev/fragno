@@ -169,8 +169,9 @@ export interface WorkflowDefinition<
   TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TState extends WorkflowStateShape | undefined = undefined,
+  TName extends string = string,
 > {
-  name: string;
+  name: TName;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
   initialState?: TState;
@@ -182,28 +183,38 @@ export interface WorkflowDefinition<
 }
 
 export function defineWorkflow<
+  TName extends string,
   TParams,
   TOutput = unknown,
   TState extends WorkflowStateShape | undefined = undefined,
 >(
-  options: { name: string; schema?: undefined; outputSchema?: undefined; initialState?: TState },
+  options: { name: TName; schema?: undefined; outputSchema?: undefined; initialState?: TState },
   run: WorkflowRunFn<TParams, TOutput, TState>,
-): WorkflowDefinition<TParams, TOutput, undefined, undefined, TState>;
+): WorkflowDefinition<TParams, TOutput, undefined, undefined, TState, TName>;
 export function defineWorkflow<
+  TName extends string,
   TSchema extends StandardSchemaV1,
   TOutput = unknown,
   TState extends WorkflowStateShape | undefined = undefined,
 >(
-  options: { name: string; schema: TSchema; outputSchema?: undefined; initialState?: TState },
+  options: { name: TName; schema: TSchema; outputSchema?: undefined; initialState?: TState },
   run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput, TState>,
-): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined, TState>;
+): WorkflowDefinition<
+  StandardSchemaV1.InferOutput<TSchema>,
+  TOutput,
+  TSchema,
+  undefined,
+  TState,
+  TName
+>;
 export function defineWorkflow<
+  TName extends string,
   TOutputSchema extends StandardSchemaV1,
   TParams = unknown,
   TState extends WorkflowStateShape | undefined = undefined,
 >(
   options: {
-    name: string;
+    name: TName;
     schema?: undefined;
     outputSchema: TOutputSchema;
     initialState?: TState;
@@ -214,15 +225,17 @@ export function defineWorkflow<
   StandardSchemaV1.InferOutput<TOutputSchema>,
   undefined,
   TOutputSchema,
-  TState
+  TState,
+  TName
 >;
 export function defineWorkflow<
+  TName extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
   TState extends WorkflowStateShape | undefined = undefined,
 >(
   options: {
-    name: string;
+    name: TName;
     schema: TInputSchema;
     outputSchema: TOutputSchema;
     initialState?: TState;
@@ -237,11 +250,12 @@ export function defineWorkflow<
   StandardSchemaV1.InferOutput<TOutputSchema>,
   TInputSchema,
   TOutputSchema,
-  TState
+  TState,
+  TName
 >;
-export function defineWorkflow(
+export function defineWorkflow<TName extends string>(
   options: {
-    name: string;
+    name: TName;
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
     initialState?: WorkflowStateShape;
@@ -252,7 +266,8 @@ export function defineWorkflow(
   unknown,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined,
-  WorkflowStateShape | undefined
+  WorkflowStateShape | undefined,
+  TName
 > {
   return { ...options, run };
 }
@@ -301,6 +316,32 @@ export type WorkflowStateFromEntry<TEntry> =
 
 export type WorkflowRestoredState<TEntry> =
   WorkflowStateFromEntry<TEntry> extends undefined ? undefined : WorkflowStateFromEntry<TEntry>;
+
+export type WorkflowNameFromEntry<TEntry> =
+  TEntry extends WorkflowDefinition<
+    unknown,
+    unknown,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    WorkflowStateShape | undefined,
+    infer TName
+  >
+    ? TName
+    : never;
+
+export type WorkflowNameFromRegistry<TRegistry extends WorkflowsRegistry> = Extract<
+  WorkflowNameFromEntry<TRegistry[keyof TRegistry]>,
+  string
+>;
+
+export type WorkflowEntryFromName<
+  TRegistry extends WorkflowsRegistry,
+  TWorkflowName extends string,
+> = {
+  [K in keyof TRegistry]: WorkflowNameFromEntry<TRegistry[K]> extends TWorkflowName
+    ? TRegistry[K]
+    : never;
+}[keyof TRegistry];
 
 /** Map of binding keys to workflow definitions. */
 export type WorkflowsRegistry = Record<string, WorkflowRegistryEntry>;
