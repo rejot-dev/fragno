@@ -28,6 +28,19 @@ function parseSQLiteUtcTimestamp(value: string): Date | null {
   );
 }
 
+function readBigInt64BEFromBytes(value: ArrayBuffer | ArrayBufferView): bigint {
+  if (value.byteLength !== 8) {
+    throw new Error(`Cannot deserialize bigint from ${value.byteLength} bytes; expected 8.`);
+  }
+
+  const view =
+    value instanceof ArrayBuffer
+      ? new DataView(value)
+      : new DataView(value.buffer, value.byteOffset, value.byteLength);
+
+  return view.getBigInt64(0, false);
+}
+
 /**
  * SQLite-specific serializer.
  *
@@ -139,8 +152,8 @@ export class SQLiteSerializer extends SQLSerializer {
     if (typeof value === "bigint") {
       return value;
     }
-    if (value instanceof Buffer) {
-      return value.readBigInt64BE(0);
+    if (value instanceof Buffer || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+      return readBigInt64BEFromBytes(value);
     }
     if (typeof value === "string") {
       return BigInt(value);
