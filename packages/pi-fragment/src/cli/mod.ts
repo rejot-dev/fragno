@@ -95,9 +95,9 @@ sessions create:
 
 sessions get:
   -s, --session <id>          Session id (or positional)
-  --status-only               Only output status fields (+events)
-                               Default fetch: events=true, trace=false, summaries=false
-                               Non-JSON output includes all messages and events with timestamps
+  --status-only               Only output status/workflow/current-run state fields
+                               Non-JSON output includes current-run messages, events, trace,
+                               and summaries when present
 
 sessions send-message:
   -s, --session <id>          Session id (or positional)
@@ -413,6 +413,18 @@ const extractEventPayload = (payload: unknown): string => {
   return compactJson(payload);
 };
 
+const extractTraceDetails = (value: unknown): string => {
+  if (!isRecord(value)) {
+    return toDisplayValue(value);
+  }
+
+  const { type: _type, timestamp: _timestamp, ...rest } = value;
+  if (Object.keys(rest).length === 0) {
+    return "-";
+  }
+  return truncate(toOneLine(compactJson(rest)), 160);
+};
+
 const buildSessionsGetTextOutput = (data: unknown): string => {
   if (!isRecord(data)) {
     return typeof data === "string" ? data : toPrettyJson(data);
@@ -430,6 +442,19 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
   if (data["status"] !== undefined) {
     lines.push(`Status   ${toDisplayValue(data["status"])}`);
   }
+  if (data["phase"] !== undefined) {
+    lines.push(`Phase    ${toDisplayValue(data["phase"])}`);
+  }
+  if (data["turn"] !== undefined) {
+    lines.push(`Turn     ${toDisplayValue(data["turn"])}`);
+  }
+  if (data["waitingFor"] !== undefined) {
+    lines.push(
+      `Waiting  ${
+        data["waitingFor"] === null ? "-" : truncate(toOneLine(compactJson(data["waitingFor"])))
+      }`,
+    );
+  }
   if (data["steeringMode"] !== undefined) {
     lines.push(`Steering ${toDisplayValue(data["steeringMode"])}`);
   }
@@ -445,40 +470,82 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
     lines.push(`Workflow ${toDisplayValue(workflow["status"])}`);
   }
 
-  const messages = Array.isArray(data["messages"]) ? data["messages"] : [];
-  lines.push("");
-  lines.push(...buildSection(`Messages (${messages.length})`));
-  if (messages.length === 0) {
-    lines.push("(none)");
-  } else {
-    const rows = messages.map((message, index) => {
-      const record = isRecord(message) ? message : null;
-      const role = typeof record?.["role"] === "string" ? record["role"] : "unknown";
-      const timestamp = toTimestampLabel(record?.["timestamp"]);
-      const text = truncate(toOneLine(extractMessageText(message) || "(no text content)"));
-      return [String(index + 1), role, timestamp, text];
-    });
-    lines.push(buildTableText(["#", "Writer", "Timestamp", "Message"], rows));
+  if ("messages" in data) {
+    const messages = Array.isArray(data["messages"]) ? data["messages"] : [];
+    lines.push("");
+    lines.push(...buildSection(`Messages (${messages.length})`));
+    if (messages.length === 0) {
+      lines.push("(none)");
+    } else {
+      const rows = messages.map((message, index) => {
+        const record = isRecord(message) ? message : null;
+        const role = typeof record?.["role"] === "string" ? record["role"] : "unknown";
+        const timestamp = toTimestampLabel(record?.["timestamp"]);
+        const text = truncate(toOneLine(extractMessageText(message) || "(no text content)"));
+        return [String(index + 1), role, timestamp, text];
+      });
+      lines.push(buildTableText(["#", "Writer", "Timestamp", "Message"], rows));
+    }
   }
 
-  const events = Array.isArray(data["events"]) ? data["events"] : [];
-  lines.push("");
-  lines.push(...buildSection(`Events (${events.length})`));
-  if (events.length === 0) {
-    lines.push("(none)");
-  } else {
-    const rows = events.map((event, index) => {
-      const record = isRecord(event) ? event : null;
-      const type = typeof record?.["type"] === "string" ? record["type"] : "unknown";
-      const createdAt = toTimestampLabel(record?.["createdAt"] ?? record?.["timestamp"]);
-      const deliveredAt = toTimestampLabel(record?.["deliveredAt"]);
-      const consumedBy = toDisplayValue(record?.["consumedByStepKey"]) || "-";
-      const payload = truncate(toOneLine(extractEventPayload(record?.["payload"]) || "-"), 160);
-      return [String(index + 1), type, createdAt, deliveredAt, consumedBy, payload];
-    });
-    lines.push(
-      buildTableText(["#", "Type", "Created", "Delivered", "Consumed By", "Payload"], rows),
-    );
+  if ("events" in data) {
+    const events = Array.isArray(data["events"]) ? data["events"] : [];
+    lines.push("");
+    lines.push(...buildSection(`Events (${events.length})`));
+    if (events.length === 0) {
+      lines.push("(none)");
+    } else {
+      const rows = events.map((event, index) => {
+        const record = isRecord(event) ? event : null;
+        const type = typeof record?.["type"] === "string" ? record["type"] : "unknown";
+        const createdAt = toTimestampLabel(record?.["createdAt"] ?? record?.["timestamp"]);
+        const deliveredAt = toTimestampLabel(record?.["deliveredAt"]);
+        const consumedBy = toDisplayValue(record?.["consumedByStepKey"]) || "-";
+        const payload = truncate(toOneLine(extractEventPayload(record?.["payload"]) || "-"), 160);
+        return [String(index + 1), type, createdAt, deliveredAt, consumedBy, payload];
+      });
+      lines.push(
+        buildTableText(["#", "Type", "Created", "Delivered", "Consumed By", "Payload"], rows),
+      );
+    }
+  }
+
+  if ("trace" in data) {
+    const trace = Array.isArray(data["trace"]) ? data["trace"] : [];
+    lines.push("");
+    lines.push(...buildSection(`Trace (${trace.length})`));
+    if (trace.length === 0) {
+      lines.push("(none)");
+    } else {
+      const rows = trace.map((event, index) => {
+        const record = isRecord(event) ? event : null;
+        const type = typeof record?.["type"] === "string" ? record["type"] : "unknown";
+        const timestamp = toTimestampLabel(record?.["timestamp"]);
+        const details = extractTraceDetails(event);
+        return [String(index + 1), type, timestamp, details];
+      });
+      lines.push(buildTableText(["#", "Type", "Timestamp", "Details"], rows));
+    }
+  }
+
+  if ("summaries" in data) {
+    const summaries = Array.isArray(data["summaries"]) ? data["summaries"] : [];
+    lines.push("");
+    lines.push(...buildSection(`Summaries (${summaries.length})`));
+    if (summaries.length === 0) {
+      lines.push("(none)");
+    } else {
+      const rows = summaries.map((entry) => {
+        const record = isRecord(entry) ? entry : null;
+        const turn = toDisplayValue(record?.["turn"]);
+        const summary =
+          typeof record?.["summary"] === "string" && record["summary"].trim()
+            ? record["summary"]
+            : extractMessageText(record?.["assistant"]);
+        return [turn || "-", truncate(toOneLine(summary || "-"), 160)];
+      });
+      lines.push(buildTableText(["Turn", "Summary"], rows));
+    }
   }
 
   return lines.join("\n");
@@ -489,14 +556,6 @@ const buildSessionsGetOutput = (data: unknown, json: boolean): CliActionResult =
     return { output: { format: "json", data } };
   }
   return { output: { format: "text", text: buildSessionsGetTextOutput(data) } };
-};
-
-const stripSessionDetailDefaults = (data: unknown): unknown => {
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return data;
-  }
-  const { trace: _trace, summaries: _summaries, ...rest } = data as Record<string, unknown>;
-  return rest;
 };
 
 const buildSendMessageOutput = (data: unknown, json: boolean): CliActionResult => {
@@ -595,25 +654,21 @@ const defaultActions: CliActions = {
     return buildDetailOutput(response.data, ctx.config.json);
   },
   sessionsGet: async (args, ctx) => {
-    const query = new URLSearchParams({
-      events: "true",
-      trace: "false",
-      summaries: "false",
-    });
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}?${query.toString()}`;
+    const path = `/sessions/${encodeURIComponent(args.sessionId)}`;
     const response = await requestJson(ctx.config, ctx.logger, { method: "GET", path });
     if (!response.ok) {
       return response.error;
     }
-    const data = stripSessionDetailDefaults(response.data);
     const outputData =
-      args.statusOnly && data && typeof data === "object"
+      args.statusOnly && response.data && typeof response.data === "object"
         ? {
-            status: (data as Record<string, unknown>)["status"],
-            workflow: (data as Record<string, unknown>)["workflow"],
-            events: (data as Record<string, unknown>)["events"],
+            status: (response.data as Record<string, unknown>)["status"],
+            workflow: (response.data as Record<string, unknown>)["workflow"],
+            phase: (response.data as Record<string, unknown>)["phase"],
+            turn: (response.data as Record<string, unknown>)["turn"],
+            waitingFor: (response.data as Record<string, unknown>)["waitingFor"],
           }
-        : data;
+        : response.data;
     return buildSessionsGetOutput(outputData, ctx.config.json);
   },
   sessionsSendMessage: async (args, ctx) => {

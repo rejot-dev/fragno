@@ -16,20 +16,25 @@ import {
 } from "@fragno-dev/workflows";
 
 import { PiLogger } from "../debug-log";
-import { normalizeSteeringMode } from "./mappers";
+import { extractAssistantTextFromMessage, normalizeSteeringMode } from "./mappers";
 import {
   PI_TOOL_JOURNAL_VERSION,
   type PiAgentDefinition,
   type PiAgentRegistry,
+  type PiAgentLoopPhase,
+  type PiAgentLoopState,
+  type PiAgentLoopWaitingFor,
   type PiFragmentConfig,
   type PiPersistedToolCall,
   type PiPersistedToolResult,
   type PiSession,
+  type PiSessionDetailEvent,
   type PiToolFactory,
   type PiToolFactoryContext,
   type PiToolReplayContext,
   type PiToolRegistry,
   type PiToolSideEffectReducerRegistry,
+  type PiTurnSummary,
 } from "./types";
 
 export const PI_WORKFLOW_NAME = "agent-loop-workflow";
@@ -48,11 +53,9 @@ export type PiWorkflowsOptions = {
   logging?: PiFragmentConfig["logging"];
 };
 
-export type PiAgentLoopState = {
-  messages: AgentMessage[];
-};
-
 const TOOL_JOURNAL_FIELD = "toolJournal";
+const WAIT_FOR_USER_TIMEOUT = "1 hour" as const;
+const WAIT_FOR_USER_TIMEOUT_MS = 60 * 60 * 1000;
 
 const agentLoopParamsSchema: z.ZodType<PiAgentLoopParams> = z.object({
   sessionId: z.string(),
@@ -393,6 +396,25 @@ const createReplayContext = (options: {
   return replayContext;
 };
 
+const getArrayFromResult = <T>(result: unknown, key: string): T[] => {
+  if (!isRecord(result)) {
+    return [];
+  }
+  const value = result[key];
+  return Array.isArray(value) ? (value as T[]) : [];
+};
+
+const getAssistantFromResult = (result: unknown): AgentMessage | null => {
+  if (!isRecord(result)) {
+    return null;
+  }
+  const assistant = result["assistant"];
+  if (!assistant || typeof assistant !== "object") {
+    return null;
+  }
+  return assistant as AgentMessage;
+};
+
 const parseAssistantStepResult = (value: unknown, stepName: string) => {
   if (!isRecord(value) || Array.isArray(value)) {
     throw new NonRetryableError(`Assistant step ${stepName} returned an invalid result.`);
@@ -404,6 +426,9 @@ const parseAssistantStepResult = (value: unknown, stepName: string) => {
   }
   return {
     messages: messages as AgentMessage[],
+    trace: getArrayFromResult<AgentEvent>(value, "trace"),
+    assistant:
+      getAssistantFromResult(value) ?? findLastAssistantMessage(messages as AgentMessage[]),
     toolJournal: parsePersistedToolJournal(value, stepName),
   };
 };
@@ -427,6 +452,70 @@ const buildUserMessage = (text: string): AgentMessage => ({
   role: "user",
   content: [{ type: "text", text }],
   timestamp: Date.now(),
+});
+
+const buildWaitUserStepKey = (turn: number) => `waitForEvent:wait-user-${turn}`;
+
+const buildAssistantStepKey = (turn: number) => `do:assistant-${turn}`;
+
+const buildWaitingForUser = (turn: number): NonNullable<PiAgentLoopWaitingFor> => ({
+  type: "user_message",
+  turn,
+  stepKey: buildWaitUserStepKey(turn),
+  timeoutMs: WAIT_FOR_USER_TIMEOUT_MS,
+});
+
+const buildWaitingForAssistant = (turn: number): NonNullable<PiAgentLoopWaitingFor> => ({
+  type: "assistant",
+  turn,
+  stepKey: buildAssistantStepKey(turn),
+});
+
+const buildTurnSummary = (turn: number, assistant: AgentMessage | null): PiTurnSummary | null => {
+  if (!assistant) {
+    return null;
+  }
+  return {
+    turn,
+    assistant,
+    summary: extractAssistantTextFromMessage(assistant) || null,
+  };
+};
+
+const coerceEventTimestamp = (value: Date | string | number): Date => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  const coerced = new Date(value);
+  if (!Number.isNaN(coerced.getTime())) {
+    return coerced;
+  }
+  return new Date(0);
+};
+
+const buildDetailEvent = (options: {
+  turn: number;
+  event: { type: string; payload: unknown; timestamp: Date | string | number };
+}): PiSessionDetailEvent => {
+  const timestamp = coerceEventTimestamp(options.event.timestamp);
+  return {
+    id: `${options.event.type}:${options.turn}:${timestamp.getTime()}`,
+    type: options.event.type,
+    payload: options.event.payload ?? null,
+    createdAt: timestamp,
+    deliveredAt: timestamp,
+    consumedByStepKey: buildWaitUserStepKey(options.turn),
+  };
+};
+
+export const createInitialPiAgentLoopState = (messages: AgentMessage[] = []): PiAgentLoopState => ({
+  messages,
+  events: [],
+  trace: [],
+  summaries: [],
+  turn: 0,
+  phase: "waiting-for-user",
+  waitingFor: buildWaitingForUser(0),
 });
 
 type AgentStreamFn = NonNullable<PiAgentDefinition["streamFn"]>;
@@ -799,9 +888,7 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
     {
       name: PI_WORKFLOW_NAME,
       schema: agentLoopParamsSchema,
-      initialState: {
-        messages: [] as PiAgentLoopState["messages"],
-      } satisfies PiAgentLoopState,
+      initialState: createInitialPiAgentLoopState(),
     },
     async function (event: WorkflowEvent<PiAgentLoopParams>, step: WorkflowStep) {
       const params = agentLoopParamsSchema.parse(event.payload ?? {});
@@ -813,25 +900,49 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
       let messages: AgentMessage[] = Array.isArray(params.initialMessages)
         ? params.initialMessages
         : [];
+      let events: PiSessionDetailEvent[] = [];
+      let trace: AgentEvent[] = [];
+      let summaries: PiTurnSummary[] = [];
       let turn = 0;
+      let phase: PiAgentLoopPhase = "waiting-for-user";
+      let waitingFor: PiAgentLoopWaitingFor = buildWaitingForUser(turn);
       const replayCache: PiToolReplayContext["cache"] = new Map();
-      this?.setState({ messages });
+      const emitState = () => {
+        this?.setState({
+          messages,
+          events,
+          trace,
+          summaries,
+          turn,
+          phase,
+          waitingFor,
+        });
+      };
+
+      emitState();
 
       while (true) {
+        phase = "waiting-for-user";
+        waitingFor = buildWaitingForUser(turn);
+        emitState();
+
         const userEvent = await step.waitForEvent(`wait-user-${turn}`, {
           type: "user_message",
-          timeout: "1 hour",
+          timeout: WAIT_FOR_USER_TIMEOUT,
         });
         const payload = userMessageSchema.parse(userEvent.payload ?? {});
         const steeringMode = normalizeSteeringMode(payload.steeringMode);
         const turnId = `${event.instanceId}:${turn}`;
+        events = [...events, buildDetailEvent({ turn, event: userEvent })];
 
         const userResult = await step.do(`user-${turn}`, async () => {
           const userMessage = buildUserMessage(payload.text ?? "");
           return { messages: [...messages, userMessage], user: userMessage };
         });
         messages = userResult.messages;
-        this?.setState({ messages });
+        phase = "running-agent";
+        waitingFor = buildWaitingForAssistant(turn);
+        emitState();
 
         const replay = createReplayContext({
           cache: replayCache,
@@ -856,14 +967,24 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
 
         const parsedAssistantResult = parseAssistantStepResult(assistantResult, assistantStepName);
         messages = parsedAssistantResult.messages;
+        trace = [...trace, ...parsedAssistantResult.trace];
+        const summary = buildTurnSummary(turn, parsedAssistantResult.assistant);
+        if (summary) {
+          summaries = [...summaries, summary];
+        }
         hydrateReplayCache(replayCache, parsedAssistantResult.toolJournal);
-        this?.setState({ messages });
 
         if (payload.done) {
+          phase = "complete";
+          waitingFor = null;
+          emitState();
           return { messages };
         }
 
         turn += 1;
+        phase = "waiting-for-user";
+        waitingFor = buildWaitingForUser(turn);
+        emitState();
       }
     },
   );

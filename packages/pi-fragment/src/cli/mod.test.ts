@@ -180,10 +180,10 @@ describe("fragno-pi CLI", () => {
     expect(parsed.action).toBe("get");
   });
 
-  it("documents sessions get defaults and text output in help", () => {
-    expect(__testing.USAGE).toContain("Default fetch: events=true, trace=false, summaries=false");
+  it("documents the current-run sessions get contract in help", () => {
+    expect(__testing.USAGE).toContain("Only output status/workflow/current-run state fields");
     expect(__testing.USAGE).toContain(
-      "Non-JSON output includes all messages and events with timestamps",
+      "Non-JSON output includes current-run messages, events, trace,",
     );
   });
 });

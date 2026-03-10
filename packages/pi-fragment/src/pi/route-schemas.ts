@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { SESSION_STATUSES, STEERING_MODES } from "./constants";
 
+const AGENT_LOOP_PHASES = ["waiting-for-user", "running-agent", "complete"] as const;
+
 const sessionBaseSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
@@ -98,13 +100,29 @@ const TraceSchema = z.object({
 
 const EventSchema = z.object({
   id: z.string(),
-  runNumber: z.number(),
+  runNumber: z.number().nullable().optional(),
   type: z.string(),
   payload: z.unknown().nullable(),
   createdAt: z.date(),
   deliveredAt: z.date().nullable(),
   consumedByStepKey: z.string().nullable(),
 });
+
+const WaitingForSchema = z
+  .union([
+    z.object({
+      type: z.literal("user_message"),
+      turn: z.number(),
+      stepKey: z.string(),
+      timeoutMs: z.number().nullable(),
+    }),
+    z.object({
+      type: z.literal("assistant"),
+      turn: z.number(),
+      stepKey: z.string(),
+    }),
+  ])
+  .nullable();
 
 const workflowStatusSchema = z.object({
   status: z.enum(SESSION_STATUSES),
@@ -122,6 +140,9 @@ const sessionDetailSchema = sessionBaseSchema.extend({
   messages: z.array(MessageSchema),
   events: z.array(EventSchema),
   trace: z.array(TraceSchema),
+  turn: z.number(),
+  phase: z.enum(AGENT_LOOP_PHASES),
+  waitingFor: WaitingForSchema,
   summaries: z.array(
     z.object({
       turn: z.number(),
