@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { migrateMock, createUploadServerForProviderMock, loadDurableHookQueueMock } = vi.hoisted(
-  () => ({
-    migrateMock: vi.fn(async () => undefined),
-    createUploadServerForProviderMock: vi.fn(),
-    loadDurableHookQueueMock: vi.fn(),
-  }),
-);
+const {
+  migrateMock,
+  createDurableHooksProcessorMock,
+  createUploadServerForProviderMock,
+  loadDurableHookQueueMock,
+  dispatcherNotifyMock,
+  dispatcherAlarmMock,
+} = vi.hoisted(() => ({
+  migrateMock: vi.fn(async () => undefined),
+  createDurableHooksProcessorMock: vi.fn(),
+  createUploadServerForProviderMock: vi.fn(),
+  loadDurableHookQueueMock: vi.fn(),
+  dispatcherNotifyMock: vi.fn(async () => undefined),
+  dispatcherAlarmMock: vi.fn(async () => undefined),
+}));
 
 vi.mock("cloudflare:workers", () => {
   class MockDurableObject {
@@ -18,6 +26,10 @@ vi.mock("cloudflare:workers", () => {
 
 vi.mock("@fragno-dev/db", () => ({
   migrate: migrateMock,
+}));
+
+vi.mock("@fragno-dev/db/dispatchers/cloudflare-do", () => ({
+  createDurableHooksProcessor: createDurableHooksProcessorMock,
 }));
 
 vi.mock("@/fragno/upload", async () => {
@@ -42,8 +54,9 @@ const createState = () => {
       store.set(key, value);
     }),
   };
+  const waitUntil = vi.fn();
 
-  return { storage } as unknown as DurableObjectState;
+  return { storage, waitUntil } as unknown as DurableObjectState;
 };
 
 const VALID_R2_PAYLOAD = {
@@ -66,8 +79,17 @@ const VALID_R2_BINDING_PAYLOAD = {
 describe("Upload Durable Object", () => {
   beforeEach(() => {
     migrateMock.mockClear();
+    createDurableHooksProcessorMock.mockReset();
     createUploadServerForProviderMock.mockReset();
     loadDurableHookQueueMock.mockReset();
+    dispatcherNotifyMock.mockReset();
+    dispatcherAlarmMock.mockReset();
+    createDurableHooksProcessorMock.mockImplementation(() => {
+      return () => ({
+        notify: dispatcherNotifyMock,
+        alarm: dispatcherAlarmMock,
+      });
+    });
     createUploadServerForProviderMock.mockImplementation((_config, provider) => ({
       handler: vi.fn(async () => new Response(`fragment-${provider}`, { status: 200 })),
     }));
@@ -124,7 +146,49 @@ describe("Upload Durable Object", () => {
     expect(bindingHandler).toHaveBeenCalled();
     expect(r2Handler).toHaveBeenCalled();
     expect(createUploadServerForProviderMock).toHaveBeenCalled();
+    expect(createDurableHooksProcessorMock).toHaveBeenCalled();
     expect(migrateMock).toHaveBeenCalled();
+  });
+
+  test("schedules durable hook processing for requests handled by a secondary provider", async () => {
+    const state = createState();
+    const r2Handler = vi.fn(async () => new Response("r2-ok", { status: 200 }));
+    const bindingHandler = vi.fn(async () => new Response("binding-ok", { status: 200 }));
+
+    createUploadServerForProviderMock.mockImplementation((_config, provider) => ({
+      handler: provider === "r2" ? r2Handler : bindingHandler,
+    }));
+
+    const upload = new Upload(state, {} as CloudflareEnv);
+    await upload.setAdminConfig(VALID_R2_BINDING_PAYLOAD, "acme");
+    await upload.setAdminConfig(
+      {
+        ...VALID_R2_PAYLOAD,
+        defaultProvider: "r2",
+      },
+      "acme",
+    );
+
+    await upload.fetch(new Request("https://example.com/api/upload/files?provider=r2-binding"));
+
+    expect(bindingHandler).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ waitUntil: expect.any(Function) }),
+    );
+    expect(dispatcherNotifyMock).toHaveBeenCalledTimes(1);
+    expect(dispatcherNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "request", waitUntil: expect.any(Function) }),
+    );
+  });
+
+  test("delegates alarms to the durable hook dispatcher", async () => {
+    const state = createState();
+    const upload = new Upload(state, {} as CloudflareEnv);
+    await upload.setAdminConfig(VALID_R2_PAYLOAD, "acme");
+
+    await upload.alarm();
+
+    expect(dispatcherAlarmMock).toHaveBeenCalledTimes(1);
   });
 
   test("rejects unsupported provider in request payload/query", async () => {

@@ -28,6 +28,15 @@ export type UpdateFileInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+type FileHookSource = {
+  provider: string;
+  key: string;
+  uploaderId?: string | null;
+  sizeBytes: bigint | number;
+  contentType: string;
+  objectKey: string;
+};
+
 type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
   onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
@@ -36,6 +45,16 @@ type UploadHooks = {
 };
 
 type UploadServiceContext = DatabaseServiceContext<UploadHooks>;
+
+const buildFileHookPayload = (file: FileHookSource, uploadId?: string): FileHookPayload => ({
+  provider: file.provider,
+  fileKey: file.key,
+  objectKey: file.objectKey,
+  uploadId,
+  uploaderId: file.uploaderId,
+  sizeBytes: Number(file.sizeBytes),
+  contentType: file.contentType,
+});
 
 export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
   return {
@@ -81,7 +100,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
               const uploaderId = input.uploaderId;
               const query = b.whereIndex("idx_file_provider_key_status_uploaderId", (eb) =>
                 eb.and(
-                  input.provider
+                  input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
                   eb("key", "starts with", prefix),
@@ -99,7 +118,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
               const status = input.status;
               const query = b.whereIndex("idx_file_provider_key_status", (eb) =>
                 eb.and(
-                  input.provider
+                  input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
                   eb("key", "starts with", prefix),
@@ -116,7 +135,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
               const uploaderId = input.uploaderId;
               const query = b.whereIndex("idx_file_provider_key_uploaderId", (eb) =>
                 eb.and(
-                  input.provider
+                  input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
                   eb("key", "starts with", prefix),
@@ -131,7 +150,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
 
             const query = b.whereIndex("idx_file_provider_key", (eb) =>
               eb.and(
-                input.provider
+                input.provider !== undefined
                   ? eb("provider", "=", input.provider)
                   : eb("provider", "starts with", ""),
                 eb("key", "starts with", prefix),
@@ -237,12 +256,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
           );
 
           uow.triggerHook("onFileDeleted", {
-            provider: file.provider,
-            fileKey: file.key,
-            uploadId,
-            uploaderId: file.uploaderId,
-            sizeBytes: Number(file.sizeBytes),
-            contentType: file.contentType,
+            ...buildFileHookPayload(file, uploadId),
           });
 
           return updatedFile;

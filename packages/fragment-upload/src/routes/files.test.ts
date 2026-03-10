@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, assert } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import path from "node:path";
 import os from "node:os";
@@ -66,6 +66,120 @@ describe("upload file routes", async () => {
     expect(await contentResponse.text()).toBe("hello");
   });
 
+  it("accepts provider namespaces that differ from the storage adapter name", async () => {
+    const providerAlias = "customer-assets";
+    const form = new FormData();
+    const file = new File([Buffer.from("aliased")], "aliased.txt", { type: "text/plain" });
+    form.set("file", file);
+    form.set("provider", providerAlias);
+    form.set("keyParts", JSON.stringify(["users", 7, "aliased"]));
+
+    const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(createResponse.type === "json");
+    expect(createResponse.data.provider).toBe(providerAlias);
+    const { fileKey } = createResponse.data;
+
+    const getResponse = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider: providerAlias, key: fileKey },
+    });
+    assert(getResponse.type === "json");
+    expect(getResponse.data.provider).toBe(providerAlias);
+
+    const updateResponse = await fragment.callRoute("PATCH", "/files/by-key", {
+      query: { provider: providerAlias, key: fileKey },
+      body: { filename: "renamed.txt" },
+    });
+    assert(updateResponse.type === "json");
+    expect(updateResponse.data.filename).toBe("renamed.txt");
+
+    const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
+      query: { provider: providerAlias, key: fileKey },
+    });
+    assert(downloadResponse.type === "error");
+    expect(downloadResponse.error.code).toBe("SIGNED_URL_UNSUPPORTED");
+
+    const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider: providerAlias, key: fileKey },
+    });
+    expect(contentResponse.status).toBe(200);
+    expect(await contentResponse.text()).toBe("aliased");
+
+    const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+      query: { provider: providerAlias, key: fileKey },
+    });
+    assert(deleteResponse.type === "json");
+    expect(deleteResponse.data).toEqual({ ok: true });
+  });
+
+  it("rejects malformed provider namespaces in POST /files", async () => {
+    const form = new FormData();
+    const file = new File([Buffer.from("hello")], "hello.txt", { type: "text/plain" });
+    form.set("file", file);
+    form.set("provider", "bad/provider");
+    form.set("keyParts", JSON.stringify(["users", 11, "avatar"]));
+
+    const response = await fragment.callRoute("POST", "/files", { body: form });
+    assert(response.type === "error");
+    expect(response.status).toBe(400);
+    expect(response.error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("GET /files/by-key/content rejects deleted files", async () => {
+    const form = new FormData();
+    const file = new File([Buffer.from("goodbye")], "goodbye.txt", { type: "text/plain" });
+    form.set("file", file);
+    form.set("provider", provider);
+    form.set("keyParts", JSON.stringify(["users", 9, "goodbye"]));
+
+    const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(createResponse.type === "json");
+    const { fileKey } = createResponse.data;
+
+    const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+      query: { provider, key: fileKey },
+    });
+    assert(deleteResponse.type === "json");
+    expect(deleteResponse.data).toEqual({ ok: true });
+
+    const contentResponse = await fragment.callRoute("GET", "/files/by-key/content", {
+      query: { provider, key: fileKey },
+    });
+    assert(contentResponse.type === "error");
+    expect(contentResponse.status).toBe(410);
+    expect(contentResponse.error.code).toBe("FILE_DELETED");
+  });
+
+  it("DELETE /files/by-key deletes storage through durable hooks", async () => {
+    const form = new FormData();
+    const file = new File([Buffer.from("hook delete")], "hook-delete.txt", { type: "text/plain" });
+    form.set("file", file);
+    form.set("provider", provider);
+    form.set("keyParts", JSON.stringify(["users", 10, "hook-delete"]));
+
+    const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(createResponse.type === "json");
+    const { fileKey } = createResponse.data;
+    const storagePath = path.join(
+      rootDir,
+      ...storage.resolveStorageKey({ provider, fileKey }).split("/"),
+    );
+
+    expect(await fs.readFile(storagePath, "utf8")).toBe("hook delete");
+
+    const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+      query: { provider, key: fileKey },
+    });
+    assert(deleteResponse.type === "json");
+    expect(deleteResponse.data).toEqual({ ok: true });
+
+    // The delete route now performs a logical delete only; bytes are removed by the durable hook.
+    expect(await fs.readFile(storagePath, "utf8")).toBe("hook delete");
+
+    await drainDurableHooks(fragment);
+
+    await expect(fs.readFile(storagePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("GET /files supports prefix pagination", async () => {
     const createForm = (name: string, keyParts: (string | number)[]) => {
       const form = new FormData();
@@ -96,6 +210,16 @@ describe("upload file routes", async () => {
     expect(response.data.files).toHaveLength(1);
     expect(response.data.hasNextPage).toBe(true);
     expect(response.data.files[0]?.fileKey.startsWith("users/1/")).toBe(true);
+  });
+
+  it("GET /files rejects an empty provider filter", async () => {
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { provider: "" },
+    });
+
+    assert(response.type === "error");
+    expect(response.status).toBe(400);
+    expect(response.error.code).toBe("INVALID_REQUEST");
   });
 
   it("GET /files/by-key/download-url returns unsupported for filesystem adapter", async () => {

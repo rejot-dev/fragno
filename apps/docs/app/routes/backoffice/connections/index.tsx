@@ -79,9 +79,9 @@ export default function BackofficeConnections() {
                 ? resendTarget
                 : connection.id === "github"
                   ? githubTarget
-                : connection.id === "upload"
-                  ? uploadTarget
-                  : null;
+                  : connection.id === "upload"
+                    ? uploadTarget
+                    : null;
           const isAvailable = Boolean(connectionLink);
           return (
             <div

@@ -141,7 +141,8 @@ entities.
 **onFileDeleted (after `file` is marked deleted)** Steps:
 
 1. Writes: `fragno_hooks`.
-2. Hook execution is notification-only; no DB writes.
+2. Hook execution deletes the storage object via `storage.deleteObject`.
+3. Invokes `config.onFileDeleted` (the storage delete is retried durably first).
 
 ## Build
 
