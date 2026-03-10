@@ -302,5 +302,36 @@ describe("SQLiteSerializer", () => {
         /exceeds Number\.MAX_SAFE_INTEGER/,
       );
     });
+
+    it("should deserialize bigint from ArrayBuffer blob values", () => {
+      const expected = BigInt("9007199254740993");
+      const buffer = Buffer.alloc(8);
+      buffer.writeBigInt64BE(expected);
+      const arrayBuffer = buffer.buffer.slice(
+        buffer.byteOffset,
+        buffer.byteOffset + buffer.byteLength,
+      );
+
+      expect(serializer["deserializeBigInt"](arrayBuffer)).toBe(expected);
+    });
+
+    it("should deserialize bigint from Uint8Array blob values", () => {
+      const expected = BigInt("123456789012345678");
+      const buffer = Buffer.alloc(8);
+      buffer.writeBigInt64BE(expected);
+      const value = new Uint8Array(buffer);
+
+      expect(serializer["deserializeBigInt"](value)).toBe(expected);
+    });
+
+    it.each([
+      ["Buffer", Buffer.alloc(9)],
+      ["ArrayBuffer", new ArrayBuffer(9)],
+      ["Uint8Array", new Uint8Array(9)],
+    ])("should reject %s blob values when byte length is not exactly 8", (_, value) => {
+      expect(() => serializer["deserializeBigInt"](value)).toThrow(
+        /Cannot deserialize bigint from 9 bytes; expected 8\./,
+      );
+    });
   });
 });
