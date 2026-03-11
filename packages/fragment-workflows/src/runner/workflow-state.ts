@@ -2,16 +2,25 @@
 
 import type { WorkflowStateShape } from "../workflow";
 
-export type WorkflowStateController = {
-  getState: () => WorkflowStateShape;
-  setState: (nextState: Partial<WorkflowStateShape>) => void;
+export type WorkflowStateController<TState extends WorkflowStateShape = WorkflowStateShape> = {
+  getState: () => TState;
+  setState: (nextState: Partial<TState>) => void;
 };
 
-function cloneState<T>(value: T): T {
+type WorkflowStateControllerOptions<TState extends WorkflowStateShape> = {
+  onStateChange?: (state: TState) => void;
+};
+
+export function createIsolatedWorkflowState<T extends WorkflowStateShape>(value: T): T {
   if (typeof structuredClone === "function") {
-    return structuredClone(value);
+    try {
+      return structuredClone(value);
+    } catch {
+      // Fall through so live in-memory members such as listeners or class instances remain usable.
+    }
   }
-  return JSON.parse(JSON.stringify(value)) as T;
+
+  return { ...value };
 }
 
 /**
@@ -19,20 +28,19 @@ function cloneState<T>(value: T): T {
  * Bigger picture: replay reconstructs state by rerunning workflow code around cached step results,
  * so only in-memory state mutations that execute during replay are restorable.
  */
-export function createWorkflowStateController(
-  initialState: WorkflowStateShape,
-): WorkflowStateController {
-  let currentState = cloneState(initialState);
+export function createWorkflowStateController<TState extends WorkflowStateShape>(
+  initialState: TState,
+  options: WorkflowStateControllerOptions<TState> = {},
+): WorkflowStateController<TState> {
+  const currentState = initialState;
 
-  const setState = (nextState: Partial<WorkflowStateShape>) => {
-    currentState = {
-      ...currentState,
-      ...cloneState(nextState),
-    };
+  const setState = (nextState: Partial<TState>) => {
+    Object.assign(currentState, nextState);
+    options.onStateChange?.(currentState);
   };
 
   return {
-    getState: () => cloneState(currentState),
+    getState: () => currentState,
     setState,
   };
 }

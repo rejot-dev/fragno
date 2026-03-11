@@ -9,6 +9,7 @@ import {
 } from "@mariozechner/pi-ai";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
+import type { WorkflowLiveStateStore } from "@fragno-dev/workflows";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
 import { piFragmentDefinition } from "./definition";
@@ -236,6 +237,7 @@ export const buildHarness = async (
       service: WorkflowsHarness["fragment"]["services"],
     ) => PiWorkflowsService;
     autoTickHooks?: boolean;
+    liveStateStore?: WorkflowLiveStateStore;
   } = {},
 ): Promise<DatabaseFragmentsTest> => {
   const workflows = createTestWorkflows({
@@ -249,6 +251,11 @@ export const buildHarness = async (
     adapter: options.adapter ?? { type: "kysely-sqlite" },
     testBuilder: buildDatabaseFragmentsTest(),
     autoTickHooks: options.autoTickHooks ?? false,
+    fragmentConfig: options.liveStateStore
+      ? {
+          liveState: options.liveStateStore,
+        }
+      : undefined,
   });
 
   const workflowsService = (

@@ -221,16 +221,24 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
             }
 
+            const liveSessionSnapshot = workflowsService.getLiveInstanceState(
+              workflowName,
+              workflowInstanceId,
+            );
+
             const result = await this.handlerTx()
               .withServiceCalls(() =>
                 serviceCalls(
                   workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
-                  workflowsService.restoreInstanceState(workflowName, workflowInstanceId),
+                  liveSessionSnapshot
+                    ? undefined
+                    : workflowsService.restoreInstanceState(workflowName, workflowInstanceId),
                 ),
               )
               .transform(({ serviceResult }) => {
                 const [workflowStatus, restoredState] = serviceResult;
-                const detailState = restoredState ?? createInitialPiAgentLoopState();
+                const detailState =
+                  liveSessionSnapshot?.state ?? restoredState ?? createInitialPiAgentLoopState();
 
                 return { workflowStatus, detailState };
               })

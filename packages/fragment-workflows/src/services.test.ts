@@ -9,6 +9,7 @@ import {
 } from "@fragno-dev/core";
 import type { WorkflowsFragmentServices } from "./index";
 import { workflowsFragmentDefinition } from "./definition";
+import { createWorkflowLiveStateStore } from "./live-state";
 import { createWorkflowsTestHarness } from "./test";
 import { defineWorkflow } from "./workflow";
 import type {
@@ -126,6 +127,196 @@ describe("Workflows Fragment Services", () => {
     });
 
     expect(StatefulWorkflow.name).toBe("typed-service-restore-by-name");
+  });
+
+  test("getLiveInstanceState publishes snapshots from this.setState and clears them on restart", async () => {
+    const buildPayload = (
+      instance: { id: { toString(): string }; workflowName: string; runNumber: number },
+      reason: WorkflowEnqueuedHookPayload["reason"],
+    ): WorkflowEnqueuedHookPayload => ({
+      workflowName: instance.workflowName,
+      instanceId: instance.id.toString(),
+      instanceRef: String(instance.id),
+      runNumber: instance.runNumber,
+      reason,
+    });
+
+    const LiveWorkflow = defineWorkflow(
+      {
+        name: "live-stateful-service",
+        initialState: { phase: "idle", approved: false },
+      },
+      async function (_event, step) {
+        this?.setState({ phase: "waiting" });
+        await step.waitForEvent("ready", { type: "ready" });
+        this?.setState({ phase: "complete", approved: true });
+        return { ok: true };
+      },
+    );
+
+    const liveState = createWorkflowLiveStateStore();
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { LIVE: LiveWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { liveState },
+    });
+
+    try {
+      await harness.createInstance("LIVE", { id: "live-stateful-1" });
+      const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
+        b.whereIndex("primary"),
+      );
+      expect(createdInstance).toBeTruthy();
+
+      await harness.tick(buildPayload(createdInstance!, "create"));
+
+      expect(
+        harness.fragment.services.getLiveInstanceState("live-stateful-service", "live-stateful-1"),
+      ).toMatchObject({
+        workflowName: "live-stateful-service",
+        instanceId: "live-stateful-1",
+        runNumber: 0,
+        status: "waiting",
+        state: { phase: "waiting", approved: false },
+      });
+
+      await harness.sendEvent("LIVE", "live-stateful-1", {
+        type: "ready",
+        payload: { ok: true },
+      });
+      const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
+        b.whereIndex("primary"),
+      );
+      expect(waitingInstance).toBeTruthy();
+
+      await harness.tick(buildPayload(waitingInstance!, "event"));
+
+      expect(
+        harness.fragment.services.getLiveInstanceState("live-stateful-service", "live-stateful-1"),
+      ).toMatchObject({
+        workflowName: "live-stateful-service",
+        instanceId: "live-stateful-1",
+        runNumber: 0,
+        status: "complete",
+        state: { phase: "complete", approved: true },
+      });
+
+      await harness.fragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            harness.fragment.services.restartInstance("live-stateful-service", "live-stateful-1"),
+          ])
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(
+        harness.fragment.services.getLiveInstanceState("live-stateful-service", "live-stateful-1"),
+      ).toBeNull();
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
+  test("getLiveInstanceState reuses the same live state object across ticks", async () => {
+    const buildPayload = (
+      instance: { id: { toString(): string }; workflowName: string; runNumber: number },
+      reason: WorkflowEnqueuedHookPayload["reason"],
+    ): WorkflowEnqueuedHookPayload => ({
+      workflowName: instance.workflowName,
+      instanceId: instance.id.toString(),
+      instanceRef: String(instance.id),
+      runNumber: instance.runNumber,
+      reason,
+    });
+
+    const ReusedLiveWorkflow = defineWorkflow(
+      {
+        name: "reused-live-state-service",
+        initialState: {
+          phase: "idle",
+          members: null as Set<string> | null,
+        },
+      },
+      async function (_event, step) {
+        const liveState = this?.getState();
+        const currentMembers =
+          liveState?.members instanceof Set ? liveState.members : new Set<string>();
+        currentMembers.add(currentMembers.size === 0 ? "created" : "reused");
+        this?.setState({
+          phase: "waiting",
+          members: currentMembers,
+        });
+
+        await step.waitForEvent("ready", { type: "ready" });
+
+        const refreshedState = this?.getState();
+        const finalMembers = refreshedState?.members;
+        if (finalMembers instanceof Set) {
+          finalMembers.add("ready");
+        }
+
+        this?.setState({
+          phase: "complete",
+        });
+        return { ok: true };
+      },
+    );
+
+    const liveState = createWorkflowLiveStateStore();
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { REUSED: ReusedLiveWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { liveState },
+    });
+
+    try {
+      await harness.createInstance("REUSED", { id: "reused-live-state-1" });
+      const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
+        b.whereIndex("primary"),
+      );
+      expect(createdInstance).toBeTruthy();
+
+      await harness.tick(buildPayload(createdInstance!, "create"));
+
+      const firstSnapshot = harness.fragment.services.getLiveInstanceState(
+        "reused-live-state-service",
+        "reused-live-state-1",
+      );
+      expect(firstSnapshot?.state["members"]).toBeInstanceOf(Set);
+
+      await harness.sendEvent("REUSED", "reused-live-state-1", {
+        type: "ready",
+        payload: { ok: true },
+      });
+      const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
+        b.whereIndex("primary"),
+      );
+      expect(waitingInstance).toBeTruthy();
+
+      await harness.tick(buildPayload(waitingInstance!, "event"));
+
+      const secondSnapshot = harness.fragment.services.getLiveInstanceState(
+        "reused-live-state-service",
+        "reused-live-state-1",
+      );
+
+      expect(firstSnapshot?.state).toBe(secondSnapshot?.state);
+      expect(firstSnapshot?.state["members"]).toBe(secondSnapshot?.state["members"]);
+      expect(Array.from((secondSnapshot?.state["members"] as Set<string>) ?? [])).toEqual([
+        "created",
+        "reused",
+        "ready",
+      ]);
+    } finally {
+      await harness.test.cleanup();
+    }
   });
 
   test("createInstance should create instance records", async () => {

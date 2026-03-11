@@ -2,6 +2,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 import type { WorkflowsLoggerConfig } from "./debug-log";
+import type { WorkflowLiveStateStore } from "./live-state";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -11,6 +12,7 @@ export type WorkflowEvent<T> = {
   payload: Readonly<T>;
   timestamp: Date;
   instanceId: string;
+  runNumber?: number;
 };
 
 /** Retry behavior for a step execution. */
@@ -135,14 +137,19 @@ export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegi
   >;
 };
 
-/** JSON-like workflow state shape restored by replaying workflow execution. */
+/**
+ * Workflow state shape.
+ * Replay reconstructs the restorable fields, while live runs may also carry transient in-memory
+ * members such as listeners, Sets, Maps, queues, or helper methods.
+ */
 export type WorkflowStateShape = Record<string, unknown>;
 
 /**
  * Optional `this` binding exposed to stateful workflows.
- * Replay shallow-merges each emitted patch onto the latest restored state snapshot.
+ * Replay shallow-merges each emitted patch onto the latest in-memory state object.
  */
 export type WorkflowStateContext<TState extends WorkflowStateShape | undefined = undefined> = {
+  getState: () => TState extends WorkflowStateShape ? TState : undefined;
   setState: (nextState: TState extends WorkflowStateShape ? Partial<TState> : never) => void;
 };
 
@@ -272,13 +279,20 @@ export function defineWorkflow<TName extends string>(
   return { ...options, run };
 }
 
+/**
+ * Registry helpers intentionally erase workflow-local state variance.
+ * Concrete workflow definitions still preserve their exact `TState` when used directly.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WorkflowRegistryState = any;
+
 /** Workflow registry entry (function-based). */
 export type WorkflowRegistryEntry = WorkflowDefinition<
   unknown,
   unknown,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined,
-  WorkflowStateShape | undefined
+  WorkflowRegistryState
 >;
 
 export type WorkflowParamsFromEntry<TEntry> =
@@ -287,7 +301,7 @@ export type WorkflowParamsFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowStateShape | undefined
+    WorkflowRegistryState
   >
     ? TParams
     : unknown;
@@ -298,7 +312,7 @@ export type WorkflowOutputFromEntry<TEntry> =
     infer TOutput,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowStateShape | undefined
+    WorkflowRegistryState
   >
     ? TOutput
     : unknown;
@@ -323,7 +337,7 @@ export type WorkflowNameFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowStateShape | undefined,
+    WorkflowRegistryState,
     infer TName
   >
     ? TName
@@ -388,6 +402,7 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
    * Optional logging config for internal workflows diagnostics.
    */
   logging?: WorkflowsLoggerConfig;
+  liveState?: WorkflowLiveStateStore;
   runtime: FragnoRuntime;
 }
 

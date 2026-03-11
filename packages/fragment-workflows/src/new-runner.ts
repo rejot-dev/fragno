@@ -5,12 +5,16 @@ import {
   type DatabaseRequestContext,
   type IUnitOfWork,
 } from "@fragno-dev/db";
-import type { WorkflowsRegistry } from "./workflow";
+import type { WorkflowsRegistry, WorkflowStateShape } from "./workflow";
+import type { WorkflowLiveStateStore } from "./live-state";
 import { workflowsSchema } from "./schema";
 import { isTerminalStatus } from "./runner/status";
 import { createRunnerState } from "./runner/state";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
-import { createWorkflowStateController } from "./runner/workflow-state";
+import {
+  createIsolatedWorkflowState,
+  createWorkflowStateController,
+} from "./runner/workflow-state";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -44,6 +48,7 @@ type RunnerTickPlan = {
 
 type RunnerTickContext = {
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
+  liveState?: WorkflowLiveStateStore;
 };
 
 type RunnerTickSelectionResult = {
@@ -293,7 +298,31 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
     payload: instance.params ?? {},
     timestamp,
     instanceId: instance.id.toString(),
+    runNumber: instance.runNumber,
   };
+}
+
+function publishWorkflowLiveState(options: {
+  liveState?: WorkflowLiveStateStore;
+  workflowName: string;
+  instanceId: string;
+  runNumber: number | null;
+  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+  timestamp: Date;
+  state: WorkflowStateShape;
+}) {
+  if (!options.liveState) {
+    return;
+  }
+
+  options.liveState.set({
+    workflowName: options.workflowName,
+    instanceId: options.instanceId,
+    runNumber: options.runNumber,
+    status: options.status,
+    capturedAt: options.timestamp,
+    state: options.state,
+  });
 }
 
 /**
@@ -312,24 +341,72 @@ async function runTask(
     return { type: "errored", error: new Error("WORKFLOW_NOT_FOUND") };
   }
 
-  const workflowState = workflow.initialState
-    ? createWorkflowStateController(workflow.initialState)
-    : undefined;
+  const liveSnapshot = workflow.initialState
+    ? ctx.liveState?.get(instance.id.toString(), {
+        workflowName: instance.workflowName,
+        runNumber: instance.runNumber,
+      })
+    : null;
+  let hasPublishedLiveState = liveSnapshot !== null;
   const step = new RunnerStep({
     state,
     taskKind,
   });
   const initialEvent = buildWorkflowEvent(instance, timestamp);
-  const runContext = workflowState ? { setState: workflowState.setState } : undefined;
+  const effectiveWorkflowState =
+    workflow.initialState === undefined
+      ? undefined
+      : createWorkflowStateController(
+          liveSnapshot?.state ?? createIsolatedWorkflowState(workflow.initialState),
+          {
+            onStateChange: (nextState) => {
+              hasPublishedLiveState = true;
+              publishWorkflowLiveState({
+                liveState: ctx.liveState,
+                workflowName: instance.workflowName,
+                instanceId: instance.id.toString(),
+                runNumber: instance.runNumber,
+                status: "active",
+                timestamp,
+                state: nextState,
+              });
+            },
+          },
+        );
+  const runContext = effectiveWorkflowState
+    ? {
+        getState: effectiveWorkflowState.getState,
+        setState: effectiveWorkflowState.setState,
+      }
+    : undefined;
+
+  const publishFinalLiveState = (status: "errored" | "complete" | "waiting") => {
+    if (!effectiveWorkflowState || !hasPublishedLiveState) {
+      return;
+    }
+
+    publishWorkflowLiveState({
+      liveState: ctx.liveState,
+      workflowName: instance.workflowName,
+      instanceId: instance.id.toString(),
+      runNumber: instance.runNumber,
+      status,
+      timestamp,
+      state: effectiveWorkflowState.getState(),
+    });
+  };
 
   try {
     const output = await workflow.run.call(runContext, initialEvent, step);
+    publishFinalLiveState("complete");
     return { type: "completed", output };
   } catch (err) {
     if (err instanceof RunnerStepSuspended) {
+      publishFinalLiveState("waiting");
       return { type: "suspended", reason: err.reason };
     }
 
+    publishFinalLiveState("errored");
     return { type: "errored", error: toError(err) };
   }
 }
@@ -431,6 +508,7 @@ export async function runWorkflowsTick(options: {
   workflows: WorkflowsRegistry;
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date };
   workflowsByName?: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
+  liveState?: WorkflowLiveStateStore;
 }): Promise<number> {
   const workflowsByName =
     options.workflowsByName ??
@@ -463,7 +541,11 @@ export async function runWorkflowsTick(options: {
             steps: steps ?? [],
             events: events ?? [],
           };
-          const plan = await buildTickPlan(selection, { workflowsByName }, options.payload);
+          const plan = await buildTickPlan(
+            selection,
+            { workflowsByName, liveState: options.liveState },
+            options.payload,
+          );
           processed = plan.processed;
           for (const operation of plan.operations) {
             operation(uow);
@@ -507,6 +589,17 @@ export async function runWorkflowsTick(options: {
     if (mutatePhase) {
       const error = toError(err);
       await markInstanceErrored(options.handlerTx, options.payload, error);
+      const liveSnapshot = options.liveState?.get(options.payload.instanceId, {
+        workflowName: options.payload.workflowName,
+        runNumber: options.payload.runNumber,
+      });
+      if (liveSnapshot) {
+        options.liveState?.set({
+          ...liveSnapshot,
+          status: "errored",
+          capturedAt: options.payload.timestamp,
+        });
+      }
       return 0;
     }
     throw err;
