@@ -10,6 +10,7 @@ import {
 } from "./shared";
 import { fetchGitHubAdminConfig } from "./data";
 import { getAuthMe } from "@/fragno/auth-server";
+import { buildBackofficeLoginPath } from "../../auth-navigation";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -18,7 +19,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
+    const url = new URL(request.url);
+    return Response.redirect(
+      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
+      302,
+    );
   }
 
   const organisation =

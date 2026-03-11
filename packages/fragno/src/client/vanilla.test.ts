@@ -1,4 +1,4 @@
-import { test, expect, describe, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
 import { atom } from "nanostores";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
@@ -617,6 +617,52 @@ describe("createVanillaMutator", () => {
     // Ensure mutation completes
     const result = await mutatePromise;
     expect(result).toEqual({ id: 1, name: "John", email: "john@example.com" });
+  });
+});
+
+describe("useFragno - createStore", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  test("unwraps store wrappers to the raw store object", () => {
+    const stringAtom = atom("hello");
+    const numberAtom = atom(42);
+    const cb = createClientBuilder(defineFragment("test-fragment-store"), clientConfig, []);
+    const client = {
+      useStore: cb.createStore({
+        message: stringAtom,
+        count: numberAtom,
+        constant: 7,
+      }),
+    };
+
+    const { useStore } = useFragno(client);
+
+    expectTypeOf(useStore).toExtend<{
+      message: typeof stringAtom;
+      count: typeof numberAtom;
+      constant: number;
+    }>();
+
+    expect(useStore).toBe(client.useStore.obj);
+    expect(useStore.message.get()).toBe("hello");
+    expect(useStore.count.get()).toBe(42);
+    expect(useStore.constant).toBe(7);
+  });
+
+  test("unwraps single-store wrappers to the underlying atom", () => {
+    const singleAtom = atom("single");
+    const cb = createClientBuilder(defineFragment("test-fragment-single-store"), clientConfig, []);
+    const client = {
+      useSingle: cb.createStore(singleAtom),
+    };
+
+    const { useSingle } = useFragno(client);
+
+    expectTypeOf(useSingle).toExtend<typeof singleAtom>();
+    expect(useSingle).toBe(singleAtom);
+    expect(useSingle.get()).toBe("single");
   });
 });
 

@@ -1,4 +1,4 @@
-import type { HookFn } from "@fragno-dev/db";
+import type { DbNow, HookFn } from "@fragno-dev/db";
 import type {
   OrganizationHookPayload,
   OrganizationInvitationHookPayload,
@@ -14,7 +14,7 @@ export interface UserHookPayload {
 export interface SessionSummary {
   id: string;
   user: UserSummary;
-  expiresAt: Date;
+  expiresAt: Date | DbNow;
   activeOrganizationId: string | null;
 }
 

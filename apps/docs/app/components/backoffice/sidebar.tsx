@@ -7,6 +7,7 @@ import { Separator } from "@base-ui/react/separator";
 import type { AuthMeData } from "@/fragno/auth-client";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/fragno/auth-client";
+import { toCfSandboxPath } from "@/routes/backoffice/environments/cf-sandbox-path";
 
 type NavItem = {
   label: string;
@@ -15,32 +16,34 @@ type NavItem = {
   children?: NavItem[];
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", to: "/backoffice", end: true },
-  {
-    label: "Connections",
-    to: "/backoffice/connections",
-    children: [
-      { label: "Telegram", to: "/backoffice/connections/telegram" },
-      { label: "Resend", to: "/backoffice/connections/resend" },
-      { label: "GitHub", to: "/backoffice/connections/github" },
-      { label: "Upload", to: "/backoffice/connections/upload" },
-    ],
-  },
-  {
-    label: "Environments",
-    to: "/backoffice/environments",
-    children: [{ label: "CF Sandbox", to: "/backoffice/environments/cf-sandbox" }],
-  },
-  {
-    label: "Internals",
-    to: "/backoffice/internals",
-    children: [
-      { label: "GitHub", to: "/backoffice/internals/github" },
-      { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
-    ],
-  },
-];
+function createNavItems(): NavItem[] {
+  return [
+    { label: "Dashboard", to: "/backoffice", end: true },
+    {
+      label: "Connections",
+      to: "/backoffice/connections",
+      children: [
+        { label: "Telegram", to: "/backoffice/connections/telegram" },
+        { label: "Resend", to: "/backoffice/connections/resend" },
+        { label: "GitHub", to: "/backoffice/connections/github" },
+        { label: "Upload", to: "/backoffice/connections/upload" },
+      ],
+    },
+    {
+      label: "Environments",
+      to: "/backoffice/environments",
+      children: [{ label: "CF Sandbox", to: toCfSandboxPath({}) }],
+    },
+    {
+      label: "Internals",
+      to: "/backoffice/internals",
+      children: [
+        { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+        { label: "GitHub", to: "/backoffice/internals/github" },
+      ],
+    },
+  ];
+}
 
 type BackofficeSidebarProps = {
   me: AuthMeData | null;
@@ -80,8 +83,11 @@ function BackofficeSidebarContent({
   showClose = false,
 }: BackofficeSidebarProps & { showClose?: boolean }) {
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
-  const activeOrganization =
-    me?.activeOrganization?.organization ?? me?.organizations?.[0]?.organization ?? null;
+  const { data: meData, loading: meLoading } = authClient.useMe();
+  const effectiveMe = meData ?? me ?? null;
+  const activeOrganization = effectiveMe?.activeOrganization?.organization ?? null;
+  const navItems = createNavItems();
+  const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (
     <>
@@ -114,7 +120,7 @@ function BackofficeSidebarContent({
             <BackofficeSidebarSection title="Navigation">
               <nav aria-label="Backoffice">
                 <ul className="space-y-3">
-                  {NAV_ITEMS.map((item) => (
+                  {navItems.map((item) => (
                     <li key={item.to} className="space-y-2">
                       <BackofficeSidebarLink to={item.to} label={item.label} end={item.end} />
                       {item.children ? (
@@ -157,7 +163,11 @@ function BackofficeSidebarContent({
                 <BackofficeThemeToggle />
               </BackofficeSidebarSection>
 
-              <BackofficeUserCard portalContainer={portalContainer} me={me} isLoading={isLoading} />
+              <BackofficeUserCard
+                portalContainer={portalContainer}
+                me={effectiveMe}
+                isLoading={sessionLoading}
+              />
             </div>
           </div>
         </div>

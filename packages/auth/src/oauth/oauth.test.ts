@@ -6,6 +6,7 @@ import { oauthRoutesFactory } from "./routes";
 import type { OAuthProvider, ProviderOptions } from "./types";
 import { hashPassword } from "../user/password";
 import { authSchema } from "../schema";
+import { sessionRoutesFactory } from "../session/session";
 
 const redirectURI = "http://localhost:3000/api/auth/oauth/test/callback";
 
@@ -1013,6 +1014,114 @@ describe("auth oauth", async () => {
 
     assert(response.type === "json");
     expect(response.data.userId).toBe(user.id);
+  });
+});
+
+describe("auth oauth session seeds", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: {},
+          oauth: {
+            providers: {
+              test: testProvider,
+            },
+          },
+        })
+        .withRoutes([oauthRoutesFactory, sessionRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("persists session seed through authorize and applies it on callback", async () => {
+    const passwordHash = await hashPassword("password-123");
+    const [user] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createUserUnvalidated("linked@test.com", passwordHash),
+        ])
+        .execute();
+    });
+
+    const [firstOrg, secondOrg] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Org A",
+            slug: "org-a",
+            creatorUserId: user.id,
+            creatorUserRole: "user",
+          }),
+          fragment.services.createOrganization({
+            name: "Org B",
+            slug: "org-b",
+            creatorUserId: user.id,
+            creatorUserRole: "user",
+          }),
+        ])
+        .execute();
+    });
+
+    assert(firstOrg.ok);
+    assert(secondOrg.ok);
+
+    const authorizeResponse = await fragment.callRoute("GET", "/oauth/:provider/authorize", {
+      pathParams: { provider: "test" },
+      query: {
+        session: JSON.stringify({
+          activeOrganizationId: secondOrg.organization.id,
+        }),
+      },
+    });
+
+    assert(authorizeResponse.type === "json");
+    const state = new URL(authorizeResponse.data.url).searchParams.get("state");
+    expect(state).toBeTruthy();
+
+    const oauthState = await test.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(authSchema).findFirst("oauthState", (b) =>
+            b.whereIndex("idx_oauth_state_state", (eb) => eb("state", "=", state ?? "")),
+          ),
+        )
+        .transformRetrieve(([result]) => result)
+        .execute();
+    });
+
+    expect(oauthState?.sessionSeed).toEqual({
+      activeOrganizationId: secondOrg.organization.id,
+    });
+
+    const callbackResponse = await fragment.callRoute("GET", "/oauth/:provider/callback", {
+      pathParams: { provider: "test" },
+      query: {
+        code: "linked",
+        state: state ?? "",
+      },
+    });
+
+    assert(callbackResponse.type === "json");
+    expect(callbackResponse.data.userId).toBe(user.id);
+
+    const meResponse = await fragment.callRoute("GET", "/me", {
+      query: {
+        sessionId: callbackResponse.data.sessionId,
+      },
+    });
+
+    assert(meResponse.type === "json");
+    expect(meResponse.data.organizations).toHaveLength(2);
+    expect(meResponse.data.organizations[0]?.organization.id).toBe(firstOrg.organization.id);
+    expect(meResponse.data.activeOrganization?.organization.id).toBe(secondOrg.organization.id);
   });
 });
 

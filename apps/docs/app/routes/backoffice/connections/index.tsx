@@ -45,9 +45,7 @@ export function meta() {
 
 export default function BackofficeConnections() {
   const { me } = useOutletContext<BackofficeLayoutContext>();
-  const organizations = me.organizations ?? [];
-  const activeOrganizationId =
-    me.activeOrganization?.organization.id ?? organizations[0]?.organization.id;
+  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
   const telegramTarget = activeOrganizationId
     ? `/backoffice/connections/telegram/${activeOrganizationId}`
     : null;
@@ -69,6 +67,12 @@ export default function BackofficeConnections() {
         title="Connection catalog and health."
         description="Enable and manage the channels that route fragment activity into the backoffice."
       />
+
+      {!activeOrganizationId ? (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+          Set an active organisation before opening a connection workspace.
+        </div>
+      ) : null}
 
       <section className="grid gap-3 md:grid-cols-2">
         {CONNECTIONS.map((connection) => {

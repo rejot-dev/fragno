@@ -1,5 +1,9 @@
-import { afterAll, assert, beforeAll, describe, expect, it } from "vitest";
-import { authFragmentDefinition } from ".";
+import { afterAll, assert, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  authFragmentDefinition,
+  createAuthFragmentClients,
+  getDefaultOrganizationStorageKey,
+} from ".";
 import { userActionsRoutesFactory } from "./user/user-actions";
 import { sessionRoutesFactory } from "./session/session";
 import { userOverviewRoutesFactory } from "./user/user-overview";
@@ -24,6 +28,80 @@ const preOrganizationSchemaVersion = (() => {
   }
   return index;
 })();
+
+class MemoryStorage implements Pick<Storage, "getItem" | "setItem" | "removeItem"> {
+  #values = new Map<string, string>();
+
+  getItem(key: string) {
+    return this.#values.get(key) ?? null;
+  }
+
+  removeItem(key: string) {
+    this.#values.delete(key);
+  }
+
+  setItem(key: string, value: string) {
+    this.#values.set(key, value);
+  }
+}
+
+class MemoryWindow {
+  localStorage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+  constructor(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+    this.localStorage = storage;
+  }
+
+  addEventListener() {}
+
+  removeEventListener() {}
+
+  dispatchEvent() {
+    return true;
+  }
+}
+
+describe("auth client", () => {
+  it("uses the synced me wrapper to initialize default organization preference", async () => {
+    const storage = new MemoryStorage();
+    vi.stubGlobal("window", new MemoryWindow(storage));
+    vi.stubGlobal("addEventListener", vi.fn());
+    vi.stubGlobal("removeEventListener", vi.fn());
+
+    const meResponse = {
+      user: { id: "user-1", email: "user-1@example.com", role: "user" },
+      organizations: [
+        {
+          organization: { id: "org-b", name: "Org B" },
+          member: { organizationId: "org-b" },
+        },
+      ],
+      activeOrganization: {
+        organization: { id: "org-b", name: "Org B" },
+        member: { organizationId: "org-b" },
+      },
+      invitations: [],
+    };
+
+    const customFetch = vi.fn(async () => ({
+      headers: new Headers(),
+      ok: true,
+      json: async () => meResponse,
+    })) as unknown as typeof fetch;
+
+    try {
+      const clients = createAuthFragmentClients({
+        fetcherConfig: { type: "function", fetcher: customFetch },
+      });
+
+      expect(await clients.me()).toEqual(meResponse);
+      expect(customFetch).toHaveBeenCalledOnce();
+      expect(storage.getItem(getDefaultOrganizationStorageKey())).toBe("org-b");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
@@ -70,6 +148,7 @@ describe("auth-fragment", async () => {
   describe("Full session flow", async () => {
     let sessionId: string;
     let userId: string;
+    let ownedOrganizationId: string;
 
     it("/sign-up - create user", async () => {
       const response = await fragment.callRoute("POST", "/sign-up", {
@@ -135,6 +214,7 @@ describe("auth-fragment", async () => {
       });
 
       assert(ownedOrg.ok);
+      ownedOrganizationId = ownedOrg.organization.id;
 
       await test.inContext(function () {
         return this.handlerTx()
@@ -238,6 +318,159 @@ describe("auth-fragment", async () => {
       const data = response.data as { sessionId: string; userId: string; email: string };
       sessionId = data.sessionId;
       userId = data.userId;
+    });
+
+    it("/sign-in - emits db expiry metadata in onSessionCreated", async () => {
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: { email: "test@test.com", password: "password" },
+      });
+      assert(response.type === "json");
+
+      const createdSessionId = response.data.sessionId;
+
+      const internalFragment = getInternalFragment(test.adapter);
+      const hooks = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      const sessionHook = hooks.find((hook) => {
+        const payload = hook.payload as {
+          session?: {
+            id?: string;
+            expiresAt?: { tag?: string; offsetMs?: number } | Date | string;
+          };
+        } | null;
+        return hook.hookName === "onSessionCreated" && payload?.session?.id === createdSessionId;
+      });
+
+      if (!sessionHook) {
+        throw new Error(`Expected onSessionCreated hook for session ${createdSessionId}.`);
+      }
+
+      const hookExpiresAt = (
+        sessionHook.payload as {
+          session?: { expiresAt?: { tag?: string; offsetMs?: number } | Date | string };
+        } | null
+      )?.session?.expiresAt;
+
+      expect(hookExpiresAt).toMatchObject({
+        tag: "db-now",
+        offsetMs: 30 * 24 * 60 * 60 * 1000,
+      });
+    });
+
+    it("/sign-in - seeds active organization from session input", async () => {
+      const [secondOrg] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "Second Org",
+              slug: "second-org",
+              creatorUserId: userId,
+              creatorUserRole: "user",
+              sessionId,
+            }),
+          ])
+          .execute();
+      });
+
+      assert(secondOrg.ok);
+
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: {
+          email: "test@test.com",
+          password: "password",
+          session: {
+            activeOrganizationId: secondOrg.organization.id,
+          },
+        },
+      });
+
+      assert(response.type === "json");
+      sessionId = response.data.sessionId;
+      userId = response.data.userId;
+
+      const meResponse = await fragment.callRoute("GET", "/me", {
+        query: { sessionId },
+      });
+
+      assert(meResponse.type === "json");
+      expect(meResponse.data.activeOrganization?.organization.id).toBe(secondOrg.organization.id);
+    });
+
+    it("/sign-in - repairs stale active organization session seeds", async () => {
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: {
+          email: "test@test.com",
+          password: "password",
+          session: {
+            activeOrganizationId: "organization-missing",
+          },
+        },
+      });
+
+      assert(response.type === "json");
+      sessionId = response.data.sessionId;
+      userId = response.data.userId;
+
+      const meResponse = await fragment.callRoute("GET", "/me", {
+        query: { sessionId },
+      });
+
+      assert(meResponse.type === "json");
+      expect(meResponse.data.activeOrganization?.organization.id).toBe(ownedOrganizationId);
+    });
+
+    it("/sign-in - repairs session seeds that target an organization the user cannot access", async () => {
+      const outsiderPasswordHash = await hashPassword("outsider-password");
+      const [outsider] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUserUnvalidated("outsider@test.com", outsiderPasswordHash),
+          ])
+          .execute();
+      });
+
+      const [outsiderOrg] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createOrganization({
+              name: "Outsider Org",
+              slug: `outsider-org-${Date.now()}`,
+              creatorUserId: outsider.id,
+              creatorUserRole: "user",
+            }),
+          ])
+          .execute();
+      });
+
+      assert(outsiderOrg.ok);
+
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: {
+          email: "test@test.com",
+          password: "password",
+          session: {
+            activeOrganizationId: outsiderOrg.organization.id,
+          },
+        },
+      });
+
+      assert(response.type === "json");
+      sessionId = response.data.sessionId;
+      userId = response.data.userId;
+
+      const meResponse = await fragment.callRoute("GET", "/me", {
+        query: { sessionId },
+      });
+
+      assert(meResponse.type === "json");
+      expect(meResponse.data.activeOrganization?.organization.id).toBe(ownedOrganizationId);
     });
 
     it("/sign-in - banned user denied", async () => {

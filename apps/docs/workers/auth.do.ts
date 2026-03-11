@@ -13,17 +13,10 @@ import {
 
 const resolveAuthBaseUrl = (request: Request): string => {
   const requestUrl = new URL(request.url);
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  if (forwardedHost) {
-    const forwardedProto =
-      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
-      requestUrl.protocol.replace(/:$/, "");
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
 
-    try {
-      return new URL(`${forwardedProto}://${forwardedHost}`).origin;
-    } catch {
-      // Fall back to the request origin if forwarded headers are malformed.
-    }
+  if (forwardedProto === "http" || forwardedProto === "https") {
+    requestUrl.protocol = `${forwardedProto}:`;
   }
 
   return requestUrl.origin;

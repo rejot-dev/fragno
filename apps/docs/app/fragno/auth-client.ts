@@ -1,5 +1,7 @@
-import { createAuthFragmentClient } from "@fragno-dev/auth/react";
+import { type AuthMeData, createAuthFragmentClient } from "@fragno-dev/auth/react";
 
-export const authClient = createAuthFragmentClient();
+export type AuthClient = ReturnType<typeof createAuthFragmentClient>;
 
-export type AuthMeData = Awaited<ReturnType<typeof authClient.me>>;
+export const authClient: AuthClient = createAuthFragmentClient();
+
+export type { AuthMeData };

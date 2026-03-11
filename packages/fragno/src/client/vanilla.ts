@@ -4,8 +4,10 @@ import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
   isMutatorHook,
+  isStore,
   type FragnoClientMutatorData,
   type FragnoClientHookData,
+  type FragnoStoreData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { createAsyncIteratorFromCallback } from "../util/async";
@@ -240,7 +242,9 @@ export function useFragno<T extends Record<string, unknown>>(
           TErrorCode,
           TQueryParameters
         >
-      : T[K];
+      : T[K] extends FragnoStoreData<infer TStoreObj>
+        ? TStoreObj
+        : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -255,6 +259,8 @@ export function useFragno<T extends Record<string, unknown>>(
       result[key] = createVanillaListeners(hook);
     } else if (isMutatorHook(hook)) {
       result[key] = createVanillaMutator(hook);
+    } else if (isStore(hook)) {
+      result[key] = hook.obj;
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;

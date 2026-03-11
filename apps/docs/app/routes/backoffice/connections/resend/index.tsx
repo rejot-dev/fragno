@@ -3,16 +3,17 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { formatTimestamp } from "./shared";
 import { getAuthMe } from "@/fragno/auth-server";
+import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/index";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    return redirect("/backoffice/login");
+    const url = new URL(request.url);
+    return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const activeOrganizationId =
-    me.activeOrganization?.organization.id ?? me.organizations?.[0]?.organization.id ?? null;
+  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
   if (activeOrganizationId) {
     return redirect(`/backoffice/connections/resend/${activeOrganizationId}`);
   }

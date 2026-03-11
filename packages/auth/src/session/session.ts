@@ -11,6 +11,7 @@ import {
 } from "../utils/cookie";
 import type { Role, authFragmentDefinition } from "..";
 import type { AuthHooksMap } from "../hooks";
+import { resolveSessionSeedFromMembers, type SessionSeedInput } from "./session-seed";
 import type {
   Organization,
   OrganizationInvitation,
@@ -118,6 +119,11 @@ type SessionInvitationRow = {
 
 type SessionExpiryRow = {
   id: FragnoId;
+};
+
+type SessionSeedMemberRow = {
+  createdAt: Date;
+  organizationMemberOrganization?: OrganizationRow | null;
 };
 
 const organizationSelect = [
@@ -286,6 +292,35 @@ const buildInvitationsFromRows = (
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
+    resolveSessionSeedForUser: function (
+      this: AuthServiceContext,
+      userId: string,
+      session?: SessionSeedInput | null,
+    ) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.find("organizationMember", (b) =>
+            b
+              .whereIndex("idx_org_member_user", (eb) => eb("userId", "=", userId))
+              .join((j) =>
+                j.organizationMemberOrganization((ob) =>
+                  ob.select(["id", "deletedAt", "createdAt"]),
+                ),
+              ),
+          ),
+        )
+        .transformRetrieve(([members]) => {
+          return resolveSessionSeedFromMembers(
+            (members as SessionSeedMemberRow[]).map((member) => ({
+              createdAt: member.createdAt,
+              organization: member.organizationMemberOrganization ?? null,
+            })),
+            session,
+          );
+        })
+        .mutate(({ retrieveResult }) => retrieveResult)
+        .build();
+    },
     /**
      * Build a Set-Cookie header value for the session id.
      */
@@ -294,11 +329,16 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
     },
     /**
      * Create a session for a user, rejecting banned or missing users.
+     *
+     * When `options.activeOrganizationId` is provided, it is written into the session as-is.
+     * This function does not verify that the user is a member of that organization; callers
+     * must validate membership before passing the id.
      */
-    createSession: function (this: AuthServiceContext, userId: string) {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
-
+    createSession: function (
+      this: AuthServiceContext,
+      userId: string,
+      options?: { activeOrganizationId?: string | null },
+    ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
@@ -311,10 +351,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             return { ok: false as const, code: "user_banned" as const };
           }
 
-          const expiresAtDb = uow.now().plus({ days: 30 });
+          const expiresAt = uow.now().plus({ days: 30 });
           const id = uow.create("session", {
             userId,
-            expiresAt: expiresAtDb,
+            activeOrganizationId: options?.activeOrganizationId ?? null,
+            expiresAt,
           });
           const userSummary = mapUserSummary(user);
 
@@ -323,7 +364,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               id: id.valueOf(),
               user: userSummary,
               expiresAt,
-              activeOrganizationId: null,
+              activeOrganizationId: options?.activeOrganizationId ?? null,
             },
             actor: userSummary,
           });
@@ -334,7 +375,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               id: id.valueOf(),
               userId,
               expiresAt,
-              activeOrganizationId: null,
+              activeOrganizationId: options?.activeOrganizationId ?? null,
             },
           };
         })
