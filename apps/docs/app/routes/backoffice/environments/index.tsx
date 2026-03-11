@@ -4,6 +4,14 @@ import { toCfSandboxPath } from "./cf-sandbox-path";
 
 const ENVIRONMENTS = [
   {
+    id: "workers",
+    name: "Workers",
+    description:
+      "Queue and inspect Cloudflare Workers deployments against the shared dispatch namespace.",
+    status: "Available",
+    to: "/backoffice/environments/workers",
+  },
+  {
     id: "cf-sandbox",
     name: "CF Sandbox",
     description:

@@ -43,6 +43,7 @@ export default [
       ),
       route("connections/upload", "routes/backoffice/connections/upload/index.tsx"),
       route("environments", "routes/backoffice/environments/index.tsx"),
+      route("environments/workers", "routes/backoffice/environments/workers.tsx"),
       route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),
       route(
         "connections/resend/:orgId",
@@ -116,12 +117,14 @@ export default [
 
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),
   route("og-image", "routes/og-image/og-image-page.tsx"),
+  route("__dev/workers/:orgId/:appId/*", "routes/dev/cloudflare-worker-proxy.ts"),
 
   ...prefix("api", [
     route("search", "routes/api/search.ts"),
     route("markdown/*", "routes/api/markdown.ts"),
     route("forms/*", "routes/api/forms.ts"),
     route("auth/*", "routes/api/auth.ts"),
+    route("cloudflare/:orgId/*", "routes/api/cloudflare.ts"),
     route("resend/:orgId/*", "routes/api/resend.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),

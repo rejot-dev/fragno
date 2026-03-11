@@ -8,6 +8,7 @@ import {
 } from "./durable-hooks-organisation-state";
 import { BackofficePageHeader } from "@/components/backoffice";
 import {
+  getCloudflareWorkersDurableObject,
   getGitHubDurableObject,
   getResendDurableObject,
   getTelegramDurableObject,
@@ -31,6 +32,35 @@ type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
   fragment: DurableHooksOrgFragment;
 };
 
+const getFragmentConfigureState = (fragment: DurableHooksOrgFragment, orgId: string) => {
+  switch (fragment) {
+    case "cloudflare":
+      return {
+        path: "/backoffice/environments/workers",
+        label: "Open Workers control plane",
+      };
+    case "github":
+      return {
+        path: `/backoffice/connections/github/${orgId}/configuration`,
+        label: "Configure GitHub",
+      };
+    case "upload":
+      return {
+        path: `/backoffice/connections/upload/${orgId}/configuration`,
+        label: "Configure Upload",
+      };
+    case "resend":
+      return {
+        path: `/backoffice/connections/resend/${orgId}/configuration`,
+        label: "Configure Resend",
+      };
+    default:
+      return {
+        path: `/backoffice/connections/telegram/${orgId}/configuration`,
+        label: "Configure Telegram",
+      };
+  }
+};
 const parsePageSize = (value: string | null) => {
   if (!value) {
     return undefined;
@@ -40,7 +70,13 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (value === "telegram" || value === "resend" || value === "github" || value === "upload") {
+  if (
+    value === "telegram" ||
+    value === "resend" ||
+    value === "github" ||
+    value === "upload" ||
+    value === "cloudflare"
+  ) {
     return value;
   }
   return null;
@@ -77,6 +113,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   try {
     const queue = ((): Promise<DurableHookQueueResponse> => {
+      if (fragment === "cloudflare") {
+        return getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
+          orgId: params.orgId,
+          cursor,
+          pageSize,
+        }) as Promise<DurableHookQueueResponse>;
+      }
       if (fragment === "resend") {
         return getResendDurableObject(context, params.orgId).getHookQueue({
           cursor,
@@ -164,14 +207,7 @@ export default function BackofficeDurableHooksOrganisation() {
 
   const activeFragment = fragment;
   const fragmentLabel = FRAGMENT_LABELS[activeFragment];
-  const configurePath =
-    activeFragment === "telegram"
-      ? `/backoffice/connections/telegram/${orgId}/configuration`
-      : activeFragment === "resend"
-        ? `/backoffice/connections/resend/${orgId}/configuration`
-        : activeFragment === "github"
-          ? `/backoffice/connections/github/${orgId}/configuration`
-          : `/backoffice/connections/upload/${orgId}/configuration`;
+  const configureState = getFragmentConfigureState(activeFragment, orgId);
   const queueCount = items.length;
   const nextCursor = cursor;
   const nextSearchParams = new URLSearchParams(searchParams);
@@ -191,7 +227,18 @@ export default function BackofficeDurableHooksOrganisation() {
     const tabBasePath = `${baseScopePath}/${fragmentId}`;
     return query ? `${tabBasePath}?${query}` : tabBasePath;
   };
-  const fragmentTabs = [
+  const fragmentTabs: Array<{
+    id: DurableHooksOrgFragment;
+    label: string;
+    to: string;
+    disabled: boolean;
+  }> = [
+    {
+      id: "cloudflare",
+      label: "Workers",
+      to: fragmentTabHref("cloudflare"),
+      disabled: false,
+    },
     {
       id: "telegram",
       label: "Telegram",
@@ -333,10 +380,10 @@ export default function BackofficeDurableHooksOrganisation() {
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
                 {fragmentLabel} is not configured for this organisation yet.
                 <Link
-                  to={configurePath}
+                  to={configureState.path}
                   className="ml-2 inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
                 >
-                  Configure {fragmentLabel}
+                  {configureState.label}
                 </Link>
               </div>
             ) : !hooksEnabled ? (

@@ -8,6 +8,7 @@ import type { AuthMeData } from "@/fragno/auth-client";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/fragno/auth-client";
 import { toCfSandboxPath } from "@/routes/backoffice/environments/cf-sandbox-path";
+import { toWorkersPath } from "@/routes/backoffice/environments/workers.route-state";
 
 type NavItem = {
   label: string;
@@ -32,14 +33,17 @@ function createNavItems(): NavItem[] {
     {
       label: "Environments",
       to: "/backoffice/environments",
-      children: [{ label: "CF Sandbox", to: toCfSandboxPath({}) }],
+      children: [
+        { label: "Workers", to: toWorkersPath({}) },
+        { label: "CF Sandbox", to: toCfSandboxPath({}) },
+      ],
     },
     {
       label: "Internals",
       to: "/backoffice/internals",
       children: [
-        { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
         { label: "GitHub", to: "/backoffice/internals/github" },
+        { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
       ],
     },
   ];

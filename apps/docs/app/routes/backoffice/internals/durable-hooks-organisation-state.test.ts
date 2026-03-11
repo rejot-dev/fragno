@@ -25,6 +25,7 @@ describe("getDurableHooksLoaderErrorMessage", () => {
   });
 
   it.each([
+    ["cloudflare", "Failed to load Cloudflare Workers durable hooks."],
     ["telegram", "Failed to load Telegram durable hooks."],
     ["resend", "Failed to load Resend durable hooks."],
     ["github", "Failed to load GitHub durable hooks."],

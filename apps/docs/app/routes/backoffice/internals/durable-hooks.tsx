@@ -81,6 +81,7 @@ export default function BackofficeDurableHooksLanding() {
           ) : (
             organizations.map(({ organization }) => {
               const scopePath = `/backoffice/internals/durable-hooks/${organization.id}`;
+              const cloudflarePath = `/backoffice/internals/durable-hooks/${organization.id}/cloudflare`;
               const telegramPath = `/backoffice/internals/durable-hooks/${organization.id}/telegram`;
               const resendPath = `/backoffice/internals/durable-hooks/${organization.id}/resend`;
               const githubPath = `/backoffice/internals/durable-hooks/${organization.id}/github`;
@@ -116,6 +117,13 @@ export default function BackofficeDurableHooksLanding() {
                   </div>
 
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+                    <Link
+                      to={cloudflarePath}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      Workers
+                    </Link>
                     <Link
                       to={telegramPath}
                       onClick={(event) => event.stopPropagation()}

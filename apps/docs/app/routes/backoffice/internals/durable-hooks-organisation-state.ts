@@ -1,6 +1,7 @@
-export type DurableHooksOrgFragment = "telegram" | "resend" | "github" | "upload";
+export type DurableHooksOrgFragment = "cloudflare" | "telegram" | "resend" | "github" | "upload";
 
 export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
+  cloudflare: "Cloudflare Workers",
   telegram: "Telegram",
   resend: "Resend",
   github: "GitHub",
