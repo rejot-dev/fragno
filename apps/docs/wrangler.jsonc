@@ -44,6 +44,13 @@
       "bucket_name": "fragno-dev-docs-upload",
     },
   ],
+  "dispatch_namespaces": [
+    {
+      "binding": "DISPATCHER",
+      "namespace": "staging",
+      "remote": true,
+    },
+  ],
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
@@ -87,6 +94,10 @@
       {
         "name": "UPLOAD",
         "class_name": "Upload",
+      },
+      {
+        "name": "CLOUDFLARE_WORKERS",
+        "class_name": "CloudflareWorkers",
       },
       {
         "name": "SANDBOX",
@@ -150,6 +161,10 @@
     {
       "tag": "v10",
       "new_sqlite_classes": ["Upload"],
+    },
+    {
+      "tag": "v11",
+      "new_sqlite_classes": ["CloudflareWorkers"],
     },
   ],
   "rules": [

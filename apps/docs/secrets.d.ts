@@ -4,6 +4,8 @@
  *     https://github.com/cloudflare/workers-sdk/issues/5756
  */
 interface CloudflareEnv {
+  CLOUDFLARE_WORKERS_ACCOUNT_ID: string;
+  CLOUDFLARE_WORKERS_API_TOKEN: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   GITHUB_APP_ID: string;

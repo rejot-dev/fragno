@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm run generate:og && react-router build",
+    "cloudflare:debug-worker": "tsx scripts/upload-debug-dispatch-worker.ts",
     "generate:og": "tsx scripts/generate-og-images.tsx",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
@@ -22,6 +23,7 @@
     "@base-ui/react": "^1.2.0",
     "@cloudflare/sandbox": "^0.7.12",
     "@fragno-dev/auth": "workspace:*",
+    "@fragno-dev/cloudflare-fragment": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/forms": "workspace:*",

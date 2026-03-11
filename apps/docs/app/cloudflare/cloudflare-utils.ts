@@ -7,6 +7,7 @@ import type { MailingList } from "workers/mailing-list.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Resend } from "workers/resend.do";
 import type { Upload } from "workers/upload.do";
+import type { CloudflareWorkers } from "workers/cloudflare-wfp.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
 import { CloudflareContext } from "./cloudflare-context";
 
@@ -93,6 +94,19 @@ export function getUploadDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.UPLOAD.get(env.UPLOAD.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Cloudflare Workers Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getCloudflareWorkersDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<CloudflareWorkers> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.CLOUDFLARE_WORKERS.get(env.CLOUDFLARE_WORKERS.idFromName(orgId));
 }
 
 /**
