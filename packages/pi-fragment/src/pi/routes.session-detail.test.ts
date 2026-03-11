@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { drainDurableHooks } from "@fragno-dev/test";
+import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 
 import {
@@ -10,6 +11,7 @@ import {
   mockModel,
 } from "./test-utils";
 import type { PiFragmentConfig, PiToolFactory, PiWorkflowsService } from "./types";
+import { PI_WORKFLOW_NAME } from "./workflow";
 
 type TestHarness = Awaited<ReturnType<typeof buildHarness>>;
 
@@ -160,6 +162,37 @@ const formatResponseError = (response: {
   }`;
 };
 
+type BuildHarnessOptions = NonNullable<Parameters<typeof buildHarness>[1]>;
+type WorkflowsServiceWrapper = NonNullable<BuildHarnessOptions["wrapWorkflowsService"]>;
+
+const wrapWorkflowsServiceWithSpies = (
+  restoreInstanceStateSpy: ReturnType<typeof vi.fn>,
+  getInstanceStatusSpy?: ReturnType<typeof vi.fn>,
+): WorkflowsServiceWrapper => {
+  const wrapper: WorkflowsServiceWrapper = (service) =>
+    new Proxy(service, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        const bound = typeof value === "function" ? value.bind(target) : value;
+        if (prop === "restoreInstanceState" && typeof bound === "function") {
+          return (...args: Parameters<PiWorkflowsService["restoreInstanceState"]>) => {
+            restoreInstanceStateSpy(...args);
+            return bound(...args);
+          };
+        }
+        if (prop === "getInstanceStatus" && typeof bound === "function") {
+          return (...args: Parameters<PiWorkflowsService["getInstanceStatus"]>) => {
+            getInstanceStatusSpy?.(...args);
+            return bound(...args);
+          };
+        }
+        return bound;
+      },
+    }) as PiWorkflowsService;
+
+  return wrapper;
+};
+
 describe("pi-fragment session detail route", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -308,6 +341,148 @@ describe("pi-fragment session detail route", () => {
     expect(detailResponse.data.summaries[0]?.summary ?? "").toContain("assistant");
     expect(detailResponse.data.phase).toBe("complete");
     expect(detailResponse.data.waitingFor).toBeNull();
+  });
+
+  it("prefers live session snapshots over workflow restore on cache hits", async () => {
+    const liveStateStore = createWorkflowLiveStateStore();
+    const restoreInstanceStateSpy = vi.fn();
+    const getInstanceStatusSpy = vi.fn();
+    const { fragments, workflows } = await createHarness(createConfig(), {
+      liveStateStore,
+      wrapWorkflowsService: wrapWorkflowsServiceWithSpies(
+        restoreInstanceStateSpy,
+        getInstanceStatusSpy,
+      ),
+    });
+
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Live detail" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: createResponse.data.id },
+      body: { text: "ping", done: true },
+    });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+    expect(
+      await liveStateStore.get(createResponse.data.id, {
+        workflowName: PI_WORKFLOW_NAME,
+      }),
+    ).not.toBeNull();
+
+    restoreInstanceStateSpy.mockClear();
+    getInstanceStatusSpy.mockClear();
+
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId: createResponse.data.id },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(restoreInstanceStateSpy).not.toHaveBeenCalled();
+    expect(getInstanceStatusSpy).toHaveBeenCalledTimes(1);
+    expect(detailResponse.data.status).toBe("complete");
+    expect(detailResponse.data.phase).toBe("complete");
+    expect(detailResponse.data.waitingFor).toBeNull();
+  });
+
+  it("falls back to restore when the live session snapshot cache is cleared", async () => {
+    const liveStateStore = createWorkflowLiveStateStore();
+    const restoreInstanceStateSpy = vi.fn();
+    const { fragments, workflows } = await createHarness(createConfig(), {
+      liveStateStore,
+      wrapWorkflowsService: wrapWorkflowsServiceWithSpies(restoreInstanceStateSpy),
+    });
+
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Cleared live detail" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: createResponse.data.id },
+      body: { text: "ping", done: true },
+    });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+    liveStateStore.clear();
+
+    restoreInstanceStateSpy.mockClear();
+
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId: createResponse.data.id },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(restoreInstanceStateSpy).toHaveBeenCalledTimes(1);
+    expect(detailResponse.data.phase).toBe("complete");
+  });
+
+  it("falls back to restore when the live session snapshot is stale", async () => {
+    const liveStateStore = createWorkflowLiveStateStore();
+    const restoreInstanceStateSpy = vi.fn();
+    const { fragments, workflows } = await createHarness(createConfig(), {
+      liveStateStore,
+      wrapWorkflowsService: wrapWorkflowsServiceWithSpies(restoreInstanceStateSpy),
+    });
+
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Stale live detail" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: createResponse.data.id },
+      body: { text: "ping", done: true },
+    });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+    const liveSnapshot = await liveStateStore.get(createResponse.data.id, {
+      workflowName: PI_WORKFLOW_NAME,
+    });
+    if (!liveSnapshot) {
+      throw new Error("Expected a live session snapshot");
+    }
+
+    liveStateStore.set({
+      ...liveSnapshot,
+      workflowName: "stale-workflow",
+    });
+
+    restoreInstanceStateSpy.mockClear();
+
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId: createResponse.data.id },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(restoreInstanceStateSpy).toHaveBeenCalledTimes(1);
+    expect(
+      await liveStateStore.get(createResponse.data.id, {
+        workflowName: PI_WORKFLOW_NAME,
+      }),
+    ).not.toBeNull();
   });
 
   it("keeps the latest user message when the assistant is waiting to retry", async () => {

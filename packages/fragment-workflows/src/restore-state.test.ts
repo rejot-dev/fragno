@@ -34,6 +34,9 @@ describe("restoreWorkflowState", () => {
     );
 
     type TypedWorkflowState = WorkflowStateFromEntry<typeof TypedWorkflow>;
+    type CurrentState = ReturnType<
+      NonNullable<ThisParameterType<typeof TypedWorkflow.run>>["getState"]
+    >;
     type StatePatch = Parameters<
       NonNullable<ThisParameterType<typeof TypedWorkflow.run>>["setState"]
     >[0];
@@ -43,6 +46,7 @@ describe("restoreWorkflowState", () => {
       seeded: boolean;
       attemptCount: number;
     }>();
+    expectTypeOf<CurrentState>().toEqualTypeOf<TypedWorkflowState>();
     expectTypeOf<StatePatch>().toMatchObjectType<{
       phase?: string;
       seeded?: boolean;

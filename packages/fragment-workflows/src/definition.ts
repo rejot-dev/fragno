@@ -137,11 +137,24 @@ function buildRestoreInstanceStateReadModel(
 function restoreWorkflowStateFromReadModel<TState extends RestoreInstanceStateState>(
   workflow: RestoreInstanceStateWorkflow<TState>,
   readModel: RestoreInstanceStateReadModel,
+  liveState: WorkflowsFragmentConfig["liveState"] | undefined,
 ) {
   return restoreWorkflowState({
     workflow,
     instance: readModel.instance,
     steps: readModel.steps,
+  }).then((state) => {
+    if (liveState && state !== undefined) {
+      liveState.set({
+        workflowName: readModel.instance.workflowName,
+        instanceId: readModel.instance.id.toString(),
+        runNumber: readModel.instance.runNumber,
+        status: buildInstanceStatus(readModel.instance).status,
+        capturedAt: readModel.instance.updatedAt,
+        state: state as WorkflowStateShape,
+      });
+    }
+    return state;
   });
 }
 
@@ -278,6 +291,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           handlerTx: this.handlerTx,
           workflowsByName,
           workflows,
+          liveState: config.liveState,
           payload: { ...payload, timestamp },
         });
       }),
@@ -303,6 +317,32 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
     const assertWorkflowName = (workflowName: string) => {
       getWorkflowEntry(workflowName);
+    };
+
+    const readLiveInstanceState = (workflowName: string, instanceId: string) => {
+      assertWorkflowName(workflowName);
+      return config.liveState?.get(instanceId, { workflowName }) ?? null;
+    };
+
+    const setLiveInstanceStatus = (
+      workflowName: string,
+      instanceId: string,
+      status: InstanceStatus["status"],
+    ) => {
+      const snapshot = readLiveInstanceState(workflowName, instanceId);
+      if (!snapshot || !config.liveState) {
+        return;
+      }
+
+      config.liveState.set({
+        ...snapshot,
+        status,
+        capturedAt: new Date(),
+      });
+    };
+
+    const deleteLiveInstanceState = (instanceId: string) => {
+      config.liveState?.delete(instanceId);
     };
 
     const validateWorkflowParams = async (workflowName: string, params: unknown) => {
@@ -360,11 +400,21 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         .transformRetrieve(([instance, steps]) =>
           buildRestoreInstanceStateReadModel(instance, steps),
         )
-        .mutate(({ retrieveResult }) => restoreWorkflowStateFromReadModel(workflow, retrieveResult))
+        .mutate(({ retrieveResult }) =>
+          restoreWorkflowStateFromReadModel(workflow, retrieveResult, config.liveState),
+        )
         .build();
 
     return defineService({
       validateWorkflowParams,
+      getLiveInstanceState: function (
+        workflowOrName: string | WorkflowRegistryEntry,
+        instanceId: string,
+      ) {
+        const workflowName =
+          typeof workflowOrName === "string" ? workflowOrName : workflowOrName.name;
+        return readLiveInstanceState(workflowName, instanceId);
+      },
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         assertWorkflowName(workflowName);
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
@@ -763,6 +813,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
+            setLiveInstanceStatus(workflowName, instanceId, "active");
 
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
@@ -810,6 +861,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
+            setLiveInstanceStatus(workflowName, instanceId, "terminated");
 
             return buildInstanceStatus({
               status: "terminated",
@@ -851,6 +903,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
+            deleteLiveInstanceState(instanceId);
 
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,

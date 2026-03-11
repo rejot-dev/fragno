@@ -908,7 +908,7 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
       let waitingFor: PiAgentLoopWaitingFor = buildWaitingForUser(turn);
       const replayCache: PiToolReplayContext["cache"] = new Map();
       const emitState = () => {
-        this?.setState({
+        const snapshot = {
           messages,
           events,
           trace,
@@ -916,6 +916,9 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
           turn,
           phase,
           waitingFor,
+        } satisfies PiAgentLoopState;
+        this?.setState({
+          ...snapshot,
         });
       };
 

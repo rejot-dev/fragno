@@ -82,7 +82,11 @@ export type PiWorkflowHistoryStep = WorkflowsHistoryStep;
 
 export type PiWorkflowsService = Pick<
   WorkflowsService,
-  "createInstance" | "getInstanceStatus" | "restoreInstanceState" | "sendEvent"
+  | "createInstance"
+  | "getInstanceStatus"
+  | "getLiveInstanceState"
+  | "restoreInstanceState"
+  | "sendEvent"
 > & {
   getInstanceStatusBatch?: (
     workflowName: string,

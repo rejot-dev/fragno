@@ -10,7 +10,7 @@ import type {
 import { createRunnerState } from "./state";
 import { RunnerStep, RunnerStepReplayStopped } from "./step";
 import type { WorkflowInstanceRecord, WorkflowStepRecord } from "./types";
-import { createWorkflowStateController } from "./workflow-state";
+import { createIsolatedWorkflowState, createWorkflowStateController } from "./workflow-state";
 
 function buildWorkflowReplayEvent<TParams>(
   instance: WorkflowInstanceRecord,
@@ -20,6 +20,7 @@ function buildWorkflowReplayEvent<TParams>(
     payload: (instance.params ?? {}) as Readonly<TParams>,
     timestamp,
     instanceId: instance.id.toString(),
+    runNumber: instance.runNumber,
   };
 }
 
@@ -44,10 +45,10 @@ export async function restoreWorkflowState<
     return undefined as TState extends undefined ? undefined : TState;
   }
 
-  type RestorableState = Exclude<TState, undefined>;
+  type RestorableState = Exclude<TState, undefined> & WorkflowStateShape;
 
   const workflowState = createWorkflowStateController(
-    options.workflow.initialState as RestorableState & WorkflowStateShape,
+    createIsolatedWorkflowState(options.workflow.initialState as RestorableState),
   );
   const replayTimestamp = options.timestamp ?? options.instance.updatedAt;
   const initialEvent = buildWorkflowReplayEvent<TParams>(options.instance, replayTimestamp);
@@ -56,12 +57,13 @@ export async function restoreWorkflowState<
     taskKind: "run",
     mode: "restore",
   });
-  const runContext = {
+  const runContext: WorkflowStateContext<RestorableState> = {
+    getState: workflowState.getState as WorkflowStateContext<RestorableState>["getState"],
     setState: workflowState.setState as WorkflowStateContext<RestorableState>["setState"],
-  } as WorkflowStateContext<TState>;
+  };
 
   try {
-    await options.workflow.run.call(runContext, initialEvent, step);
+    await options.workflow.run.call(runContext as WorkflowStateContext<TState>, initialEvent, step);
   } catch (error) {
     if (!(error instanceof RunnerStepReplayStopped)) {
       // Best-effort restore: state emitted before the replay stopped is still valid for inspect.

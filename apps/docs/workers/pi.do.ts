@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { migrate } from "@fragno-dev/db";
 import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
 import { InMemoryFs } from "just-bash";
 import { createPiRuntime, isValidPiToolId, type PiRuntimeFragments } from "@/fragno/pi";
 import {
@@ -144,6 +145,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
   private initPromise: Promise<void>;
   #configFingerprint: string | null = null;
   #sessionFileSystems = new Map<string, InMemoryFs>();
+  #liveWorkflowStates = createWorkflowLiveStateStore();
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
@@ -174,11 +176,14 @@ export class Pi extends DurableObject<CloudflareEnv> {
   }
 
   async #buildRuntime(config: StoredPiConfig) {
+    this.#liveWorkflowStates.clear();
+
     const runtime = createPiRuntime({
       config,
       state: this.#state,
       env: this.#env,
       sessionFileSystems: this.#sessionFileSystems,
+      liveStateStore: this.#liveWorkflowStates,
     });
 
     await migrate(runtime.workflowsFragment);
@@ -255,6 +260,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
       this.#workflowsFragment = null;
       this.#dispatcher = null;
       this.#configFingerprint = this.#fingerprintConfig(stored);
+      this.#liveWorkflowStates.clear();
     }
 
     return buildConfigState(stored);

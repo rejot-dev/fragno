@@ -413,6 +413,7 @@ export async function createWorkflowsTestHarness<
         handlerTx: this.handlerTx,
         workflows,
         workflowsByName,
+        liveState: config.liveState,
         payload: { ...payload, timestamp: clock.now() },
       });
     });
@@ -432,6 +433,7 @@ export async function createWorkflowsTestHarness<
           handlerTx: this.handlerTx,
           workflows,
           workflowsByName,
+          liveState: config.liveState,
           payload: { ...payload, timestamp: clock.now() },
         });
       });

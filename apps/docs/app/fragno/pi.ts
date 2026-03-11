@@ -3,10 +3,11 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { createWorkflowsFragment } from "@fragno-dev/workflows";
+import { createWorkflowsFragment, type WorkflowLiveStateStore } from "@fragno-dev/workflows";
 import {
   createPi,
   createPiFragment,
+  createPiWorkflows,
   defineAgent,
   type PiToolRegistry,
 } from "@fragno-dev/pi-fragment";
@@ -136,7 +137,17 @@ const buildPiRuntime = (config: StoredPiConfig, tools: PiToolRegistry) => {
     registerHarnessAgents(builder, harness, config);
   }
 
-  return builder.build();
+  const runtime = builder.build();
+
+  return {
+    config: runtime.config,
+    workflows: createPiWorkflows({
+      agents: runtime.config.agents,
+      tools: runtime.config.tools,
+      toolSideEffectReducers: runtime.config.toolSideEffectReducers,
+      logging: runtime.config.logging,
+    }),
+  };
 };
 
 const registerHarnessAgents = (
@@ -188,6 +199,7 @@ export const createPiRuntime = (options: {
   state: DurableObjectState;
   env: CloudflareEnv;
   sessionFileSystems: Map<string, InMemoryFs>;
+  liveStateStore: WorkflowLiveStateStore;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
   const tools = createPiToolRegistry(options.sessionFileSystems);
@@ -196,6 +208,7 @@ export const createPiRuntime = (options: {
   const workflowsFragment = createWorkflowsFragment(
     {
       workflows: pi.workflows,
+      liveState: options.liveStateStore,
       runtime: defaultFragnoRuntime,
     },
     {
