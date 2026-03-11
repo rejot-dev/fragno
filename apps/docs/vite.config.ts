@@ -32,6 +32,10 @@ const fumadocsDeps = [
   "@marsidev/react-turnstile",
 ];
 
+// Warm the Cloudflare worker entry so the Durable Object graph is transformed
+// during dev-server boot instead of on the first SSR request.
+const workerWarmupFiles = ["./workers/app.ts"];
+
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
   return {
@@ -63,8 +67,29 @@ export default defineConfig(({ mode }) => {
           },
         }
       : undefined,
+    environments: isDev
+      ? {
+          ssr: {
+            dev: {
+              preTransformRequests: true,
+            },
+          },
+        }
+      : undefined,
     server: {
       allowedHosts: ["local-wilco.recivo.email"],
+      // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale
+      // Vite dep hashes across restarts, which can split React between old/new chunks.
+      headers: isDev
+        ? {
+            "Cache-Control": "no-store",
+          }
+        : undefined,
+      warmup: isDev
+        ? {
+            ssrFiles: workerWarmupFiles,
+          }
+        : undefined,
     },
   };
 });

@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Link, Outlet, isRouteErrorResponse, useRouteError } from "react-router";
+import { Link, Outlet, isRouteErrorResponse, redirect, useRouteError } from "react-router";
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
 import type { Route } from "./+types/backoffice-layout";
 import { getAuthMe } from "@/fragno/auth-server";
+import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
 import "../backoffice.css";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -10,11 +11,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
+  const requestUrl = new URL(request.url);
+  const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
+    throw redirect(buildBackofficeLoginPath(returnTo));
   }
-  console.log("me", me);
+
+  if (!me.activeOrganization && me.organizations.length > 0) {
+    throw redirect(buildBackofficeLoginPath(returnTo));
+  }
 
   return { me };
 }

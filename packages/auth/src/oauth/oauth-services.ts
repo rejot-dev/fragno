@@ -8,6 +8,12 @@ import {
   createAutoOrganization,
   type AutoCreateOrganizationOptions,
 } from "../user/auto-organization";
+import {
+  normalizeSessionSeed,
+  parseSessionSeed,
+  resolveSessionSeedFromMembers,
+  type SessionSeedInput,
+} from "../session/session-seed";
 
 export type OAuthStateResult =
   | {
@@ -42,6 +48,62 @@ export type OAuthCallbackResult =
     };
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
+type SessionSeedMemberRow = {
+  createdAt: Date;
+  organizationMemberOrganization?: {
+    id: unknown;
+    deletedAt: Date | null;
+  } | null;
+};
+
+type SeedableUserRow = {
+  id: { valueOf(): string };
+  email: string;
+  role: string;
+  bannedAt?: Date | null;
+  userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+};
+
+const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
+  if (!value) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+};
+
+const mapSessionSeedMembers = (
+  value: SessionSeedMemberRow | SessionSeedMemberRow[] | null | undefined,
+) => {
+  return normalizeMany(value).map((member) => ({
+    createdAt: member.createdAt,
+    organization: member.organizationMemberOrganization ?? null,
+  }));
+};
+
+const collectSessionSeedMembers = <
+  TUser extends {
+    userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+  },
+>(
+  rows: Array<TUser | null | undefined>,
+) => {
+  return rows.flatMap((row) => (row ? mapSessionSeedMembers(row.userOrganizationMembers) : []));
+};
+
+const toResolvedUser = <TUser extends SeedableUserRow>(rows: Array<TUser | null | undefined>) => {
+  const first = rows.find((row): row is TUser => Boolean(row));
+  if (!first) {
+    return null;
+  }
+
+  return {
+    id: first.id.valueOf(),
+    email: first.email,
+    role: first.role as "user" | "admin",
+    bannedAt: first.bannedAt ?? null,
+    members: collectSessionSeedMembers(rows),
+  };
+};
 
 const coerceProviderAccountId = (value: string | number): string => {
   return typeof value === "string" ? value : String(value);
@@ -120,6 +182,7 @@ export function createOAuthServices(options: {
         returnTo?: string | null;
         sessionId?: string | null;
         link?: boolean;
+        session?: SessionSeedInput | null;
       },
     ) {
       const ttlMs = oauthConfig?.stateTtlMs ?? DEFAULT_STATE_TTL_MS;
@@ -129,6 +192,7 @@ export function createOAuthServices(options: {
       const returnTo = sanitizeReturnTo(input.returnTo);
       const sessionId = input.sessionId ?? "";
       const shouldLink = Boolean(input.link);
+      const sessionSeed = normalizeSessionSeed(input.session);
 
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -156,6 +220,7 @@ export function createOAuthServices(options: {
             codeVerifier: null,
             redirectUri: input.redirectUri,
             returnTo,
+            sessionSeed,
             linkUserId,
             createdAt: now,
             expiresAt,
@@ -216,14 +281,28 @@ export function createOAuthServices(options: {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow
-            .findFirst("oauthState", (b) =>
+            .find("oauthState", (b) =>
               b
                 .whereIndex("idx_oauth_state_state", (eb) => eb("state", "=", input.state))
                 .join((j) =>
-                  j.oauthStateLinkUser((b) => b.select(["id", "email", "role", "bannedAt"])),
+                  j.oauthStateLinkUser((b) =>
+                    b
+                      .select(["id", "email", "role", "bannedAt"])
+                      .join((j) =>
+                        j["userOrganizationMembers"]((member) =>
+                          member
+                            .select(["createdAt"])
+                            .join((j) =>
+                              j["organizationMemberOrganization"]((organization) =>
+                                organization.select(["id", "deletedAt"]),
+                              ),
+                            ),
+                        ),
+                      ),
+                  ),
                 ),
             )
-            .findFirst("oauthAccount", (b) =>
+            .find("oauthAccount", (b) =>
               b
                 .whereIndex("idx_oauth_account_provider_account", (eb) =>
                   eb.and(
@@ -232,19 +311,47 @@ export function createOAuthServices(options: {
                   ),
                 )
                 .join((j) =>
-                  j.oauthAccountUser((b) => b.select(["id", "email", "role", "bannedAt"])),
+                  j.oauthAccountUser((b) =>
+                    b
+                      .select(["id", "email", "role", "bannedAt"])
+                      .join((j) =>
+                        j["userOrganizationMembers"]((member) =>
+                          member
+                            .select(["createdAt"])
+                            .join((j) =>
+                              j["organizationMemberOrganization"]((organization) =>
+                                organization.select(["id", "deletedAt"]),
+                              ),
+                            ),
+                        ),
+                      ),
+                  ),
                 ),
             )
-            .findFirst("user", (b) =>
-              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+            .find("user", (b) =>
+              b
+                .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
+                .join((j) =>
+                  j["userOrganizationMembers"]((member) =>
+                    member
+                      .select(["createdAt"])
+                      .join((j) =>
+                        j["organizationMemberOrganization"]((organization) =>
+                          organization.select(["id", "deletedAt"]),
+                        ),
+                      ),
+                  ),
+                ),
             ),
         )
         .mutate(
           ({
             uow,
-            retrieveResult: [oauthState, oauthAccount, userByEmail],
+            retrieveResult: [oauthStates, oauthAccounts, usersByEmail],
           }): OAuthCallbackResult => {
             const now = new Date();
+            const oauthState = oauthStates[0] ?? null;
+            const oauthAccount = oauthAccounts[0] ?? null;
 
             if (!oauthState || oauthState.provider !== input.providerId) {
               return { ok: false as const, code: "invalid_state" as const };
@@ -262,43 +369,37 @@ export function createOAuthServices(options: {
               return { ok: false as const, code: "signup_disabled" as const };
             }
 
-            const linkedUser = oauthState.oauthStateLinkUser ?? null;
-            const accountUser = oauthAccount?.oauthAccountUser ?? null;
+            const sessionSeed = parseSessionSeed(
+              (oauthState as { sessionSeed?: unknown }).sessionSeed,
+            );
+            const linkedUser = toResolvedUser(
+              oauthStates.map((state) => state.oauthStateLinkUser ?? null),
+            );
+            const accountUser = toResolvedUser(
+              oauthAccounts.map((account) => account.oauthAccountUser ?? null),
+            );
+            const existingUserByEmail = toResolvedUser(usersByEmail);
 
             let resolvedUser: {
               id: string;
               email: string;
               role: "user" | "admin";
               bannedAt?: Date | null;
+              members: ReturnType<typeof mapSessionSeedMembers>;
             } | null = null;
             let createdUser = false;
 
             if (accountUser) {
-              resolvedUser = {
-                id: accountUser.id.valueOf(),
-                email: accountUser.email,
-                role: accountUser.role as "user" | "admin",
-                bannedAt: accountUser.bannedAt ?? null,
-              };
+              resolvedUser = accountUser;
             } else if (linkedUser) {
-              resolvedUser = {
-                id: linkedUser.id.valueOf(),
-                email: linkedUser.email,
-                role: linkedUser.role as "user" | "admin",
-                bannedAt: linkedUser.bannedAt ?? null,
-              };
+              resolvedUser = linkedUser;
             } else if (
               linkByEmail &&
-              userByEmail &&
+              existingUserByEmail &&
               input.userInfo.email &&
               input.userInfo.emailVerified === true
             ) {
-              resolvedUser = {
-                id: userByEmail.id.valueOf(),
-                email: userByEmail.email,
-                role: userByEmail.role as "user" | "admin",
-                bannedAt: userByEmail.bannedAt ?? null,
-              };
+              resolvedUser = existingUserByEmail;
             }
 
             if (!resolvedUser) {
@@ -322,6 +423,7 @@ export function createOAuthServices(options: {
                 email,
                 role: "user",
                 bannedAt: null,
+                members: [],
               };
               createdUser = true;
             }
@@ -366,13 +468,6 @@ export function createOAuthServices(options: {
                 })
               : null;
 
-            const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            const sessionId = uow.create("session", {
-              userId: resolvedUser.id,
-              activeOrganizationId: autoOrganization?.organization.id ?? null,
-              expiresAt: sessionExpiresAt,
-            });
-
             const userSummary = mapUserSummary({
               id: resolvedUser.id,
               email: resolvedUser.email,
@@ -387,16 +482,6 @@ export function createOAuthServices(options: {
               });
             }
 
-            uow.triggerHook("onSessionCreated", {
-              session: {
-                id: sessionId.valueOf(),
-                user: userSummary,
-                expiresAt: sessionExpiresAt,
-                activeOrganizationId: autoOrganization?.organization.id ?? null,
-              },
-              actor: userSummary,
-            });
-
             if (autoOrganization) {
               uow.triggerHook("onOrganizationCreated", {
                 organization: autoOrganization.organization,
@@ -408,6 +493,29 @@ export function createOAuthServices(options: {
                 actor: userSummary,
               });
             }
+
+            const resolvedSessionSeed = resolveSessionSeedFromMembers(
+              resolvedUser.members,
+              sessionSeed,
+            );
+            const activeOrganizationId =
+              resolvedSessionSeed.activeOrganizationId ?? autoOrganization?.organization.id ?? null;
+            const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            const sessionId = uow.create("session", {
+              userId: resolvedUser.id,
+              activeOrganizationId,
+              expiresAt: uow.now().plus({ days: 30 }),
+            });
+
+            uow.triggerHook("onSessionCreated", {
+              session: {
+                id: sessionId.valueOf(),
+                user: userSummary,
+                expiresAt: sessionExpiresAt,
+                activeOrganizationId,
+              },
+              actor: userSummary,
+            });
 
             return {
               ok: true as const,

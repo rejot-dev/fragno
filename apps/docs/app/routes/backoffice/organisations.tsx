@@ -1,5 +1,5 @@
 import { Link, useOutletContext } from "react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
@@ -11,6 +11,10 @@ import {
   formatRoles,
   getErrorMessage,
 } from "./organisation-shared";
+import {
+  getOrganizationPreferenceState,
+  sortOrganizationsByDefault,
+} from "./organisations-preference";
 
 type UserInvitationsHook = ReturnType<typeof authClient.useUserInvitations>;
 type UserInvitation = NonNullable<UserInvitationsHook["data"]>["invitations"][number];
@@ -24,7 +28,24 @@ export function meta() {
 
 export default function BackofficeOrganisations() {
   const { me: initialMe } = useOutletContext<BackofficeLayoutContext>();
+  const preference = authClient.useDefaultOrganizationPreference();
   const { data: meData, loading: meLoading, error: meError } = authClient.useMe();
+  const { mutate: setActiveOrganization, loading: settingActiveOrganization } =
+    authClient.useSetActiveOrganization();
+  const initialPreference = useMemo(() => {
+    if (!initialMe) {
+      return null;
+    }
+
+    try {
+      return authClient.defaultOrganization.resolve(
+        initialMe,
+        authClient.defaultOrganization.read(),
+      );
+    } catch {
+      return null;
+    }
+  }, [initialMe]);
   const {
     data: userInvitationsData,
     loading: userInvitationsLoading,
@@ -33,18 +54,17 @@ export default function BackofficeOrganisations() {
   const { mutate: respondInvitation, loading: respondingInvitation } =
     authClient.useRespondOrganizationInvitation();
   const [invitationNotice, setInvitationNotice] = useState<ActionNotice>(null);
+  const [defaultOrganizationNotice, setDefaultOrganizationNotice] = useState<ActionNotice>(null);
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
   const me = meData ?? initialMe;
   const organizations = me?.organizations ?? [];
-  const activeOrganizationId = me?.activeOrganization?.organization.id ?? null;
+  const defaultOrganizationId =
+    preference.defaultOrganizationId ??
+    preference.storedOrganizationId ??
+    initialPreference?.resolvedOrganizationId ??
+    null;
   const openInvitations = userInvitationsData?.invitations ?? [];
-
-  const sortedOrganizations = activeOrganizationId
-    ? [
-        ...organizations.filter((entry) => entry.organization.id === activeOrganizationId),
-        ...organizations.filter((entry) => entry.organization.id !== activeOrganizationId),
-      ]
-    : organizations;
+  const sortedOrganizations = sortOrganizationsByDefault(organizations, defaultOrganizationId);
 
   const handleInvitationAction = async (entry: UserInvitation, action: "accept" | "reject") => {
     if (action === "reject") {
@@ -75,13 +95,34 @@ export default function BackofficeOrganisations() {
     }
   };
 
+  const handleSetDefaultOrganization = async (organizationId: string, organizationName: string) => {
+    setDefaultOrganizationNotice(null);
+
+    try {
+      if (!me) {
+        throw new Error("Cannot set a default organization without an authenticated user.");
+      }
+
+      await setActiveOrganization({
+        body: { organizationId },
+      });
+      authClient.defaultOrganization.setForMe(me, organizationId);
+      setDefaultOrganizationNotice({
+        type: "success",
+        message: `${organizationName} is now the active and default organisation for the docs backoffice.`,
+      });
+    } catch (error) {
+      setDefaultOrganizationNotice({ type: "error", message: getErrorMessage(error) });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Organisations" }]}
         eyebrow="Directory"
         title="Organisation rosters and access levels."
-        description="Select an organisation to manage settings, members, and invitations."
+        description="Select an organisation to manage settings, members, invitations, and the default docs-app scope."
       />
 
       <FormContainer
@@ -166,7 +207,10 @@ export default function BackofficeOrganisations() {
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
           {sortedOrganizations.map(({ organization, member }) => {
-            const isActive = activeOrganizationId === organization.id;
+            const preferenceState = getOrganizationPreferenceState(
+              organization.id,
+              defaultOrganizationId,
+            );
             return (
               <div
                 key={organization.id}
@@ -182,7 +226,7 @@ export default function BackofficeOrganisations() {
                     </h2>
                   </div>
                   <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
-                    {isActive ? "Active" : "Idle"}
+                    {preferenceState.badgeLabel}
                   </span>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
@@ -202,6 +246,22 @@ export default function BackofficeOrganisations() {
                   </p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {preferenceState.canSetDefault ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSetDefaultOrganization(organization.id, organization.name)
+                      }
+                      disabled={settingActiveOrganization}
+                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      {settingActiveOrganization ? "Updating..." : preferenceState.actionLabel}
+                    </button>
+                  ) : (
+                    <span className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]">
+                      {preferenceState.actionLabel}
+                    </span>
+                  )}
                   <Link
                     to={`/backoffice/organisations/${organization.id}`}
                     className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
@@ -214,6 +274,7 @@ export default function BackofficeOrganisations() {
           })}
         </section>
       )}
+      <Notice notice={defaultOrganizationNotice} />
       {meError ? (
         <div className="border border-red-300 bg-red-50 p-4 text-sm text-red-700">
           {getErrorMessage(meError)}

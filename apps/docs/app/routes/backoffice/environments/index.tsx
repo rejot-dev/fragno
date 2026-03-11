@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
+import { toCfSandboxPath } from "./cf-sandbox-path";
 
 const ENVIRONMENTS = [
   {
@@ -8,7 +9,6 @@ const ENVIRONMENTS = [
     description:
       "Validate fragment behavior against the Cloudflare sandbox runtime before promoting changes.",
     status: "Available",
-    to: "/backoffice/environments/cf-sandbox",
   },
 ];
 
@@ -20,6 +20,8 @@ export function meta() {
 }
 
 export default function BackofficeEnvironments() {
+  const cfSandboxPath = toCfSandboxPath({});
+
   return (
     <div className="space-y-4">
       <BackofficePageHeader
@@ -51,7 +53,7 @@ export default function BackofficeEnvironments() {
             <p className="mt-4 text-sm text-[var(--bo-muted)]">{environment.description}</p>
             <div className="mt-4">
               <Link
-                to={environment.to}
+                to={cfSandboxPath}
                 className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Open

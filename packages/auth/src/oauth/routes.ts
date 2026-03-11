@@ -1,6 +1,7 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
 import type { authFragmentDefinition } from "..";
+import { parseSessionSeedFromQuery } from "../session/session-seed";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import { normalizeOAuthConfig } from "./utils";
 import type { AnyOAuthProvider } from "./types";
@@ -38,7 +39,15 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
       defineRoute({
         method: "GET",
         path: "/oauth/:provider/authorize",
-        queryParameters: ["redirectUri", "returnTo", "link", "sessionId", "scope", "loginHint"],
+        queryParameters: [
+          "redirectUri",
+          "returnTo",
+          "link",
+          "sessionId",
+          "scope",
+          "loginHint",
+          "session",
+        ],
         outputSchema: z.object({
           url: z.string(),
         }),
@@ -47,6 +56,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           "provider_not_found",
           "missing_redirect_uri",
           "redirect_uri_mismatch",
+          "invalid_input",
           "session_invalid",
         ],
         handler: async function ({ query, headers, pathParams }, { json, error }) {
@@ -72,6 +82,10 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
 
           const link = query.get("link") === "true";
           const sessionId = link ? extractSessionId(headers, query.get("sessionId")) : null;
+          const sessionSeed = parseSessionSeedFromQuery(query.get("session"));
+          if (sessionSeed === "invalid") {
+            return error({ message: "Invalid session seed", code: "invalid_input" }, 400);
+          }
 
           const [stateResult] = await this.handlerTx()
             .withServiceCalls(() => [
@@ -81,6 +95,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                 returnTo: query.get("returnTo"),
                 sessionId,
                 link,
+                session: sessionSeed,
               }),
             ])
             .execute();

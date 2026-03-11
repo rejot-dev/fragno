@@ -7,9 +7,39 @@ import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import type { authFragmentDefinition } from "..";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
+import { resolveSessionSeedFromMembers, sessionSeedSchema } from "../session/session-seed";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
+type SessionSeedMemberRow = {
+  createdAt: Date;
+  organizationMemberOrganization?: {
+    id: unknown;
+    deletedAt: Date | null;
+  } | null;
+};
+
+const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
+  if (!value) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+};
+
+const collectSessionSeedMembers = <
+  TUser extends {
+    userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+  },
+>(
+  rows: TUser[],
+) => {
+  return rows.flatMap((user) =>
+    normalizeMany(user.userOrganizationMembers).map((member) => ({
+      createdAt: member.createdAt,
+      organization: member.organizationMemberOrganization ?? null,
+    })),
+  );
+};
 
 export function createUserServices(
   options?: AutoCreateOrganizationOptions,
@@ -443,6 +473,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         inputSchema: z.object({
           email: z.email(),
           password: z.string().min(8).max(100),
+          session: sessionSeedSchema.optional(),
         }),
         outputSchema: z.object({
           sessionId: z.string(),
@@ -459,8 +490,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             );
           }
 
-          const { email, password } = await input.valid();
-
+          const { email, password, session } = await input.valid();
           let passwordCheck:
             | { ok: true }
             | { ok: false; code: "invalid_credentials" | "user_banned" }
@@ -474,7 +504,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 bannedAt?: Date | null;
               } | null;
 
-              if (!user || !user.passwordHash) {
+              if (!user?.passwordHash) {
                 passwordCheck = { ok: false, code: "invalid_credentials" };
                 return;
               }
@@ -494,11 +524,24 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             },
           })
             .retrieve(({ forSchema }) =>
-              forSchema(authSchema).findFirst("user", (b) =>
-                b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+              forSchema(authSchema).find("user", (b) =>
+                b
+                  .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
+                  .join((j) =>
+                    j["userOrganizationMembers"]((member) =>
+                      member
+                        .select(["createdAt"])
+                        .join((j) =>
+                          j["organizationMemberOrganization"]((organization) =>
+                            organization.select(["id", "deletedAt"]),
+                          ),
+                        ),
+                    ),
+                  ),
               ),
             )
-            .mutate(({ forSchema, retrieveResult: [user] }) => {
+            .mutate(({ forSchema, retrieveResult: [users] }) => {
+              const user = users[0] ?? null;
               if (!user || !passwordCheck) {
                 return { ok: false as const, code: "invalid_credentials" as const };
               }
@@ -508,16 +551,21 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               }
 
               const uow = forSchema(authSchema);
-              const expiresAt = new Date();
-              expiresAt.setDate(expiresAt.getDate() + 30);
-              const expiresAtDb = uow.now().plus({ days: 30 });
+              // TODO: Use services.createSession instead of inline session creation (sign-up and
+              // handleOAuthCallback also duplicate this logic)
+              const expiresAt = uow.now().plus({ days: 30 });
+              const resolvedSessionSeed = resolveSessionSeedFromMembers(
+                collectSessionSeedMembers(users),
+                session,
+              );
+              const activeOrganizationId = resolvedSessionSeed.activeOrganizationId;
               const sessionId = uow.create("session", {
                 userId: user.id,
-                expiresAt: expiresAtDb,
+                activeOrganizationId,
+                expiresAt,
               });
-
               const userSummary = mapUserSummary({
-                id: user.id,
+                id: user.id.valueOf(),
                 email: user.email,
                 role: user.role,
                 bannedAt: user.bannedAt ?? null,
@@ -528,7 +576,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                   id: sessionId.valueOf(),
                   user: userSummary,
                   expiresAt,
-                  activeOrganizationId: null,
+                  activeOrganizationId,
                 },
                 actor: userSummary,
               });
@@ -536,9 +584,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               return {
                 ok: true as const,
                 sessionId: sessionId.valueOf(),
-                userId: user.id,
-                email: user.email,
-                role: user.role as "user" | "admin",
+                user: userSummary,
               };
             })
             .execute();
@@ -550,15 +596,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }
 
-          const sessionId = String(result.sessionId);
+          const sessionId = result.sessionId;
           const setCookieHeader = buildSetCookieHeader(sessionId, config.cookieOptions);
 
           return json(
             {
               sessionId,
-              userId: String(result.userId),
-              email: result.email,
-              role: result.role,
+              userId: result.user.id,
+              email: result.user.email,
+              role: result.user.role,
             },
             {
               headers: {

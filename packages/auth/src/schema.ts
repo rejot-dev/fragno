@@ -381,5 +381,20 @@ export const authSchema = schema("auth", (s) => {
     })
     .alterTable("session", (t) => {
       return t.createIndex("idx_session_id_expiresAt", ["id", "expiresAt"]);
+    })
+    .addReference("userOrganizationMembers", {
+      type: "many",
+      from: {
+        table: "user",
+        column: "id",
+      },
+      to: {
+        table: "organizationMember",
+        column: "userId",
+      },
+      foreignKey: false,
+    })
+    .alterTable("oauthState", (t) => {
+      return t.addColumn("sessionSeed", column("json").nullable());
     });
 });

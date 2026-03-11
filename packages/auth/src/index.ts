@@ -11,6 +11,27 @@ import { createOrganizationServices } from "./organization/organization-services
 import { organizationRoutesFactory } from "./organization/routes";
 import { createOAuthServices } from "./oauth/oauth-services";
 import { oauthRoutesFactory } from "./oauth/routes";
+import {
+  clearDefaultOrganizationId,
+  createDefaultOrganizationPreferenceState,
+  DEFAULT_ORGANIZATION_CHANGE_EVENT,
+  DEFAULT_ORGANIZATION_STORAGE_KEY,
+  findOrganizationEntry,
+  getDefaultOrganizationChangeEventName,
+  getDefaultOrganizationStorageKey,
+  NO_ORGANIZATIONS_ERROR_MESSAGE,
+  readDefaultOrganizationId,
+  resolveDefaultOrganization,
+  setDefaultOrganizationForMe,
+  subscribeToDefaultOrganizationPreference,
+  syncDefaultOrganizationPreference,
+  writeDefaultOrganizationId,
+  type AuthMeLike as AuthDefaultOrganizationMeLike,
+  type DefaultOrganizationEntry as AuthDefaultOrganizationEntry,
+  type DefaultOrganizationResolution as AuthDefaultOrganizationResolution,
+  type DefaultOrganizationResolutionStatus,
+} from "./client/default-organization";
+import { serializeSessionSeedForQuery } from "./session/session-seed";
 import type {
   AuthHooks,
   AuthHooksMap,
@@ -479,6 +500,18 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const useUserInvitations = b.createHook("/organizations/invitations");
   const useOAuthAuthorize = b.createHook("/oauth/:provider/authorize");
   const useOAuthCallback = b.createHook("/oauth/:provider/callback");
+  const readRawMe = async (params?: { sessionId?: string }) => {
+    if (params?.sessionId) {
+      return useMe.query({ query: { sessionId: params.sessionId } });
+    }
+
+    return useMe.query();
+  };
+  const defaultOrganizationPreference = createDefaultOrganizationPreferenceState({
+    meStore: useMe.store(),
+    readMe: readRawMe,
+    getAccountId: (me) => me.user.id,
+  });
 
   return {
     // Reactive hooks - Auth
@@ -486,6 +519,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     useSignIn,
     useSignOut,
     useMe,
+    useDefaultOrganizationPreference: b.createStore(defaultOrganizationPreference.store),
     useUsers,
     useUpdateUserRole,
     useChangePassword,
@@ -512,10 +546,14 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
       email: async ({
         email,
         password,
+        session,
         rememberMe: _rememberMe,
       }: {
         email: string;
         password: string;
+        session?: {
+          activeOrganizationId?: string;
+        };
         rememberMe?: boolean;
       }) => {
         // Note: rememberMe is accepted but not yet implemented on the backend
@@ -523,6 +561,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
           body: {
             email,
             password,
+            session,
           },
         });
       },
@@ -545,13 +584,9 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
       });
     },
 
-    me: async (params?: { sessionId?: string }) => {
-      if (params?.sessionId) {
-        return useMe.query({ query: { sessionId: params.sessionId } });
-      }
+    me: defaultOrganizationPreference.me,
 
-      return useMe.query();
-    },
+    defaultOrganization: defaultOrganizationPreference.defaultOrganization,
 
     oauth: {
       getAuthorizationUrl: async (params: {
@@ -559,6 +594,9 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         returnTo?: string;
         link?: boolean;
         sessionId?: string;
+        session?: {
+          activeOrganizationId?: string;
+        };
         redirectUri?: string;
         scope?: string;
         loginHint?: string;
@@ -570,6 +608,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
             returnTo: params.returnTo,
             link: params.link ? "true" : undefined,
             sessionId: params.sessionId,
+            session: serializeSessionSeedForQuery(params.session),
             scope: params.scope,
             loginHint: params.loginHint,
           },
@@ -596,6 +635,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
+export type AuthMeData = Awaited<ReturnType<ReturnType<typeof createAuthFragmentClients>["me"]>>;
 export type {
   AuthHooks,
   BeforeCreateUserHook,
@@ -633,5 +673,28 @@ export type {
   OrganizationMemberHookPayload,
   OrganizationRoleName,
 } from "./organization/types";
+export type { AuthDefaultOrganizationMeLike as AuthMeLike, DefaultOrganizationResolutionStatus };
+export type DefaultOrganizationEntry<TMe extends AuthDefaultOrganizationMeLike = AuthMeData> =
+  AuthDefaultOrganizationEntry<TMe>;
+export type DefaultOrganizationResolution<TMe extends AuthDefaultOrganizationMeLike = AuthMeData> =
+  AuthDefaultOrganizationResolution<TMe>;
+export type DefaultOrganizationPreferenceStore<
+  TMe extends AuthDefaultOrganizationMeLike = AuthMeData,
+> = import("./client/default-organization").DefaultOrganizationPreferenceStore<TMe>;
+export {
+  clearDefaultOrganizationId,
+  DEFAULT_ORGANIZATION_CHANGE_EVENT,
+  DEFAULT_ORGANIZATION_STORAGE_KEY,
+  findOrganizationEntry,
+  getDefaultOrganizationChangeEventName,
+  getDefaultOrganizationStorageKey,
+  NO_ORGANIZATIONS_ERROR_MESSAGE,
+  readDefaultOrganizationId,
+  resolveDefaultOrganization,
+  setDefaultOrganizationForMe,
+  subscribeToDefaultOrganizationPreference,
+  syncDefaultOrganizationPreference,
+  writeDefaultOrganizationId,
+};
 
 export type { Role };

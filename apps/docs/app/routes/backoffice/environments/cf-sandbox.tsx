@@ -1,7 +1,7 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth-server";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import type {
   SandboxCommandResult,
@@ -10,10 +10,12 @@ import type {
   StartSandboxOptions,
 } from "@/sandbox/contracts";
 import type { Route } from "./+types/cf-sandbox";
-
-type CfSandboxView = "new" | "detail";
+import { toCfSandboxPath, type CfSandboxView } from "./cf-sandbox-path";
 
 type CfSandboxLoaderData = {
+  organizationId: string | null;
+  organizationName: string | null;
+  needsActiveOrganization: boolean;
   activeInstances: SandboxInstanceSummary[];
   selectedSandbox: SandboxInstanceSummary | null;
   selectedSandboxId: string | null;
@@ -72,8 +74,8 @@ const STATUS_CLASSES: Record<SandboxInstanceStatus, string> = {
   error: "border border-red-300 bg-red-100 text-red-700 shadow-[0_0_0_1px_rgba(220,38,38,0.14)]",
 };
 
-const ORG_REQUIRED_MESSAGE =
-  "No active organisation selected. Select an organisation in Backoffice and try again.";
+const ACTIVE_ORGANIZATION_REQUIRED_MESSAGE =
+  "Set an active organisation before using the CF Sandbox.";
 
 export function meta() {
   return [
@@ -83,21 +85,28 @@ export function meta() {
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const organizationId = await resolveActiveOrganizationId(request, context);
-  if (!organizationId) {
-    return {
-      activeInstances: [],
-      selectedSandbox: null,
-      selectedSandboxId: null,
-      view: "new",
-      loadError: ORG_REQUIRED_MESSAGE,
-    } satisfies CfSandboxLoaderData;
-  }
-
-  const manager = getSandboxManager(context, organizationId);
   const searchParams = new URL(request.url).searchParams;
   const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
   const requestedSandboxId = readText(searchParams.get("sandbox"));
+  const me = await getAuthMe(request, context);
+  const activeOrganization = me?.activeOrganization ?? null;
+
+  if (!activeOrganization) {
+    return {
+      organizationId: null,
+      organizationName: null,
+      needsActiveOrganization: true,
+      activeInstances: [],
+      selectedSandbox: null,
+      selectedSandboxId: requestedSandboxId || null,
+      view: requestedView,
+      loadError: null,
+    } satisfies CfSandboxLoaderData;
+  }
+
+  const organizationId = activeOrganization.organization.id;
+  const organizationName = activeOrganization.organization.name;
+  const manager = getSandboxManager(context, organizationId);
 
   try {
     const allInstances = await manager.listInstances();
@@ -105,6 +114,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
     if (requestedView === "new") {
       return {
+        organizationId,
+        organizationName,
+        needsActiveOrganization: false,
         activeInstances,
         selectedSandbox: null,
         selectedSandboxId: null,
@@ -115,6 +127,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
     if (requestedSandboxId) {
       return {
+        organizationId,
+        organizationName,
+        needsActiveOrganization: false,
         activeInstances,
         selectedSandbox:
           allInstances.find((instance) => instance.id === requestedSandboxId) ?? null,
@@ -126,6 +141,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
     const fallback = activeInstances[0] ?? null;
     return {
+      organizationId,
+      organizationName,
+      needsActiveOrganization: false,
       activeInstances,
       selectedSandbox: fallback,
       selectedSandboxId: fallback?.id ?? null,
@@ -134,6 +152,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     } satisfies CfSandboxLoaderData;
   } catch (error) {
     return {
+      organizationId,
+      organizationName,
+      needsActiveOrganization: false,
       activeInstances: [],
       selectedSandbox: null,
       selectedSandboxId: null,
@@ -146,14 +167,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = readText(formData.get("intent"));
-  const organizationId = await resolveActiveOrganizationId(request, context);
+  const me = await getAuthMe(request, context);
+  const organizationId = me?.activeOrganization?.organization.id ?? null;
 
   if (!organizationId) {
     if (intent === "start") {
       return {
         intent: "start",
         ok: false,
-        message: ORG_REQUIRED_MESSAGE,
+        message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
         values: readNewSandboxFormValues(formData),
       } satisfies StartActionError;
     }
@@ -167,7 +189,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         result: {
           ok: false,
           reason: "internal_error",
-          message: ORG_REQUIRED_MESSAGE,
+          message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
           retryable: false,
         },
       } satisfies ExecuteActionResult;
@@ -178,11 +200,11 @@ export async function action({ request, context }: Route.ActionArgs) {
         intent: "kill",
         ok: false,
         sandboxId: readText(formData.get("sandboxId")),
-        message: ORG_REQUIRED_MESSAGE,
+        message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
       } satisfies KillActionError;
     }
 
-    throw new Response(ORG_REQUIRED_MESSAGE, { status: 400 });
+    throw new Response(ACTIVE_ORGANIZATION_REQUIRED_MESSAGE, { status: 400 });
   }
 
   const manager = getSandboxManager(context, organizationId);
@@ -211,7 +233,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       const instance = await manager.startInstance(options);
-      return redirect(toCfSandboxPath({ sandboxId: instance.id }));
+      return redirect(toCfSandboxPath({ view: "detail", sandboxId: instance.id }));
     } catch (error) {
       return {
         intent: "start",
@@ -326,8 +348,15 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeEnvironmentCfSandbox() {
-  const { activeInstances, selectedSandbox, selectedSandboxId, view, loadError } =
-    useLoaderData<typeof loader>();
+  const {
+    organizationName,
+    needsActiveOrganization,
+    activeInstances,
+    selectedSandbox,
+    selectedSandboxId,
+    view,
+    loadError,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const activeIntent = navigation.formData?.get("intent");
@@ -367,7 +396,11 @@ export default function BackofficeEnvironmentCfSandbox() {
         ]}
         eyebrow="Environment"
         title="CF Sandbox workspace."
-        description="Start isolated sandboxes, inspect health, and run commands against active instances."
+        description={
+          organizationName
+            ? `Start isolated sandboxes, inspect health, and run commands for ${organizationName}.`
+            : "Start isolated sandboxes, inspect health, and run commands against active instances."
+        }
         actions={
           <Link
             to="/backoffice/environments"
@@ -380,6 +413,14 @@ export default function BackofficeEnvironmentCfSandbox() {
 
       <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
         <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+          <div className="mb-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              Organisation scope
+            </span>
+            <p className="mt-1 font-semibold text-[var(--bo-fg)]">
+              {organizationName ?? "No active organisation"}
+            </p>
+          </div>
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
               Active sandboxes
@@ -414,7 +455,7 @@ export default function BackofficeEnvironmentCfSandbox() {
                 return (
                   <Link
                     key={instance.id}
-                    to={toCfSandboxPath({ sandboxId: instance.id })}
+                    to={toCfSandboxPath({ view: "detail", sandboxId: instance.id })}
                     aria-current={isSelected ? "page" : undefined}
                     className={
                       isSelected
@@ -441,9 +482,24 @@ export default function BackofficeEnvironmentCfSandbox() {
         </aside>
 
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
-          {loadError ? (
+          {needsActiveOrganization ? (
+            <div className="space-y-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                Active organisation required
+              </p>
+              <p className="text-sm text-[var(--bo-muted)]">
+                {ACTIVE_ORGANIZATION_REQUIRED_MESSAGE}
+              </p>
+              <Link
+                to="/backoffice/organisations"
+                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              >
+                Open organisations
+              </Link>
+            </div>
+          ) : loadError ? (
             <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
-              Failed loading sandbox registry: {loadError}
+              {loadError}
             </div>
           ) : view === "new" ? (
             <NewSandboxView values={startValues} error={startError} isStarting={isStarting} />
@@ -818,20 +874,6 @@ function LogBlock({ label, value }: { label: "stdout" | "stderr"; value?: string
   );
 }
 
-function toCfSandboxPath(options: { view?: CfSandboxView; sandboxId?: string }) {
-  const params = new URLSearchParams();
-  if (options.view === "new") {
-    params.set("view", "new");
-  } else if (options.sandboxId) {
-    params.set("sandbox", options.sandboxId);
-  }
-
-  const query = params.toString();
-  return query
-    ? `/backoffice/environments/cf-sandbox?${query}`
-    : "/backoffice/environments/cf-sandbox";
-}
-
 function readNewSandboxFormValues(formData: FormData): NewSandboxFormValues {
   return {
     id: readText(formData.get("id")),
@@ -868,33 +910,6 @@ function createSandboxId() {
   const random =
     globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10);
   return `cf-sbx-${Date.now().toString(36)}-${random}`;
-}
-
-async function resolveActiveOrganizationId(
-  request: Request,
-  context: Route.LoaderArgs["context"] | Route.ActionArgs["context"],
-): Promise<string | null> {
-  const me = await getAuthMe(request, context);
-  const activeOrganizationId = me?.activeOrganization?.organization.id ?? null;
-  if (activeOrganizationId) {
-    return activeOrganizationId;
-  }
-
-  const fallbackOrganizationId = me?.organizations?.[0]?.organization.id ?? null;
-  if (!fallbackOrganizationId) {
-    return null;
-  }
-
-  try {
-    const callAuthRoute = createAuthRouteCaller(request, context);
-    await callAuthRoute("POST", "/organizations/active", {
-      body: { organizationId: fallbackOrganizationId },
-    });
-  } catch {
-    // Keep using membership fallback for this request when active-org sync fails.
-  }
-
-  return fallbackOrganizationId;
 }
 
 function toErrorMessage(error: unknown) {

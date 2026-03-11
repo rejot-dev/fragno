@@ -1,6 +1,7 @@
 import { Outlet } from "react-router";
 import type { Route } from "./+types/organisation-layout";
 import { getAuthMe } from "@/fragno/auth-server";
+import { buildBackofficeLoginPath } from "./auth-navigation";
 import {
   OrganisationErrorBoundary,
   OrganisationHeader,
@@ -15,7 +16,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
+    const url = new URL(request.url);
+    return Response.redirect(
+      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
+      302,
+    );
   }
 
   const entry = me.organizations.find((item) => item.organization.id === params.orgId) ?? null;

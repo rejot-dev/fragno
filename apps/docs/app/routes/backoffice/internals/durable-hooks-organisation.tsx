@@ -16,6 +16,7 @@ import {
 import { getAuthMe } from "@/fragno/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
+import { buildBackofficeLoginPath } from "../auth-navigation";
 
 export type DurableHooksOrgOutletContext = {
   hooks: DurableHookQueueEntry[];
@@ -45,18 +46,18 @@ const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null 
   return null;
 };
 
-export async function loader({
-  request,
-  params,
-  context,
-}: Route.LoaderArgs): Promise<DurableHooksOrgLoaderData> {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    throw Response.redirect(new URL("/backoffice/login", request.url), 302);
+    const url = new URL(request.url);
+    return Response.redirect(
+      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
+      302,
+    );
   }
 
   const organisation =
