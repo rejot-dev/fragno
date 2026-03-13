@@ -2,7 +2,6 @@ import { reactRouter } from "@react-router/dev/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
 import mdx from "fumadocs-mdx/vite";
 import devtoolsJson from "vite-plugin-devtools-json";
 import * as MdxConfig from "./source.config";
@@ -40,6 +39,7 @@ export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
   return {
     resolve: {
+      tsconfigPaths: true,
       alias: {
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),
@@ -50,9 +50,6 @@ export default defineConfig(({ mode }) => {
       cloudflare({ viteEnvironment: { name: "ssr" } }),
       tailwindcss(),
       reactRouter(),
-      tsconfigPaths({
-        root: __dirname,
-      }),
       devtoolsJson(),
     ],
     optimizeDeps: isDev
