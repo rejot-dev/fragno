@@ -1,10 +1,9 @@
 {
   "files": [],
   "include": ["**/*.ts", "**/*.tsx"],
-  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
+  "extends": "@fragno-private/typescript-config/tsconfig.node.json",
   "compilerOptions": {
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }

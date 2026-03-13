@@ -74,7 +74,7 @@
     "workflow-usage": "./bin/run.js"
   },
   "scripts": {
-    "types:check": "tsc --noEmit",
+    "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "serve": "tsx --watch src/server/test-server.ts",
     "cli": "tsx src/server/cli.ts",
@@ -102,7 +102,7 @@
     "tsx": "^4.21.0"
   },
   "peerDependencies": {
-    "typescript": ">=5",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",

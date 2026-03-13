@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsc --noEmit",
+    "types:check": "tsgo --noEmit",
     "db:migrate": "pnpm run db:migrate:kysely && pnpm run db:migrate:fragno",
     "db:migrate:kysely": "kysely migrate up",
     "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",

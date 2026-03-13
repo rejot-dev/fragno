@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "prisma generate --schema ./prisma/schema.prisma && tsc --noEmit",
+    "types:check": "prisma generate --schema ./prisma/schema.prisma && tsgo --noEmit",
     "db:push": "prisma db push --schema ./prisma/schema.prisma",
     "db:generate:prisma-client": "prisma generate --schema ./prisma/schema.prisma",
     "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",

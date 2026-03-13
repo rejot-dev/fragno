@@ -34,7 +34,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsgo --noEmit"
   },
   "type": "module",
   "dependencies": {
@@ -42,7 +42,7 @@
     "zod": "^4.3.5"
   },
   "peerDependencies": {
-    "typescript": "^5.9.3",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
     "vue": ">=3.0.0",

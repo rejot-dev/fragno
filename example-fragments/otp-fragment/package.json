@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsgo --noEmit"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",

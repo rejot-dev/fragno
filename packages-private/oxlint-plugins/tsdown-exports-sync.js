@@ -147,6 +147,7 @@ const rule = {
               remainders.push(remainderParts.slice(1).join("/"));
             }
 
+            /** @type {Set<string>} */
             const candidates = new Set();
             const extensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"];
             const prefixes = ["./src/", "./"];

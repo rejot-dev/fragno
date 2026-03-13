@@ -97,7 +97,7 @@ const serverMiddleware: Route.MiddlewareFunction = async ({ request }, next) => 
   return next();
 };
 
-export const middleware = [serverMiddleware];
+export const middleware: Route.MiddlewareFunction[] = [serverMiddleware];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const baseUrl =

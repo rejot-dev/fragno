@@ -152,6 +152,7 @@ export type {
   HookContext,
   HooksMap,
   HookFn,
+  HookHandlerTx,
   HookPayload,
   TriggerHookOptions,
   DurableHooksProcessingOptions,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { HookContext, HookFn } from "@fragno-dev/db";
+import type { HookFn, HookHandlerTx } from "@fragno-dev/db";
 
 export const telegramChatTypeSchema = z.enum(["private", "group", "supergroup", "channel"]);
 export type TelegramChatType = z.infer<typeof telegramChatTypeSchema>;
@@ -236,7 +236,7 @@ export interface TelegramCommandContext {
     raw: string;
   };
   api: TelegramCommandApi;
-  handlerTx: HookContext["handlerTx"];
+  handlerTx: HookHandlerTx;
 }
 
 export type TelegramCommandHandler = (ctx: TelegramCommandContext) => Promise<void> | void;

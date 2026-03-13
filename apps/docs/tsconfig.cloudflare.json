@@ -18,11 +18,11 @@
     "module": "ES2022",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "baseUrl": ".",
     "rootDirs": [".", "./.react-router/types"],
     "paths": {
       "@/*": ["./app/*"],
-      "fumadocs-mdx:collections/*": [".source/*"]
+      "fumadocs-mdx:collections/*": ["./.source/*"],
+      "workers/*": ["./workers/*"]
     },
     "esModuleInterop": true,
     "resolveJsonModule": true,

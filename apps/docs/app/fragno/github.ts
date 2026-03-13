@@ -32,7 +32,10 @@ export function createAdapter(state?: DurableObjectState) {
   });
 }
 
-export function createGitHubServer(config: GitHubConfig, state: DurableObjectState) {
+export function createGitHubServer(
+  config: GitHubConfig,
+  state: DurableObjectState,
+): ReturnType<typeof createGitHubAppFragment> {
   return createGitHubAppFragment(config, {
     databaseAdapter: createAdapter(state),
     mountRoute: "/api/github",

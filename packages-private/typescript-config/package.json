@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "exports": {
-    "./tsconfig.base.json": "./tsconfig.base.json"
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsconfig.node.json": "./tsconfig.node.json"
   }
 }

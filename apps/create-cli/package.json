@@ -15,7 +15,7 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "test": "vitest run",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsgo --noEmit"
   },
   "engines": {
     "node": ">=22"

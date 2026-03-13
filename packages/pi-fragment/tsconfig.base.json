@@ -29,6 +29,7 @@
     "noPropertyAccessFromIndexSignature": true,
     // Misc
     "esModuleInterop": true,
+    "types": ["node"],
     "noErrorTruncation": true
   }
 }
