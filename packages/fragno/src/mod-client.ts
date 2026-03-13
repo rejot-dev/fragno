@@ -146,6 +146,7 @@ export type { FragnoPublicConfig } from "./api/shared-types";
 // Runtime
 // ============================================================================
 export { defaultFragnoRuntime, type FragnoRuntime } from "./runtime";
+export { createId, init } from "./id";
 
 // ============================================================================
 // Route Definition

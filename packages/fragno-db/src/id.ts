@@ -1,3 +1,1 @@
-import { createId } from "@paralleldrive/cuid2";
-
-export { createId };
+export { createId, init } from "@fragno-dev/core";
