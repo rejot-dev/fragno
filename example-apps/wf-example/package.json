@@ -30,7 +30,7 @@
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
     "@react-router/dev": "^7.5.3",
-    "@tailwindcss/vite": "^4.1.4",
+    "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.2",
@@ -39,10 +39,9 @@
     "drizzle-kit": "^0.31.5",
     "tailwindcss": "^4.1.4",
     "@typescript/native-preview": "catalog:",
-    "vite": "^6.3.3",
+    "vite": "catalog:",
     "vite-env-only": "^3.0.3",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4"
   }
 }

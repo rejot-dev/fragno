@@ -29,19 +29,18 @@
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
     "@react-router/dev": "^7.5.3",
-    "@tailwindcss/vite": "^4.1.4",
+    "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitest/coverage-istanbul": "^3.2.4",
     "drizzle-kit": "^0.31.5",
-    "@vitejs/plugin-basic-ssl": "^1.0.0",
+    "@vitejs/plugin-basic-ssl": "^2.2.0",
     "tailwindcss": "^4.1.4",
     "@typescript/native-preview": "catalog:",
-    "vite": "^6.3.3",
+    "vite": "catalog:",
     "vite-env-only": "^3.0.3",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4"
   }
 }

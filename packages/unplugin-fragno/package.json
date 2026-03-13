@@ -131,7 +131,7 @@
     "tsdown": "^0.12.9",
     "tsx": "^4.21.0",
     "@typescript/native-preview": "catalog:",
-    "vite": "^6.4.1",
+    "vite": "catalog:",
     "vitest": "^3.2.4",
     "webpack": "^5.104.1"
   },
