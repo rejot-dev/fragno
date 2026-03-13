@@ -42,6 +42,10 @@
       "types": "./dist/client/client.d.ts",
       "default": "./dist/client/client.js"
     },
+    "./id": {
+      "types": "./dist/id.d.ts",
+      "default": "./dist/id.js"
+    },
     "./react": {
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"
@@ -81,7 +85,6 @@
   "type": "module",
   "sideEffects": false,
   "dependencies": {
-    "@paralleldrive/cuid2": "^2.3.1",
     "@nanostores/query": "^0.3.4",
     "@nanostores/solid": "^1.1.1",
     "@standard-schema/spec": "^1.1.0",

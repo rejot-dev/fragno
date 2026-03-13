@@ -1,4 +1,4 @@
-import { createId, init } from "@paralleldrive/cuid2";
+import { createId, init } from "@fragno-dev/core";
 import type { SqlNamingStrategy } from "../../naming/sql-naming";
 import type { OutboxConfig } from "../../outbox/outbox";
 

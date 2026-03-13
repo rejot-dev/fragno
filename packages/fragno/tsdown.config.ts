@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/api/request-context-storage.ts",
     "./src/request/request.ts",
     "./src/client/client.ts",
+    "./src/id.ts",
     "./src/client/vanilla.ts",
     "./src/client/client.svelte.ts",
     "./src/client/react.ts",
