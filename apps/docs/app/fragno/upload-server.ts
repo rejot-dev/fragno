@@ -113,7 +113,7 @@ export function createUploadServerForProvider(
   provider: UploadProvider,
   state: DurableObjectState,
   env: CloudflareEnv,
-) {
+): ReturnType<typeof createUploadFragment> {
   const providerConfig = getProviderConfig(config, provider);
   const limits =
     providerConfig.provider === UPLOAD_PROVIDER_R2
@@ -182,7 +182,7 @@ export function createUploadServer(
   config: StoredUploadAdminConfig,
   state: DurableObjectState,
   env: CloudflareEnv,
-) {
+): ReturnType<typeof createUploadFragment> {
   return createUploadServerForProvider(config, config.defaultProvider, state, env);
 }
 

@@ -72,7 +72,7 @@ const rule = {
               continue;
             }
 
-            const browserPath = exportValue.browser;
+            const browserPath = /** @type {{ browser?: unknown }} */ (exportValue).browser;
             if (browserPath === undefined) {
               continue;
             }

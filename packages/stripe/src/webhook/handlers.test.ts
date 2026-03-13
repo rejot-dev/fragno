@@ -37,7 +37,7 @@ const mockSubscriptionsRetrieve = vi.fn().mockResolvedValue({
   cancel_at_period_end: false,
 });
 
-/* Importing the Stripe type breaks tsc, as a workaround I copied a smaller version of the type here. */
+/* Importing the full Stripe type breaks type checking here, so this test uses a smaller local shape. */
 type ShallowStripeEvent = {
   id: string;
   type: string;

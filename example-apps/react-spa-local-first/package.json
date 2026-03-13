@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsgo --noEmit"
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
@@ -20,7 +20,7 @@
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
-    "typescript": "^5.9.3",
+    "@typescript/native-preview": "catalog:",
     "vite": "^6.4.1"
   }
 }

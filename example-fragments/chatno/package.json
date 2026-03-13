@@ -33,7 +33,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsc --noEmit",
+    "types:check": "tsgo --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
@@ -45,7 +45,7 @@
     "zod": "^4.3.5"
   },
   "peerDependencies": {
-    "typescript": "^5.9.3",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
     "vue": ">=3.0.0",

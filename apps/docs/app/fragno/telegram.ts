@@ -24,7 +24,10 @@ export function createAdapter(state?: DurableObjectState) {
   });
 }
 
-export function createTelegramServer(config: TelegramConfig, state: DurableObjectState) {
+export function createTelegramServer(
+  config: TelegramConfig,
+  state: DurableObjectState,
+): ReturnType<typeof createTelegramFragment> {
   const telegramConfig = createTelegram(config)
     .command(
       defineCommand("start", {

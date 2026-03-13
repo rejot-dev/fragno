@@ -19,7 +19,10 @@ export function createAdapter(state?: DurableObjectState) {
   });
 }
 
-export function createResendServer(config: ResendConfig, state: DurableObjectState) {
+export function createResendServer(
+  config: ResendConfig,
+  state: DurableObjectState,
+): ReturnType<typeof createResendFragment> {
   return createResendFragment(config, {
     databaseAdapter: createAdapter(state),
     mountRoute: "/api/resend",

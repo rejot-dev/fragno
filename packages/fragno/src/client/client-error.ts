@@ -112,7 +112,7 @@ export class FragnoClientApiError<
    * The type is `TErrorCode` (the set of known error codes for this route), but may also be a string
    * for forward compatibility with future error codes.
    */
-  get code(): TErrorCode | (string & {}) {
+  override get code(): TErrorCode | (string & {}) {
     return super.code as TErrorCode | (string & {});
   }
 

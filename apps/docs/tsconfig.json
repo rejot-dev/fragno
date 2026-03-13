@@ -2,10 +2,10 @@
   "files": [],
   "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.cloudflare.json" }],
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./app/*"],
-      "fumadocs-mdx:collections/*": [".source/*"]
+      "fumadocs-mdx:collections/*": ["./.source/*"],
+      "workers/*": ["./workers/*"]
     },
     "checkJs": true,
     "verbatimModuleSyntax": true,

@@ -9,6 +9,9 @@
     // Bundler mode
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true,
     "allowImportingTsExtensions": true,
     // Project reference specific settings
     "composite": true,

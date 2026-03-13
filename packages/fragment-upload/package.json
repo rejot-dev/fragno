@@ -48,7 +48,7 @@
   "module": "./dist/node/index.js",
   "types": "./dist/node/index.d.ts",
   "scripts": {
-    "types:check": "tsc --noEmit",
+    "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
@@ -75,7 +75,7 @@
     "@fragno-dev/db": "workspace:*"
   },
   "peerDependencies": {
-    "typescript": ">=5",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",

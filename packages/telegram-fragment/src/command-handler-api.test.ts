@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { HookContext } from "@fragno-dev/db";
+import type { HookHandlerTx } from "@fragno-dev/db";
 import type { TelegramApi } from "./types";
 import { createCommandHandlerApi } from "./command-handler-api";
 
@@ -50,7 +50,7 @@ describe("command-handler-api", () => {
 
     const { api: handlerApi, flush } = createCommandHandlerApi(
       api as unknown as TelegramApi,
-      handlerTx as unknown as HookContext["handlerTx"],
+      handlerTx as unknown as HookHandlerTx,
     );
 
     await handlerApi.sendMessage({ chat_id: 1, text: "hi" });
@@ -83,7 +83,7 @@ describe("command-handler-api", () => {
 
     const { flush } = createCommandHandlerApi(
       api as unknown as TelegramApi,
-      handlerTx as unknown as HookContext["handlerTx"],
+      handlerTx as unknown as HookHandlerTx,
     );
 
     await flush();
@@ -98,7 +98,7 @@ describe("command-handler-api", () => {
 
     const { api: handlerApi, flush } = createCommandHandlerApi(
       api as unknown as TelegramApi,
-      handlerTx as unknown as HookContext["handlerTx"],
+      handlerTx as unknown as HookHandlerTx,
     );
 
     const result = await handlerApi.call("getMe", {});
@@ -117,7 +117,7 @@ describe("command-handler-api", () => {
 
     const { api: handlerApi, flush } = createCommandHandlerApi(
       api as unknown as TelegramApi,
-      handlerTx as unknown as HookContext["handlerTx"],
+      handlerTx as unknown as HookHandlerTx,
     );
 
     const sendResult = await handlerApi.call("sendMessage", { chat_id: 1, text: "hi" });
@@ -141,7 +141,7 @@ describe("command-handler-api", () => {
 
     const { api: handlerApi, flush } = createCommandHandlerApi(
       api as unknown as TelegramApi,
-      handlerTx as unknown as HookContext["handlerTx"],
+      handlerTx as unknown as HookHandlerTx,
     );
 
     await handlerApi.sendChatAction({ chat_id: 1, action: "typing" });

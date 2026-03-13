@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { schema, idColumn, column, referenceColumn, FragnoId } from "../schema/create";
+import {
+  schema,
+  idColumn,
+  column,
+  referenceColumn,
+  FragnoId,
+  type AnySchema,
+} from "../schema/create";
 import {
   createUnitOfWork,
   type UOWCompiler,
@@ -74,7 +81,7 @@ describe("read tracking", () => {
     const compiler = createMockCompiler();
     const executor = createMockExecutor();
     const decoder = createMockDecoder();
-    const schemaNamespaceMap = new WeakMap();
+    const schemaNamespaceMap: WeakMap<AnySchema, string | null> = new WeakMap();
     schemaNamespaceMap.set(testSchema, "tenant");
 
     const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
@@ -151,7 +158,7 @@ describe("read tracking", () => {
     const compiler = createMockCompiler();
     const executor = createMockExecutor();
     const decoder = createMockDecoder();
-    const schemaNamespaceMap = new WeakMap();
+    const schemaNamespaceMap: WeakMap<AnySchema, string | null> = new WeakMap();
     schemaNamespaceMap.set(testSchema, "tenant");
 
     const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);

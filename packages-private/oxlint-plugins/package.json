@@ -9,7 +9,7 @@
     "./docs-icons-sync": "./docs-icons-sync.js"
   },
   "scripts": {
-    "types:check": "tsc --noEmit"
+    "types:check": "tsgo --noEmit"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

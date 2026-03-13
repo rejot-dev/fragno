@@ -1,4 +1,4 @@
-import type { HookContext } from "@fragno-dev/db";
+import type { HookHandlerTx } from "@fragno-dev/db";
 import { telegramSchema } from "./schema";
 import type {
   TelegramApi,
@@ -12,7 +12,7 @@ type OutgoingQueueItem = TelegramOutgoingHookPayload;
 
 export const createCommandHandlerApi = (
   api: TelegramApi,
-  handlerTx: HookContext["handlerTx"],
+  handlerTx: HookHandlerTx,
 ): { api: TelegramCommandApi; flush: () => Promise<void> } => {
   const queue: OutgoingQueueItem[] = [];
 

@@ -23,6 +23,7 @@
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
     "esModuleInterop": true,
+    "types": ["node"],
     "noErrorTruncation": true
   }
 }
