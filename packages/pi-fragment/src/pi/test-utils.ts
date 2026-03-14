@@ -221,6 +221,7 @@ export type DatabaseFragmentsTest = {
   fragments: {
     pi: {
       callRoute: PiFragmentInstance["callRoute"];
+      callRouteRaw: PiFragmentInstance["callRouteRaw"];
       db: SimpleQueryInterface<typeof piSchema>;
     };
   };
@@ -281,6 +282,7 @@ export const buildHarness = async (
     fragments: {
       pi: {
         callRoute: fragment.callRoute.bind(fragment),
+        callRouteRaw: fragment.callRouteRaw.bind(fragment),
         db,
       },
     },

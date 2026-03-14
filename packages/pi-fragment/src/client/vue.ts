@@ -1,7 +1,6 @@
 import { useFragno } from "@fragno-dev/core/vue";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { createPiFragmentClients } from "..";
+import { createPiFragmentClients, type PiFragmentClientConfig } from "./clients";
 
-export function createPiFragmentClient(config: FragnoPublicClientConfig = {}) {
+export function createPiFragmentClient(config: PiFragmentClientConfig = {}) {
   return useFragno(createPiFragmentClients(config));
 }

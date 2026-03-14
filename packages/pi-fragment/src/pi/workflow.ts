@@ -19,6 +19,9 @@ import { PiLogger } from "../debug-log";
 import { extractAssistantTextFromMessage, normalizeSteeringMode } from "./mappers";
 import {
   PI_TOOL_JOURNAL_VERSION,
+  type PiActiveSessionState,
+  type PiActiveSessionSubscriber,
+  type PiActiveSessionUpdate,
   type PiAgentDefinition,
   type PiAgentRegistry,
   type PiAgentLoopPhase,
@@ -508,6 +511,69 @@ const buildDetailEvent = (options: {
   };
 };
 
+const notifyActiveSessionSubscribers = (
+  listeners: Set<PiActiveSessionSubscriber>,
+  update: Parameters<PiActiveSessionSubscriber>[0],
+) => {
+  for (const listener of Array.from(listeners)) {
+    try {
+      listener(update);
+    } catch (error) {
+      console.warn("Pi active-session listener failed.", { error, updateType: update.type });
+    }
+  }
+};
+
+const createPiActiveSessionState = (): PiActiveSessionState => {
+  const listeners = new Set<PiActiveSessionSubscriber>();
+  const updatesByTurn = new Map<number, PiActiveSessionUpdate[]>();
+
+  const appendUpdate = (turn: number, update: PiActiveSessionUpdate) => {
+    const existing = updatesByTurn.get(turn) ?? [];
+    updatesByTurn.set(turn, [...existing, update]);
+
+    for (const previousTurn of updatesByTurn.keys()) {
+      if (previousTurn < turn - 1) {
+        updatesByTurn.delete(previousTurn);
+      }
+    }
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    publishEvent(turn, event) {
+      const update: PiActiveSessionUpdate = {
+        type: "event",
+        turn,
+        event,
+      };
+      appendUpdate(turn, update);
+      notifyActiveSessionSubscribers(listeners, update);
+    },
+    settleTurn(turn, status) {
+      const update: PiActiveSessionUpdate = {
+        type: "settled",
+        turn,
+        status,
+      };
+      appendUpdate(turn, update);
+      notifyActiveSessionSubscribers(listeners, update);
+    },
+    replayTurn(turn) {
+      return [...(updatesByTurn.get(turn) ?? [])];
+    },
+    listenerCount: () => listeners.size,
+  };
+};
+
+const isRunnerSuspendedError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "RunnerStepSuspended";
+
 export const createInitialPiAgentLoopState = (messages: AgentMessage[] = []): PiAgentLoopState => ({
   messages,
   events: [],
@@ -517,6 +583,16 @@ export const createInitialPiAgentLoopState = (messages: AgentMessage[] = []): Pi
   phase: "waiting-for-user",
   waitingFor: buildWaitingForUser(0),
 });
+
+export const ensurePiActiveSessionState = (state: PiAgentLoopState): PiActiveSessionState => {
+  if (state.activeSession) {
+    return state.activeSession;
+  }
+
+  const activeSession = createPiActiveSessionState();
+  state.activeSession = activeSession;
+  return activeSession;
+};
 
 type AgentStreamFn = NonNullable<PiAgentDefinition["streamFn"]>;
 
@@ -765,6 +841,7 @@ const createAgent = async (options: {
   turnId: string;
   instanceId: string;
   replay: PiToolReplayContext;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<{
   agent: Agent;
   trace: AgentEvent[];
@@ -813,6 +890,7 @@ const createAgent = async (options: {
   const trace: AgentEvent[] = [];
   const unsubscribe = agent.subscribe((event) => {
     trace.push(event);
+    options.onEvent?.(event);
     if (!options.agent.onEvent) {
       return;
     }
@@ -863,6 +941,7 @@ const runAgentTurn = async (options: {
   turnId: string;
   instanceId: string;
   replay: PiToolReplayContext;
+  onEvent?: (event: AgentEvent) => void;
 }) => {
   const result = await createAgent({
     agent: options.agent,
@@ -873,6 +952,7 @@ const runAgentTurn = async (options: {
     turnId: options.turnId,
     instanceId: options.instanceId,
     replay: options.replay,
+    onEvent: options.onEvent,
   });
 
   return {
@@ -907,6 +987,10 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
       let phase: PiAgentLoopPhase = "waiting-for-user";
       let waitingFor: PiAgentLoopWaitingFor = buildWaitingForUser(turn);
       const replayCache: PiToolReplayContext["cache"] = new Map();
+      const currentState = this?.getState();
+      const activeSession = currentState
+        ? ensurePiActiveSessionState(currentState)
+        : createPiActiveSessionState();
       const emitState = () => {
         const snapshot = {
           messages,
@@ -916,6 +1000,7 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
           turn,
           phase,
           waitingFor,
+          activeSession,
         } satisfies PiAgentLoopState;
         this?.setState({
           ...snapshot,
@@ -952,25 +1037,42 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
           reducers: options.toolSideEffectReducers,
         });
         const assistantStepName = `assistant-${turn}`;
-        const assistantResult = await step.do(
-          assistantStepName,
-          { retries: { limit: 1, delay: "0 ms", backoff: "constant" } },
-          async () =>
-            await runAgentTurn({
-              params,
-              agent: agentDefinition,
-              tools: options.tools,
-              messages,
-              steeringMode,
-              turnId,
-              instanceId: event.instanceId,
-              replay,
-            }),
-        );
+        const traceLengthBeforeTurn = trace.length;
+        let assistantResult: Awaited<ReturnType<typeof runAgentTurn>>;
+        try {
+          assistantResult = await step.do(
+            assistantStepName,
+            { retries: { limit: 1, delay: "0 ms", backoff: "constant" } },
+            async () =>
+              await runAgentTurn({
+                params,
+                agent: agentDefinition,
+                tools: options.tools,
+                messages,
+                steeringMode,
+                turnId,
+                instanceId: event.instanceId,
+                replay,
+                onEvent: (agentEvent) => {
+                  trace = [...trace, agentEvent];
+                  activeSession.publishEvent(turn, agentEvent);
+                  this?.setState({
+                    trace,
+                    activeSession,
+                  });
+                },
+              }),
+          );
+        } catch (error) {
+          if (!isRunnerSuspendedError(error)) {
+            activeSession.settleTurn(turn, "errored");
+          }
+          throw error;
+        }
 
         const parsedAssistantResult = parseAssistantStepResult(assistantResult, assistantStepName);
         messages = parsedAssistantResult.messages;
-        trace = [...trace, ...parsedAssistantResult.trace];
+        trace = [...trace.slice(0, traceLengthBeforeTurn), ...parsedAssistantResult.trace];
         const summary = buildTurnSummary(turn, parsedAssistantResult.assistant);
         if (summary) {
           summaries = [...summaries, summary];
@@ -981,13 +1083,16 @@ export const createPiAgentLoopWorkflow = (options: PiWorkflowsOptions) =>
           phase = "complete";
           waitingFor = null;
           emitState();
+          activeSession.settleTurn(turn, "complete");
           return { messages };
         }
 
+        const settledTurn = turn;
         turn += 1;
         phase = "waiting-for-user";
         waitingFor = buildWaitingForUser(turn);
         emitState();
+        activeSession.settleTurn(settledTurn, "waiting-for-user");
       }
     },
   );

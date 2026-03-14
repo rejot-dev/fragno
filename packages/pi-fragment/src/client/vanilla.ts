@@ -1,6 +1,6 @@
-import { createPiFragmentClients } from "..";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import { useFragno } from "@fragno-dev/core/vanilla";
+import { createPiFragmentClients, type PiFragmentClientConfig } from "./clients";
 
-export function createPiFragmentClient(config: FragnoPublicClientConfig = {}) {
-  return createPiFragmentClients(config);
+export function createPiFragmentClient(config: PiFragmentClientConfig = {}) {
+  return useFragno(createPiFragmentClients(config));
 }

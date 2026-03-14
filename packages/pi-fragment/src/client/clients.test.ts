@@ -2,17 +2,24 @@ import { describe, expect, it } from "vitest";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 import { createPiFragmentClients } from "./clients";
-import { createPiFragmentClient as createVanillaClient } from "../client/vanilla";
-import { createPiFragmentClient as createReactClient } from "../client/react";
-import { createPiFragmentClient as createSolidClient } from "../client/solid";
-import { createPiFragmentClient as createSvelteClient } from "../client/svelte";
-import { createPiFragmentClient as createVueClient } from "../client/vue";
+import { createPiFragmentClient as createVanillaClient } from "./vanilla";
+import { createPiFragmentClient as createReactClient } from "./react";
+import { createPiFragmentClient as createSolidClient } from "./solid";
+import { createPiFragmentClient as createSvelteClient } from "./svelte";
+import { createPiFragmentClient as createVueClient } from "./vue";
 
 const clientConfig: FragnoPublicClientConfig = {
   baseUrl: "http://localhost:3000",
 };
 
-const expectedKeys = ["useSessions", "useSession", "useCreateSession", "useSendMessage"] as const;
+const expectedKeys = [
+  "useSessions",
+  "useSession",
+  "useSessionDetail",
+  "useCreateSession",
+  "useActiveSession",
+  "useSendMessage",
+] as const;
 
 describe("pi-fragment client exports", () => {
   it("exposes hooks and mutators for pi routes", () => {
@@ -22,14 +29,20 @@ describe("pi-fragment client exports", () => {
     expect(clients.useSessions.route.method).toBe("GET");
     expect(typeof clients.useSessions.store).toBe("function");
 
-    expect(clients.useSession.route.path).toBe("/sessions/:sessionId");
-    expect(clients.useSession.route.method).toBe("GET");
-    expect(typeof clients.useSession.store).toBe("function");
+    expect(clients.useSessionDetail.route.path).toBe("/sessions/:sessionId");
+    expect(clients.useSessionDetail.route.method).toBe("GET");
+    expect(typeof clients.useSessionDetail.store).toBe("function");
+
+    expect(clients.useSession).toBeDefined();
 
     expect(clients.useCreateSession.route.path).toBe("/sessions");
     expect(clients.useCreateSession.route.method).toBe("POST");
     expect(typeof clients.useCreateSession.mutateQuery).toBe("function");
     expect(clients.useCreateSession.mutatorStore).toBeDefined();
+
+    expect(clients.useActiveSession.route.path).toBe("/sessions/:sessionId/active");
+    expect(clients.useActiveSession.route.method).toBe("GET");
+    expect(typeof clients.useActiveSession.store).toBe("function");
 
     expect(clients.useSendMessage.route.path).toBe("/sessions/:sessionId/messages");
     expect(clients.useSendMessage.route.method).toBe("POST");

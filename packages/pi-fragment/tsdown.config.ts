@@ -31,6 +31,7 @@ export default defineConfig([
     fixedExtension: false,
     plugins: [unpluginFragno({ platform: "node" })],
     unbundle: true,
+    inlineOnly: [/^nanostores$/, /^@nanostores\//, /^nanoevents$/],
   },
   {
     ignoreWatch: ["./dist"],

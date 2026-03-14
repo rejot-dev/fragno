@@ -52,6 +52,32 @@ export type PiSessionDetailEvent = {
 
 export type PiAgentLoopPhase = "waiting-for-user" | "running-agent" | "complete";
 
+export type PiActiveSessionStreamItem = AgentEvent;
+
+export type PiActiveSessionSettledStatus = "waiting-for-user" | "complete" | "errored";
+
+export type PiActiveSessionUpdate =
+  | {
+      type: "event";
+      turn: number;
+      event: PiActiveSessionStreamItem;
+    }
+  | {
+      type: "settled";
+      turn: number;
+      status: PiActiveSessionSettledStatus;
+    };
+
+export type PiActiveSessionSubscriber = (update: PiActiveSessionUpdate) => void;
+
+export type PiActiveSessionState = {
+  subscribe: (listener: PiActiveSessionSubscriber) => () => void;
+  publishEvent: (turn: number, event: PiActiveSessionStreamItem) => void;
+  settleTurn: (turn: number, status: PiActiveSessionSettledStatus) => void;
+  replayTurn: (turn: number) => PiActiveSessionUpdate[];
+  listenerCount: () => number;
+};
+
 export type PiAgentLoopWaitingFor =
   | {
       type: "user_message";
@@ -66,7 +92,7 @@ export type PiAgentLoopWaitingFor =
     }
   | null;
 
-export type PiAgentLoopState = {
+export type PiAgentLoopSerializableState = {
   messages: AgentMessage[];
   events: PiSessionDetailEvent[];
   trace: AgentEvent[];
@@ -74,6 +100,27 @@ export type PiAgentLoopState = {
   turn: number;
   phase: PiAgentLoopPhase;
   waitingFor: PiAgentLoopWaitingFor;
+};
+
+export type PiSessionWorkflowStatus = {
+  status: PiSessionStatus;
+  error?: { name: string; message: string };
+  output?: unknown;
+};
+
+export type PiSessionDetail = PiSession & {
+  workflow: PiSessionWorkflowStatus;
+  messages: AgentMessage[];
+  events: PiSessionDetailEvent[];
+  trace: AgentEvent[];
+  summaries: PiTurnSummary[];
+  turn: number;
+  phase: PiAgentLoopPhase;
+  waitingFor: PiAgentLoopWaitingFor;
+};
+
+export type PiAgentLoopState = PiAgentLoopSerializableState & {
+  activeSession?: PiActiveSessionState;
 };
 
 export type PiWorkflowsInstanceStatus = InstanceStatus;
@@ -140,6 +187,40 @@ export type PiPersistedToolCallV1 = {
   capturedAt: number;
   seq: number;
 };
+
+export type PiActiveSessionSystemMessage =
+  | {
+      layer: "system";
+      type: "snapshot";
+      turn: number;
+      phase: PiAgentLoopPhase;
+      waitingFor: PiAgentLoopWaitingFor;
+      replayCount: number;
+    }
+  | {
+      layer: "system";
+      type: "settled";
+      turn: number;
+      status: PiActiveSessionSettledStatus;
+    }
+  | {
+      layer: "system";
+      type: "inactive";
+      reason: "session-complete" | "session-idle";
+      turn: number;
+      phase: PiAgentLoopPhase;
+      waitingFor: PiAgentLoopWaitingFor;
+    };
+
+export type PiActiveSessionProtocolMessage =
+  | PiActiveSessionSystemMessage
+  | {
+      layer: "pi";
+      type: "event";
+      turn: number;
+      source: "replay" | "live";
+      event: PiActiveSessionStreamItem;
+    };
 
 export type PiPersistedToolCall = PiPersistedToolCallV1;
 

@@ -234,6 +234,33 @@ describe("pi-fragment messages route", () => {
     expect(lastEvent?.payload).toMatchObject({ steeringMode: "all" });
   });
 
+  it("returns WORKFLOW_INSTANCE_MISSING when the session is no longer waiting for input", async () => {
+    const session = await createSession(fragments);
+
+    const firstResponse = await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: session.id },
+      body: { text: "hello", done: true },
+    });
+
+    expect(firstResponse.type).toBe("json");
+    if (firstResponse.type !== "json") {
+      throw new Error(formatResponseError(firstResponse));
+    }
+
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+    const secondResponse = await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: session.id },
+      body: { text: "too soon" },
+    });
+
+    expect(secondResponse.type).toBe("error");
+    if (secondResponse.type !== "error") {
+      throw new Error(`Expected error response, got ${secondResponse.type}`);
+    }
+    expect(secondResponse.error.code).toBe("WORKFLOW_INSTANCE_MISSING");
+  });
+
   it("persists steeringMode updates on the session row", async () => {
     const session = await createSession(fragments);
 
