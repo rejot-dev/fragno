@@ -5,13 +5,14 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 
 import {
   buildHarness,
+  createDelayedStreamFn,
   createFailingStreamFn,
   createStreamFn,
   createStreamFnScript,
   mockModel,
 } from "./test-utils";
 import type { PiFragmentConfig, PiToolFactory, PiWorkflowsService } from "./types";
-import { PI_WORKFLOW_NAME } from "./workflow";
+import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
 type TestHarness = Awaited<ReturnType<typeof buildHarness>>;
 
@@ -229,14 +230,13 @@ describe("pi-fragment session detail route", () => {
     expect(response.error.code).toBe("SESSION_NOT_FOUND");
   });
 
-  it("returns SESSION_NOT_FOUND when workflow instance is null", async () => {
+  it("returns SESSION_NOT_FOUND when the backing workflow instance is missing", async () => {
     const { fragments } = await createHarness(createConfig());
 
     const sessionId = await fragments.pi.db.create("session", {
       name: "Missing workflow",
       agent: "default",
       status: "active",
-      workflowInstanceId: null,
       steeringMode: "one-at-a-time",
       metadata: null,
       tags: null,
@@ -341,6 +341,72 @@ describe("pi-fragment session detail route", () => {
     expect(detailResponse.data.summaries[0]?.summary ?? "").toContain("assistant");
     expect(detailResponse.data.phase).toBe("complete");
     expect(detailResponse.data.waitingFor).toBeNull();
+  });
+
+  it("does not repair persisted session status while serving detail", async () => {
+    const { fragments, workflows } = await createHarness(
+      createConfig({
+        // Use a delayed stream so the workflow has a realistic async completion path.
+        streamFn: createDelayedStreamFn(20),
+      }),
+    );
+
+    const createResponse = await fragments.pi.callRoute("POST", "/sessions", {
+      body: { agent: "default", name: "Status reconciliation" },
+    });
+
+    if (createResponse.type !== "json") {
+      throw new Error(formatResponseError(createResponse));
+    }
+
+    await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
+      pathParams: { sessionId: createResponse.data.id },
+      body: { text: "ping", done: true },
+    });
+    // Let the background workflow finish so the workflow service reports `complete`.
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+
+    const workflowStatus = await workflows.getStatus(PI_WORKFLOW_NAME, createResponse.data.id);
+    expect(workflowStatus.status).toBe("complete");
+
+    // Recreate the drift reported in review: the workflow is complete, but the persisted
+    // session row is still stale, which is what `/sessions` reads from.
+    await fragments.pi.db.update("session", createResponse.data.id, (b) =>
+      b.set({ status: "active" }),
+    );
+
+    // The detail route already returns the live workflow status in the response.
+    const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
+      pathParams: { sessionId: createResponse.data.id },
+    });
+
+    expect(detailResponse.type).toBe("json");
+    if (detailResponse.type !== "json") {
+      throw new Error(formatResponseError(detailResponse));
+    }
+
+    expect(detailResponse.data.status).toBe(workflowStatus.status);
+
+    // Serving detail should not write that fresher workflow status back to the session row.
+    const sessionRows = await fragments.pi.db.find("session");
+    const sessionRow = sessionRows.find(
+      (row: unknown) => String((row as { id?: unknown }).id ?? "") === createResponse.data.id,
+    ) as { status?: string } | undefined;
+
+    expect(sessionRow?.status).toBe("active");
+
+    // `/sessions` reads the persisted session table, so it should continue to reflect the stale row
+    // until the workflow/runtime path projects a newer status again.
+    const listResponse = await fragments.pi.callRoute("GET", "/sessions", {});
+    expect(listResponse.type).toBe("json");
+    if (listResponse.type !== "json") {
+      throw new Error(formatResponseError(listResponse));
+    }
+
+    const listedSession = listResponse.data.find(
+      (session: { id: string; status: string }) => session.id === createResponse.data.id,
+    );
+    expect(listedSession?.status).toBe("active");
   });
 
   it("prefers live session snapshots over workflow restore on cache hits", async () => {
@@ -721,15 +787,10 @@ describe("pi-fragment session detail route", () => {
       throw new Error(formatResponseError(createResponse));
     }
 
-    const workflowInstanceId = createResponse.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
-
     const instances = await workflows.db.find("workflow_instance");
     const instanceRow = instances.find(
       (row: unknown) =>
-        String((row as { id?: unknown }).id) === workflowInstanceId &&
+        String((row as { id?: unknown }).id) === createResponse.data.id &&
         (row as { workflowName?: string }).workflowName === "agent-loop-workflow",
     ) as { id?: string } | undefined;
     if (!instanceRow?.id) {

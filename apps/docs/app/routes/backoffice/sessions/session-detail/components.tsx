@@ -11,6 +11,8 @@ export type LiveToolExecution = {
   partialResult: unknown | null;
 };
 
+type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
+
 type ContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
@@ -54,7 +56,6 @@ export function SessionHeader({
   modelLabel,
   onBack,
   session,
-  statusText,
 }: {
   harnessLabel: string;
   modelLabel: string;
@@ -65,7 +66,6 @@ export function SessionHeader({
     status: string;
     updatedAt: string | Date;
   };
-  statusText: string | null;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -86,12 +86,6 @@ export function SessionHeader({
             {formatTimestamp(session.updatedAt)}
           </time>
         </p>
-        {statusText ? (
-          <div className="border-[color:var(--bo-accent)]/30 mt-2 inline-flex items-center gap-2 border bg-[var(--bo-accent-bg)] px-2.5 py-1 text-[11px] text-[var(--bo-accent-fg)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-accent)]" />
-            <span>{statusText}</span>
-          </div>
-        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -164,22 +158,40 @@ export function SessionConversationPanel({
   messages,
   onJumpToLatest,
   onScroll,
+  readyForInput,
+  runningTools,
+  scrollContentRef,
   scrollViewportRef,
   showJumpToLatest,
   showThinking,
   showToolCalls,
   showUsage,
+  statusText,
 }: {
   footer: ReactNode;
   messages: AgentMessage[];
   onJumpToLatest: () => void;
   onScroll: () => void;
+  readyForInput: boolean;
+  runningTools: LiveToolExecution[];
+  scrollContentRef: RefObject<HTMLDivElement | null>;
   scrollViewportRef: RefObject<HTMLDivElement | null>;
   showJumpToLatest: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
   showUsage: boolean;
+  statusText: string | null;
 }) {
+  const lastMessage = messages.at(-1);
+  const showPendingAssistant = !readyForInput && lastMessage?.role !== "assistant";
+  const toolResultsByCallId = new Map<string, ToolResultMessage>();
+
+  for (const message of messages) {
+    if (message.role === "toolResult") {
+      toolResultsByCallId.set(message.toolCallId, message);
+    }
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
       <ScrollArea.Root className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -188,20 +200,30 @@ export function SessionConversationPanel({
           onScroll={onScroll}
           className="min-h-0 flex-1 p-3"
         >
-          <ScrollArea.Content className="space-y-3">
-            {messages.length === 0 ? (
+          <ScrollArea.Content ref={scrollContentRef} className="space-y-3">
+            {messages.length === 0 && !showPendingAssistant ? (
               <div className="text-sm text-[var(--bo-muted)]">No messages yet.</div>
             ) : (
               messages.map((message, index) => (
                 <MessageCard
                   key={`${message.role}-${index}`}
                   message={message}
+                  runningTools={runningTools}
                   showToolCalls={showToolCalls}
                   showThinking={showThinking}
                   showUsage={showUsage}
+                  toolResultsByCallId={toolResultsByCallId}
                 />
               ))
             )}
+
+            {showPendingAssistant ? (
+              <PendingAssistantCard
+                runningTools={runningTools}
+                showToolCalls={showToolCalls}
+                statusText={statusText}
+              />
+            ) : null}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
         <ScrollArea.Scrollbar orientation="vertical" className="flex w-2.5 select-none p-[2px]">
@@ -288,16 +310,46 @@ export function SessionComposer({
   );
 }
 
-export function LiveToolsPanel({ tools }: { tools: LiveToolExecution[] }) {
-  if (tools.length === 0) {
-    return null;
-  }
-
+function PendingAssistantCard({
+  runningTools,
+  showToolCalls,
+  statusText,
+}: {
+  runningTools: LiveToolExecution[];
+  showToolCalls: boolean;
+  statusText: string | null;
+}) {
   return (
-    <div className="grid gap-2">
-      {tools.map((tool) => (
-        <LiveToolCard key={tool.toolCallId} tool={tool} />
-      ))}
+    <div className="flex justify-start">
+      <div className="w-full max-w-prose border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-[var(--bo-fg)]">Assistant</p>
+          <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
+            {statusText ?? "Waiting for response"}
+          </span>
+        </div>
+
+        {showToolCalls && runningTools.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {runningTools.map((tool) => (
+              <ToolCallBlock
+                key={tool.toolCallId}
+                argumentsValue={tool.args}
+                completedToolResult={null}
+                liveTool={tool}
+                name={tool.toolName}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {!showToolCalls && runningTools.length > 0 ? (
+          <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
+            {runningTools.length} running tool call(s) hidden.
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -344,14 +396,18 @@ function ToggleSwitch({
 
 function MessageCard({
   message,
+  runningTools,
   showToolCalls,
   showThinking,
   showUsage,
+  toolResultsByCallId,
 }: {
   message: AgentMessage;
+  runningTools: LiveToolExecution[];
   showToolCalls: boolean;
   showThinking: boolean;
   showUsage: boolean;
+  toolResultsByCallId: Map<string, ToolResultMessage>;
 }) {
   if (message.role === "user") {
     const contentBlocks = normalizeContent(message.content);
@@ -412,10 +468,28 @@ function MessageCard({
 
           <div className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
             {visibleBlocks.length === 0 ? (
-              <p className="text-xs text-[var(--bo-muted-2)]">No visible content.</p>
+              contentBlocks.length === 0 ? (
+                <span className="inline-flex items-center gap-2 text-xs text-[var(--bo-muted-2)]">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
+                  Assistant is responding…
+                </span>
+              ) : (
+                <p className="text-xs text-[var(--bo-muted-2)]">No visible content.</p>
+              )
             ) : (
               visibleBlocks.map((block, index) => (
-                <ContentBlock key={`${block.type}-${index}`} block={block} />
+                <ContentBlock
+                  key={`${block.type}-${index}`}
+                  block={block}
+                  completedToolResult={
+                    block.type === "toolCall" ? (toolResultsByCallId.get(block.id) ?? null) : null
+                  }
+                  liveTool={
+                    block.type === "toolCall"
+                      ? (runningTools.find((tool) => tool.toolCallId === block.id) ?? null)
+                      : null
+                  }
+                />
               ))
             )}
           </div>
@@ -483,7 +557,15 @@ function MessageCard({
   return null;
 }
 
-function ContentBlock({ block }: { block: ContentBlock }) {
+function ContentBlock({
+  block,
+  completedToolResult = null,
+  liveTool = null,
+}: {
+  block: ContentBlock;
+  completedToolResult?: ToolResultMessage | null;
+  liveTool?: LiveToolExecution | null;
+}) {
   switch (block.type) {
     case "text":
       return <p>{block.text}</p>;
@@ -506,36 +588,71 @@ function ContentBlock({ block }: { block: ContentBlock }) {
       );
     case "toolCall":
       return (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-            Tool call · {block.name}
-          </p>
-          <pre className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
-            {formatJson(block.arguments)}
-          </pre>
-        </div>
+        <ToolCallBlock
+          argumentsValue={block.arguments}
+          completedToolResult={completedToolResult}
+          liveTool={liveTool}
+          name={block.name}
+        />
       );
     default:
       return null;
   }
 }
 
-function LiveToolCard({ tool }: { tool: LiveToolExecution }) {
+function ToolCallBlock({
+  argumentsValue,
+  completedToolResult,
+  liveTool,
+  name,
+}: {
+  argumentsValue: unknown;
+  completedToolResult: ToolResultMessage | null;
+  liveTool: LiveToolExecution | null;
+  name: string;
+}) {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-xs text-[var(--bo-muted)]">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-[var(--bo-fg)]">Running tool · {tool.toolName}</p>
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
-          live
-        </span>
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          Tool call · {name}
+        </p>
+        {liveTool ? (
+          <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-accent)]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
+            Running
+          </span>
+        ) : null}
       </div>
-      <pre className="mt-2 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
-        {formatJson(tool.args)}
+      <pre className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+        {formatJson(argumentsValue)}
       </pre>
-      {tool.partialResult !== null ? (
-        <pre className="mt-2 whitespace-pre-wrap border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-[11px] text-[var(--bo-fg)]">
-          {formatJson(tool.partialResult)}
-        </pre>
+      {liveTool && liveTool.partialResult !== null ? (
+        <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            Live result
+          </p>
+          <pre className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+            {formatJson(liveTool.partialResult)}
+          </pre>
+        </div>
+      ) : null}
+      {completedToolResult ? (
+        <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              Result
+            </p>
+            {completedToolResult.isError ? (
+              <span className="text-[10px] uppercase tracking-[0.22em] text-red-500">Error</span>
+            ) : null}
+          </div>
+          <div className="mt-1 space-y-2 text-[11px] text-[var(--bo-fg)]">
+            {normalizeContent(completedToolResult.content).map((block, index) => (
+              <ContentBlock key={`${block.type}-result-${index}`} block={block} />
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   );

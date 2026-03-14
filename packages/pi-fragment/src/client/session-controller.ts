@@ -59,11 +59,10 @@ export function createPiSessionControllerStore(
       sendError: select(controller.store, (state) => state.sendError),
       sendMessage: controller.sendMessage,
       refetch: controller.refetch,
-      // React may call factory cleanup during development hydration / StrictMode-style
-      // transitions before the underlying nanostore subscription lifecycle has actually
-      // finished. The controller already cleans itself up via `onMount(store, ...)`, so
-      // disposing here would prematurely kill the live stream for the active session.
-      [Symbol.dispose]: () => {},
+      // React store factories may dispose during dev StrictMode or transitional rerenders.
+      // Use the lighter controller cleanup here so live subscriptions are torn down without
+      // permanently poisoning the session store instance.
+      [Symbol.dispose]: controller.deactivate,
     };
   };
 }

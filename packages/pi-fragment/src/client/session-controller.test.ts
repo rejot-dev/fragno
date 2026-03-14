@@ -43,7 +43,7 @@ describe("createPiSessionControllerStore", () => {
     vi.clearAllMocks();
   });
 
-  it("does not deactivate the live controller when the store view is disposed", () => {
+  it("deactivates the session controller when the store view is disposed", () => {
     const controller: PiSessionStoreController = {
       store: atom(baseState),
       sendMessage: vi.fn(() => true),
@@ -65,7 +65,7 @@ describe("createPiSessionControllerStore", () => {
 
     sessionView[Symbol.dispose]();
 
-    expect(controller.deactivate).not.toHaveBeenCalled();
+    expect(controller.deactivate).toHaveBeenCalledTimes(1);
     expect(controller.destroy).not.toHaveBeenCalled();
     expect(sessionView.sendMessage).toBe(controller.sendMessage);
     expect(sessionView.refetch).toBe(controller.refetch);

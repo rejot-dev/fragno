@@ -4,7 +4,7 @@ import { drainDurableHooks } from "@fragno-dev/test";
 import { buildHarness, createStreamFn, mockModel, type DatabaseFragmentsTest } from "./test-utils";
 import { SESSION_STATUSES } from "./constants";
 import type { PiFragmentConfig } from "./types";
-import { PI_WORKFLOW_NAME } from "./workflow";
+import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
 const buildTestHarness = async () => {
   const streamFn = createStreamFn("assistant:messages");
@@ -150,12 +150,11 @@ describe("pi-fragment messages route", () => {
     expect(response.error.code).toBe("SESSION_NOT_FOUND");
   });
 
-  it("returns SESSION_NOT_FOUND when session has no workflow instance", async () => {
+  it("returns SESSION_NOT_FOUND when the backing workflow instance is missing", async () => {
     const sessionId = await fragments.pi.db.create("session", {
       name: "Missing workflow",
       agent: "default",
       status: "active",
-      workflowInstanceId: null,
       steeringMode: "one-at-a-time",
       metadata: null,
       tags: null,
@@ -192,7 +191,7 @@ describe("pi-fragment messages route", () => {
     expect(SESSION_STATUSES).toContain(ack["status"] as (typeof SESSION_STATUSES)[number]);
     expect(ack["assistant"]).toBeUndefined();
 
-    const history = await workflows.getHistory(workflowName, session.workflowInstanceId ?? "");
+    const history = await workflows.getHistory(workflowName, session.id);
     const lastEvent = [...history.events]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .at(-1);
@@ -211,10 +210,6 @@ describe("pi-fragment messages route", () => {
     }
 
     const sessionId = createResponse.data.id;
-    const workflowInstanceId = createResponse.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
 
     const response = await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
@@ -226,7 +221,7 @@ describe("pi-fragment messages route", () => {
       throw new Error(formatResponseError(response));
     }
 
-    const history = await workflows.getHistory(workflowName, workflowInstanceId);
+    const history = await workflows.getHistory(workflowName, sessionId);
     const lastEvent = [...history.events]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .at(-1);
@@ -318,14 +313,8 @@ describe("pi-fragment messages route", () => {
       await drainDurableHooks(multi.workflows.fragment, { mode: "singlePass" });
       await drainDurableHooks(multi.workflows.fragment, { mode: "singlePass" });
 
-      const alphaStatus = await multi.workflows.getStatus(
-        workflowName,
-        alphaSession.workflowInstanceId ?? "",
-      );
-      const betaStatus = await multi.workflows.getStatus(
-        workflowName,
-        betaSession.workflowInstanceId ?? "",
-      );
+      const alphaStatus = await multi.workflows.getStatus(workflowName, alphaSession.id);
+      const betaStatus = await multi.workflows.getStatus(workflowName, betaSession.id);
 
       expect(extractAssistantTextFromOutput(alphaStatus.output)).toBe("assistant:alpha");
       expect(extractAssistantTextFromOutput(betaStatus.output)).toBe("assistant:beta");
@@ -333,12 +322,12 @@ describe("pi-fragment messages route", () => {
       const instances = await multi.workflows.db.find("workflow_instance");
       const alphaInstance = instances.find(
         (row: unknown) =>
-          String((row as { id?: unknown }).id) === alphaSession.workflowInstanceId &&
+          String((row as { id?: unknown }).id) === alphaSession.id &&
           (row as { workflowName?: string }).workflowName === workflowName,
       ) as { params?: unknown } | undefined;
       const betaInstance = instances.find(
         (row: unknown) =>
-          String((row as { id?: unknown }).id) === betaSession.workflowInstanceId &&
+          String((row as { id?: unknown }).id) === betaSession.id &&
           (row as { workflowName?: string }).workflowName === workflowName,
       ) as { params?: unknown } | undefined;
       expect((alphaInstance?.params as { agentName?: string } | undefined)?.agentName).toBe(
@@ -376,14 +365,14 @@ describe("pi-fragment messages route", () => {
     await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
     await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
-    const statusA = await workflows.getStatus(workflowName, sessionA.workflowInstanceId ?? "");
-    const statusB = await workflows.getStatus(workflowName, sessionB.workflowInstanceId ?? "");
+    const statusA = await workflows.getStatus(workflowName, sessionA.id);
+    const statusB = await workflows.getStatus(workflowName, sessionB.id);
 
     expect(statusA.status).toBe("complete");
     expect(statusB.status).toBe("waiting");
 
-    const historyA = await workflows.getHistory(workflowName, sessionA.workflowInstanceId ?? "");
-    const historyB = await workflows.getHistory(workflowName, sessionB.workflowInstanceId ?? "");
+    const historyA = await workflows.getHistory(workflowName, sessionA.id);
+    const historyB = await workflows.getHistory(workflowName, sessionB.id);
     const messagesA = (historyA.steps
       .map((step: { result?: unknown }) => {
         if (!step.result || typeof step.result !== "object") {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useOutletContext, useParams } from "react-router";
 import type { Route } from "./+types/session-detail";
 import { fetchPiSessionDetail } from "./data";
@@ -7,7 +7,6 @@ import { findPiModelOption, parsePiAgentName } from "@/fragno/pi-shared";
 import { useChatScroll } from "./session-detail/chat-scroll";
 import { createOrgPiClient } from "@/fragno/pi-client";
 import {
-  LiveToolsPanel,
   SessionComposer,
   SessionConversationPanel,
   SessionDisplayOptions,
@@ -39,12 +38,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
     showTrace: false,
     showUsage: false,
   });
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
   if (!orgId) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -66,8 +59,23 @@ export default function BackofficeOrganisationPiSessionDetail() {
     : displaySession.agent;
 
   const contentVersion = useMemo(
-    () => `${liveSession.messages.length}:${liveSession.traceEvents.length}`,
-    [liveSession.messages.length, liveSession.traceEvents.length],
+    () =>
+      JSON.stringify({
+        readyForInput: liveSession.readyForInput,
+        sending: liveSession.sending,
+        statusText: liveSession.statusText,
+        messageCount: liveSession.messages.length,
+        traceCount: liveSession.traceEvents.length,
+        runningToolIds: liveSession.runningTools.map((tool) => tool.toolCallId),
+      }),
+    [
+      liveSession.messages.length,
+      liveSession.readyForInput,
+      liveSession.runningTools,
+      liveSession.sending,
+      liveSession.statusText,
+      liveSession.traceEvents.length,
+    ],
   );
   const chatScroll = useChatScroll({
     sessionId: session.id,
@@ -88,7 +96,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
   const handleSend = (text: string) => {
     const didSend = liveSession.sendMessage({ text });
     if (didSend) {
-      chatScroll.jumpToLatest("smooth");
+      chatScroll.jumpToLatest("auto");
     }
     return didSend;
   };
@@ -99,7 +107,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
         session={displaySession}
         harnessLabel={harnessLabel}
         modelLabel={modelLabel}
-        statusText={hydrated ? liveSession.statusText : null}
         onBack={() => navigate("..")}
       />
 
@@ -124,11 +131,15 @@ export default function BackofficeOrganisationPiSessionDetail() {
         messages={liveSession.messages}
         onJumpToLatest={() => chatScroll.jumpToLatest("smooth")}
         onScroll={chatScroll.onScroll}
+        readyForInput={liveSession.readyForInput}
+        runningTools={liveSession.runningTools}
+        scrollContentRef={chatScroll.contentRef}
         scrollViewportRef={chatScroll.viewportRef}
         showJumpToLatest={chatScroll.showJumpToLatest}
-        showToolCalls={displayOptions.showToolCalls}
         showThinking={displayOptions.showThinking}
+        showToolCalls={displayOptions.showToolCalls}
         showUsage={displayOptions.showUsage}
+        statusText={liveSession.statusText}
         footer={
           <SessionComposer
             key={session.id}
@@ -140,8 +151,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
           />
         }
       />
-
-      <LiveToolsPanel tools={liveSession.runningTools} />
 
       {displayOptions.showTrace ? (
         <SessionTracePanel traceEvents={liveSession.traceEvents} />

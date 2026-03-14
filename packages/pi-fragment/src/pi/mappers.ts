@@ -65,12 +65,13 @@ const extractAssistantTextFromMessage = (message?: AgentMessage | null): string 
 type SessionRow = TableToColumnValues<(typeof piSchema)["tables"]["session"]>;
 
 const toSessionOutput = (row: SessionRow): PiSession => {
+  const id = toId(row.id) ?? "";
+
   return {
-    id: toId(row.id) ?? "",
+    id,
     name: row.name ?? null,
     status: row.status as PiSession["status"],
     agent: row.agent ?? "unknown",
-    workflowInstanceId: row.workflowInstanceId ?? null,
     steeringMode: normalizeSteeringMode(row.steeringMode),
     metadata: row.metadata ?? null,
     tags: normalizeTags(row.tags),

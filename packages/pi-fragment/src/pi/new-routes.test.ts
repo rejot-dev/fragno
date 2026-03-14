@@ -45,7 +45,6 @@ describe("pi-fragment new routes", () => {
     }
 
     expect(response.data.id).toBeTruthy();
-    expect(response.data.workflowInstanceId).toBeTruthy();
     expect(response.data.status).toBe("active");
   });
 
@@ -65,7 +64,6 @@ describe("pi-fragment new routes", () => {
 
     expect(list.data.length).toBeGreaterThan(0);
     expect(list.data[0].id).toBe(create.data.id);
-    expect(list.data[0].workflowInstanceId).toBe(create.data.workflowInstanceId);
     expect(list.data[0].status).toBe("active");
   });
 
@@ -111,7 +109,6 @@ describe("pi-fragment new routes", () => {
     }
 
     expect(detail.data.id).toBe(create.data.id);
-    expect(detail.data.workflowInstanceId).toBe(create.data.workflowInstanceId);
     expect(detail.data.status).toBe("active");
   });
 
@@ -125,10 +122,6 @@ describe("pi-fragment new routes", () => {
     }
 
     const sessionId = create.data.id;
-    const workflowInstanceId = create.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
 
     await callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
@@ -175,10 +168,6 @@ describe("pi-fragment new routes", () => {
     }
 
     const sessionId = create.data.id;
-    const workflowInstanceId = create.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
 
     await callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },

@@ -8,7 +8,7 @@ import type {
   PiToolSideEffectReducerRegistry,
 } from "./types";
 import type { PiSteeringMode } from "./constants";
-import { createPiWorkflows, type PiWorkflowsRegistry } from "./workflow";
+import { createPiWorkflows, type PiWorkflowsRegistry } from "./workflow/workflow";
 
 export type PiAgentDefinitionInput = Omit<PiAgentDefinition, "name"> & { name?: string };
 

@@ -3,7 +3,7 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { PiFragmentConfig } from "./pi/types";
-import { PI_WORKFLOW_NAME } from "./pi/workflow";
+import { PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
 import {
   buildHarness,
   createStreamFn,
@@ -106,7 +106,6 @@ describe("pi-fragment sessions", () => {
   const createSessionRow = async (options: {
     name?: string;
     status?: string;
-    workflowInstanceId?: string | null;
     createdAt?: Date;
   }) => {
     sessionCounter += 1;
@@ -115,7 +114,6 @@ describe("pi-fragment sessions", () => {
       name: options.name ?? `Session ${sessionCounter}`,
       agent: "default",
       status: options.status ?? "active",
-      workflowInstanceId: options.workflowInstanceId ?? null,
       steeringMode: "one-at-a-time",
       metadata: null,
       tags: null,
@@ -214,8 +212,7 @@ describe("pi-fragment sessions", () => {
     if (response.type !== "json") {
       throw new Error(formatResponseError(response));
     }
-    const workflowInstanceId = response.data.workflowInstanceId ?? "";
-    const workflowStatus = await workflows.getStatus(workflowName, workflowInstanceId);
+    const workflowStatus = await workflows.getStatus(workflowName, response.data.id);
     expect(response.data.status).toBe(workflowStatus.status);
 
     const sessions = await fragments.pi.db.find("session");
@@ -235,9 +232,7 @@ describe("pi-fragment sessions", () => {
     }
 
     expect(createResponse.data.agent).toBe("default");
-    expect(createResponse.data.workflowInstanceId).toBeTruthy();
-    const workflowInstanceId = createResponse.data.workflowInstanceId ?? "";
-    const workflowStatus = await workflows.getStatus(workflowName, workflowInstanceId);
+    const workflowStatus = await workflows.getStatus(workflowName, createResponse.data.id);
     expect(createResponse.data.status).toBe(workflowStatus.status);
 
     const listResponse = await fragments.pi.callRoute("GET", "/sessions", {});
@@ -317,10 +312,9 @@ describe("pi-fragment sessions", () => {
     expect(ids).toEqual([third.valueOf(), second.valueOf(), first.valueOf()]);
   });
 
-  it("skips status hydration when workflowInstanceId is missing", async () => {
-    await createSessionRow({
+  it("lists sessions without exposing workflow identity plumbing", async () => {
+    const sessionId = await createSessionRow({
       name: "No workflow",
-      workflowInstanceId: null,
     });
 
     const response = await fragments.pi.callRoute("GET", "/sessions", {});
@@ -330,10 +324,21 @@ describe("pi-fragment sessions", () => {
     }
 
     expect(response.data).toHaveLength(1);
-    expect(response.data[0]?.workflowInstanceId).toBeNull();
+    expect(response.data[0]?.id).toBe(sessionId.valueOf());
+    expect(Object.keys(response.data[0] ?? {}).sort()).toEqual([
+      "agent",
+      "createdAt",
+      "id",
+      "metadata",
+      "name",
+      "status",
+      "steeringMode",
+      "tags",
+      "updatedAt",
+    ]);
   });
 
-  it("hydrates statuses from the workflows service", async () => {
+  it("lists persisted workflow-owned statuses after workflow transitions settle", async () => {
     const sessionA = await fragments.pi.callRoute("POST", "/sessions", {
       body: { agent: "default", name: "Batch A" },
     });
@@ -352,6 +357,8 @@ describe("pi-fragment sessions", () => {
       pathParams: { sessionId: sessionB.data.id },
       body: { text: "waiting", done: false },
     });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
+    await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
     const response = await fragments.pi.callRoute("GET", "/sessions", {});
     expect(response.type).toBe("json");
@@ -360,19 +367,25 @@ describe("pi-fragment sessions", () => {
     }
 
     const statusById = new Map(
-      response.data.map((session: { workflowInstanceId?: string | null; status?: string }) => [
-        session.workflowInstanceId,
-        session.status,
+      response.data.map((session: { id: string; status?: string }) => [session.id, session.status]),
+    );
+    const persistedRows = await fragments.pi.db.find("session");
+    const persistedStatusById = new Map(
+      persistedRows.map((row: unknown) => [
+        String((row as { id?: unknown }).id ?? ""),
+        (row as { status?: string }).status,
       ]),
     );
-    const statusA = await workflows.getStatus(workflowName, sessionA.data.workflowInstanceId ?? "");
-    const statusB = await workflows.getStatus(workflowName, sessionB.data.workflowInstanceId ?? "");
+    const statusA = await workflows.getStatus(workflowName, sessionA.data.id);
+    const statusB = await workflows.getStatus(workflowName, sessionB.data.id);
 
-    expect(statusById.get(sessionA.data.workflowInstanceId)).toBe(statusA.status);
-    expect(statusById.get(sessionB.data.workflowInstanceId)).toBe(statusB.status);
+    expect(statusById.get(sessionA.data.id)).toBe(statusA.status);
+    expect(statusById.get(sessionB.data.id)).toBe(statusB.status);
+    expect(statusById.get(sessionA.data.id)).toBe(persistedStatusById.get(sessionA.data.id));
+    expect(statusById.get(sessionB.data.id)).toBe(persistedStatusById.get(sessionB.data.id));
   });
 
-  it("keeps session status when per-session hydration fails", async () => {
+  it("keeps returning stored session statuses when workflow rows are broken", async () => {
     const sessionA = await fragments.pi.callRoute("POST", "/sessions", {
       body: { agent: "default", name: "Per-session A" },
     });
@@ -383,11 +396,10 @@ describe("pi-fragment sessions", () => {
       throw new Error("Expected session creation to succeed");
     }
 
-    const instanceIdToRemove = sessionB.data.workflowInstanceId ?? "";
     const instances = await workflows.db.find("workflow_instance");
     const instanceRow = instances.find(
       (row: unknown) =>
-        String((row as { id?: unknown }).id) === instanceIdToRemove &&
+        String((row as { id?: unknown }).id) === sessionB.data.id &&
         (row as { workflowName?: string }).workflowName === workflowName,
     ) as { id?: string } | undefined;
     if (instanceRow?.id) {
@@ -395,6 +407,7 @@ describe("pi-fragment sessions", () => {
         b.set({ workflowName: "missing-workflow" }),
       );
     }
+    await fragments.pi.db.update("session", sessionB.data.id, (b) => b.set({ status: "paused" }));
 
     const response = await fragments.pi.callRoute("GET", "/sessions", {});
     expect(response.type).toBe("json");
@@ -403,15 +416,11 @@ describe("pi-fragment sessions", () => {
     }
 
     const statusById = new Map(
-      response.data.map((session: { workflowInstanceId?: string | null; status?: string }) => [
-        session.workflowInstanceId,
-        session.status,
-      ]),
+      response.data.map((session: { id: string; status?: string }) => [session.id, session.status]),
     );
-    const statusA = await workflows.getStatus(workflowName, sessionA.data.workflowInstanceId ?? "");
 
-    expect(statusById.get(sessionA.data.workflowInstanceId)).toBe(statusA.status);
-    expect(statusById.get(sessionB.data.workflowInstanceId)).toBe(sessionB.data.status);
+    expect(statusById.get(sessionA.data.id)).toBe(sessionA.data.status);
+    expect(statusById.get(sessionB.data.id)).toBe("paused");
   });
 
   it("returns session details with derived messages and summaries", async () => {
@@ -424,10 +433,6 @@ describe("pi-fragment sessions", () => {
     }
 
     const sessionId = createResponse.data.id;
-    const workflowInstanceId = createResponse.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
 
     await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
@@ -474,10 +479,6 @@ describe("pi-fragment sessions", () => {
     }
 
     const sessionId = createResponse.data.id;
-    const workflowInstanceId = createResponse.data.workflowInstanceId;
-    if (!workflowInstanceId) {
-      throw new Error("Expected workflow instance id");
-    }
 
     const messageResponse = await fragments.pi.callRoute("POST", "/sessions/:sessionId/messages", {
       pathParams: { sessionId },
@@ -489,7 +490,7 @@ describe("pi-fragment sessions", () => {
       throw new Error(formatResponseError(messageResponse));
     }
 
-    const history = await workflows.getHistory(workflowName, workflowInstanceId);
+    const history = await workflows.getHistory(workflowName, sessionId);
     const lastEvent = [...history.events]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .at(-1);
@@ -523,10 +524,6 @@ describe("pi-fragment streamFn behavior", () => {
       }
 
       const sessionId = createResponse.data.id;
-      const workflowInstanceId = createResponse.data.workflowInstanceId;
-      if (!workflowInstanceId) {
-        throw new Error("Expected workflow instance id");
-      }
 
       const messageResponse = await fragments.pi.callRoute(
         "POST",
@@ -584,10 +581,6 @@ describe("pi-fragment streamFn behavior", () => {
       }
 
       const sessionId = createResponse.data.id;
-      const workflowInstanceId = createResponse.data.workflowInstanceId;
-      if (!workflowInstanceId) {
-        throw new Error("Expected workflow instance id");
-      }
 
       const messageResponse = await fragments.pi.callRoute(
         "POST",
@@ -606,7 +599,7 @@ describe("pi-fragment streamFn behavior", () => {
 
       await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
-      const status = await workflows.getStatus(workflowName, workflowInstanceId);
+      const status = await workflows.getStatus(workflowName, sessionId);
       expect(status.status).toBe("waiting");
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
@@ -636,10 +629,6 @@ describe("pi-fragment streamFn behavior", () => {
       }
 
       const sessionId = createResponse.data.id;
-      const workflowInstanceId = createResponse.data.workflowInstanceId;
-      if (!workflowInstanceId) {
-        throw new Error("Expected workflow instance id");
-      }
 
       const messageResponse = await fragments.pi.callRoute(
         "POST",
@@ -658,7 +647,7 @@ describe("pi-fragment streamFn behavior", () => {
 
       await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
-      const status = await workflows.getStatus(workflowName, workflowInstanceId);
+      const status = await workflows.getStatus(workflowName, sessionId);
       expect(status.status).toBe("waiting");
 
       const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
@@ -688,10 +677,6 @@ describe("pi-fragment streamFn behavior", () => {
       }
 
       const sessionId = createResponse.data.id;
-      const workflowInstanceId = createResponse.data.workflowInstanceId;
-      if (!workflowInstanceId) {
-        throw new Error("Expected workflow instance id");
-      }
 
       const messageResponse = await fragments.pi.callRoute(
         "POST",
