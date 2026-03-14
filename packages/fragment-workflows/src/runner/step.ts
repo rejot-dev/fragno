@@ -59,7 +59,8 @@ type RunnerStepOptions = {
 
 type StepTxQueue = {
   tx: WorkflowStepTx;
-  commit: () => void;
+  commitSuccess: () => void;
+  commitTerminalError: () => void;
 };
 
 /**
@@ -186,7 +187,7 @@ export class RunnerStep implements WorkflowStep {
 
     try {
       const result = await callback(txQueue.tx);
-      txQueue.commit();
+      txQueue.commitSuccess();
 
       this.#upsertStep(stepKey, {
         name,
@@ -206,7 +207,12 @@ export class RunnerStep implements WorkflowStep {
       return result;
     } catch (err) {
       const error = toError(err);
-      if (isNonRetryableError(error)) {
+      const nonRetryable = isNonRetryableError(error);
+      const retries = config?.retries;
+      const canRetry = !nonRetryable && Boolean(retries && attempt <= retries.limit);
+
+      if (nonRetryable) {
+        txQueue.commitTerminalError();
         this.#upsertStep(stepKey, {
           name,
           type: "do",
@@ -222,10 +228,8 @@ export class RunnerStep implements WorkflowStep {
         });
         throw error;
       }
-      const retries = config?.retries;
-      const canRetry = retries && attempt <= retries.limit;
 
-      if (canRetry) {
+      if (canRetry && retries) {
         const delayMs = computeBackoffDelayMs(retries, attempt);
 
         this.#upsertStep(stepKey, {
@@ -246,6 +250,7 @@ export class RunnerStep implements WorkflowStep {
         throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs });
       }
 
+      txQueue.commitTerminalError();
       this.#upsertStep(stepKey, {
         name,
         type: "do",
@@ -473,10 +478,16 @@ export class RunnerStep implements WorkflowStep {
   #createStepTxQueue(): StepTxQueue {
     const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
     const pendingServiceCalls: AnyTxResult[] = [];
+    const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
 
     const tx: WorkflowStepTx = {
       mutate: (fn) => {
         pendingMutations.push(fn);
+      },
+      onTerminalError: {
+        mutate: (fn) => {
+          pendingTerminalErrorMutations.push(fn);
+        },
       },
       serviceCalls: (factory) => {
         let calls: readonly AnyTxResult[];
@@ -500,9 +511,12 @@ export class RunnerStep implements WorkflowStep {
 
     return {
       tx,
-      commit: () => {
+      commitSuccess: () => {
         this.#state.mutations.txMutations.push(...pendingMutations);
         this.#state.mutations.txServiceCalls.push(...pendingServiceCalls);
+      },
+      commitTerminalError: () => {
+        this.#state.mutations.txMutations.push(...pendingTerminalErrorMutations);
       },
     };
   }

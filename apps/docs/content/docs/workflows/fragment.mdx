@@ -75,6 +75,38 @@ await step.do("persist-user", async (tx) => {
 If you need reads that affect the step output, run an explicit handler transaction inside the step
 body instead of relying on the step-scoped buffer.
 
+### Terminal-error mutations
+
+Use `tx.onTerminalError.mutate(...)` when you want to persist a final failure-side effect only if a
+step ends in a terminal error. This is useful for projections like marking a job failed, recording a
+compensation marker, or storing a domain-visible failure row next to the workflow step.
+
+These callbacks do **not** run on success, and they do **not** run for retryable failures that only
+suspend the step for another attempt.
+
+```ts
+await step.do("charge-card", { retries: { limit: 3, delay: "30 s" } }, async (tx) => {
+  tx.onTerminalError.mutate((ctx) => {
+    ctx.forSchema(paymentsSchema).create("payment_failure", {
+      paymentId: event.payload.paymentId,
+      phase: "charge-card",
+    });
+  });
+
+  const receipt = await chargeCard();
+
+  tx.mutate((ctx) => {
+    ctx
+      .forSchema(paymentsSchema)
+      .update("payment", event.payload.paymentId, (b) =>
+        b.set({ status: "paid", receiptId: receipt.id }).check(),
+      );
+  });
+
+  return receipt.id;
+});
+```
+
 ## Schema validation + output typing
 
 If you provide a Standard Schema, params are validated on create/createBatch. If you provide an

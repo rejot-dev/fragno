@@ -85,6 +85,13 @@ Expected: `workflow.status: "complete"`, `dslState` present with calculator resu
 - `roll`: random 1–20
 - `triple`: `17 * 3` → 51
 
+### Optional: inspect terminal-error projection
+
+The workflow example also demonstrates `tx.onTerminalError.mutate(...)` in
+`src/fragment/workflow.ts`. When a DSL calc step fails terminally, the workflow writes a final step
+row into the fragment schema so the failure is visible to the domain model as well as the workflow
+history. See `src/fragment/workflow-scenarios.test.ts` for the failing calc example.
+
 ---
 
 ## AI Prompt

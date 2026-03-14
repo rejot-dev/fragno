@@ -8,7 +8,6 @@ export const workflowUsageSchema = schema("workflow-usage-fragment", (s) => {
         .addColumn("name", column("string").nullable())
         .addColumn("agent", column("string"))
         .addColumn("status", column("string"))
-        .addColumn("workflowInstanceId", column("string").nullable())
         .addColumn("metadata", column("json").nullable())
         .addColumn(
           "createdAt",

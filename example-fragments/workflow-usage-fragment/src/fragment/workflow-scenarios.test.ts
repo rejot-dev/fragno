@@ -313,6 +313,7 @@ describe("DSL Workflow - Scenario Tests", () => {
 
     type ScenarioVars = {
       status?: { status: string };
+      persistedSteps?: Array<{ name: string; result: unknown }>;
     };
 
     const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
@@ -345,8 +346,21 @@ describe("DSL Workflow - Scenario Tests", () => {
           read: (ctx) => ctx.state.getStatus("DSL", "missing-key-1"),
           storeAs: "status",
         }),
+        scenarioSteps.read({
+          read: async (ctx) =>
+            await ctx.harness.fragments["usage"].db.find("step", (b) =>
+              b.whereIndex("idx_step_session", (eb) => eb("sessionId", "=", "mk-session")),
+            ),
+          storeAs: "persistedSteps",
+        }),
         scenarioSteps.assert((ctx) => {
           expect(ctx.vars.status?.status).toBe("errored");
+
+          const calcStep = ctx.vars.persistedSteps?.find((step) => step.name === "double-x");
+          expect(calcStep?.result).toMatchObject({
+            expression: "$x * 2",
+            terminalError: true,
+          });
         }),
       ],
     });
