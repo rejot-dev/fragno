@@ -34,7 +34,6 @@ const buildSession = (overrides: Partial<PiSessionDetail> = {}): PiSessionDetail
   name: overrides.name ?? "Test session",
   status: overrides.status ?? "active",
   agent: overrides.agent ?? "default",
-  workflowInstanceId: overrides.workflowInstanceId ?? "session-1",
   steeringMode: overrides.steeringMode ?? "one-at-a-time",
   metadata: overrides.metadata ?? null,
   tags: overrides.tags ?? [],

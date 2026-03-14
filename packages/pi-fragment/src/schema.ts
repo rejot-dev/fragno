@@ -4,12 +4,12 @@ export const piSchema = schema("pi-fragment", (s) => {
   return s.addTable("session", (t) => {
     return (
       t
+        // id is equal to the workflow's workflowInstanceId
         .addColumn("id", idColumn())
         .addColumn("name", column("string").nullable())
         .addColumn("agent", column("string"))
         // Possible statuses: active, paused, errored, terminated, complete, waiting.
         .addColumn("status", column("string"))
-        .addColumn("workflowInstanceId", column("string").nullable())
         .addColumn("steeringMode", column("string"))
         .addColumn("metadata", column("json").nullable())
         .addColumn("tags", column("json").nullable())

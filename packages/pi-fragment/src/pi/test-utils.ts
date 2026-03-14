@@ -15,7 +15,7 @@ import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-d
 import { piFragmentDefinition } from "./definition";
 import { piRoutesFactory } from "../routes";
 import { piSchema } from "../schema";
-import { createPiWorkflows } from "./workflow";
+import { createPiWorkflows } from "./workflow/workflow";
 import type { createPiFragment } from "./factory";
 import type {
   PiFragmentConfig,

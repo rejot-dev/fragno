@@ -17,7 +17,7 @@ import type {
 import type { PiLoggerConfig } from "../debug-log";
 
 import type { PiSessionStatus, PiSteeringMode } from "./constants";
-import type { PiWorkflowsRegistry } from "./workflow";
+import type { PiWorkflowsRegistry } from "./workflow/workflow";
 
 export type WorkflowsService = WorkflowsFragmentServices<PiWorkflowsRegistry>;
 
@@ -26,7 +26,6 @@ export type PiSession = {
   name: string | null;
   status: PiSessionStatus;
   agent: string;
-  workflowInstanceId: string | null;
   steeringMode: PiSteeringMode;
   metadata: unknown;
   tags: string[];
@@ -70,11 +69,20 @@ export type PiActiveSessionUpdate =
 
 export type PiActiveSessionSubscriber = (update: PiActiveSessionUpdate) => void;
 
+export type PiActiveSessionReplayBufferEntry = {
+  turn: number;
+  updates: PiActiveSessionUpdate[];
+};
+
+export type PiActiveSessionReplayBuffer = PiActiveSessionReplayBufferEntry[];
+
 export type PiActiveSessionState = {
   subscribe: (listener: PiActiveSessionSubscriber) => () => void;
   publishEvent: (turn: number, event: PiActiveSessionStreamItem) => void;
   settleTurn: (turn: number, status: PiActiveSessionSettledStatus) => void;
   replayTurn: (turn: number) => PiActiveSessionUpdate[];
+  exportReplayBuffer: () => PiActiveSessionReplayBuffer;
+  importReplayBuffer: (buffer: PiActiveSessionReplayBuffer) => void;
   listenerCount: () => number;
 };
 
@@ -102,6 +110,10 @@ export type PiAgentLoopSerializableState = {
   waitingFor: PiAgentLoopWaitingFor;
 };
 
+export type PiAgentLoopPersistedState = PiAgentLoopSerializableState & {
+  activeSessionUpdatesByTurn: PiActiveSessionReplayBuffer;
+};
+
 export type PiSessionWorkflowStatus = {
   status: PiSessionStatus;
   error?: { name: string; message: string };
@@ -119,7 +131,7 @@ export type PiSessionDetail = PiSession & {
   waitingFor: PiAgentLoopWaitingFor;
 };
 
-export type PiAgentLoopState = PiAgentLoopSerializableState & {
+export type PiAgentLoopState = PiAgentLoopPersistedState & {
   activeSession?: PiActiveSessionState;
 };
 

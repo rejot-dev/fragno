@@ -17,7 +17,7 @@ import {
   createInitialPiAgentLoopState,
   ensurePiActiveSessionState,
   PI_WORKFLOW_NAME,
-} from "./pi/workflow";
+} from "./pi/workflow/workflow";
 import type {
   PiActiveSessionProtocolMessage,
   PiActiveSessionUpdate,
@@ -140,7 +140,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           const sessionId = createId();
 
           try {
-            const created = await this.handlerTx()
+            await this.handlerTx()
               .withServiceCalls(
                 () =>
                   [
@@ -162,7 +162,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   name: values.name ?? null,
                   agent: agentName,
                   status: "active",
-                  workflowInstanceId: sessionId,
                   steeringMode,
                   metadata: values.metadata ?? null,
                   tags: values.tags ?? null,
@@ -170,18 +169,13 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   updatedAt: now,
                 });
               })
-              .transform(({ serviceResult }) => serviceResult[0])
               .execute();
-
-            const workflowInstanceId = created.id;
-            const workflowStatus = created.details;
 
             const session: PiSession = {
               id: sessionId,
               name: values.name ?? null,
-              status: workflowStatus.status,
+              status: "active",
               agent: agentName,
-              workflowInstanceId,
               steeringMode,
               metadata: values.metadata ?? null,
               tags: values.tags ?? [],
@@ -221,7 +215,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             })
             .execute();
 
-          // TODO: hydrate workflow status without additional handlerTx calls.
           const outputs = sessions.map(toSessionOutput);
           return json(outputs);
         },
@@ -243,52 +236,51 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           const workflowName = PI_WORKFLOW_NAME;
 
           try {
-            const [sessionRow] = await this.handlerTx()
+            const liveSessionSnapshot = workflowsService.getLiveInstanceState(
+              workflowName,
+              sessionId,
+            );
+
+            const result = await this.handlerTx()
               .retrieve(({ forSchema }) => {
                 const uow = forSchema(piSchema);
                 return uow.findFirst("session", (b) =>
                   b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
                 );
               })
-              .execute();
-
-            if (!sessionRow) {
-              throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
-            }
-
-            const workflowInstanceId = sessionRow.workflowInstanceId;
-            if (!workflowInstanceId) {
-              throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
-            }
-
-            const liveSessionSnapshot = workflowsService.getLiveInstanceState(
-              workflowName,
-              workflowInstanceId,
-            );
-
-            const result = await this.handlerTx()
               .withServiceCalls(() =>
                 serviceCalls(
-                  workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
+                  workflowsService.getInstanceStatus(workflowName, sessionId),
                   liveSessionSnapshot
                     ? undefined
-                    : workflowsService.restoreInstanceState(workflowName, workflowInstanceId),
+                    : workflowsService.restoreInstanceState(workflowName, sessionId),
                 ),
               )
-              .transform(({ serviceResult }) => {
+              .transform(({ retrieveResult, serviceResult }) => {
+                const [sessionRow] = retrieveResult;
+                if (!sessionRow) {
+                  throw createRouteError(
+                    "SESSION_NOT_FOUND",
+                    `Session ${sessionId} not found.`,
+                    404,
+                  );
+                }
+
                 const [workflowStatus, restoredState] = serviceResult;
                 const detailState = projectSessionDetailState(
                   liveSessionSnapshot?.state ?? restoredState,
                 );
 
-                return { workflowStatus, detailState };
+                return {
+                  session: toSessionOutput(sessionRow),
+                  workflowStatus,
+                  detailState,
+                };
               })
               .execute();
 
-            const session = toSessionOutput(sessionRow);
-
             return json({
-              ...session,
+              ...result.session,
               status: result.workflowStatus.status,
               workflow: {
                 status: result.workflowStatus.status,
@@ -337,17 +329,15 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           const workflowName = PI_WORKFLOW_NAME;
 
           try {
-            const workflowInstanceId = sessionId;
-
             const liveSessionSnapshot = workflowsService.getLiveInstanceState(
               workflowName,
-              workflowInstanceId,
+              sessionId,
             );
             const [restoredState] = liveSessionSnapshot
               ? [undefined]
               : await this.handlerTx()
                   .withServiceCalls(() => [
-                    workflowsService.restoreInstanceState(workflowName, workflowInstanceId),
+                    workflowsService.restoreInstanceState(workflowName, sessionId),
                   ])
                   .transform(({ serviceResult }) => serviceResult)
                   .execute();
@@ -392,6 +382,17 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             const pendingMessages = replayUpdates.map((update) =>
               toActiveSessionProtocolMessage(update, "replay"),
             );
+            const replayAlreadySettled = replayUpdates.some((update) => update.type === "settled");
+
+            if (replayAlreadySettled) {
+              return jsonStream(async (stream) => {
+                await stream.write(snapshotMessage);
+                for (const message of pendingMessages) {
+                  await stream.write(message);
+                }
+              });
+            }
+
             let cleanupDone = false;
             let streamWriter: ((message: PiActiveSessionProtocolMessage) => Promise<void>) | null =
               null;
@@ -532,13 +533,9 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
             }
 
-            const workflowInstanceId = sessionRow.workflowInstanceId;
-            if (!workflowInstanceId) {
-              throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
-            }
-
             if (!payload.steeringMode) {
-              // Ensure workflow events use the session's steering mode when not overridden.
+              // This route still needs the persisted session row before sending the event so the
+              // workflow receives the session's effective steering mode when the caller omits it.
               payload.steeringMode = normalizeSteeringMode(
                 sessionRow.steeringMode ?? config.defaultSteeringMode,
               );
@@ -547,26 +544,23 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             const result = await this.handlerTx()
               .withServiceCalls(() =>
                 serviceCalls(
-                  workflowsService.sendEvent(workflowName, workflowInstanceId, {
+                  workflowsService.sendEvent(workflowName, sessionId, {
                     type: "user_message",
                     payload,
                   }),
-                  workflowsService.getInstanceStatus(workflowName, workflowInstanceId),
+                  workflowsService.getInstanceStatus(workflowName, sessionId),
                 ),
               )
-              .mutate(({ forSchema, serviceIntermediateResult }) => {
-                const [, workflowStatus] = serviceIntermediateResult;
+              .mutate(({ forSchema }) => {
                 const updates: {
                   updatedAt: Date;
                   steeringMode?: "all" | "one-at-a-time";
-                  status?: string;
                 } = {
                   updatedAt: new Date(),
                 };
                 if (values.steeringMode) {
                   updates.steeringMode = values.steeringMode;
                 }
-                updates.status = workflowStatus.status;
                 const uow = forSchema(piSchema);
                 uow.update("session", sessionRow.id, (b) => b.set(updates).check());
               })

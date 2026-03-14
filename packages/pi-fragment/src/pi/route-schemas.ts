@@ -10,7 +10,6 @@ const sessionBaseSchema = z.object({
   name: z.string().nullable(),
   status: z.enum(SESSION_STATUSES),
   agent: z.string(),
-  workflowInstanceId: z.string().nullable(),
   steeringMode: z.enum(STEERING_MODES),
   metadata: z.any().nullable(),
   tags: z.array(z.string()),

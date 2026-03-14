@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const SCROLL_BOTTOM_THRESHOLD = 96;
 
@@ -13,6 +13,7 @@ export function useChatScroll({
   contentVersion: string | number;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const shouldForceScrollRef = useRef(true);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
 
@@ -27,10 +28,41 @@ export function useChatScroll({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const viewport = viewportRef.current;
     if (!viewport) {
-      return;
+      return false;
     }
+
+    viewport.scrollTop = viewport.scrollHeight;
     viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    setPinnedToBottom(true);
+    return true;
   }, []);
+
+  const scheduleScrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      let trailingFrameId: number | null = null;
+      const timeoutId = window.setTimeout(() => {
+        scrollToBottom(behavior);
+      }, 0);
+      const frameId = requestAnimationFrame(() => {
+        scrollToBottom(behavior);
+      });
+      const delayedFrameId = requestAnimationFrame(() => {
+        trailingFrameId = requestAnimationFrame(() => {
+          scrollToBottom(behavior);
+        });
+      });
+
+      return () => {
+        window.clearTimeout(timeoutId);
+        cancelAnimationFrame(frameId);
+        cancelAnimationFrame(delayedFrameId);
+        if (trailingFrameId !== null) {
+          cancelAnimationFrame(trailingFrameId);
+        }
+      };
+    },
+    [scrollToBottom],
+  );
 
   const jumpToLatest = useCallback(
     (behavior: ScrollBehavior = "smooth") => {
@@ -42,23 +74,43 @@ export function useChatScroll({
   );
 
   useEffect(() => {
-    jumpToLatest("auto");
-  }, [jumpToLatest, sessionId]);
+    shouldForceScrollRef.current = true;
+    const cleanup = scheduleScrollToBottom("auto");
+    return cleanup;
+  }, [scheduleScrollToBottom, sessionId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!pinnedToBottom && !shouldForceScrollRef.current) {
       return;
     }
 
-    const frame = requestAnimationFrame(() => {
+    const behavior = shouldForceScrollRef.current ? "auto" : "smooth";
+    const cleanup = scheduleScrollToBottom(behavior);
+    shouldForceScrollRef.current = false;
+    return cleanup;
+  }, [contentVersion, pinnedToBottom, scheduleScrollToBottom]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (!isNearBottom(viewport) && !shouldForceScrollRef.current) {
+        return;
+      }
       scrollToBottom(shouldForceScrollRef.current ? "auto" : "smooth");
       shouldForceScrollRef.current = false;
     });
 
-    return () => cancelAnimationFrame(frame);
-  }, [contentVersion, pinnedToBottom, scrollToBottom]);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [contentVersion, scrollToBottom]);
 
   return {
+    contentRef,
     jumpToLatest,
     onScroll: updatePinnedToBottom,
     pinnedToBottom,

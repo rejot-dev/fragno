@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import {
   createScenarioSteps,
   defineScenario,
@@ -15,15 +16,18 @@ import {
   createTestWorkflows,
   mockModel,
 } from "./test-utils";
+import { piFragmentDefinition } from "./definition";
 import { defineAgent } from "./dsl";
+import { createPiFragment } from "./factory";
 import {
   PI_TOOL_JOURNAL_VERSION,
   type PiAgentDefinition,
   type PiAgentLoopState,
   type PiPersistedToolCall,
   type PiToolFactory,
+  type PiWorkflowsService,
 } from "./types";
-import { PI_WORKFLOW_NAME } from "./workflow";
+import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
 type ScenarioStatus = { status: string; output?: unknown; error?: { message?: string } };
 
@@ -381,6 +385,31 @@ const createAgents = (streamFn: PiAgentDefinition["streamFn"], tools?: string[])
   }),
 });
 
+const unusedWorkflowsService = new Proxy(
+  {},
+  {
+    get() {
+      return () => {
+        throw new Error("UNUSED_TEST_WORKFLOWS_SERVICE");
+      };
+    },
+  },
+) as PiWorkflowsService;
+
+const buildScenarioHarness = () => ({
+  adapter: { type: "kysely-sqlite" } as const,
+  testBuilder: buildDatabaseFragmentsTest().withFragmentFactory(
+    "pi",
+    piFragmentDefinition,
+    ({ adapter }) =>
+      createPiFragment(
+        { agents: {}, tools: {} },
+        { databaseAdapter: adapter },
+        { workflows: unusedWorkflowsService },
+      ),
+  ),
+});
+
 describe("pi-workflows scenarios", () => {
   it("stores messages and trace in step results", async () => {
     const agents = createAgents(createStreamFn("assistant:ping"));
@@ -395,7 +424,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-store-messages",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -465,7 +494,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-restore-current-run-state",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -536,7 +565,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-retry-no-dup",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -599,7 +628,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-tool-journal",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -671,7 +700,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-duplicate-tool-short-circuit",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -741,7 +770,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-error-tool-replay",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -815,7 +844,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-retry-after-tool-stream-failure",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -910,7 +939,7 @@ describe("pi-workflows scenarios", () => {
       const scenario = defineScenario<typeof workflows, ScenarioVars>({
         name: "pi-workflows-seq-ordering",
         workflows,
-        harness: { adapter: { type: "kysely-sqlite" } },
+        harness: buildScenarioHarness(),
         steps: [
           scenarioSteps.initializeAndRunUntilIdle({
             workflow: "agentLoop",
@@ -975,7 +1004,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-bash-side-effects",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",
@@ -1046,7 +1075,7 @@ describe("pi-workflows scenarios", () => {
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pi-workflows-unsupported-journal-version",
       workflows,
-      harness: { adapter: { type: "kysely-sqlite" } },
+      harness: buildScenarioHarness(),
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({
           workflow: "agentLoop",

@@ -14,9 +14,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const url = new URL(request.url);
   const requestedFragment = url.searchParams.get("fragment");
-  const fragment = DURABLE_HOOK_ORG_FRAGMENTS.includes(
-    requestedFragment as DurableHooksOrgFragment,
-  )
+  const fragment = DURABLE_HOOK_ORG_FRAGMENTS.includes(requestedFragment as DurableHooksOrgFragment)
     ? (requestedFragment as DurableHooksOrgFragment)
     : DEFAULT_FRAGMENT;
 
