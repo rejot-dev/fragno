@@ -23,7 +23,6 @@ type WorkflowUsageSession = {
   name: string | null;
   agent: string;
   status: InstanceStatus["status"];
-  workflowInstanceId: string | null;
   metadata: unknown | null;
   createdAt: Date;
   updatedAt: Date;
@@ -52,7 +51,6 @@ type SessionRow = {
   name: string | null;
   agent: string;
   status: string;
-  workflowInstanceId: string | null;
   metadata: unknown | null;
   createdAt: Date;
   updatedAt: Date;
@@ -80,7 +78,6 @@ const sessionSchema = z.object({
   name: z.string().nullable(),
   agent: z.string(),
   status: z.enum(WORKFLOW_STATUSES),
-  workflowInstanceId: z.string().nullable(),
   metadata: z.unknown().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -167,7 +164,6 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
                   name: values.name ?? null,
                   agent: agentName,
                   status: "active",
-                  workflowInstanceId: sessionId,
                   metadata: values.metadata ?? null,
                   createdAt: now,
                   updatedAt: now,
@@ -181,7 +177,6 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
               name: values.name ?? null,
               agent: agentName,
               status: created.details.status,
-              workflowInstanceId: created.id,
               metadata: values.metadata ?? null,
               createdAt: now,
               updatedAt: now,

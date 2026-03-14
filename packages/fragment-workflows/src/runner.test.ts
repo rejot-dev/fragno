@@ -118,6 +118,130 @@ describe("Workflows Runner", () => {
     expect(mutationRows).toHaveLength(0);
   });
 
+  test("does not commit onTerminalError mutations for retryable failures", async () => {
+    const terminalErrorSchema = schema("terminal_error_test", (s) =>
+      s.addTable("mutation_record", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("note", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_note", ["note"]),
+      ),
+    );
+
+    const terminalErrorFragmentDefinition = defineFragment("terminal-error-fragment")
+      .extend(withDatabase(terminalErrorSchema))
+      .build();
+
+    const TerminalErrorWorkflow = defineWorkflow(
+      { name: "terminal-error-workflow" },
+      async (event, step) => {
+        await step.do(
+          "unstable",
+          { retries: { limit: 1, delay: 0, backoff: "constant" } },
+          (tx) => {
+            tx.onTerminalError.mutate((ctx) => {
+              ctx.forSchema(terminalErrorSchema).create("mutation_record", {
+                note: `terminal-${event.instanceId}`,
+              });
+            });
+            throw new Error("RETRY_ME");
+          },
+        );
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { TERMINAL_ERROR: TerminalErrorWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragment("terminalError", instantiate(terminalErrorFragmentDefinition)),
+    });
+
+    const instanceId = await harness.createInstance("TERMINAL_ERROR");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    const waitingStatus = await harness.getStatus("TERMINAL_ERROR", instanceId);
+    expect(waitingStatus.status).toBe("waiting");
+
+    const rows = await harness.fragments["terminalError"].db.find("mutation_record", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  test("commits onTerminalError mutations for terminal failures", async () => {
+    const terminalErrorSchema = schema("terminal_error_commit_test", (s) =>
+      s.addTable("mutation_record", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("note", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_note", ["note"]),
+      ),
+    );
+
+    const terminalErrorFragmentDefinition = defineFragment("terminal-error-commit-fragment")
+      .extend(withDatabase(terminalErrorSchema))
+      .build();
+
+    const TerminalErrorWorkflow = defineWorkflow(
+      { name: "terminal-error-commit-workflow" },
+      async (event, step) => {
+        await step.do(
+          "unstable",
+          { retries: { limit: 1, delay: 0, backoff: "constant" } },
+          (tx) => {
+            tx.onTerminalError.mutate((ctx) => {
+              ctx.forSchema(terminalErrorSchema).create("mutation_record", {
+                note: `terminal-${event.instanceId}`,
+              });
+            });
+            throw new NonRetryableError("NO_RETRY");
+          },
+        );
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { TERMINAL_ERROR_COMMIT: TerminalErrorWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragment("terminalErrorCommit", instantiate(terminalErrorFragmentDefinition)),
+    });
+
+    const instanceId = await harness.createInstance("TERMINAL_ERROR_COMMIT");
+    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    const finalStatus = await harness.getStatus("TERMINAL_ERROR_COMMIT", instanceId);
+    expect(finalStatus.status).toBe("errored");
+    expect(finalStatus.error?.message).toBe("NO_RETRY");
+
+    const rows = await harness.fragments["terminalErrorCommit"].db.find("mutation_record", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ note: `terminal-${instanceId}` });
+  });
+
   test("does not retry NonRetryableError", async () => {
     let attempts = 0;
     const NonRetryWorkflow = defineWorkflow(

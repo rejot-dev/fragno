@@ -26,7 +26,7 @@ app wires everything together.
 2. Export a `requiredWorkflows` registry.
 3. Declare `usesService("workflows")` in your fragment definition.
 4. Call the service from your routes.
-5. Use `step.do` + `tx.mutate` for atomic writes.
+5. Use `step.do` + `tx.mutate` (and `tx.onTerminalError.mutate` when needed) for atomic writes.
 6. Test with the Scenario DSL.
 
 ## Step 1: Define a Workflow
@@ -217,6 +217,36 @@ await step.do("persist-message", (tx) => {
   return { ok: true };
 });
 ```
+
+If you also need to project terminal failures into your fragment schema, use
+`tx.onTerminalError.mutate(...)`. That callback only commits when the step fails terminally, so it
+is safe for “mark failed” or “record failed attempt” projections without firing on retryable
+suspensions.
+
+```ts title="src/workflows.ts"
+await step.do("calculate-total", { retries: { limit: 1, delay: "5 s" } }, (tx) => {
+  tx.onTerminalError.mutate((ctx) => {
+    ctx.forSchema(myFragmentSchema).create("failed_step", {
+      sessionId: event.payload.sessionId,
+      step: "calculate-total",
+    });
+  });
+
+  const total = calculateTotal();
+
+  tx.mutate((ctx) => {
+    ctx.forSchema(myFragmentSchema).create("event", {
+      sessionId: event.payload.sessionId,
+      payload: { total },
+    });
+  });
+
+  return { total };
+});
+```
+
+The `example-fragments/workflow-usage-fragment` example uses this pattern to persist a terminal
+calc-step marker when a DSL expression fails.
 
 ## Step 6: Test with the Scenario DSL
 

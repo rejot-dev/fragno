@@ -43,6 +43,14 @@ export type AnyTxResult = TxResult<any, any>;
 export type WorkflowStepTx = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+  onTerminalError: {
+    /**
+     * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
+     * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
+     * runs and for retryable failures that suspend the step for another attempt.
+     */
+    mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+  };
 };
 
 /** Execution helpers that provide replay-safe step semantics. */

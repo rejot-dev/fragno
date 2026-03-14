@@ -159,8 +159,22 @@ export const dslWorkflow = defineWorkflow(
             });
             dslState[entry.assign ?? entry.key] = result.value;
           } else if (entry.type === "calc") {
-            const computed = evaluateExpression(entry.expression, dslState);
             const result = await step.do(name, (tx) => {
+              tx.onTerminalError.mutate((ctx) => {
+                ctx.forSchema(workflowUsageSchema).create("step", {
+                  sessionId: params.sessionId,
+                  turn,
+                  index: i,
+                  type: entry.type,
+                  name,
+                  result: {
+                    expression: entry.expression,
+                    terminalError: true,
+                  },
+                });
+              });
+
+              const computed = evaluateExpression(entry.expression, dslState);
               const stepResult = { expression: entry.expression, result: computed };
               tx.mutate((ctx) => {
                 ctx.forSchema(workflowUsageSchema).create("step", {
