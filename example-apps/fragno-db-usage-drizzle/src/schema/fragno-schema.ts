@@ -34,7 +34,8 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 }, (table) => [
   index("idx_namespace_status_retry").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_nonce").on(table.nonce),
-  index("idx_namespace_status_last_attempt").on(table.namespace, table.status, table.lastAttemptAt)
+  index("idx_namespace_status_last_attempt").on(table.namespace, table.status, table.lastAttemptAt),
+  index("idx_namespace_created_at").on(table.namespace, table.createdAt, table.id)
 ])
 
 export const fragno_db_outbox = pgTable("fragno_db_outbox", {
@@ -263,7 +264,8 @@ export const oauthState_auth = schema_auth.table("oauthState", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   expiresAt: timestamp("expiresAt").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  sessionSeed: json("sessionSeed")
 }, (table) => [
   foreignKey({
     columns: [table.linkUserId],
@@ -412,7 +414,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 31
+  schemaVersion: 33
 }
 
 // ============================================================================

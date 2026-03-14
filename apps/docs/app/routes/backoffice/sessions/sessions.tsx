@@ -12,7 +12,7 @@ import {
   useSearchParams,
 } from "react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { PiSession } from "@fragno-dev/pi-fragment";
+import type { PiSession, PiSessionStatus } from "@fragno-dev/pi-fragment";
 import type { Route } from "./+types/sessions";
 import {
   createPiAgentName,
@@ -21,7 +21,13 @@ import {
   resolvePiHarnesses,
   type PiHarnessConfig,
 } from "@/fragno/pi-shared";
-import { fetchPiConfig, fetchPiSessionDetail, fetchPiSessions, createPiSession } from "./data";
+import {
+  createPiSession,
+  fetchPiConfig,
+  fetchPiSessionDetail,
+  fetchPiSessions,
+  sendPiSessionMessage,
+} from "./data";
 import type { PiLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
 import { getAuthMe } from "@/fragno/auth-server";
@@ -34,9 +40,19 @@ type PiSessionsLoaderData = {
 };
 
 type PiCreateSessionActionData = {
+  intent: "create-session";
   ok: boolean;
   message?: string;
 };
+
+export type PiSendMessageActionData = {
+  intent: "send-message";
+  ok: boolean;
+  message?: string;
+  status?: PiSessionStatus | null;
+};
+
+type PiSessionsActionData = PiCreateSessionActionData | PiSendMessageActionData;
 
 export type PiSessionsOutletContext = {
   sessions: PiSession[];
@@ -52,6 +68,24 @@ const parseTags = (value: string) =>
     .split(/[,\n]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
+
+const parseOptionalBoolean = (value: FormDataEntryValue | null) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+    return false;
+  }
+  return undefined;
+};
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -129,6 +163,52 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const value = formData.get(key);
     return typeof value === "string" ? value.trim() : "";
   };
+  const intent = getValue("intent") || "create-session";
+
+  if (intent === "send-message") {
+    const sessionId = getValue("sessionId");
+    const text = getValue("text");
+    const steeringMode = getValue("steeringMode");
+    const done = parseOptionalBoolean(formData.get("done"));
+
+    if (!sessionId) {
+      return {
+        intent: "send-message",
+        ok: false,
+        message: "Session ID is required.",
+      } satisfies PiSendMessageActionData;
+    }
+
+    if (!text) {
+      return {
+        intent: "send-message",
+        ok: false,
+        message: "Message text is required.",
+      } satisfies PiSendMessageActionData;
+    }
+
+    if (steeringMode && steeringMode !== "all" && steeringMode !== "one-at-a-time") {
+      return {
+        intent: "send-message",
+        ok: false,
+        message: "Steering mode must be all or one-at-a-time.",
+      } satisfies PiSendMessageActionData;
+    }
+
+    const result = await sendPiSessionMessage(request, context, params.orgId, sessionId, {
+      text,
+      done,
+      steeringMode:
+        steeringMode === "all" || steeringMode === "one-at-a-time" ? steeringMode : undefined,
+    });
+
+    return {
+      intent: "send-message",
+      ok: !result.error && result.status !== null,
+      message: result.error ?? undefined,
+      status: result.status,
+    } satisfies PiSendMessageActionData;
+  }
 
   const harnessId = getValue("harnessId");
   const modelOption = getValue("modelOption");
@@ -139,6 +219,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (!harnessId) {
     return {
+      intent: "create-session",
       ok: false,
       message: "Harness selection is required.",
     } satisfies PiCreateSessionActionData;
@@ -146,6 +227,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (!modelOption) {
     return {
+      intent: "create-session",
       ok: false,
       message: "Model selection is required.",
     } satisfies PiCreateSessionActionData;
@@ -155,6 +237,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const model = modelParts.join("::");
   if (!providerRaw || !model) {
     return {
+      intent: "create-session",
       ok: false,
       message: "Model selection is invalid.",
     } satisfies PiCreateSessionActionData;
@@ -163,6 +246,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const modelSelection = findPiModelOption(providerRaw as "openai" | "anthropic" | "gemini", model);
   if (!modelSelection) {
     return {
+      intent: "create-session",
       ok: false,
       message: "Model selection is invalid.",
     } satisfies PiCreateSessionActionData;
@@ -170,6 +254,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (steeringMode !== "all" && steeringMode !== "one-at-a-time") {
     return {
+      intent: "create-session",
       ok: false,
       message: "Steering mode must be all or one-at-a-time.",
     } satisfies PiCreateSessionActionData;
@@ -181,6 +266,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       metadata = JSON.parse(metadataRaw);
     } catch {
       return {
+        intent: "create-session",
         ok: false,
         message: "Metadata must be valid JSON.",
       } satisfies PiCreateSessionActionData;
@@ -189,15 +275,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const { configState, configError } = await fetchPiConfig(context, params.orgId);
   if (configError) {
-    return { ok: false, message: configError } satisfies PiCreateSessionActionData;
+    return {
+      intent: "create-session",
+      ok: false,
+      message: configError,
+    } satisfies PiCreateSessionActionData;
   }
   if (!configState?.configured) {
-    return { ok: false, message: "Pi is not configured yet." } satisfies PiCreateSessionActionData;
+    return {
+      intent: "create-session",
+      ok: false,
+      message: "Pi is not configured yet.",
+    } satisfies PiCreateSessionActionData;
   }
 
   const harness = configState?.config?.harnesses?.find((entry) => entry.id === harnessId);
   if (!harness) {
     return {
+      intent: "create-session",
       ok: false,
       message: "Selected harness is unavailable.",
     } satisfies PiCreateSessionActionData;
@@ -206,6 +301,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const apiKeyPreview = configState?.config?.apiKeys?.[modelSelection.provider];
   if (!apiKeyPreview) {
     return {
+      intent: "create-session",
       ok: false,
       message: `Missing API key for ${modelSelection.provider}.`,
     } satisfies PiCreateSessionActionData;
@@ -229,6 +325,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (result.error || !result.session) {
     return {
+      intent: "create-session",
       ok: false,
       message: result.error ?? "Failed to create session.",
     } satisfies PiCreateSessionActionData;
@@ -239,7 +336,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function BackofficeOrganisationPiSessionsLayout() {
   const { sessions, configError, sessionsError, summaries } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
   const navigation = useNavigation();
   const { orgId, configState } = useOutletContext<PiLayoutContext>();
   const { sessionId } = useParams();
@@ -248,7 +345,8 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const isNewSession = searchParams.get("new") === "1";
   const basePath = `/backoffice/sessions/${orgId}/sessions`;
   const isDetailRoute = Boolean(selectedSessionId);
-  const creating = navigation.state === "submitting";
+  const activeIntent = navigation.formData?.get("intent");
+  const creating = navigation.state === "submitting" && activeIntent === "create-session";
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
   const [selectedHarnessId, setSelectedHarnessId] = useState(harnesses[0]?.id ?? "");
   const [selectedModelOption, setSelectedModelOption] = useState(
@@ -298,7 +396,8 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   // Use flex for both; max-lg:hidden only applies below lg so lg layout stays stable
   const listVisibility = isDetailView ? "max-lg:hidden lg:flex" : "flex";
   const detailVisibility = "block";
-  const createError = actionData?.ok === false ? actionData.message : null;
+  const createError =
+    actionData?.intent === "create-session" && actionData.ok === false ? actionData.message : null;
   const createSessionPanel = (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
       <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
@@ -314,6 +413,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
         </p>
       ) : (
         <Form method="post" action={`${basePath}?new=1`} className="mt-4 space-y-3">
+          <input type="hidden" name="intent" value="create-session" />
           {createError ? <p className="text-xs text-red-500">{createError}</p> : null}
 
           <div className="space-y-2">
