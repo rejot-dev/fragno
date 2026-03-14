@@ -1,10 +1,24 @@
 import type { FetcherValue } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
-import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  type DependencyList,
+} from "react";
 import type { NonGetHTTPMethod } from "../api/api";
 import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
-import { isGetHook, isMutatorHook, isStore, type FragnoStoreData } from "./client";
+import {
+  isGetHook,
+  isMutatorHook,
+  isStore,
+  type FragnoStoreData,
+  type FragnoStoreFactoryData,
+  type FragnoStoreObjectData,
+} from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
 import type { InferOr } from "../util/types-util";
@@ -103,36 +117,200 @@ function createReactMutator<
 /**
  * Type helper that unwraps any Store fields of the object into StoreValues
  */
-export type FragnoReactStore<T extends object> = () => T extends Store<infer TStore>
-  ? StoreValue<TStore>
-  : {
-      [K in keyof T]: T[K] extends Store ? StoreValue<T[K]> : T[K];
-    };
+type FragnoReactStoreValue<T extends object> =
+  T extends Store<infer TStore>
+    ? StoreValue<TStore>
+    : {
+        [K in keyof T]: T[K] extends Store ? StoreValue<T[K]> : T[K];
+      };
 
-function createReactStore<const T extends object>(hook: FragnoStoreData<T>): FragnoReactStore<T> {
-  if (isReadableAtom(hook.obj)) {
-    return () => useStore(hook.obj as Store);
+export type FragnoReactStore<T extends object, TArgs extends unknown[] = []> = (
+  ...args: TArgs
+) => FragnoReactStoreValue<T>;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== "object") {
+    return false;
   }
 
-  return () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any = {};
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
 
-    for (const key in hook.obj) {
-      if (!Object.prototype.hasOwnProperty.call(hook.obj, key)) {
-        continue;
-      }
+const areStoreFactoryValuesEqual = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) {
+    return true;
+  }
 
-      const value = hook.obj[key];
-      if (isReadableAtom(value)) {
-        result[key] = useStore(value);
-      } else {
-        result[key] = value;
-      }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => areStoreFactoryValuesEqual(value, right[index]))
+    );
+  }
+
+  if (left instanceof Date && right instanceof Date) {
+    return left.getTime() === right.getTime();
+  }
+
+  if (isReadableAtom(left) || isReadableAtom(right)) {
+    return left === right;
+  }
+
+  if (typeof left === "function" || typeof right === "function") {
+    return left === right;
+  }
+
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every(
+        (key, index) =>
+          key === rightKeys[index] && areStoreFactoryValuesEqual(left[key], right[key]),
+      )
+    );
+  }
+
+  return false;
+};
+
+const areStoreFactoryArgsEqual = (left: unknown[], right: unknown[]) =>
+  left.length === right.length &&
+  left.every((value, index) => areStoreFactoryValuesEqual(value, right[index]));
+
+const getStoreDisposer = (value: object): (() => void) | undefined => {
+  const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
+  return typeof disposer === "function" ? disposer.bind(value) : undefined;
+};
+
+function unwrapReactStoreValueOnServer<T extends object>(value: T): FragnoReactStoreValue<T> {
+  if (isReadableAtom(value)) {
+    return value.get() as FragnoReactStoreValue<T>;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = {};
+
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
     }
 
-    return result;
+    const fieldValue = value[key];
+    if (isReadableAtom(fieldValue)) {
+      result[key] = fieldValue.get();
+    } else {
+      result[key] = fieldValue;
+    }
+  }
+
+  return result as FragnoReactStoreValue<T>;
+}
+
+function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T> {
+  if (isReadableAtom(value)) {
+    return useStore(value as Store) as FragnoReactStoreValue<T>;
+  }
+
+  const keys = Object.keys(value);
+  const atomEntries = keys.flatMap((key) => {
+    const fieldValue = value[key as keyof T];
+    return isReadableAtom(fieldValue)
+      ? ([[key, fieldValue]] as Array<[string, Store<unknown>]>)
+      : [];
+  });
+  const snapshotRef = useRef<unknown[]>(atomEntries.map(([, store]) => store.get()));
+
+  const getSnapshot = () => {
+    const nextSnapshot = atomEntries.map(([, store]) => store.get());
+    const previousSnapshot = snapshotRef.current;
+    if (
+      previousSnapshot.length === nextSnapshot.length &&
+      previousSnapshot.every((entry, index) => Object.is(entry, nextSnapshot[index]))
+    ) {
+      return previousSnapshot;
+    }
+    snapshotRef.current = nextSnapshot;
+    return nextSnapshot;
   };
+
+  const atomValues = useSyncExternalStore(
+    (onStoreChange) => {
+      const unsubscribes = atomEntries.map(([, store]) => store.listen(onStoreChange));
+      return () => {
+        for (const unsubscribe of unsubscribes) {
+          unsubscribe();
+        }
+      };
+    },
+    getSnapshot,
+    getSnapshot,
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = {};
+  let atomIndex = 0;
+
+  for (const key of keys) {
+    const fieldValue = value[key as keyof T];
+    if (isReadableAtom(fieldValue)) {
+      result[key] = atomValues[atomIndex];
+      atomIndex += 1;
+    } else {
+      result[key] = fieldValue;
+    }
+  }
+
+  return result as FragnoReactStoreValue<T>;
+}
+
+function createReactStore<const T extends object, const TArgs extends unknown[]>(
+  hook: FragnoStoreData<T, TArgs>,
+): FragnoReactStore<T, TArgs> {
+  return ((...args: TArgs) => {
+    const stableArgsRef = useRef<TArgs>(args);
+    const pendingDisposalsRef = useRef<Map<object, ReturnType<typeof setTimeout>>>(new Map());
+    if (!areStoreFactoryArgsEqual(stableArgsRef.current, args)) {
+      stableArgsRef.current = args;
+    }
+
+    const value = useMemo(() => {
+      if ("factory" in hook) {
+        return hook.factory(...stableArgsRef.current);
+      }
+
+      return hook.obj;
+    }, [hook, stableArgsRef.current]);
+
+    useEffect(() => {
+      const disposer = getStoreDisposer(value);
+      const pendingTimeout = pendingDisposalsRef.current.get(value);
+      if (pendingTimeout !== undefined) {
+        clearTimeout(pendingTimeout);
+        pendingDisposalsRef.current.delete(value);
+      }
+
+      return () => {
+        if (!disposer) {
+          return;
+        }
+
+        const timeoutId = setTimeout(() => {
+          pendingDisposalsRef.current.delete(value);
+          disposer();
+        }, 0);
+        pendingDisposalsRef.current.set(value, timeoutId);
+      };
+    }, [value]);
+
+    if (typeof window === "undefined") {
+      return unwrapReactStoreValueOnServer(value);
+    }
+
+    return unwrapReactStoreValue(value);
+  }) as FragnoReactStore<T, TArgs>;
 }
 
 export function useFragno<T extends Record<string, unknown>>(
@@ -155,9 +333,11 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
-      : T[K] extends FragnoStoreData<infer TStoreObj>
-        ? FragnoReactStore<TStoreObj>
-        : T[K];
+      : T[K] extends FragnoStoreObjectData<infer TStoreObj>
+        ? FragnoReactStore<TStoreObj, []>
+        : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
+          ? FragnoReactStore<TStoreObj, TStoreArgs>
+          : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types

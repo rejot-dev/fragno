@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { atom, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import { useStore } from "@nanostores/solid";
 import type { Accessor } from "solid-js";
-import { createEffect } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -11,6 +11,8 @@ import {
   type FragnoClientHookData,
   type FragnoClientMutatorData,
   type FragnoStoreData,
+  type FragnoStoreFactoryData,
+  type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import type { InferOr } from "../util/types-util";
@@ -178,38 +180,72 @@ function createSolidMutator<
   };
 }
 
-export type FragnoSolidStore<T extends object> = T extends Store
+type FragnoSolidStoreValue<T extends object> = T extends Store
+  ? Accessor<StoreValue<T>>
+  : {
+      [K in keyof T]: T[K] extends Store ? Accessor<StoreValue<T[K]>> : T[K];
+    };
+
+type FragnoSolidStaticStore<T extends object> = T extends Store
   ? Accessor<StoreValue<T>>
   : () => {
       [K in keyof T]: T[K] extends Store ? Accessor<StoreValue<T[K]>> : T[K];
     };
 
-function createSolidStore<const T extends object>(
-  hook: FragnoStoreData<T>,
-): Accessor<StoreValue<T>> | (() => Accessor<StoreValue<T>>) {
-  // If the store object itself is a single atom, wrap it with useStore
-  if (isReadableAtom(hook.obj)) {
-    return useStore(hook.obj);
+export type FragnoSolidStore<TStore extends FragnoStoreData<object, unknown[]>> =
+  TStore extends FragnoStoreFactoryData<infer T, infer TArgs>
+    ? (...args: TArgs) => FragnoSolidStoreValue<T>
+    : TStore extends FragnoStoreObjectData<infer T>
+      ? FragnoSolidStaticStore<T>
+      : never;
+
+function unwrapSolidStoreValue<T extends object>(value: T): FragnoSolidStoreValue<T> {
+  if (isReadableAtom(value)) {
+    return useStore(value) as FragnoSolidStoreValue<T>;
   }
 
   // For objects containing atoms, wrap each atom property with useStore
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: any = {};
 
-  for (const key in hook.obj) {
-    if (!Object.prototype.hasOwnProperty.call(hook.obj, key)) {
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
       continue;
     }
 
-    const value = hook.obj[key];
-    if (isReadableAtom(value)) {
-      result[key] = useStore(value);
+    const fieldValue = value[key];
+    if (isReadableAtom(fieldValue)) {
+      result[key] = useStore(fieldValue);
     } else {
-      result[key] = value;
+      result[key] = fieldValue;
     }
   }
 
-  return () => result;
+  return result as FragnoSolidStoreValue<T>;
+}
+
+function createSolidStore<const TStore extends FragnoStoreData<object, unknown[]>>(
+  hook: TStore,
+): FragnoSolidStore<TStore> {
+  if ("obj" in hook) {
+    if (isReadableAtom(hook.obj)) {
+      return useStore(hook.obj) as FragnoSolidStore<TStore>;
+    }
+
+    return (() => unwrapSolidStoreValue(hook.obj)) as FragnoSolidStore<TStore>;
+  }
+
+  return ((...args: Parameters<typeof hook.factory>) => {
+    const value = hook.factory(...args);
+    const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
+    if (typeof disposer === "function") {
+      onCleanup(() => {
+        disposer.call(value);
+      });
+    }
+
+    return unwrapSolidStoreValue(value);
+  }) as FragnoSolidStore<TStore>;
 }
 
 export function useFragno<T extends Record<string, unknown>>(
@@ -232,8 +268,8 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoSolidMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
-      : T[K] extends FragnoStoreData<infer TStoreObj>
-        ? FragnoSolidStore<TStoreObj>
+      : T[K] extends FragnoStoreData<object, unknown[]>
+        ? FragnoSolidStore<T[K]>
         : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

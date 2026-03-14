@@ -1,5 +1,5 @@
 import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
-import { atom } from "nanostores";
+import { atom, type ReadableAtom } from "nanostores";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
@@ -645,6 +645,10 @@ describe("useFragno - createStore", () => {
       constant: number;
     }>();
 
+    if (!("obj" in client.useStore)) {
+      throw new Error("Expected object-backed store");
+    }
+
     expect(useStore).toBe(client.useStore.obj);
     expect(useStore.message.get()).toBe("hello");
     expect(useStore.count.get()).toBe(42);
@@ -814,6 +818,96 @@ describe("useFragno", () => {
 
     unsubscribe1();
     unsubscribe2();
+  });
+});
+
+describe("createVanillaStore", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  test("should support createStore factory callbacks", () => {
+    const dispose = vi.fn();
+    const builder = createClientBuilder(defineFragment("test-fragment-store"), clientConfig, []);
+    const clientObj = {
+      useSession: builder.createStore(({ path }: { path: { sessionId: string } }) => ({
+        sessionId: atom(path.sessionId),
+        sendMessage: (text: string) => text,
+        [Symbol.dispose]: dispose,
+      })),
+    };
+
+    const { useSession } = useFragno(clientObj);
+    const session = useSession({ path: { sessionId: "abc" } });
+
+    expect(session.sessionId.get()).toBe("abc");
+    expect(session.sendMessage("hello")).toBe("hello");
+    expect(typeof session.destroy).toBe("function");
+
+    session.destroy?.();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test("should preserve prototype methods when adding destroy to factory store instances", () => {
+    const dispose = vi.fn();
+    const builder = createClientBuilder(
+      defineFragment("test-fragment-store-instance"),
+      clientConfig,
+      [],
+    );
+
+    class SessionStore {
+      sessionId: ReadableAtom<string>;
+
+      constructor(sessionId: string) {
+        this.sessionId = atom(sessionId);
+      }
+
+      sendMessage(text: string) {
+        return `${this.sessionId.get()}:${text}`;
+      }
+
+      [Symbol.dispose]() {
+        dispose();
+      }
+    }
+
+    const clientObj = {
+      useSession: builder.createStore(({ path }: { path: { sessionId: string } }) => {
+        return new SessionStore(path.sessionId);
+      }),
+    };
+
+    const { useSession } = useFragno(clientObj);
+    const session = useSession({ path: { sessionId: "abc" } });
+
+    expect(session).toBeInstanceOf(SessionStore);
+    expect(session.sendMessage("hello")).toBe("abc:hello");
+    expect(typeof session.destroy).toBe("function");
+    expect(Object.keys(session)).not.toContain("destroy");
+
+    session.destroy?.();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test("should type and return zero-argument factory stores as callable", () => {
+    const builder = createClientBuilder(
+      defineFragment("test-fragment-zero-arg-store"),
+      clientConfig,
+      [],
+    );
+    const countAtom = atom(0);
+    const clientObj = {
+      useCounter: builder.createStore(() => ({
+        count: countAtom,
+      })),
+    };
+
+    const { useCounter } = useFragno(clientObj);
+
+    expectTypeOf(useCounter).toExtend<() => { count: typeof countAtom }>();
+    expect(typeof useCounter).toBe("function");
+    expect(useCounter().count.get()).toBe(0);
   });
 });
 

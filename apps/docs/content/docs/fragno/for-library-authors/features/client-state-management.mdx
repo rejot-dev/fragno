@@ -209,8 +209,35 @@ We can return any other values or functions from the `createMyFragmentClient` fu
 
 <Callout title="`createStore` nesting" type="warning">
   If an object is passed to `createStore`, all fields on this object will be made reactive. In the
-  case of a function, nothing will happen to it. Deeply nested keys will **not** be considered.
+  case of a function field, nothing will happen to it. Deeply nested keys will **not** be
+  considered.
 </Callout>
+
+### Parameterized Stores
+
+`createStore` can also take a callback instead of a static object. This is useful when you need a
+per-consumer store instance, for example a session controller tied to a specific `sessionId`.
+
+```typescript title="src/index.ts"
+return {
+  useSession: builder.createStore(({ path }: { path: { sessionId: string } }) => {
+    const controller = createSessionController(path.sessionId);
+
+    return {
+      state: controller.state,
+      sendMessage: controller.sendMessage,
+      [Symbol.dispose]: controller.destroy,
+    };
+  }),
+};
+```
+
+In framework adapters, the callback is invoked per usage and top-level Nanostore fields are made
+reactive just like with the static-object form.
+
+If the returned object implements `Symbol.dispose`, Fragno will call it automatically when the
+framework instance is cleaned up (for example on React unmount or when the callback arguments
+change).
 
 ## Custom Fetcher Configuration
 

@@ -1,6 +1,7 @@
 import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { atom, computed, type ReadableAtom } from "nanostores";
+import { StrictMode, createElement } from "react";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno, useStore, type FragnoReactStore } from "./react";
@@ -873,6 +874,138 @@ describe("useFragno - createStore", () => {
     expect(result.current.settings).toEqual({ theme: "light", notifications: true });
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+
+  test("createStore supports factory callbacks with cleanup", async () => {
+    const disposeOne = vi.fn();
+    const disposeTwo = vi.fn();
+    const factory = vi.fn(({ path }: { path: { sessionId: string } }) => ({
+      sessionId: atom(path.sessionId),
+      sendMessage: (text: string) => text,
+      [Symbol.dispose]: path.sessionId === "1" ? disposeOne : disposeTwo,
+    }));
+
+    const createSessionStore = (args: { path: { sessionId: string } }) => factory(args);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useSession: cb.createStore(createSessionStore),
+    };
+
+    const { useSession } = useFragno(client);
+
+    expectTypeOf(useSession).toExtend<
+      (args: { path: { sessionId: string } }) => {
+        sessionId: string;
+        sendMessage: (text: string) => string;
+      }
+    >();
+
+    const { result, rerender, unmount } = renderHook(
+      ({ sessionId }) => useSession({ path: { sessionId } }),
+      { initialProps: { sessionId: "1" } },
+    );
+
+    expect(result.current.sessionId).toBe("1");
+    expect(result.current.sendMessage("hi")).toBe("hi");
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    rerender({ sessionId: "1" });
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(disposeOne).not.toHaveBeenCalled();
+
+    rerender({ sessionId: "2" });
+    expect(result.current.sessionId).toBe("2");
+    expect(factory).toHaveBeenCalledTimes(2);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(disposeOne).toHaveBeenCalledTimes(1);
+    expect(disposeTwo).not.toHaveBeenCalled();
+
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(disposeTwo).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not dispose and recreate factory stores when rerendered with equivalent Date-backed args", () => {
+    const dispose = vi.fn();
+    const factory = vi.fn(
+      ({
+        path,
+        initialData,
+      }: {
+        path: { sessionId: string };
+        initialData: {
+          createdAt: Date;
+          updatedAt: Date;
+          trace: Array<{ createdAt: Date; type: string }>;
+        };
+      }) => ({
+        sessionId: path.sessionId,
+        traceCount: initialData.trace.length,
+        [Symbol.dispose]: dispose,
+      }),
+    );
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useSession: cb.createStore(factory),
+    };
+
+    const { useSession } = useFragno(client);
+
+    const buildInitialData = () => ({
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:01.000Z"),
+      trace: [{ createdAt: new Date("2026-01-01T00:00:02.000Z"), type: "message_start" }],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ initialData }) => useSession({ path: { sessionId: "session-1" }, initialData }),
+      {
+        initialProps: {
+          initialData: buildInitialData(),
+        },
+      },
+    );
+
+    expect(result.current.sessionId).toBe("session-1");
+    expect(result.current.traceCount).toBe(1);
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    rerender({ initialData: buildInitialData() });
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  test("does not dispose a factory store during StrictMode remount probing", async () => {
+    const dispose = vi.fn();
+    const factory = vi.fn(({ path }: { path: { sessionId: string } }) => ({
+      sessionId: path.sessionId,
+      [Symbol.dispose]: dispose,
+    }));
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useSession: cb.createStore(factory),
+    };
+
+    const { useSession } = useFragno(client);
+
+    const { result, unmount } = renderHook(() => useSession({ path: { sessionId: "session-1" } }), {
+      wrapper: ({ children }) => createElement(StrictMode, null, children),
+    });
+
+    expect(result.current.sessionId).toBe("session-1");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(dispose).not.toHaveBeenCalled();
+
+    unmount();
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   test("Derived from streaming route", async () => {

@@ -768,7 +768,7 @@ describe("useFragno - createStore", () => {
   });
 
   test("FragnoVueStore type test - ReadableAtom fields", () => {
-    // Test that ReadableAtom fields are properly unwrapped to their value types
+    // Test that ReadableAtom fields are exposed as reactive refs
     const stringAtom: ReadableAtom<string> = atom("hello");
     const numberAtom: ReadableAtom<number> = atom(42);
     const booleanAtom: ReadableAtom<boolean> = atom(true);
@@ -788,32 +788,27 @@ describe("useFragno - createStore", () => {
 
     const { useStore } = useFragno(client);
 
-    // Type assertions to ensure the types are correctly inferred
-    expectTypeOf(useStore).toExtend<
-      () => {
-        message: string;
-        count: number;
-        isActive: boolean;
-        data: { count: number };
-        items: string[];
-      }
-    >();
-
-    // Runtime test - need to run in effect scope for Vue reactivity
     const scope = effectScope();
     scope.run(() => {
       const result = useStore();
-      expect(result.message).toBe("hello");
-      expect(result.count).toBe(42);
-      expect(result.isActive).toBe(true);
-      expect(result.data).toEqual({ count: 0 });
-      expect(result.items).toEqual(["a", "b", "c"]);
+
+      expectTypeOf(result.message.value).toEqualTypeOf<string>();
+      expectTypeOf(result.count.value).toEqualTypeOf<number>();
+      expectTypeOf(result.isActive.value).toEqualTypeOf<boolean>();
+      expectTypeOf(result.data.value.count).toEqualTypeOf<number>();
+      expectTypeOf(result.items.value).toExtend<readonly string[]>();
+
+      expect(result.message.value).toBe("hello");
+      expect(result.count.value).toBe(42);
+      expect(result.isActive.value).toBe(true);
+      expect(result.data.value).toEqual({ count: 0 });
+      expect(result.items.value).toEqual(["a", "b", "c"]);
     });
     scope.stop();
   });
 
   test("FragnoVueStore type test - computed stores", () => {
-    // Test that computed stores (which are also ReadableAtom) are properly unwrapped
+    // Test that computed stores (which are also ReadableAtom) are exposed as refs
     const baseNumber = atom(10);
     const doubled = computed(baseNumber, (n) => n * 2);
     const tripled = computed(baseNumber, (n) => n * 3);
@@ -831,30 +826,26 @@ describe("useFragno - createStore", () => {
 
     const { useComputedValues } = useFragno(client);
 
-    // Type assertions
-    expectTypeOf(useComputedValues).toExtend<
-      () => {
-        base: number;
-        doubled: number;
-        tripled: number;
-        combined: { doubled: number; tripled: number };
-      }
-    >();
-
-    // Runtime test
     const scope = effectScope();
     scope.run(() => {
       const result = useComputedValues();
-      expect(result.base).toBe(10);
-      expect(result.doubled).toBe(20);
-      expect(result.tripled).toBe(30);
-      expect(result.combined).toEqual({ doubled: 20, tripled: 30 });
+
+      expectTypeOf(result.base.value).toEqualTypeOf<number>();
+      expectTypeOf(result.doubled.value).toEqualTypeOf<number>();
+      expectTypeOf(result.tripled.value).toEqualTypeOf<number>();
+      expectTypeOf(result.combined.value.doubled).toEqualTypeOf<number>();
+      expectTypeOf(result.combined.value.tripled).toEqualTypeOf<number>();
+
+      expect(result.base.value).toBe(10);
+      expect(result.doubled.value).toBe(20);
+      expect(result.tripled.value).toBe(30);
+      expect(result.combined.value).toEqual({ doubled: 20, tripled: 30 });
     });
     scope.stop();
   });
 
   test("FragnoVueStore type test - mixed store and non-store fields", () => {
-    // Test that non-store fields are passed through unchanged
+    // Test that store fields are refs and non-store fields are passed through unchanged
     const messageAtom: ReadableAtom<string> = atom("test");
     const regularFunction = (x: number) => x * 2;
     const regularObject = { foo: "bar", baz: 123 };
@@ -871,21 +862,19 @@ describe("useFragno - createStore", () => {
 
     const { useMixed } = useFragno(client);
 
-    // Type assertions
-    expectTypeOf(useMixed).toExtend<
-      () => {
-        message: string;
-        multiply: (x: number) => number;
-        config: { foo: string; baz: number };
-        constant: number;
-      }
-    >();
-
-    // Runtime test
     const scope = effectScope();
     scope.run(() => {
       const result = useMixed();
-      expect(result.message).toBe("test");
+
+      expectTypeOf(result.message.value).toEqualTypeOf<string>();
+      expectTypeOf(result.multiply).toExtend<(x: number) => number>();
+      expectTypeOf(result.config.foo).toEqualTypeOf<string>();
+      expectTypeOf(result.config.baz).toEqualTypeOf<number>();
+      expectTypeOf(result.constant).toExtend<number>();
+
+      expect(result.message.value).toBe("test");
+      expect(result.multiply).toBe(regularFunction);
+      expect(result.config).toBe(regularObject);
       expect(result.multiply(5)).toBe(10);
       expect(result.config).toEqual({ foo: "bar", baz: 123 });
       expect(result.constant).toBe(42);
@@ -894,7 +883,7 @@ describe("useFragno - createStore", () => {
   });
 
   test("FragnoVueStore type test - single store vs object with stores", () => {
-    // Test that a single store is unwrapped directly
+    // Test that a single store is exposed as a ref directly
     const singleAtom: ReadableAtom<string> = atom("single");
     const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
 
@@ -903,7 +892,6 @@ describe("useFragno - createStore", () => {
       useSingle: cb.createStore(singleAtom),
     };
     const { useSingle } = useFragno(clientSingle);
-    expectTypeOf(useSingle).toExtend<() => string>();
 
     // Object with stores case
     const clientObject = {
@@ -912,16 +900,17 @@ describe("useFragno - createStore", () => {
       }),
     };
     const { useObject } = useFragno(clientObject);
-    expectTypeOf(useObject).toExtend<() => { value: string }>();
 
-    // Runtime test
+    // Runtime and type test
     const scope = effectScope();
     scope.run(() => {
       const singleResult = useSingle();
-      expect(singleResult).toBe("single");
+      expectTypeOf(singleResult.value).toEqualTypeOf<string>();
+      expect(singleResult.value).toBe("single");
 
       const objectResult = useObject();
-      expect(objectResult).toEqual({ value: "single" });
+      expectTypeOf(objectResult.value.value).toEqualTypeOf<string>();
+      expect(objectResult.value.value).toBe("single");
     });
     scope.stop();
   });
@@ -948,30 +937,108 @@ describe("useFragno - createStore", () => {
 
     const { useAppState } = useFragno(client);
 
-    // Type assertions for complex nested structure
-    expectTypeOf(useAppState).toExtend<
-      () => {
-        user: User;
-        settings: Settings;
-        loading: boolean;
-        error: string | null;
-      }
-    >();
-
-    // Runtime test
     const scope = effectScope();
     scope.run(() => {
       const result = useAppState();
-      expect(result.user).toEqual({ id: 1, name: "John", email: "john@example.com" });
-      expect(result.settings).toEqual({ theme: "light", notifications: true });
-      expect(result.loading).toBe(false);
-      expect(result.error).toBeNull();
+
+      expectTypeOf(result.user.value.id).toEqualTypeOf<number>();
+      expectTypeOf(result.user.value.name).toEqualTypeOf<string>();
+      expectTypeOf(result.settings.value.theme).toEqualTypeOf<"light" | "dark">();
+      expectTypeOf(result.settings.value.notifications).toEqualTypeOf<boolean>();
+      expectTypeOf(result.loading.value).toEqualTypeOf<boolean>();
+      expectTypeOf(result.error.value).toEqualTypeOf<string | null>();
+
+      expect(result.user.value).toEqual({ id: 1, name: "John", email: "john@example.com" });
+      expect(result.settings.value).toEqual({ theme: "light", notifications: true });
+      expect(result.loading.value).toBe(false);
+      expect(result.error.value).toBeNull();
     });
     scope.stop();
   });
 
-  test("FragnoVueStore - reactivity with atom updates", async () => {
-    // Test that stores are reactive and update when atoms change
+  test("FragnoVueStore - top-level atom stays reactive", async () => {
+    const countAtom = atom(0);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useCounter: cb.createStore(countAtom),
+    };
+
+    const { useCounter } = useFragno(client);
+
+    const scope = effectScope();
+    const observed: number[] = [];
+
+    scope.run(() => {
+      const result = useCounter();
+      watch(
+        () => result.value,
+        (value) => {
+          observed.push(value);
+        },
+        { immediate: true },
+      );
+    });
+
+    countAtom.set(5);
+    await nextTick();
+
+    expect(observed).toEqual([0, 5]);
+
+    scope.stop();
+  });
+
+  test("FragnoVueStore - computed refs stay reactive", async () => {
+    const baseNumber = atom(2);
+    const doubled = computed(baseNumber, (n) => n * 2);
+    const combined = computed([baseNumber, doubled], (base, double) => ({ base, double }));
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useComputedValues: cb.createStore({
+        base: baseNumber,
+        doubled,
+        combined,
+      }),
+    };
+
+    const { useComputedValues } = useFragno(client);
+
+    const scope = effectScope();
+    const observedDoubled: number[] = [];
+    const observedCombined: Array<{ base: number; double: number }> = [];
+
+    scope.run(() => {
+      const result = useComputedValues();
+      watch(
+        () => result.doubled.value,
+        (value) => {
+          observedDoubled.push(value);
+        },
+        { immediate: true },
+      );
+      watch(
+        () => result.combined.value,
+        (value) => {
+          observedCombined.push(value);
+        },
+        { immediate: true },
+      );
+    });
+
+    baseNumber.set(3);
+    await nextTick();
+
+    expect(observedDoubled).toEqual([4, 6]);
+    expect(observedCombined).toEqual([
+      { base: 2, double: 4 },
+      { base: 3, double: 6 },
+    ]);
+
+    scope.stop();
+  });
+
+  test("FragnoVueStore - unsubscribes atom refs on scope disposal", async () => {
     const countAtom = atom(0);
 
     const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
@@ -984,20 +1051,89 @@ describe("useFragno - createStore", () => {
     const { useCounter } = useFragno(client);
 
     const scope = effectScope();
-    let result: { count: number } | undefined;
+    const observed: number[] = [];
+
     scope.run(() => {
-      result = useCounter();
-      expect(result.count).toBe(0);
+      const result = useCounter();
+      watch(
+        () => result.count.value,
+        (value) => {
+          observed.push(value);
+        },
+        { immediate: true },
+      );
     });
 
-    // Update the atom
+    expect(observed).toEqual([0]);
+
+    scope.stop();
     countAtom.set(5);
+    await nextTick();
 
-    // Re-run in scope to get updated value
+    expect(observed).toEqual([0]);
+  });
+
+  test("FragnoVueStore - factory stores dispose on scope disposal", () => {
+    const dispose = vi.fn();
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useSession: cb.createStore((sessionId: string) => ({
+        sessionId: atom(sessionId),
+        sendMessage: (text: string) => text,
+        [Symbol.dispose]: dispose,
+      })),
+    };
+
+    const { useSession } = useFragno(client);
+
+    const scope = effectScope();
     scope.run(() => {
-      result = useCounter();
-      expect(result.count).toBe(5);
+      const result = useSession("session-1");
+
+      expectTypeOf(result.sessionId.value).toEqualTypeOf<string>();
+      expect(result.sessionId.value).toBe("session-1");
+      expect(result.sendMessage("hi")).toBe("hi");
     });
+
+    expect(dispose).not.toHaveBeenCalled();
+
+    scope.stop();
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test("FragnoVueStore - reactivity with atom updates", async () => {
+    // Test that returned refs stay reactive when atoms change
+    const countAtom = atom(0);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useCounter: cb.createStore({
+        count: countAtom,
+      }),
+    };
+
+    const { useCounter } = useFragno(client);
+
+    const scope = effectScope();
+    const observed: number[] = [];
+
+    scope.run(() => {
+      const result = useCounter();
+      watch(
+        () => result.count.value,
+        (value) => {
+          observed.push(value);
+        },
+        { immediate: true },
+      );
+    });
+
+    countAtom.set(5);
+    await nextTick();
+
+    expect(observed).toEqual([0, 5]);
 
     scope.stop();
   });

@@ -2234,7 +2234,7 @@ describe("Custom Fetcher Configuration", () => {
     expect(defaultOptions).toBeUndefined();
   });
 
-  test("getFetcher returns default fetch and options", () => {
+  test("getFetcher returns a bound default fetch and options", async () => {
     const client = createClientBuilder(
       testFragment,
       {
@@ -2244,9 +2244,20 @@ describe("Custom Fetcher Configuration", () => {
       testRoutes,
     );
 
-    const { fetcher, defaultOptions } = client.getFetcher();
-    expect(fetcher).toBe(fetch);
-    expect(defaultOptions).toBeDefined();
-    expect(defaultOptions?.credentials).toBe("include");
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    globalThis.fetch = fetchSpy;
+
+    try {
+      const { fetcher, defaultOptions } = client.getFetcher();
+      expect(fetcher).not.toBe(globalThis.fetch);
+      expect(defaultOptions).toBeDefined();
+      expect(defaultOptions?.credentials).toBe("include");
+
+      await fetcher("https://example.com");
+      expect(fetchSpy).toHaveBeenCalledWith("https://example.com");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

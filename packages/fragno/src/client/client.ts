@@ -422,10 +422,19 @@ export type ObjectContainingStoreField<T extends object> = T extends Store
 /**
  * @internal
  */
-export type FragnoStoreData<T extends object> = {
+export type FragnoStoreObjectData<T extends object> = {
   obj: T;
   [STORE_SYMBOL]: true;
 };
+
+export type FragnoStoreFactoryData<T extends object, TArgs extends unknown[] = []> = {
+  factory: (...args: TArgs) => T;
+  [STORE_SYMBOL]: true;
+};
+
+export type FragnoStoreData<T extends object, TArgs extends unknown[] = []> =
+  | FragnoStoreObjectData<T>
+  | FragnoStoreFactoryData<T, TArgs>;
 
 export type FragnoClientHookData<
   TMethod extends HTTPMethod,
@@ -651,7 +660,9 @@ export function isMutatorHook<
 /**
  * @internal
  */
-export function isStore<TStore extends Store>(obj: unknown): obj is FragnoStoreData<TStore> {
+export function isStore<TStore extends object, TArgs extends unknown[] = []>(
+  obj: unknown,
+): obj is FragnoStoreData<TStore, TArgs> {
   return (
     typeof obj === "object" && obj !== null && STORE_SYMBOL in obj && obj[STORE_SYMBOL] === true
   );
@@ -736,8 +747,18 @@ export class ClientBuilder<
     return Object.fromEntries(this.#cache.entries());
   }
 
-  createStore<const T extends object>(obj: T): FragnoStoreData<T> {
-    return { obj: obj, [STORE_SYMBOL]: true };
+  createStore<const TArgs extends unknown[], const T extends object>(
+    factory: (...args: TArgs) => T,
+  ): FragnoStoreFactoryData<T, TArgs>;
+  createStore<const T extends object>(obj: T): FragnoStoreObjectData<T>;
+  createStore<const TArgs extends unknown[], const T extends object>(
+    input: T | ((...args: TArgs) => T),
+  ): FragnoStoreData<T, TArgs> {
+    if (typeof input === "function") {
+      return { factory: input as (...args: TArgs) => T, [STORE_SYMBOL]: true };
+    }
+
+    return { obj: input, [STORE_SYMBOL]: true };
   }
 
   /**
@@ -781,7 +802,7 @@ export class ClientBuilder<
     if (this.#fetcherConfig?.type === "function") {
       return this.#fetcherConfig.fetcher;
     }
-    return fetch;
+    return globalThis.fetch.bind(globalThis);
   }
 
   #getFetcherOptions(): RequestInit | undefined {
