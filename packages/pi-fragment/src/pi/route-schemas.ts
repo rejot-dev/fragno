@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SESSION_STATUSES, STEERING_MODES } from "./constants";
+import type { PiActiveSessionProtocolMessage } from "./types";
 
 const AGENT_LOOP_PHASES = ["waiting-for-user", "running-agent", "complete"] as const;
 
@@ -156,4 +157,13 @@ const messageAckSchema = z.object({
   status: z.enum(SESSION_STATUSES),
 });
 
-export { messageAckSchema, sessionBaseSchema, sessionDetailSchema, workflowStatusSchema };
+const activeSessionStreamItemSchema: z.ZodType<PiActiveSessionProtocolMessage> =
+  z.custom<PiActiveSessionProtocolMessage>();
+
+export {
+  activeSessionStreamItemSchema,
+  messageAckSchema,
+  sessionBaseSchema,
+  sessionDetailSchema,
+  workflowStatusSchema,
+};
