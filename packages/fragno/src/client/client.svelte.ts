@@ -8,6 +8,8 @@ import {
   type FragnoClientHookData,
   type FragnoClientMutatorData,
   type FragnoStoreData,
+  type FragnoStoreFactoryData,
+  type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import type { InferOr } from "../util/types-util";
@@ -223,10 +225,30 @@ function createSvelteMutator<
   };
 }
 
-export function createSvelteStore<T extends object>(hook: FragnoStoreData<T>): T {
-  // Since nanostores already implement Svelte's store contract,
-  // we can return the store object directly for use with $ syntax
-  return hook.obj;
+export type FragnoSvelteStore<T extends object, TArgs extends unknown[] = []> = TArgs extends []
+  ? T
+  : (...args: TArgs) => T;
+
+export function createSvelteStore<T extends object, TArgs extends unknown[]>(
+  hook: FragnoStoreData<T, TArgs>,
+): FragnoSvelteStore<T, TArgs> {
+  if ("obj" in hook) {
+    // Since nanostores already implement Svelte's store contract,
+    // we can return the store object directly for use with $ syntax
+    return hook.obj as FragnoSvelteStore<T, TArgs>;
+  }
+
+  return ((...args: TArgs) => {
+    const value = hook.factory(...args);
+    const disposer = value[Symbol.dispose as keyof typeof value];
+    if (typeof disposer === "function") {
+      onDestroy(() => {
+        disposer.call(value);
+      });
+    }
+
+    return value;
+  }) as FragnoSvelteStore<T, TArgs>;
 }
 
 export function useFragno<T extends Record<string, unknown>>(
@@ -249,9 +271,11 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoSvelteMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
-      : T[K] extends FragnoStoreData<infer TStoreObj>
-        ? TStoreObj
-        : T[K];
+      : T[K] extends FragnoStoreObjectData<infer TStoreObj>
+        ? FragnoSvelteStore<TStoreObj, []>
+        : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
+          ? FragnoSvelteStore<TStoreObj, TStoreArgs>
+          : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any;

@@ -8,6 +8,8 @@ import {
   type FragnoClientMutatorData,
   type FragnoClientHookData,
   type FragnoStoreData,
+  type FragnoStoreFactoryData,
+  type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { createAsyncIteratorFromCallback } from "../util/async";
@@ -215,6 +217,48 @@ function createVanillaMutator<
   };
 }
 
+export type FragnoVanillaStore<T extends object, TArgs extends unknown[] = []> = TArgs extends []
+  ? T
+  : (...args: TArgs) => T & { destroy?: () => void };
+
+export type FragnoVanillaStoreFromData<TStore> = TStore extends {
+  factory: (...args: infer TArgs) => infer TObject extends object;
+}
+  ? (...args: TArgs) => TObject & { destroy?: () => void }
+  : TStore extends { obj: infer TObject extends object }
+    ? TObject
+    : never;
+
+const getStoreDisposer = (value: object): (() => void) | undefined => {
+  const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
+  return typeof disposer === "function" ? disposer.bind(value) : undefined;
+};
+
+function createVanillaStore<const TStore extends FragnoStoreData<object, unknown[]>>(
+  hook: TStore,
+): FragnoVanillaStoreFromData<TStore> {
+  if ("obj" in hook) {
+    return hook.obj as FragnoVanillaStoreFromData<TStore>;
+  }
+
+  return ((...args: Parameters<typeof hook.factory>) => {
+    const value = hook.factory(...args);
+    const disposer = getStoreDisposer(value);
+    if (!disposer) {
+      return value as ReturnType<typeof hook.factory> & { destroy?: () => void };
+    }
+
+    Object.defineProperty(value, "destroy", {
+      value: disposer,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+
+    return value as ReturnType<typeof hook.factory> & { destroy?: () => void };
+  }) as FragnoVanillaStoreFromData<TStore>;
+}
+
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
@@ -242,9 +286,11 @@ export function useFragno<T extends Record<string, unknown>>(
           TErrorCode,
           TQueryParameters
         >
-      : T[K] extends FragnoStoreData<infer TStoreObj>
+      : T[K] extends FragnoStoreObjectData<infer TStoreObj>
         ? TStoreObj
-        : T[K];
+        : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
+          ? (...args: TStoreArgs) => TStoreObj & { destroy?: () => void }
+          : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -260,7 +306,7 @@ export function useFragno<T extends Record<string, unknown>>(
     } else if (isMutatorHook(hook)) {
       result[key] = createVanillaMutator(hook);
     } else if (isStore(hook)) {
-      result[key] = hook.obj;
+      result[key] = createVanillaStore(hook);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;

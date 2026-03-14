@@ -1,4 +1,4 @@
-import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vitest";
+import { test, expect, describe, vi, beforeEach, afterEach, assert, expectTypeOf } from "vitest";
 import { atom, computed, type ReadableAtom } from "nanostores";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
@@ -814,6 +814,28 @@ describe("createSolidStore", () => {
       expect(multiply(5)).toBe(10);
       expect(config).toEqual({ foo: "bar", baz: 123 });
       expect(constant).toBe(42);
+
+      dispose();
+    });
+  });
+
+  test("should type and return zero-argument factory stores as callable", () => {
+    const countAtom: ReadableAtom<number> = atom(0);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+
+    const client = {
+      useCounter: cb.createStore(() => countAtom),
+    };
+
+    createRoot((dispose) => {
+      const { useCounter } = useFragno(client);
+
+      expectTypeOf(useCounter).toExtend<() => () => number>();
+      expect(typeof useCounter).toBe("function");
+
+      const counter = useCounter();
+      expect(typeof counter).toBe("function");
+      expect(counter()).toBe(0);
 
       dispose();
     });

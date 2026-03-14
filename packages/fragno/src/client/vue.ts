@@ -10,6 +10,8 @@ import {
   type FragnoClientMutatorData,
   type FragnoClientHookData,
   type FragnoStoreData,
+  type FragnoStoreFactoryData,
+  type FragnoStoreObjectData,
 } from "./client";
 import { isReadableAtom } from "../util/nanostores";
 import type { FragnoClientError } from "./client-error";
@@ -50,13 +52,19 @@ export type FragnoVueMutator<
 };
 
 /**
- * Type helper that unwraps any Store fields of the object into StoreValues
+ * Type helper that wraps any Store fields of the object into reactive Vue refs.
  */
-export type FragnoVueStore<T extends object> = () => T extends Store<infer TStore>
-  ? StoreValue<TStore>
+type FragnoVueStoreRef<T extends Store> = DeepReadonly<UnwrapNestedRefs<ShallowRef<StoreValue<T>>>>;
+
+type FragnoVueStoreValue<T extends object> = T extends Store
+  ? FragnoVueStoreRef<T>
   : {
-      [K in keyof T]: T[K] extends Store ? StoreValue<T[K]> : T[K];
+      [K in keyof T]: T[K] extends Store ? FragnoVueStoreRef<T[K]> : T[K];
     };
+
+export type FragnoVueStore<T extends object, TArgs extends unknown[] = []> = (
+  ...args: TArgs
+) => FragnoVueStoreValue<T>;
 
 /**
  * Converts a Vue Ref to a NanoStore Atom.
@@ -193,31 +201,46 @@ function createVueMutator<
   };
 }
 
-// Helper function to create a Vue composable from a store
-function createVueStore<const T extends object>(hook: FragnoStoreData<T>): FragnoVueStore<T> {
-  if (isReadableAtom(hook.obj)) {
-    return (() => useStore(hook.obj as Store).value) as FragnoVueStore<T>;
+function unwrapVueStoreValue<T extends object>(value: T): FragnoVueStoreValue<T> {
+  if (isReadableAtom(value)) {
+    return useStore(value as Store) as FragnoVueStoreValue<T>;
   }
 
-  return (() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = {};
 
-    for (const key in hook.obj) {
-      if (!Object.prototype.hasOwnProperty.call(hook.obj, key)) {
-        continue;
-      }
-
-      const value = hook.obj[key];
-      if (isReadableAtom(value)) {
-        result[key] = useStore(value).value;
-      } else {
-        result[key] = value;
-      }
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
     }
 
-    return result;
-  }) as FragnoVueStore<T>;
+    const fieldValue = value[key];
+    if (isReadableAtom(fieldValue)) {
+      result[key] = useStore(fieldValue);
+    } else {
+      result[key] = fieldValue;
+    }
+  }
+
+  return result as FragnoVueStoreValue<T>;
+}
+
+// Helper function to create a Vue composable from a store
+function createVueStore<const T extends object, const TArgs extends unknown[]>(
+  hook: FragnoStoreData<T, TArgs>,
+): FragnoVueStore<T, TArgs> {
+  return ((...args: TArgs) => {
+    const value = "factory" in hook ? hook.factory(...args) : hook.obj;
+    const disposer = value[Symbol.dispose as keyof typeof value];
+
+    if (typeof disposer === "function" && getCurrentScope()) {
+      onScopeDispose(() => {
+        disposer.call(value);
+      });
+    }
+
+    return unwrapVueStoreValue(value);
+  }) as FragnoVueStore<T, TArgs>;
 }
 
 export function useFragno<T extends Record<string, unknown>>(
@@ -240,9 +263,11 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
-      : T[K] extends FragnoStoreData<infer TStoreObj>
-        ? FragnoVueStore<TStoreObj>
-        : T[K];
+      : T[K] extends FragnoStoreObjectData<infer TStoreObj>
+        ? FragnoVueStore<TStoreObj, []>
+        : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
+          ? FragnoVueStore<TStoreObj, TStoreArgs>
+          : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any;
