@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchUploadConfig, fetchUploadFiles } from "./data";
 import { loader } from "./files";
 
+vi.mock("@base-ui/react", () => ({
+  Collapsible: {},
+  Progress: {},
+}));
+
 vi.mock("@/components/backoffice", () => ({
   formatBytes: vi.fn(),
 }));

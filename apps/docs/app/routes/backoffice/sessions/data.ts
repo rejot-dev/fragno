@@ -3,10 +3,9 @@ import type { RouterContextProvider } from "react-router";
 import type {
   createPiFragment,
   PiSession,
+  PiSessionDetail,
   PiSessionStatus,
-  PiTurnSummary,
 } from "@fragno-dev/pi-fragment";
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { PiConfigState } from "@/fragno/pi-shared";
 
@@ -14,17 +13,6 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
 type PiFragment = ReturnType<typeof createPiFragment>;
-
-type PiSessionDetail = PiSession & {
-  workflow: {
-    status: PiSessionStatus;
-    error?: { name: string; message: string };
-    output?: unknown;
-  };
-  messages: AgentMessage[];
-  trace: AgentEvent[];
-  summaries: PiTurnSummary[];
-};
 
 const createPiRouteCaller = (
   request: Request,

@@ -8,6 +8,15 @@ const MAX_PAGE_SIZE = 100;
 
 type WorkflowsFragment = ReturnType<typeof createWorkflowsFragment>;
 
+type WorkflowRouteErrorResponse =
+  | { type: "error"; status: number; error: { message: string } }
+  | { type: "empty"; status: number }
+  | { type: "jsonStream"; status: number };
+
+type WorkflowRouteResponse<T> =
+  | { type: "json"; status: number; data: T }
+  | WorkflowRouteErrorResponse;
+
 export const WORKFLOW_ORG_FRAGMENTS = ["pi"] as const;
 export type WorkflowOrgFragment = (typeof WORKFLOW_ORG_FRAGMENTS)[number];
 export type WorkflowInstanceStatus = InstanceStatus["status"];
@@ -95,6 +104,47 @@ export type WorkflowInstanceDetails = {
   };
 };
 
+type WorkflowListResponse = {
+  workflows: Array<{ name: string }>;
+};
+
+type WorkflowInstancesResponse = {
+  instances: Array<{
+    id: string;
+    details: InstanceStatus;
+    createdAt?: string | Date | null;
+  }>;
+};
+
+type WorkflowInstanceResponse = Pick<WorkflowInstanceDetails, "id" | "details" | "meta">;
+type WorkflowHistoryResponse = WorkflowInstanceDetails["history"];
+
+type WorkflowsRouteCaller = {
+  (method: "GET", path: "/"): Promise<WorkflowRouteResponse<WorkflowListResponse>>;
+  (
+    method: "GET",
+    path: "/:workflowName/instances",
+    options: {
+      pathParams: { workflowName: string };
+      query: { pageSize: string };
+    },
+  ): Promise<WorkflowRouteResponse<WorkflowInstancesResponse>>;
+  (
+    method: "GET",
+    path: "/:workflowName/instances/:instanceId",
+    options: {
+      pathParams: { workflowName: string; instanceId: string };
+    },
+  ): Promise<WorkflowRouteResponse<WorkflowInstanceResponse>>;
+  (
+    method: "GET",
+    path: "/:workflowName/instances/:instanceId/history",
+    options: {
+      pathParams: { workflowName: string; instanceId: string };
+    },
+  ): Promise<WorkflowRouteResponse<WorkflowHistoryResponse>>;
+};
+
 export class WorkflowApiError extends Error {
   status: number;
 
@@ -136,19 +186,15 @@ const createWorkflowsRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  fragment: WorkflowOrgFragment,
-) => {
-  switch (fragment) {
-    case "pi": {
-      const piDo = getPiDurableObject(context, orgId);
-      return createRouteCaller<WorkflowsFragment>({
-        baseUrl: request.url,
-        mountRoute: "/api/workflows",
-        baseHeaders: request.headers,
-        fetch: piDo.fetch.bind(piDo),
-      });
-    }
-  }
+  _fragment: WorkflowOrgFragment,
+): WorkflowsRouteCaller => {
+  const piDo = getPiDurableObject(context, orgId);
+  return createRouteCaller<WorkflowsFragment>({
+    baseUrl: request.url,
+    mountRoute: "/api/workflows",
+    baseHeaders: request.headers,
+    fetch: piDo.fetch.bind(piDo),
+  }) as unknown as WorkflowsRouteCaller;
 };
 
 const toApiError = (
@@ -189,9 +235,9 @@ export async function loadWorkflowInstanceSummaries(options: {
     throw toApiError(workflowsResponse, "Failed to load workflows");
   }
 
-  const workflows = workflowsResponse.data.workflows.map((entry) => entry.name);
+  const workflows = workflowsResponse.data.workflows.map((entry: { name: string }) => entry.name);
   const instancePages = await Promise.all(
-    workflows.map(async (workflowName) => {
+    workflows.map(async (workflowName: string) => {
       const response = await callRoute("GET", "/:workflowName/instances", {
         pathParams: { workflowName },
         query: { pageSize: String(pageSize) },
@@ -211,14 +257,20 @@ export async function loadWorkflowInstanceSummaries(options: {
       return {
         workflowName,
         warning: null,
-        items: response.data.instances.map((instance) => ({
-          fragment: options.fragment,
-          workflowName,
-          instanceId: instance.id,
-          status: instance.details.status,
-          createdAt: instance.createdAt ?? null,
-          error: instance.details.error,
-        })),
+        items: response.data.instances.map(
+          (instance: {
+            id: string;
+            details: InstanceStatus;
+            createdAt?: string | Date | null;
+          }) => ({
+            fragment: options.fragment,
+            workflowName,
+            instanceId: instance.id,
+            status: instance.details.status,
+            createdAt: instance.createdAt ?? null,
+            error: instance.details.error,
+          }),
+        ),
       };
     }),
   );

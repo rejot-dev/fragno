@@ -34,7 +34,8 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),
-  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt)
+  index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt),
+  index("idx_fragno_hooks_idx_namespace_created_at_e489a066").on(table.namespace, table.createdAt, table.id)
 ])
 
 export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
@@ -261,7 +262,8 @@ export const oauthState_auth = mysqlTable("oauthState_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   expiresAt: datetime("expiresAt").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  sessionSeed: json("sessionSeed")
 }, (table) => [
   foreignKey({
     columns: [table.linkUserId],
@@ -410,7 +412,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 31
+  schemaVersion: 33
 }
 
 // ============================================================================
