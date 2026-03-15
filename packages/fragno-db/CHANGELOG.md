@@ -1,5 +1,68 @@
 # @fragno-dev/db
 
+## 0.4.0
+
+### Minor Changes
+
+- 8a96998: feat: allow altering existing columns to become nullable
+
+### Patch Changes
+
+- 3e2ff94: feat: register schemas via adapter registry and mount internal routes
+- f34d7d7: fix: ensure cross-schema durable hook enqueuing works reliably
+- 4d141f8: fix: remove development exports from published packages
+- c8841b5: feat: add callServices helper with implicit request context
+- ae54a60: fix: add browser-safe db entry and rewrite sync command imports for browser builds
+- 7dd7055: feat: remove deps.db and add db-time helpers on builders
+- e178bf4: fix: treat missing left-joined relations as null/[]
+- d2f68ba: feat: add db now offsets and interval helpers
+- 75191db: fix: return fresh DO SQL connections per acquire
+- d395ad2: fix: improve durable hook claiming and wake scheduling
+- 75407f3: feat: add durable hook pagination and newest-first indexing
+- bfdd4b1: fix: skip better-sqlite3 fallback in Cloudflare workers
+- 3ffa711: fix: align dev browser exports to avoid server entry in clients
+- c2c3229: fix: ignore join-only relations in in-memory FK enforcement
+- e559425: feat: add serviceCalls helper to preserve tuple inference for service deps
+- fc5c256: fix(fragno-db): decode bigint values from SQLite blob columns
+- 93fa469: fix: replace cuid2 with a shared Web Crypto id generator
+- 14e00b1: feat: expose hook event metadata in HookContext
+- f33286c: feat: add join-only addReference foreignKey:false support
+- 95cdf95: feat: add browser-safe client exports entrypoint
+- eabdb9c: feat(db): add in-memory outbox support
+- 9eeba53: feat: add internal fragment describe metadata and adapter identity
+- 49a9f4f: feat: add internal outbox mutation log and sync request tables
+- dcba383: fix: write outbox mutation log rows during commits
+- c895c07: feat(db): add internal sync submit endpoint and idempotency
+- ed4b4a0: fix: add workerd/worker export conditions for server entry resolution
+- 1102ce0: fix: support multi-column cursor pagination for SQL adapters
+- ad2ef56: feat: move outbox opt-in to fragment options
+- 0f9b7ef: refactor: replace linked fragments with internal routes
+- 6d043ea: feat: add durable hooks runtime and dispatcher helpers
+- fe55a13: feat(db): add read tracking hooks and plan mode support
+- 01fc2cb: fix: scope db roundtrip guard to route handlers and enable by default in tests
+- 0176aa8: fix: coerce join-only left-side ids and join where aliases
+- 00f2631: feat: allow triggerHook to accept explicit hook ids
+- c13c1c1: fix: handle sqlite FK preprocessing when FK columns are added in alter-table
+- 0a6c8da: fix: stabilize sqlite recreate-table migrations
+- 7a40517: fix: stabilize schema output ordering by schema name
+- 91a2ac0: feat: add WorkflowStepTx API for step-scoped mutations
+- 7bda0b2: feat(db): add sync command registry, registration, and sync entrypoint
+- c115600: feat: widen external ids to 128 chars
+- Updated dependencies [3e2ff94]
+- Updated dependencies [f34d7d7]
+- Updated dependencies [4d141f8]
+- Updated dependencies [c8841b5]
+- Updated dependencies [83f6223]
+- Updated dependencies [567c3b3]
+- Updated dependencies [93fa469]
+- Updated dependencies [9eeba53]
+- Updated dependencies [2ae432c]
+- Updated dependencies [0f9b7ef]
+- Updated dependencies [f4aedad]
+- Updated dependencies [f042c9d]
+- Updated dependencies [7bda0b2]
+  - @fragno-dev/core@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes

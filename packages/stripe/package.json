@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/stripe",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": false,
   "description": "Stripe integration using Fragno",
   "keywords": [
@@ -72,7 +72,7 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "@fragno-dev/db": "^0.3.0",
+    "@fragno-dev/db": "^0.4.0",
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
