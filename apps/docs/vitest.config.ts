@@ -32,18 +32,16 @@ export default defineWorkersConfig(
       deps: {
         optimizer: {
           ssr: {
-            include: [
-              "just-bash",
-              "turndown",
-              "@mariozechner/pi-ai",
-              "@cloudflare/sandbox",
-              "@cloudflare/containers",
-            ],
+            include: ["just-bash", "@mariozechner/pi-ai", "@cloudflare/sandbox"],
           },
         },
       },
       poolOptions: {
         workers: {
+          // CI is not logged into Wrangler. Disable remote bindings so Vitest
+          // doesn't try to open a remote proxy session for the dispatch
+          // namespace configured with `remote: true` in wrangler.jsonc.
+          remoteBindings: false,
           wrangler: { configPath: "./wrangler.jsonc" },
         },
       },
