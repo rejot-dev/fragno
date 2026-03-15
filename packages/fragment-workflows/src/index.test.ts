@@ -7,6 +7,7 @@ import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
 import {
   NonRetryableError,
+  WaitForEventTimeoutError,
   defineWorkflow,
   type WorkflowEvent,
   type WorkflowStep,
@@ -159,6 +160,16 @@ describe("Workflows Fragment", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toBe("no retry");
     expect(error.name).toBe("NonRetryableError");
+  });
+
+  test("WaitForEventTimeoutError extends NonRetryableError", () => {
+    const error = new WaitForEventTimeoutError();
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(NonRetryableError);
+    expect(error).toBeInstanceOf(WaitForEventTimeoutError);
+    expect(error.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+    expect(error.name).toBe("WaitForEventTimeoutError");
   });
 
   describe("Routes", () => {

@@ -376,6 +376,13 @@ export class NonRetryableError extends Error {
   }
 }
 
+/** Thrown when a `waitForEvent` step exceeds its timeout deadline. */
+export class WaitForEventTimeoutError extends NonRetryableError {
+  constructor() {
+    super("WAIT_FOR_EVENT_TIMEOUT", "WaitForEventTimeoutError");
+  }
+}
+
 /** Durable hook payload emitted when a workflow is ready to run. */
 export type WorkflowEnqueuedHookPayload = {
   workflowName: string;
