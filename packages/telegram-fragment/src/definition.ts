@@ -1,7 +1,8 @@
 import { defineFragment } from "@fragno-dev/core";
 import { ExponentialBackoffRetryPolicy, withDatabase } from "@fragno-dev/db";
+
+import { createCommandHandlerApi } from "./command-handler-api";
 import { telegramSchema } from "./schema";
-import type { TelegramFragmentConfig, TelegramHooksMap } from "./types";
 import {
   createProcessIncomingUpdateOps,
   createTelegramServices,
@@ -9,7 +10,7 @@ import {
 } from "./services";
 import { createTelegramApi } from "./telegram-api";
 import { parseTelegramUpdate } from "./telegram-utils";
-import { createCommandHandlerApi } from "./command-handler-api";
+import type { TelegramFragmentConfig, TelegramHooksMap } from "./types";
 
 export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>(
   "telegram-fragment",

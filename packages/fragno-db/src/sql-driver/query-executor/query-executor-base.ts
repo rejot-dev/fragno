@@ -7,8 +7,8 @@
  * Simplified to remove query compilation, streaming, and batching.
  */
 
-import type { DatabaseConnection, CompiledQuery, QueryResult } from "../sql-driver";
 import type { ConnectionProvider } from "../connection/connection-provider";
+import type { DatabaseConnection, CompiledQuery, QueryResult } from "../sql-driver";
 import type { GenericSQLPlugin } from "./plugin";
 import type { QueryExecutor } from "./query-executor";
 

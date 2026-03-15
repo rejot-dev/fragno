@@ -1,3 +1,11 @@
+import type { TxResult } from "@fragno-dev/db";
+import type {
+  InstanceStatus,
+  WorkflowsFragmentServices,
+  WorkflowsHistory,
+  WorkflowsHistoryStep,
+} from "@fragno-dev/workflows";
+
 import type {
   AgentEvent,
   AgentMessage,
@@ -7,15 +15,8 @@ import type {
   ThinkingLevel,
 } from "@mariozechner/pi-agent-core";
 import type { Api, ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
-import type { TxResult } from "@fragno-dev/db";
-import type {
-  InstanceStatus,
-  WorkflowsFragmentServices,
-  WorkflowsHistory,
-  WorkflowsHistoryStep,
-} from "@fragno-dev/workflows";
-import type { PiLoggerConfig } from "../debug-log";
 
+import type { PiLoggerConfig } from "../debug-log";
 import type { PiSessionStatus, PiSteeringMode } from "./constants";
 import type { PiWorkflowsRegistry } from "./workflow/workflow";
 

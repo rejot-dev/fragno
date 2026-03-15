@@ -1,7 +1,8 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router";
+
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { Cake } from "@/components/logos/cakes";
-import { Link } from "react-router";
 import {
   Select,
   SelectContent,
@@ -297,7 +298,7 @@ export function FragnoExplainer() {
               <Cake
                 variant={variant}
                 layerVariant={layerVariant}
-                className={`dark:drop-shadow-slate-600 absolute right-0 top-0 z-10 -translate-y-1/2 md:translate-x-1/4 dark:drop-shadow-md ${index === layers.length - 1 ? "size-40" : "size-24"}`}
+                className={`absolute top-0 right-0 z-10 -translate-y-1/2 md:translate-x-1/4 dark:drop-shadow-md dark:drop-shadow-slate-600 ${index === layers.length - 1 ? "size-40" : "size-24"}`}
               />
 
               {/* Card content: title, subtitle, code */}
@@ -350,15 +351,15 @@ export function FragnoExplainer() {
       <div className="flex items-end justify-center">
         <Cake
           variant="cake-full"
-          className="dark:drop-shadow-slate-600 size-48 md:size-64 dark:drop-shadow-md"
+          className="size-48 md:size-64 dark:drop-shadow-md dark:drop-shadow-slate-600"
         />
         <Cake
           variant="cake-crumbs"
-          className="dark:drop-shadow-slate-600 mr-2 size-12 md:size-16 dark:drop-shadow-md"
+          className="mr-2 size-12 md:size-16 dark:drop-shadow-md dark:drop-shadow-slate-600"
         />
         <Cake
           variant="cake-slice"
-          className="dark:drop-shadow-slate-600 size-32 translate-y-4 md:size-44 md:translate-y-6 dark:drop-shadow-md"
+          className="size-32 translate-y-4 md:size-44 md:translate-y-6 dark:drop-shadow-md dark:drop-shadow-slate-600"
         />
       </div>
     </section>

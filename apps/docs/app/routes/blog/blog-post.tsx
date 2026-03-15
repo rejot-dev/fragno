@@ -1,16 +1,18 @@
-import type { Route } from "./+types/blog-post";
-import { Link } from "react-router";
-import { blogSource } from "@/lib/source";
-import { cn } from "@/lib/cn";
-import { ArrowLeft, Calendar, User, Check, Link as LinkIcon } from "lucide-react";
-import { LevelProvider } from "@/components/levels-context";
-import { LevelSlider } from "@/components/level-slider";
-import { useEffect, useMemo, useState } from "react";
-import { useCopyButton } from "fumadocs-ui/utils/use-copy-button";
-import { TwitterXLogo } from "@/components/logos/twitter-x";
-import type { ComponentPropsWithoutRef } from "react";
 import browserCollections from "fumadocs-mdx:collections/browser";
+import { useCopyButton } from "fumadocs-ui/utils/use-copy-button";
+import { ArrowLeft, Calendar, User, Check, Link as LinkIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { ComponentPropsWithoutRef } from "react";
+import { Link } from "react-router";
+
+import { LevelSlider } from "@/components/level-slider";
+import { LevelProvider } from "@/components/levels-context";
+import { TwitterXLogo } from "@/components/logos/twitter-x";
+import { cn } from "@/lib/cn";
 import { getMDXComponents } from "@/lib/mdx-components";
+import { blogSource } from "@/lib/source";
+
+import type { Route } from "./+types/blog-post";
 
 export async function loader({ params }: Route.LoaderArgs) {
   const page = blogSource.getPage([params.slug]);
@@ -131,7 +133,7 @@ function CustomTOC({ items }: { items: TocItem[] }) {
                   <span className="absolute inset-0 rounded-sm border border-gray-300 dark:border-gray-600" />
                   <span className="h-2 w-2 rotate-45 rounded-sm bg-gray-300 transition-colors group-hover:bg-gray-900 dark:bg-gray-600 dark:group-hover:bg-white" />
                 </span>
-                <span className="whitespace-normal break-words leading-snug">{label}</span>
+                <span className="leading-snug break-words whitespace-normal">{label}</span>
               </a>
               {node.items && node.items.length > 0 ? renderItems(node.items) : null}
             </li>
@@ -259,7 +261,7 @@ const clientLoader = browserCollections.blog.createClientLoader<Record<string, n
                 backgroundSize: "24px 24px",
               }}
             />
-            <div className="pointer-events-none absolute -right-8 top-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/60 dark:border-white/10" />
+            <div className="pointer-events-none absolute top-8 -right-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/60 dark:border-white/10" />
 
             <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
               <Link
@@ -330,8 +332,8 @@ const clientLoader = browserCollections.blog.createClientLoader<Record<string, n
                   {/* Table of Contents */}
                   {toc.length > 0 && (
                     <div className="card-shell relative overflow-hidden rounded-2xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-900/40">
-                      <div className="pointer-events-none absolute right-4 top-4 h-6 w-6 rotate-45 border border-gray-200/60 dark:border-white/10" />
-                      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">
+                      <div className="pointer-events-none absolute top-4 right-4 h-6 w-6 rotate-45 border border-gray-200/60 dark:border-white/10" />
+                      <h3 className="mb-4 text-xs font-semibold tracking-wider text-gray-700 uppercase dark:text-gray-200">
                         Table of contents
                       </h3>
                       <div className="max-h-[40vh] overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -343,9 +345,9 @@ const clientLoader = browserCollections.blog.createClientLoader<Record<string, n
 
                   {frontmatter.author ? (
                     <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-800/60">
-                      <div className="pointer-events-none absolute -left-6 -top-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
-                      <div className="pointer-events-none absolute bottom-0 right-6 h-10 w-10 rotate-12 border-b border-r border-gray-200/60 dark:border-white/10" />
-                      <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
+                      <div className="pointer-events-none absolute -top-6 -left-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
+                      <div className="pointer-events-none absolute right-6 bottom-0 h-10 w-10 rotate-12 border-r border-b border-gray-200/60 dark:border-white/10" />
+                      <h3 className="mb-4 text-sm font-semibold tracking-wider text-gray-900 uppercase dark:text-white">
                         Stay connected
                       </h3>
                       <div className="mb-4 flex items-center gap-3">
@@ -366,9 +368,9 @@ const clientLoader = browserCollections.blog.createClientLoader<Record<string, n
                     </div>
                   ) : (
                     <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-800/60">
-                      <div className="pointer-events-none absolute -left-6 -top-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
-                      <div className="pointer-events-none absolute bottom-0 right-6 h-10 w-10 rotate-12 border-b border-r border-gray-200/60 dark:border-white/10" />
-                      <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
+                      <div className="pointer-events-none absolute -top-6 -left-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
+                      <div className="pointer-events-none absolute right-6 bottom-0 h-10 w-10 rotate-12 border-r border-b border-gray-200/60 dark:border-white/10" />
+                      <h3 className="mb-4 text-sm font-semibold tracking-wider text-gray-900 uppercase dark:text-white">
                         Share
                       </h3>
                       <Control url={postUrl} />

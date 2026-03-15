@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useSession, signOut } from "@/lib/auth/client";
+
 import { Button } from "@/components/ui/button";
+import { useSession, signOut } from "@/lib/auth/client";
 
 export default function Header() {
   const { data: session } = useSession();
@@ -30,7 +31,7 @@ export default function Header() {
               {session.user.name}
             </Link>
             <div className="flex items-center gap-1 rounded-lg bg-gray-700/50 px-3 py-1.5 ring-1 ring-gray-600/50">
-              <span className="text-xs font-medium uppercase tracking-wider text-gray-400">
+              <span className="text-xs font-medium tracking-wider text-gray-400 uppercase">
                 Admin
               </span>
               <div className="mx-1 h-4 w-px bg-gray-600"></div>

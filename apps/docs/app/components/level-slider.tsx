@@ -1,7 +1,8 @@
 "use client";
 
-import { useLevelContext } from "./levels-context";
 import { cn } from "@/lib/cn";
+
+import { useLevelContext } from "./levels-context";
 
 const LEVELS = [
   { value: 1, label: "Detailed" },
@@ -14,11 +15,11 @@ export function LevelSlider() {
 
   return (
     <div className="relative mb-8 overflow-hidden rounded-2xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-900/40">
-      <div className="pointer-events-none absolute right-4 top-4 h-6 w-6 rotate-45 border border-gray-200/60 dark:border-white/10" />
+      <div className="pointer-events-none absolute top-4 right-4 h-6 w-6 rotate-45 border border-gray-200/60 dark:border-white/10" />
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">
+          <h3 className="text-sm font-semibold tracking-wider text-gray-700 uppercase dark:text-gray-200">
             Reading Level
           </h3>
           <span className="text-xs text-gray-500 dark:text-gray-400">

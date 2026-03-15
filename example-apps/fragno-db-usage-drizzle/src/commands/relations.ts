@@ -1,4 +1,5 @@
 import type { Command } from "gunshi";
+
 import * as repo from "../repository";
 
 const testAuthRelationsCommand: Command = {

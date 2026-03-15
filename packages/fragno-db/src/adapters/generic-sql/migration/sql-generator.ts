@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   type ColumnDefinitionBuilder,
   type CompiledQuery,
@@ -6,17 +8,17 @@ import {
   type RawBuilder,
   sql,
 } from "kysely";
-import { createHash } from "node:crypto";
+
+import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 import type {
   ColumnInfo,
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
+import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
-import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;

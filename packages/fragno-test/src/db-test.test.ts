@@ -1,9 +1,12 @@
 import { assert, describe, expect, it } from "vitest";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { withDatabase } from "@fragno-dev/db";
-import { defineFragment, instantiate } from "@fragno-dev/core";
+
 import { defineRoute } from "@fragno-dev/core/route";
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { z } from "zod";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { withDatabase } from "@fragno-dev/db";
+
 import { buildDatabaseFragmentsTest } from "./db-test";
 
 // Test schema with users table

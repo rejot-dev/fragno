@@ -1,8 +1,9 @@
-import { defineWorkflow } from "@fragno-dev/workflows";
 import { z } from "zod";
 
-import type { WorkflowUsageDslState } from "./dsl";
+import { defineWorkflow } from "@fragno-dev/workflows";
+
 import { workflowUsageHooks } from "./definition";
+import type { WorkflowUsageDslState } from "./dsl";
 import { workflowUsageSchema } from "./schema";
 
 export const INTERNAL_WORKFLOW_NAME = "usage-agent-workflow";

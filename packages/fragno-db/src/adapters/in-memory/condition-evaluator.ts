@@ -1,13 +1,13 @@
+import type { NamingResolver } from "../../naming/sql-naming";
 import type { Condition } from "../../query/condition-builder";
-import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
+import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
+import { resolveReferenceSubquery } from "./reference-resolution";
 import type { InMemoryNamespaceStore, InMemoryRow } from "./store";
 import { normalizeIndexValue } from "./store";
-import { resolveReferenceSubquery } from "./reference-resolution";
 import { compareNormalizedValues } from "./value-comparison";
-import type { NamingResolver } from "../../naming/sql-naming";
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;

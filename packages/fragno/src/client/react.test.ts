@@ -1,16 +1,19 @@
 import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+
 import { atom, computed, type ReadableAtom } from "nanostores";
 import { StrictMode, createElement } from "react";
 import { z } from "zod";
-import { createClientBuilder } from "./client";
-import { useFragno, useStore, type FragnoReactStore } from "./react";
-import { defineRoute } from "../api/route";
+
+import type { FetcherStore } from "@nanostores/query";
+import { renderHook, act, waitFor } from "@testing-library/react";
+
 import { defineFragment } from "../api/fragment-definition-builder";
+import { RequestOutputContext } from "../api/request-output-context";
+import { defineRoute } from "../api/route";
+import { createClientBuilder } from "./client";
 import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientFetchNetworkError, type FragnoClientError } from "./client-error";
-import { RequestOutputContext } from "../api/request-output-context";
-import type { FetcherStore } from "@nanostores/query";
+import { useFragno, useStore, type FragnoReactStore } from "./react";
 
 // Mock fetch globally
 global.fetch = vi.fn();

@@ -1,8 +1,8 @@
-import type { AnyColumn } from "../../../schema/create";
-import { SQLSerializer } from "../sql-serializer";
 import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../../../adapters/generic-sql/sqlite-storage";
 import { sqliteStorageDefault } from "../../../adapters/generic-sql/sqlite-storage";
+import type { AnyColumn } from "../../../schema/create";
+import { SQLSerializer } from "../sql-serializer";
 
 const SQLITE_UTC_TIMESTAMP_REGEX =
   /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;

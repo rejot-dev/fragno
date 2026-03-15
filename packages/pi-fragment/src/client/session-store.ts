@@ -1,13 +1,14 @@
 import { atom, computed, onMount, type ReadableAtom } from "nanostores";
+
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
+import type { PiSessionStatus } from "../pi/constants";
 import type {
   PiActiveSessionProtocolMessage,
   PiAgentLoopPhase,
   PiAgentLoopWaitingFor,
   PiSessionDetail,
 } from "../pi/types";
-import type { PiSessionStatus } from "../pi/constants";
 
 type QueryStoreValue<T> = {
   loading: boolean;

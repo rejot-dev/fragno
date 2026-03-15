@@ -1,6 +1,7 @@
-import { createCommentFragment } from "@fragno-dev/fragno-db-library";
-import { adapter } from "../fragno-adapter";
 import type { DatabaseAdapter } from "@fragno-dev/db";
+import { createCommentFragment } from "@fragno-dev/fragno-db-library";
+
+import { adapter } from "../fragno-adapter";
 
 // oxlint-disable-next-line no-explicit-any
 export function createCommentFragmentServer(a: DatabaseAdapter<any>) {

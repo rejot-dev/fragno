@@ -1,6 +1,7 @@
 import type { CellProps, RankedTester, WithClassname } from "@jsonforms/core";
 import { isBooleanControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsCellProps } from "@jsonforms/react";
+
 import { ShadcnCheckbox } from "../shadcn-controls/ShadcnCheckbox";
 
 export const ShadcnBooleanCell = (props: CellProps & WithClassname) => {

@@ -1,11 +1,13 @@
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
+
+import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 import {
-  fragnoDatabaseAdapterNameFakeSymbol,
-  fragnoDatabaseAdapterVersionFakeSymbol,
-  type DatabaseAdapter,
-  type DatabaseContextStorage,
-} from "../adapters";
-import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
+  createNamingResolver,
+  suffixNamingStrategy,
+  type SqlNamingStrategy,
+} from "../../naming/sql-naming";
+import type { CursorResult } from "../../query/cursor";
+import { dbInterval, dbNow, type DbIntervalInput, type DbInterval } from "../../query/db-now";
 import type {
   SimpleQueryInterface,
   TableToUpdateValues,
@@ -14,30 +16,29 @@ import type {
   ExtractSelect,
   SelectClause,
 } from "../../query/simple-query-interface";
-import { dbInterval, dbNow, type DbIntervalInput, type DbInterval } from "../../query/db-now";
 import {
-  resolveInMemoryAdapterOptions,
-  type InMemoryAdapterOptions,
-  type ResolvedInMemoryAdapterOptions,
-} from "./options";
-import { createInMemoryStore, ensureNamespaceStore } from "./store";
+  UnitOfWork,
+  type UnitOfWorkConfig,
+  type FindBuilder,
+} from "../../query/unit-of-work/unit-of-work";
+import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
+import {
+  fragnoDatabaseAdapterNameFakeSymbol,
+  fragnoDatabaseAdapterVersionFakeSymbol,
+  type DatabaseAdapter,
+  type DatabaseContextStorage,
+} from "../adapters";
 import {
   createInMemoryUowCompiler,
   createInMemoryUowExecutor,
   InMemoryUowDecoder,
 } from "./in-memory-uow";
 import {
-  UnitOfWork,
-  type UnitOfWorkConfig,
-  type FindBuilder,
-} from "../../query/unit-of-work/unit-of-work";
-import type { CursorResult } from "../../query/cursor";
-import {
-  createNamingResolver,
-  suffixNamingStrategy,
-  type SqlNamingStrategy,
-} from "../../naming/sql-naming";
-import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+  resolveInMemoryAdapterOptions,
+  type InMemoryAdapterOptions,
+  type ResolvedInMemoryAdapterOptions,
+} from "./options";
+import { createInMemoryStore, ensureNamespaceStore } from "./store";
 
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
   #indexName?: string;

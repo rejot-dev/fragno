@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { UniqueConstraintError } from "./errors";
 import { SortedArrayIndex } from "./sorted-array-index";
 

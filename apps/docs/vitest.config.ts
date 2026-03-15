@@ -1,7 +1,9 @@
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import { mergeConfig } from "vitest/config";
+
 import { baseConfig } from "@fragno-private/vitest-config";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));

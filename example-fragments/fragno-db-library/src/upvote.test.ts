@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { instantiate } from "@fragno-dev/core";
-import { ratingFragmentDef, ratingSyncCommands } from "./upvote";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { upvoteSchema } from "./schema/upvote";
+import { ratingFragmentDef, ratingSyncCommands } from "./upvote";
 
 describe("rating-fragment sync commands", () => {
   it("should apply rating commands", async () => {

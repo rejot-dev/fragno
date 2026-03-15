@@ -1,5 +1,5 @@
-import { cn } from "@/lib/cn";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { cn } from "@/lib/cn";
 
 type SkillCtaProps = {
   title: string;
@@ -23,7 +23,7 @@ export function SkillCta({
         className,
       )}
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
         {eyebrow}
       </p>
       <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>

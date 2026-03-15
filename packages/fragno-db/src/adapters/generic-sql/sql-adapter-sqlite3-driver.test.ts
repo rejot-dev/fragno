@@ -1,6 +1,9 @@
-import SQLite from "better-sqlite3";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
+
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
+
+import { internalSchema } from "../../fragments/internal-fragment";
 import {
   Cursor,
   createServiceTxBuilder,
@@ -8,12 +11,11 @@ import {
   ExponentialBackoffRetryPolicy,
   type DatabaseAdapter,
 } from "../../mod";
-import { SqliteDialect } from "kysely";
+import { createNamingResolver, suffixNamingStrategy } from "../../naming/sql-naming";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { BetterSQLite3DriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
-import { internalSchema } from "../../fragments/internal-fragment";
-import { createNamingResolver, suffixNamingStrategy } from "../../naming/sql-naming";
 
 describe("SqlAdapter with better-sqlite3", () => {
   const testSchema = schema("test", (s) => {

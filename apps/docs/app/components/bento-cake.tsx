@@ -1,5 +1,5 @@
-import { cn } from "@/lib/cn";
 import { Cake } from "@/components/logos/cakes";
+import { cn } from "@/lib/cn";
 
 export default function BentoCake({ className }: { className?: string }) {
   return (
@@ -7,7 +7,7 @@ export default function BentoCake({ className }: { className?: string }) {
       className={cn("mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-2", className)}
     >
       {/* Library - First on mobile, top-left on desktop */}
-      <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-6 md:order-1 dark:bg-slate-900/75">
+      <div className="flex flex-col items-center justify-center rounded-2xl border bg-white/94 p-6 md:order-1 dark:bg-slate-900/75">
         {/* Simple rows layout of three layers */}
         <div className="mb-4 flex flex-col pl-8">
           {/* Frontend */}
@@ -35,7 +35,7 @@ export default function BentoCake({ className }: { className?: string }) {
       </div>
 
       {/* Fragment - Second on mobile, bottom-left on desktop */}
-      <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-6 text-center md:order-3 dark:bg-slate-900/75">
+      <div className="flex flex-col items-center justify-center rounded-2xl border bg-white/94 p-6 text-center md:order-3 dark:bg-slate-900/75">
         <Cake variant="cake-slice" className="mx-auto size-48" />
         <h3 className="mb-4 text-xl font-bold">Fragno Fragments</h3>
         <p className="text-s text-fd-muted-foreground">
@@ -44,7 +44,7 @@ export default function BentoCake({ className }: { className?: string }) {
       </div>
 
       {/* Application - Third on mobile, right column on desktop */}
-      <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-8 md:order-2 md:row-span-2 dark:bg-slate-900/75">
+      <div className="flex flex-col items-center justify-center rounded-2xl border bg-white/94 p-8 md:order-2 md:row-span-2 dark:bg-slate-900/75">
         <div className="space-y-4 text-center">
           <div className="text-gray-600 dark:text-gray-400">
             <Cake variant="cake-full" className="mx-auto size-72" />

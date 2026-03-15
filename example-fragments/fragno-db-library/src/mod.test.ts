@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { commentFragmentDef, commentSyncCommands } from "./mod";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { commentFragmentDef, commentSyncCommands } from "./mod";
 
 describe("comment-fragment", () => {
   it("should run queries", async () => {

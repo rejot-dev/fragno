@@ -1,10 +1,10 @@
-import type { DriverConfig } from "../driver-config";
 import type { NamingResolver } from "../../../naming/sql-naming";
+import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
-import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
-import { PostgreSQLQueryCompiler } from "./dialect/postgres";
 import { MySQLQueryCompiler } from "./dialect/mysql";
+import { PostgreSQLQueryCompiler } from "./dialect/postgres";
 import { SQLiteQueryCompiler } from "./dialect/sqlite";
+import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
 
 /**
  * Factory function to create a dialect-specific SQL query compiler.

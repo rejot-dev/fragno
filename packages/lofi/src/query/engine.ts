@@ -1,13 +1,14 @@
-import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
+import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import { FindBuilder } from "@fragno-dev/db/unit-of-work";
 import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
-import type { LofiQueryInterface } from "../types";
+
 import type { ReferenceTarget } from "../indexeddb/types";
-import { normalizeValue } from "./normalize";
+import type { LofiQueryInterface } from "../types";
 import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";
+import { normalizeValue } from "./normalize";
 
 const ROWS_STORE = "lofi_rows";
 const INDEX_SCHEMA_TABLE = "idx_schema_table";

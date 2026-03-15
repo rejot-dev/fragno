@@ -8,9 +8,10 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
-import { FragmentSubnav } from "@/components/fragment-subnav";
 import type { ReactNode } from "react";
+
+import { FragmentSubnav } from "@/components/fragment-subnav";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
   return [
@@ -130,7 +131,7 @@ export default function AuthPage() {
               auth stack.
             </p>
             <div className="max-w-md space-y-2 pt-3">
-              <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+              <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                 Install
               </p>
               <FragnoCodeBlock

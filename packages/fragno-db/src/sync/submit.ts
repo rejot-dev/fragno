@@ -1,5 +1,5 @@
-import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import type { OutboxEntry } from "../outbox/outbox";
+import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import type { SubmitResponse, SubmitConflictReason, SyncCommandDefinition } from "./types";
 
 export const DEFAULT_MAX_COMMANDS_PER_SUBMIT = 100;

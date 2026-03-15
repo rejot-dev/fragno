@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryAdapter } from "@fragno-dev/db";
+
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { ModelCheckerAdapter } from "./model-checker-adapter";
+
+import { InMemoryAdapter } from "@fragno-dev/db";
+
 import { runModelCheckerWithActors } from "./model-checker-actors";
+import { ModelCheckerAdapter } from "./model-checker-adapter";
 
 const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),

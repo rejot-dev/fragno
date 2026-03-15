@@ -1,4 +1,5 @@
 import superjson from "superjson";
+
 import type { LofiAdapter, LofiSubmitCommand } from "../types";
 
 export type SubmitQueue = LofiSubmitCommand[];

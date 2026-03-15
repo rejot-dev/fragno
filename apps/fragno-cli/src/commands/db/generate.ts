@@ -1,7 +1,9 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import { define } from "gunshi";
+
 import { generateSchemaArtifacts } from "@fragno-dev/db/generation-engine";
+import { define } from "gunshi";
+
 import { importFragmentFiles } from "../../utils/find-fragno-databases";
 
 // Define the db generate command with type safety

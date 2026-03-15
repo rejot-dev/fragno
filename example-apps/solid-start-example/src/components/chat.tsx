@@ -1,5 +1,4 @@
 import { createChatnoClient } from "@fragno-dev/chatno/solid";
-
 import { createSignal, Show } from "solid-js";
 
 export function Chat() {
@@ -27,7 +26,7 @@ export function Chat() {
 
       <Show when={response()}>
         <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-600">Response</p>
+          <p class="mb-2 text-xs font-medium tracking-wide text-gray-600 uppercase">Response</p>
           <div class="whitespace-pre-wrap text-gray-900">{response()}</div>
         </div>
       </Show>
@@ -50,14 +49,14 @@ export function Chat() {
           value={message()}
           onInput={(e) => setMessage(e.currentTarget.value)}
           placeholder="Type your message here..."
-          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
           rows={4}
           disabled={responseLoading()}
         />
         <button
           onClick={handleSubmitMessage}
           disabled={!message().trim() || responseLoading()}
-          class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Show when={responseLoading()} fallback="Send Message">
             Sending...

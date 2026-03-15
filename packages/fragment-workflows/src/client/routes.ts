@@ -1,5 +1,6 @@
-import { defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
+
+import { defineRoutes } from "@fragno-dev/core";
 
 const identifierSchema = z
   .string()

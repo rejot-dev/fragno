@@ -1,5 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
+
 import { column, FragnoId, idColumn, referenceColumn, schema } from "../schema/create";
+import type { ConditionBuilder } from "./condition-builder";
 import type {
   SimpleQueryInterface,
   FindFirstOptions,
@@ -9,7 +11,6 @@ import type {
   SelectClause,
   TableToInsertValues,
 } from "./simple-query-interface";
-import type { ConditionBuilder } from "./condition-builder";
 
 describe("query type tests", () => {
   // Create test schema

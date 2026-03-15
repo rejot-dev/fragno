@@ -1,5 +1,6 @@
 import { Progress } from "@base-ui/react/progress";
 import { Tabs } from "@base-ui/react/tabs";
+
 import { cn } from "@/lib/utils";
 
 export type WizardStep = {
@@ -34,7 +35,7 @@ export function WizardStepper({
   return (
     <div className="space-y-3">
       <Progress.Root value={progressValue} className="space-y-2">
-        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <div className="flex items-center justify-between text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           <Progress.Label>Progress</Progress.Label>
           <Progress.Value className="text-[var(--bo-muted)]" />
         </div>
@@ -64,7 +65,7 @@ export function WizardStepper({
                 )}
                 aria-current={index === clampedStep ? "step" : undefined}
               >
-                <span className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                <span className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                   Step {index + 1}
                 </span>
                 <span className="mt-2 block text-sm font-semibold text-[var(--bo-fg)]">
@@ -84,7 +85,7 @@ export function WizardStepper({
             <div className="space-y-2">
               {step.description ? <p>{step.description}</p> : null}
               {step.helper ? (
-                <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                   {step.helper}
                 </p>
               ) : null}

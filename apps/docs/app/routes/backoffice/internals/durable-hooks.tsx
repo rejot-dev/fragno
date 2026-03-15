@@ -1,4 +1,5 @@
 import { Link, useNavigate, useOutletContext } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -31,7 +32,7 @@ export default function BackofficeDurableHooksLanding() {
         actions={
           <Link
             to="/backoffice/internals"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to internals
           </Link>
@@ -39,7 +40,7 @@ export default function BackofficeDurableHooksLanding() {
       />
 
       <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">Scopes</p>
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Scopes</p>
         <section className="grid gap-3 md:grid-cols-3">
           <div
             role="button"
@@ -55,7 +56,7 @@ export default function BackofficeDurableHooksLanding() {
             className="flex h-full cursor-pointer flex-col border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] p-4 shadow-[0_0_0_1px_rgba(var(--bo-accent-rgb),0.25)] transition-colors hover:border-[color:var(--bo-accent-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
           >
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Singleton
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Singleton</h2>
@@ -67,7 +68,7 @@ export default function BackofficeDurableHooksLanding() {
               <Link
                 to="/backoffice/internals/durable-hooks/singletons"
                 onClick={(event) => event.stopPropagation()}
-                className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 Auth
               </Link>
@@ -109,7 +110,7 @@ export default function BackofficeDurableHooksLanding() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                      <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                         {organization.slug}
                       </p>
                       <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -122,49 +123,49 @@ export default function BackofficeDurableHooksLanding() {
                     <Link
                       to={cloudflarePath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Workers
                     </Link>
                     <Link
                       to={telegramPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Telegram
                     </Link>
                     <Link
                       to={resendPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Resend
                     </Link>
                     <Link
                       to={githubPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       GitHub
                     </Link>
                     <Link
                       to={uploadPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Upload
                     </Link>
                     <Link
                       to={piPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Pi
                     </Link>
                     <Link
                       to={workflowsPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Workflows
                     </Link>

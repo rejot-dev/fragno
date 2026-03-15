@@ -1,12 +1,13 @@
-import type { FragnoRuntime } from "@fragno-dev/core";
 import {
   runWithTraceRecorder,
   type FragnoCoreTraceEvent,
 } from "@fragno-dev/core/internal/trace-context";
-import { FragnoId, FragnoReference, type AnySchema } from "@fragno-dev/db/schema";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
-import type { TypedUnitOfWork } from "@fragno-dev/db";
+import { FragnoId, FragnoReference, type AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
+
+import type { FragnoRuntime } from "@fragno-dev/core";
+import type { TypedUnitOfWork } from "@fragno-dev/db";
 
 export type ModelCheckerMode = "exhaustive" | "bounded-exhaustive" | "random" | "infinite";
 export type ModelCheckerPhase = "retrieve" | "mutate";

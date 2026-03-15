@@ -1,10 +1,26 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { type FragnoRouteConfig, type HTTPMethod, type RequestThisContext } from "./api";
-import { FragnoApiError } from "./error";
-import { getMountRoute } from "./internal/route";
 import { addRoute, createRouter, findRoute } from "rou3";
-import { RequestInputContext, type RequestBodyType } from "./request-input-context";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
+import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
+import { recordTraceEvent } from "../internal/trace-context";
+import type { InferOrUnknown } from "../util/types-util";
+import { type FragnoRouteConfig, type HTTPMethod, type RequestThisContext } from "./api";
+import { bindServicesToContext, type BoundServices } from "./bind-services";
+import { FragnoApiError } from "./error";
+import type { FragmentDefinition } from "./fragment-definition-builder";
+import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
 import type { ExtractPathParams } from "./internal/path";
+import { getMountRoute } from "./internal/route";
+import { MutableRequestState } from "./mutable-request-state";
+import { RequestContextStorage } from "./request-context-storage";
+import { RequestInputContext, type RequestBodyType } from "./request-input-context";
+import {
+  RequestMiddlewareInputContext,
+  RequestMiddlewareOutputContext,
+  type FragnoMiddlewareCallback,
+} from "./request-middleware";
 import { RequestOutputContext } from "./request-output-context";
 import {
   type AnyFragnoRouteConfig,
@@ -12,22 +28,8 @@ import {
   type FlattenRouteFactories,
   resolveRouteFactories,
 } from "./route";
-import {
-  RequestMiddlewareInputContext,
-  RequestMiddlewareOutputContext,
-  type FragnoMiddlewareCallback,
-} from "./request-middleware";
-import { MutableRequestState } from "./mutable-request-state";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
-import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
-import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
-import type { InferOrUnknown } from "../util/types-util";
-import type { FragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./shared-types";
-import { RequestContextStorage } from "./request-context-storage";
-import { bindServicesToContext, type BoundServices } from "./bind-services";
-import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
-import { recordTraceEvent } from "../internal/trace-context";
 
 // Re-export types needed by consumers
 export type { BoundServices };
@@ -273,8 +275,7 @@ export class FragnoInstantiatedFragment<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
-> implements IFragnoInstantiatedFragment
-{
+> implements IFragnoInstantiatedFragment {
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
   // Private fields
@@ -1368,8 +1369,7 @@ export class FragmentInstantiationBuilder<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TInternalRoutes extends readonly AnyRouteOrFactory[],
-> implements IFragmentInstantiationBuilder
-{
+> implements IFragmentInstantiationBuilder {
   #definition: FragmentDefinition<
     TConfig,
     TOptions,

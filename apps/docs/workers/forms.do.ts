@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
+
+import { migrate } from "@fragno-dev/db";
+
 import type { FormsFragment } from "@/fragno/forms";
 import { createFormsServer } from "@/fragno/forms";
-import { migrate } from "@fragno-dev/db";
 
 export class Forms extends DurableObject<CloudflareEnv> {
   #state: DurableObjectState;

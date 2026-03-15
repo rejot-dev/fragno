@@ -1,19 +1,27 @@
 {
   "name": "@fragno-dev/github-app-fragment",
-  "description": "A Fragno fragment",
   "version": "0.0.1",
+  "private": true,
+  "description": "A Fragno fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "bin": {
+    "fragno-github-app": "./bin/run.js"
+  },
   "files": [
     "dist",
     "bin"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -65,18 +73,10 @@
       "default": "./dist/cli/index.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run"
-  },
-  "type": "module",
-  "private": true,
-  "bin": {
-    "fragno-github-app": "./bin/run.js"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -106,10 +106,10 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
-    "@typescript/native-preview": "catalog:",
     "vue": ">=3.0.0"
   }
 }

@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
+
 import { db } from "@/db";
 import { subscription_stripe } from "@/db/subscriptions.schema";
-import { eq } from "drizzle-orm";
 import { getPlanByStripePriceId } from "@/lib/plans";
 
 export async function getSubscriptionForUser(userId: string) {

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { createFragmentForTest, withTestUtils } from "./test";
+
+import { z } from "zod";
+
 import { defineFragment } from "../api/fragment-definition-builder";
 import { defineRoutes } from "../api/route";
-import { z } from "zod";
+import { createFragmentForTest, withTestUtils } from "./test";
 
 describe("withTestUtils extension", () => {
   it("should expose deps via services.deps", () => {

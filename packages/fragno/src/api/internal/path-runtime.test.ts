@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { buildPath, extractPathParams, matchPathParams } from "./path";
 
 describe("extractPathParams (runtime names)", () => {

@@ -1,15 +1,16 @@
 {
   "name": "@fragno-dev/fragno-db-usage-kysely",
   "private": true,
+  "type": "module",
+  "main": "./dist/node/mod.js",
+  "module": "./dist/node/mod.js",
+  "types": "./dist/node/mod.d.ts",
   "exports": {
     ".": {
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     }
   },
-  "main": "./dist/node/mod.js",
-  "module": "./dist/node/mod.js",
-  "types": "./dist/node/mod.d.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -21,7 +22,6 @@
     "db:generate": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "test": "vitest run"
   },
-  "type": "module",
   "dependencies": {
     "@electric-sql/pglite": "^0.3.15",
     "@fragno-dev/db": "workspace:*",

@@ -1,12 +1,15 @@
-import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
 import { describe, expect, test } from "vitest";
+
 import {
   createScenarioSteps,
   defineScenario,
   runScenario,
   type WorkflowScenarioStepRow,
 } from "@fragno-dev/workflows/scenario";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { withDatabase } from "@fragno-dev/db";
+
 import type { WorkflowUsageAgentDefinition } from "./dsl";
 import { workflowUsageSchema } from "./schema";
 import { dslWorkflow } from "./workflow";

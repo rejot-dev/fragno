@@ -1,19 +1,21 @@
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { SqlAdapter } from "../generic-sql/generic-sql-adapter";
-import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
+
+import { internalSchema } from "../../fragments/internal-fragment";
+import { generateSchemaArtifacts } from "../../migration-engine/generation-engine";
+import { FragnoDatabase } from "../../mod";
 import { Cursor } from "../../query/cursor";
 import {
   createHandlerTxBuilder,
   createServiceTxBuilder,
 } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
-import { internalSchema } from "../../fragments/internal-fragment";
+import { SqlAdapter } from "../generic-sql/generic-sql-adapter";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "../generic-sql/sqlite-storage";
-import { FragnoDatabase } from "../../mod";
-import { generateSchemaArtifacts } from "../../migration-engine/generation-engine";
 
 describe("SqlAdapter SQLite (prisma profile)", () => {
   const testSchema = schema("test", (s) => {

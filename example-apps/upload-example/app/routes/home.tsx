@@ -30,7 +30,7 @@ export default function Home() {
       <section className="rounded-3xl border border-slate-200/70 bg-white/80 p-8 shadow-sm">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <p className="text-xs font-semibold tracking-[0.3em] text-slate-400 uppercase">
               Fragno Upload Fragment
             </p>
             <h1 className="mt-4 text-4xl font-semibold text-slate-900">
@@ -43,12 +43,12 @@ export default function Home() {
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+            <h2 className="text-sm font-semibold tracking-[0.2em] text-slate-400 uppercase">
               Mode env vars
             </h2>
             <div className="mt-4 space-y-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                   S3-backed storage
                 </p>
                 <ul className="mt-2 space-y-2 text-sm text-slate-600">
@@ -61,7 +61,7 @@ export default function Home() {
                 </ul>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                   File storage
                 </p>
                 <ul className="mt-2 space-y-2 text-sm text-slate-600">

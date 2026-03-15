@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
+
 import { z } from "zod";
-import { dslWorkflow, INTERNAL_WORKFLOW_NAME } from "./workflow";
+
 import type { WorkflowUsageDslState } from "./dsl";
+import { dslWorkflow, INTERNAL_WORKFLOW_NAME } from "./workflow";
 
 describe("DSL Workflow", () => {
   describe("Workflow definition", () => {

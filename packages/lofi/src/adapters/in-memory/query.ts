@@ -1,15 +1,16 @@
-import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
+import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import { FindBuilder } from "@fragno-dev/db/unit-of-work";
-import type { LofiQueryInterface } from "../../types";
+
 import type { ReferenceTarget } from "../../indexeddb/types";
-import { normalizeValue } from "../../query/normalize";
 import { buildCondition, type Condition, type ConditionBuilder } from "../../query/conditions";
-import { compareNormalizedValues } from "./value-comparison";
+import { normalizeValue } from "../../query/normalize";
+import type { LofiQueryInterface } from "../../types";
 import type { InMemoryLofiRow } from "./store";
 import { InMemoryLofiStore } from "./store";
+import { compareNormalizedValues } from "./value-comparison";
 
 export type InMemoryQueryContext = {
   endpointName: string;

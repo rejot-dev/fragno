@@ -1,5 +1,6 @@
-import type { Route } from "./+types/resend";
 import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/resend";
 
 const forwardToResend = async (
   request: Request,

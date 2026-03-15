@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
+
+import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
 import { column, idColumn, schema, FragnoId, referenceColumn } from "../../schema/create";
-import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
-import { createInMemoryStore } from "./store";
 import {
   createInMemoryUowCompiler,
   createInMemoryUowExecutor,
   InMemoryUowDecoder,
 } from "./in-memory-uow";
 import { resolveInMemoryAdapterOptions, type InMemoryAdapterOptions } from "./options";
+import { createInMemoryStore } from "./store";
 
 const testSchema = schema("test", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),

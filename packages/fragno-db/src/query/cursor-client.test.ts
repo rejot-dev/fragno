@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { Cursor, createCursorFromRecord, decodeCursor } from "./cursor-client";
+
 import type { AnyColumn } from "../schema/create";
+import { Cursor, createCursorFromRecord, decodeCursor } from "./cursor-client";
 
 const ensureBase64Helpers = () => {
   const g = globalThis as typeof globalThis & {

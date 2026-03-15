@@ -1,9 +1,11 @@
 import { Plus } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { FieldCard } from "./field-card";
-import { useFormBuilder } from "./use-form-builder";
-import type { FormBuilderState, GeneratedSchemas, FieldType } from "./types";
 import { cn } from "@/lib/utils";
+
+import { FieldCard } from "./field-card";
+import type { FormBuilderState, GeneratedSchemas, FieldType } from "./types";
+import { useFormBuilder } from "./use-form-builder";
 
 export interface FormBuilderProps {
   /** Initial state for the form builder (takes precedence over defaultSchemas) */

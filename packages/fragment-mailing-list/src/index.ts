@@ -1,9 +1,11 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { instantiate } from "@fragno-dev/core";
-import { mailingListRoutesFactory } from "./routes";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { mailingListFragmentDefinition } from "./definition";
+import { mailingListRoutesFactory } from "./routes";
 
 export interface MailingListConfig {
   onSubscribe?: (email: string) => Promise<void> | void;

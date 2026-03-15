@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+
 import { createRequire } from "node:module";
+
+import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { writeAndLoadSchema } from "./test-utils";
 
 // I dunno

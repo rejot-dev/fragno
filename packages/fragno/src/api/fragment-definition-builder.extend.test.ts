@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
+
+import type { RequestThisContext } from "./api";
 import { defineFragment, FragmentDefinitionBuilder } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./shared-types";
-import type { RequestThisContext } from "./api";
 
 describe("FragmentDefinitionBuilder.extend()", () => {
   describe("basic functionality", () => {

@@ -1,8 +1,9 @@
 import { describe, test, expect } from "vitest";
-import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-compiler";
-import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
-import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
+
 import { Cursor } from "../../../query/cursor";
+import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
+import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
+import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-compiler";
 
 // Test schema with indexes
 const testSchema = schema("test", (s) => {

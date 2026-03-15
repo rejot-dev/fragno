@@ -1,16 +1,18 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE, RuleEffect } from "@jsonforms/core";
 import { JsonForms } from "@jsonforms/react";
-import { shadcnObjectControlTester, ShadcnObjectControlContext } from "./ShadcnObjectControl";
-import { ShadcnTextControlContext, shadcnTextControlTester } from "./ShadcnTextControl";
+import { render, screen, cleanup } from "@testing-library/react";
+
 import { ShadcnGroupLayoutContext, shadcnGroupLayoutTester } from "../layouts/ShadcnGroupLayout";
 import {
   ShadcnVerticalLayoutContext,
   shadcnVerticalLayoutTester,
 } from "../layouts/ShadcnVerticalLayout";
 import { createTesterContext } from "../util/test-utils";
+import { shadcnObjectControlTester, ShadcnObjectControlContext } from "./ShadcnObjectControl";
+import { ShadcnTextControlContext, shadcnTextControlTester } from "./ShadcnTextControl";
 
 const schema: JsonSchema = {
   type: "object",

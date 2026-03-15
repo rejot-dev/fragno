@@ -1,9 +1,9 @@
 import type { DriverConfig } from "../../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../../adapters/generic-sql/sqlite-storage";
-import { SQLSerializer } from "./sql-serializer";
-import { SQLiteSerializer } from "./dialect/sqlite-serializer";
-import { PostgreSQLSerializer } from "./dialect/postgres-serializer";
 import { MySQLSerializer } from "./dialect/mysql-serializer";
+import { PostgreSQLSerializer } from "./dialect/postgres-serializer";
+import { SQLiteSerializer } from "./dialect/sqlite-serializer";
+import { SQLSerializer } from "./sql-serializer";
 
 // Re-export SQLSerializer for convenience
 export { SQLSerializer } from "./sql-serializer";

@@ -7,8 +7,8 @@
  * Simplified to remove query compilation.
  */
 
-import type { DatabaseConnection } from "../sql-driver";
 import type { ConnectionProvider } from "../connection/connection-provider";
+import type { DatabaseConnection } from "../sql-driver";
 import type { GenericSQLPlugin } from "./plugin";
 import { QueryExecutorBase } from "./query-executor-base";
 

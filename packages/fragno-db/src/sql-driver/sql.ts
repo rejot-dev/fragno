@@ -1,9 +1,10 @@
-import type { CompiledQuery, Dialect } from "./sql-driver";
 import {
   sql as kyselySql,
   type QueryExecutor,
   type CompiledQuery as KyselyCompiledQuery,
 } from "kysely";
+
+import type { CompiledQuery, Dialect } from "./sql-driver";
 
 /**
  * Wrapper around Kysely's RawBuilder that provides a compile() method with a dialect parameter.

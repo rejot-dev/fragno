@@ -1,13 +1,15 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
 import { JsonFormsStateProvider } from "@jsonforms/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+
+import { initCore, TestEmitter, createTesterContext } from "../util/test-utils";
 import {
   ShadcnBooleanToggleCellContext,
   shadcnBooleanToggleCellTester,
 } from "./ShadcnBooleanToggleCell";
-import { initCore, TestEmitter, createTesterContext } from "../util/test-utils";
 
 const schema = {
   type: "object",

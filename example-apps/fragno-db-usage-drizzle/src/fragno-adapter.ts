@@ -1,7 +1,8 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { getPGLiteClient } from "./database";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 import { KyselyPGlite } from "kysely-pglite";
+
+import { getPGLiteClient } from "./database";
 
 const { dialect } = new KyselyPGlite(getPGLiteClient());
 

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StreamFn } from "@mariozechner/pi-agent-core";
+
 import { drainDurableHooks } from "@fragno-dev/test";
 
-import type { PiFragmentConfig } from "./pi/types";
-import { PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
+import type { StreamFn } from "@mariozechner/pi-agent-core";
+
 import {
   buildHarness,
   createStreamFn,
@@ -13,6 +13,8 @@ import {
   mockModel,
   type DatabaseFragmentsTest,
 } from "./pi/test-utils";
+import type { PiFragmentConfig } from "./pi/types";
+import { PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
 
 const extractAssistantText = (assistant: unknown): string => {
   if (!assistant || typeof assistant !== "object") {

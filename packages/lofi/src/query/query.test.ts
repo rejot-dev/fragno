@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -10,7 +12,7 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
-import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
 import { IndexedDbAdapter } from "../mod";
 
 const createDbName = () => `lofi-query-${Math.random().toString(16).slice(2)}`;

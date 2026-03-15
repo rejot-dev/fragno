@@ -1,5 +1,6 @@
-import type { Route } from "./+types/markdown";
 import { source } from "@/lib/source";
+
+import type { Route } from "./+types/markdown";
 
 export async function loader({ params }: Route.LoaderArgs) {
   const splat = params["*"]?.replace(/\.mdx?$/, "");

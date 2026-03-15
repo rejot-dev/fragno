@@ -1,5 +1,7 @@
-import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
+
+import { PGlite } from "@electric-sql/pglite";
+
 import { schema } from "./schema/drizzle-schema";
 
 export const pgFolder = "./fragno-db-usage.pglite" as const;

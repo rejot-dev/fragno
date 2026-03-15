@@ -1,6 +1,8 @@
+import { computed, task, type ReadableAtom, type Store } from "nanostores";
+
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { computed, task, type ReadableAtom, type Store } from "nanostores";
+
 import type {
   FragnoRouteConfig,
   HTTPMethod,
@@ -8,6 +10,7 @@ import type {
   RequestThisContext,
   RouteContentType,
 } from "../api/api";
+import type { FragmentDefinition } from "../api/fragment-definition-builder";
 import {
   buildPath,
   extractPathParams,
@@ -18,28 +21,27 @@ import {
 import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
+import {
+  type AnyRouteOrFactory,
+  type FlattenRouteFactories,
+  resolveRouteFactories,
+} from "../api/route";
 import type {
   FetcherConfig,
   FragnoFragmentSharedConfig,
   FragnoPublicClientConfig,
   FragnoPublicConfig,
 } from "../api/shared-types";
-import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
-import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
+import { unwrapObject } from "../util/nanostores";
+import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
+import type { InferOr } from "../util/types-util";
+import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
+import { mergeFetcherConfigs } from "./internal/fetcher-merge";
 import {
   handleNdjsonStreamingFirstItem,
   type NdjsonStreamingStore,
 } from "./internal/ndjson-streaming";
-import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
-import { unwrapObject } from "../util/nanostores";
-import type { FragmentDefinition } from "../api/fragment-definition-builder";
-import {
-  type AnyRouteOrFactory,
-  type FlattenRouteFactories,
-  resolveRouteFactories,
-} from "../api/route";
-import { mergeFetcherConfigs } from "./internal/fetcher-merge";
 
 /**
  * Symbols used to identify hook types

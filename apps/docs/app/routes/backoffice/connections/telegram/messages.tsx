@@ -1,5 +1,7 @@
 import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+
 import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
+
 import type { Route } from "./+types/messages";
 import { fetchTelegramChats, fetchTelegramConfig } from "./data";
 import type { TelegramLayoutContext } from "./shared";
@@ -88,12 +90,12 @@ export default function BackofficeOrganisationTelegramMessagesLayout() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Chats
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Chat overview</h2>
           </div>
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {chats.length} total
           </span>
         </div>
@@ -120,7 +122,7 @@ export default function BackofficeOrganisationTelegramMessagesLayout() {
                       {chat.type} · {chat.id}
                     </p>
                   </div>
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
                     {chat.isForum ? "Forum" : chat.type}
                   </span>
                 </div>

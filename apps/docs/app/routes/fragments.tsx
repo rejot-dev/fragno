@@ -1,5 +1,6 @@
-import { Link } from "react-router";
 import { Package, ArrowRight } from "lucide-react";
+import { Link } from "react-router";
+
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
@@ -132,13 +133,13 @@ const fragments: FragmentCard[] = [
 function StatusBadge({ status }: { status: FragmentStatus }) {
   if (status === "available") {
     return (
-      <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-300">
+      <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:border-emerald-400/30 dark:text-emerald-300">
         Available
       </span>
     );
   }
   return (
-    <span className="rounded-full border border-amber-400/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-400/30 dark:text-amber-300">
+    <span className="rounded-full border border-amber-400/30 px-3 py-1 text-xs font-semibold tracking-wide text-amber-700 uppercase dark:border-amber-400/30 dark:text-amber-300">
       Coming soon
     </span>
   );
@@ -149,7 +150,7 @@ export default function FragmentsPage() {
     <main className="relative min-h-screen">
       <div className="mx-auto max-w-6xl space-y-12 px-4 py-16 md:px-8">
         <section className="space-y-4 text-center">
-          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:text-slate-300">
+          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1 text-xs font-semibold tracking-wide text-slate-600 uppercase dark:border-white/10 dark:text-slate-300">
             <Package className="size-4" />
             First Party Fragments
           </p>
@@ -172,7 +173,7 @@ export default function FragmentsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <p
-                      className={`text-xs font-semibold uppercase tracking-wide ${fragment.accentText}`}
+                      className={`text-xs font-semibold tracking-wide uppercase ${fragment.accentText}`}
                     >
                       {fragment.category}
                     </p>
@@ -200,7 +201,7 @@ export default function FragmentsPage() {
 
                 {fragment.install && (
                   <div className="space-y-2">
-                    <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                    <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Install
                     </p>
                     <FragnoCodeBlock

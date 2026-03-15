@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+
 import type { Subject } from "@fragno-dev/corpus";
 import { getSubjects, getSubject } from "@fragno-dev/corpus";
+
 import {
   addLineNumbers,
   filterByLineRange,

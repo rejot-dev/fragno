@@ -1,5 +1,6 @@
-import type { Route } from "./+types/pi";
 import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/pi";
 
 const forwardToPi = async (
   request: Request,

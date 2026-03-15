@@ -1,7 +1,9 @@
-import { defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
-import { mailingListFragmentDefinition, type SortField } from "./definition";
+
+import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor, type Cursor } from "@fragno-dev/db";
+
+import { mailingListFragmentDefinition, type SortField } from "./definition";
 
 const sortBySchema = z.enum(["email", "subscribedAt"]);
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import superjson from "superjson";
+
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -11,11 +12,12 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import type { LofiSubmitCommandDefinition } from "../types";
-import { LofiSubmitClient } from "./client";
+import superjson from "superjson";
+
 import { IndexedDbAdapter } from "../indexeddb/adapter";
 import { LofiOverlayManager } from "../optimistic/overlay-manager";
+import type { LofiSubmitCommandDefinition } from "../types";
+import { LofiSubmitClient } from "./client";
 
 const appSchema = schema("app", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("email", column("string"))),

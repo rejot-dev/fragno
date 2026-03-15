@@ -1,12 +1,14 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { authFragmentDefinition } from "..";
-import { oauthRoutesFactory } from "./routes";
-import type { OAuthProvider, ProviderOptions } from "./types";
-import { hashPassword } from "../user/password";
 import { authSchema } from "../schema";
 import { sessionRoutesFactory } from "../session/session";
+import { hashPassword } from "../user/password";
+import { oauthRoutesFactory } from "./routes";
+import type { OAuthProvider, ProviderOptions } from "./types";
 
 const redirectURI = "http://localhost:3000/api/auth/oauth/test/callback";
 

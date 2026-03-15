@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseSchemas } from "./schema-parser";
+
 import { generateSchemas } from "./schema-generator";
+import { parseSchemas } from "./schema-parser";
 import type { GeneratedSchemas, FormBuilderState } from "./types";
 
 describe("parseSchemas", () => {

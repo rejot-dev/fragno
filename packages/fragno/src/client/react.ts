@@ -1,5 +1,3 @@
-import type { FetcherValue } from "@nanostores/query";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import {
   useCallback,
@@ -9,7 +7,20 @@ import {
   useSyncExternalStore,
   type DependencyList,
 } from "react";
+
+import type { FetcherValue } from "@nanostores/query";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { NonGetHTTPMethod } from "../api/api";
+import type {
+  ExtractPathParamsOrWiden,
+  HasPathParams,
+  MaybeExtractPathParamsOrWiden,
+  QueryParamsHint,
+} from "../api/internal/path";
+import { isReadableAtom } from "../util/nanostores";
+import { hydrateFromWindow } from "../util/ssr";
+import type { InferOr } from "../util/types-util";
 import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
 import {
   isGetHook,
@@ -20,15 +31,6 @@ import {
   type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
-import { hydrateFromWindow } from "../util/ssr";
-import type { InferOr } from "../util/types-util";
-import type {
-  ExtractPathParamsOrWiden,
-  HasPathParams,
-  MaybeExtractPathParamsOrWiden,
-  QueryParamsHint,
-} from "../api/internal/path";
-import { isReadableAtom } from "../util/nanostores";
 
 export type FragnoReactHook<
   _TMethod extends "GET",

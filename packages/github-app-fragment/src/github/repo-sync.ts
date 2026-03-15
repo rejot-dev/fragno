@@ -1,7 +1,7 @@
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 
-import type { GitHubInstallationRepository } from "./api";
 import { githubAppSchema } from "../schema";
+import type { GitHubInstallationRepository } from "./api";
 
 export type InstallationRepoRow = TableToColumnValues<
   (typeof githubAppSchema)["tables"]["installation_repo"]

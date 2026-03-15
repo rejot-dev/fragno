@@ -1,5 +1,6 @@
-import type { Route } from "./+types/forms";
 import { getFormsDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/forms";
 
 /**
  * Catch-all route that forwards all /api/forms/* requests to the Forms Durable Object.

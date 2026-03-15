@@ -1,5 +1,6 @@
-import { Form, useActionData, useNavigation } from "react-router";
 import { MessageCircleMore, Mail } from "lucide-react";
+import { Form, useActionData, useNavigation } from "react-router";
+
 import { Turnstile } from "@marsidev/react-turnstile";
 
 type ActionData = {
@@ -72,7 +73,7 @@ export function CommunitySection({ turnstileSitekey }: { turnstileSitekey: strin
                   placeholder="your@email.com"
                   required
                   disabled={isSubmitting}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800/50 dark:text-white dark:placeholder:text-gray-400"
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800/50 dark:text-white dark:placeholder:text-gray-400"
                 />
                 <button
                   type="submit"

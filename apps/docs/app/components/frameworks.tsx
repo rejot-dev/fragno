@@ -1,16 +1,17 @@
 "use client";
 
-import { cn } from "@/lib/cn";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+
 import { Astro } from "@/components/logos/frameworks/astro";
 import { Nextjs } from "@/components/logos/frameworks/nextjs";
 import { Nodejs } from "@/components/logos/frameworks/nodejs";
 import { Nuxt } from "@/components/logos/frameworks/nuxt";
 import { React as ReactLogo } from "@/components/logos/frameworks/react";
+import { Solid } from "@/components/logos/frameworks/solid";
 import { Svelte } from "@/components/logos/frameworks/svelte";
 import { Vue } from "@/components/logos/frameworks/vue";
-import { Solid } from "@/components/logos/frameworks/solid";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { cn } from "@/lib/cn";
 
 export default function Frameworks({ className }: { className?: string }) {
   const [mouseX, setMouseX] = useState(0);

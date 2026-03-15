@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createGitHubAppFragmentClients } from "./clients";
 import { createGitHubAppFragmentClient } from "../client/vanilla";
+import { createGitHubAppFragmentClients } from "./clients";
 
 describe("github-app-fragment clients", () => {
   it("creates the vanilla client wrapper", () => {

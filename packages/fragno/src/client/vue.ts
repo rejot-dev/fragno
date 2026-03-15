@@ -1,8 +1,13 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { atom, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import type { DeepReadonly, Ref, ShallowRef, UnwrapNestedRefs } from "vue";
 import { computed, getCurrentScope, isRef, onScopeDispose, ref, shallowRef, watch } from "vue";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { NonGetHTTPMethod } from "../api/api";
+import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
+import { isReadableAtom } from "../util/nanostores";
+import type { InferOr } from "../util/types-util";
 import {
   isGetHook,
   isMutatorHook,
@@ -13,10 +18,7 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import { isReadableAtom } from "../util/nanostores";
 import type { FragnoClientError } from "./client-error";
-import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
-import type { InferOr } from "../util/types-util";
 
 export type FragnoVueHook<
   _TMethod extends "GET",

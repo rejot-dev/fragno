@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+
 import type { MigrationOperation } from "../../../../migration-engine/shared";
+import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
+import { column, idColumn, schema } from "../../../../schema/create";
 import { createColdKysely } from "../cold-kysely";
 import { MySQLSQLGenerator } from "./mysql";
-import { column, idColumn, schema } from "../../../../schema/create";
-import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
 
 describe("MySQLSQLGenerator", () => {
   const coldKysely = createColdKysely("mysql");

@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copy, merge } from "./utils.ts";
-import { basePkg, buildToolPkg, databasePkg } from "./package-json.ts";
+
 import { z } from "zod";
+
+import { basePkg, buildToolPkg, databasePkg } from "./package-json.ts";
+import { copy, merge } from "./utils.ts";
 
 const templateTypesSchema = z.literal("fragment");
 export type TemplateTypes = z.infer<typeof templateTypesSchema>;

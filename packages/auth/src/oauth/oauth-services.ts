@@ -1,19 +1,20 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
-import { authSchema } from "../schema";
+
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
-import type { AnyOAuthProvider, AuthOAuthConfig, OAuth2Tokens, OAuth2UserInfo } from "./types";
-import { createOAuthState, DEFAULT_STATE_TTL_MS, normalizeOAuthConfig } from "./utils";
-import { mapUserSummary } from "../user/summary";
-import {
-  createAutoOrganization,
-  type AutoCreateOrganizationOptions,
-} from "../user/auto-organization";
+import { authSchema } from "../schema";
 import {
   normalizeSessionSeed,
   parseSessionSeed,
   resolveSessionSeedFromMembers,
   type SessionSeedInput,
 } from "../session/session-seed";
+import {
+  createAutoOrganization,
+  type AutoCreateOrganizationOptions,
+} from "../user/auto-organization";
+import { mapUserSummary } from "../user/summary";
+import type { AnyOAuthProvider, AuthOAuthConfig, OAuth2Tokens, OAuth2UserInfo } from "./types";
+import { createOAuthState, DEFAULT_STATE_TTL_MS, normalizeOAuthConfig } from "./utils";
 
 export type OAuthStateResult =
   | {

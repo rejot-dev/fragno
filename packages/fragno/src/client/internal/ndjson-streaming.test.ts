@@ -1,10 +1,13 @@
 import { describe, test, expect, vi } from "vitest";
-import { handleNdjsonStreamingFirstItem, type NdjsonStreamingStore } from "./ndjson-streaming";
-import { FragnoClientError, FragnoClientFetchAbortError } from "../client-error";
-import { nanoquery } from "@nanostores/query";
+
 import { z } from "zod";
+
+import { nanoquery } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import { createAsyncIteratorFromCallback } from "../../util/async";
+import { FragnoClientError, FragnoClientFetchAbortError } from "../client-error";
+import { handleNdjsonStreamingFirstItem, type NdjsonStreamingStore } from "./ndjson-streaming";
 
 describe("handleNdjsonStreaming", () => {
   test("should return first item and continue streaming updates", async () => {

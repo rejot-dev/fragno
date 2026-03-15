@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+
+import { column, idColumn, schema, FragnoId } from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -10,10 +12,10 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
-import { column, idColumn, schema, FragnoId } from "@fragno-dev/db/schema";
+
 import { IndexedDbAdapter } from "../indexeddb/adapter";
-import type { LofiSubmitCommandDefinition } from "../types";
 import { defaultQueueKey, storeSubmitQueue } from "../submit/queue";
+import type { LofiSubmitCommandDefinition } from "../types";
 import { LofiOverlayManager } from "./overlay-manager";
 
 const appSchema = schema("app", (s) =>

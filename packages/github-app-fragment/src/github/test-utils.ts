@@ -1,8 +1,8 @@
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { githubAppFragmentDefinition } from "./definition";
 import { githubAppRoutesFactory } from "../routes";
+import { githubAppFragmentDefinition } from "./definition";
 import type { GitHubAppFragmentConfig } from "./types";
 
 export type GitHubAppFragmentsTest = {

@@ -1,8 +1,10 @@
-import type { Route } from "./+types/home";
-import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcome";
 import { createChatnoClient } from "@fragno-dev/chatno/react";
 import { useState } from "react";
+
 import { createChatno } from "~/chatno/chatno.server";
+
+import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcome";
+import type { Route } from "./+types/home";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -81,7 +83,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type your message here..."
-                className="w-full resize-none rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-blue-400 dark:focus:ring-blue-400"
+                className="w-full resize-none rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-blue-400 dark:focus:ring-blue-400"
                 rows={4}
                 disabled={responseLoading}
               />
@@ -90,7 +92,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <button
               onClick={handleSubmitMessage}
               disabled={!message.trim()}
-              className="w-full rounded-md bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
+              className="w-full rounded-md bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
             >
               {responseLoading ? "Sending..." : "Send Message"}
             </button>

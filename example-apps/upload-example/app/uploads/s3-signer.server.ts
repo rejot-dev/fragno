@@ -1,8 +1,9 @@
-import { SignatureV4 } from "@aws-sdk/signature-v4";
-import { HttpRequest } from "@aws-sdk/protocol-http";
-import { Hash } from "@aws-sdk/hash-node";
-import { formatUrl } from "@aws-sdk/util-format-url";
 import type { S3Signer, S3SignerInput } from "@fragno-dev/upload";
+
+import { Hash } from "@aws-sdk/hash-node";
+import { HttpRequest } from "@aws-sdk/protocol-http";
+import { SignatureV4 } from "@aws-sdk/signature-v4";
+import { formatUrl } from "@aws-sdk/util-format-url";
 
 type S3SignerConfig = {
   region: string;

@@ -1,7 +1,9 @@
 // Tests for workflow fragment persistence and routes.
 import { assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";

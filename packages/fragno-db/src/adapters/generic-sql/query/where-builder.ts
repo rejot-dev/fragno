@@ -1,4 +1,10 @@
 import { sql, type BinaryOperator } from "kysely";
+
+import type { NamingResolver } from "../../../naming/sql-naming";
+import type { Condition } from "../../../query/condition-builder";
+import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
+import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
+import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import {
   type AnyColumn,
   type AnyTable,
@@ -6,15 +12,10 @@ import {
   FragnoId,
   FragnoReference,
 } from "../../../schema/create";
-import type { Condition } from "../../../query/condition-builder";
-import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
-import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
-import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
-import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
-import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 import { buildDbNowSql } from "./db-now-sql";
+import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).

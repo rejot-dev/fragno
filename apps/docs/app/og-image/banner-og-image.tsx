@@ -1,11 +1,11 @@
 import { FragnoLogo } from "@/components/logos/fragno-logo";
-import { React as ReactLogo } from "@/components/logos/frameworks/react";
-import { Nextjs } from "@/components/logos/frameworks/nextjs";
-import { Vue } from "@/components/logos/frameworks/vue";
-import { Svelte } from "@/components/logos/frameworks/svelte";
 import { Astro } from "@/components/logos/frameworks/astro";
-import { Nuxt } from "@/components/logos/frameworks/nuxt";
+import { Nextjs } from "@/components/logos/frameworks/nextjs";
 import { Nodejs } from "@/components/logos/frameworks/nodejs";
+import { Nuxt } from "@/components/logos/frameworks/nuxt";
+import { React as ReactLogo } from "@/components/logos/frameworks/react";
+import { Svelte } from "@/components/logos/frameworks/svelte";
+import { Vue } from "@/components/logos/frameworks/vue";
 
 export function BannerOgImage() {
   return (
@@ -21,11 +21,11 @@ export function BannerOgImage() {
         </div>
 
         {/* Title */}
-        <h1 className="text-8xl font-extrabold leading-tight tracking-tight text-gray-900 dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+        <h1 className="text-8xl leading-tight font-extrabold tracking-tight text-gray-900 dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
           Build Full-
           <span className="relative inline-block text-gray-900 dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
             Stack
-            <span className="absolute -right-12 -top-2 inline-flex rotate-12 items-center">
+            <span className="absolute -top-2 -right-12 inline-flex rotate-12 items-center">
               <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-5 py-2 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
                 <span
                   aria-hidden

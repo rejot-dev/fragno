@@ -1,6 +1,7 @@
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { type DatabaseAdapter } from "@fragno-dev/db";
-import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import {
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
@@ -9,6 +10,7 @@ import {
   type WorkflowStep,
   defineWorkflow,
 } from "@fragno-dev/workflows";
+
 import { adapter } from "../fragno-adapter";
 
 export type ApprovalParams = {

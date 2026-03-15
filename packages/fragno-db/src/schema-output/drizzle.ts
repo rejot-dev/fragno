@@ -1,5 +1,14 @@
-import { importGenerator } from "../util/import-generator";
-import { ident, parseVarchar } from "../util/parse";
+import {
+  defaultNamingStrategyForDatabase,
+  type SupportedDatabase,
+} from "../adapters/generic-sql/driver-config";
+import { internalSchema } from "../fragments/internal-fragment.schema";
+import {
+  createNamingResolver,
+  sanitizeNamespace,
+  type NamingResolver,
+  type SqlNamingStrategy,
+} from "../naming/sql-naming";
 import {
   type AnyColumn,
   type AnySchema,
@@ -7,19 +16,10 @@ import {
   type Relation,
   InternalIdColumn,
 } from "../schema/create";
-import {
-  createNamingResolver,
-  sanitizeNamespace,
-  type NamingResolver,
-  type SqlNamingStrategy,
-} from "../naming/sql-naming";
-import { internalSchema } from "../fragments/internal-fragment.schema";
-import { type DatabaseTypeLiteral } from "../schema/type-conversion/type-mapping";
 import { createSQLTypeMapper } from "../schema/type-conversion/create-sql-type-mapper";
-import {
-  defaultNamingStrategyForDatabase,
-  type SupportedDatabase,
-} from "../adapters/generic-sql/driver-config";
+import { type DatabaseTypeLiteral } from "../schema/type-conversion/type-mapping";
+import { importGenerator } from "../util/import-generator";
+import { ident, parseVarchar } from "../util/parse";
 
 // ============================================================================
 // PROVIDER CONFIGURATION

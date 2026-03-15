@@ -1,5 +1,7 @@
-import type { CellProps, WithClassname } from "@jsonforms/core";
 import { memo } from "react";
+
+import type { CellProps, WithClassname } from "@jsonforms/core";
+
 import { Slider } from "@/components/ui/slider";
 
 type ShadcnSliderProps = CellProps & WithClassname;

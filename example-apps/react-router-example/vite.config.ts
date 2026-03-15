@@ -1,10 +1,10 @@
-import { defineConfig } from "vite";
-
 import { reactRouter } from "@react-router/dev/vite";
-import tailwindcss from "@tailwindcss/vite";
-import devtoolsJson from "vite-plugin-devtools-json";
-import { envOnlyMacros } from "vite-env-only";
+import { defineConfig } from "vite";
 import type { PluginOption } from "vite";
+import { envOnlyMacros } from "vite-env-only";
+import devtoolsJson from "vite-plugin-devtools-json";
+
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig(({ mode }) => {
   const plugins: PluginOption[] = [

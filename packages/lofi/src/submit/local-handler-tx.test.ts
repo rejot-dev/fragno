@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
+
+import {
+  column,
+  idColumn,
+  referenceColumn,
+  schema,
+  FragnoReference,
+  FragnoId,
+} from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -10,16 +19,9 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
-import {
-  column,
-  idColumn,
-  referenceColumn,
-  schema,
-  FragnoReference,
-  FragnoId,
-} from "@fragno-dev/db/schema";
-import { createLocalHandlerTx } from "./local-handler-tx";
+
 import { IndexedDbAdapter } from "../indexeddb/adapter";
+import { createLocalHandlerTx } from "./local-handler-tx";
 
 const appSchema = schema("app", (s) => {
   return s

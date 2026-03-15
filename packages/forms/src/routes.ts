@@ -1,5 +1,8 @@
-import { defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
+
+import { defineRoutes } from "@fragno-dev/core";
+
+import type { StaticForm } from ".";
 import { formsFragmentDef } from "./definition";
 import {
   FormSchema,
@@ -10,7 +13,6 @@ import {
   UpdateFormSchema,
 } from "./models";
 import type { Form } from "./models";
-import type { StaticForm } from ".";
 
 /** Extract and validate request metadata from headers (untrusted input) */
 function extractRequestMetadata(headers: Headers) {

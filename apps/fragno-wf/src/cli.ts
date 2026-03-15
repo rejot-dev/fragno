@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 
-import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { workflowsListCommand } from "./commands/workflows/list.js";
-import { instancesListCommand } from "./commands/instances/list.js";
+
+import { cli, define } from "gunshi";
+import type { Args, Command } from "gunshi";
+
+import { instancesCreateCommand } from "./commands/instances/create.js";
 import { instancesGetCommand } from "./commands/instances/get.js";
 import { instancesHistoryCommand } from "./commands/instances/history.js";
+import { instancesListCommand } from "./commands/instances/list.js";
 import { instancesLogsCommand } from "./commands/instances/logs.js";
-import { instancesCreateCommand } from "./commands/instances/create.js";
-import { instancesSendEventCommand } from "./commands/instances/send-event.js";
 import { createManageCommand } from "./commands/instances/manage.js";
+import { instancesSendEventCommand } from "./commands/instances/send-event.js";
+import { workflowsListCommand } from "./commands/workflows/list.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));

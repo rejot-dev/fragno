@@ -1,15 +1,17 @@
 import { ChevronUp, ChevronDown, Copy, Trash2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FieldTypeSelector } from "./field-type-selector";
-import { FieldOptions } from "./field-options";
-import { getFieldTypeConfig } from "./constants";
-import type { FormField, FieldType } from "./types";
 import { cn } from "@/lib/utils";
+
+import { getFieldTypeConfig } from "./constants";
+import { FieldOptions } from "./field-options";
+import { FieldTypeSelector } from "./field-type-selector";
+import type { FormField, FieldType } from "./types";
 
 export interface FieldCardProps {
   field: FormField;

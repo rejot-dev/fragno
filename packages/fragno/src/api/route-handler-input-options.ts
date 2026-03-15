@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ExtractPathParams } from "./internal/path";
+
 import type { InferOr } from "../util/types-util";
+import type { ExtractPathParams } from "./internal/path";
 
 /**
  * Options for calling a route handler

@@ -1,11 +1,13 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
-import type { GitHubFragment } from "@/fragno/github";
+
 import {
   GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
 } from "@/cloudflare/cloudflare-utils";
+import type { GitHubFragment } from "@/fragno/github";
+
 import type { GitHubAdminConfigState } from "./shared";
 
 export type GitHubInstallationSummary = {

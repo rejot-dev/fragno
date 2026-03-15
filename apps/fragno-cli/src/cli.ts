@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
-import { cli, define } from "gunshi";
-import { generateCommand } from "./commands/db/generate.js";
-import { migrateCommand } from "./commands/db/migrate.js";
-import { infoCommand } from "./commands/db/info.js";
-import { searchCommand } from "./commands/search.js";
-import { corpusCommand } from "./commands/corpus.js";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { cli, define } from "gunshi";
+
+import { corpusCommand } from "./commands/corpus.js";
+import { generateCommand } from "./commands/db/generate.js";
+import { infoCommand } from "./commands/db/info.js";
+import { migrateCommand } from "./commands/db/migrate.js";
+import { searchCommand } from "./commands/search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));

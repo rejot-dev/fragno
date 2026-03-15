@@ -2,6 +2,9 @@
   "name": "@fragno-dev/otp-fragment",
   "version": "0.0.8",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/node/index.js",
   "types": "./dist/node/index.d.ts",
@@ -11,9 +14,6 @@
       "types": "./dist/node/index.d.ts"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsdown",
     "types:check": "tsgo --noEmit"

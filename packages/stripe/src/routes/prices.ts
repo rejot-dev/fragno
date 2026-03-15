@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { PriceResponseSchema } from "../models/prices";
+
 import { defineRoutes } from "@fragno-dev/core";
+
 import { stripeFragmentDefinition } from "../definition";
+import { PriceResponseSchema } from "../models/prices";
 
 export const pricesRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
   ({ deps, config, defineRoute }) => {

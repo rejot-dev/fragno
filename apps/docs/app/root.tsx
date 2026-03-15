@@ -1,3 +1,6 @@
+import "./app.css";
+
+import { RootProvider } from "fumadocs-ui/provider/react-router";
 import {
   isRouteErrorResponse,
   Links,
@@ -6,11 +9,10 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { RootProvider } from "fumadocs-ui/provider/react-router";
-import type { Route } from "./+types/root";
+
 import { NotFoundContent } from "@/components/not-found-content";
 
-import "./app.css";
+import type { Route } from "./+types/root";
 import { HomeLayoutWithFooter } from "./layouts/home-layout";
 
 export const links: Route.LinksFunction = () => [

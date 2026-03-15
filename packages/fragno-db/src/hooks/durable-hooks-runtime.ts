@@ -1,5 +1,5 @@
-import type { HookProcessorConfig } from "./hooks";
 import { DurableHooksLogger } from "./durable-hooks-logger";
+import type { HookProcessorConfig } from "./hooks";
 
 type DurableHooksRuntimeState = {
   token: object;

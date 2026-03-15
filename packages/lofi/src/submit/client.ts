@@ -1,4 +1,5 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
+
 import type {
   LofiAdapter,
   LofiSubmitCommand,
@@ -8,8 +9,8 @@ import type {
   LofiQueryableAdapter,
 } from "../types";
 import { createLocalHandlerTx } from "./local-handler-tx";
-import { rebaseSubmitQueue } from "./rebase";
 import { buildCommandKey, defaultQueueKey, loadSubmitQueue, storeSubmitQueue } from "./queue";
+import { rebaseSubmitQueue } from "./rebase";
 
 type InternalDescribeResponse = {
   adapterIdentity?: string;

@@ -1,9 +1,10 @@
 // oxlint-disable no-explicit-any
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { FragnoRouteConfig, HTTPMethod, RequestThisContext } from "./api";
-import type { FragmentDefinition } from "./fragment-definition-builder";
 import type { BoundServices } from "./bind-services";
+import type { FragmentDefinition } from "./fragment-definition-builder";
 
 export type AnyFragnoRouteConfig = FragnoRouteConfig<HTTPMethod, string, any, any, any, any, any>;
 

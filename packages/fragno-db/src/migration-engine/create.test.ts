@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMigrator, type MigrationEngineOptions } from "./create";
+
 import { schema, idColumn, column, referenceColumn } from "../schema/create";
+import { createMigrator, type MigrationEngineOptions } from "./create";
 import type { MigrationOperation } from "./shared";
 
 describe("createMigrator", () => {

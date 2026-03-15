@@ -1,13 +1,16 @@
-import { isFragnoDatabase, type DatabaseAdapter, FragnoDatabase } from "@fragno-dev/db";
+import { relative } from "node:path";
+
+import { instantiatedFragmentFakeSymbol } from "@fragno-dev/core/internal/symbols";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "@fragno-dev/db/adapters";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import { instantiatedFragmentFakeSymbol } from "@fragno-dev/core/internal/symbols";
+
 import { type FragnoInstantiatedFragment } from "@fragno-dev/core";
+import { isFragnoDatabase, type DatabaseAdapter, FragnoDatabase } from "@fragno-dev/db";
+
 import { loadConfig } from "./load-config";
-import { relative } from "node:path";
 
 export async function importFragmentFile(path: string): Promise<Record<string, unknown>> {
   // Enable dry run mode for database schema extraction

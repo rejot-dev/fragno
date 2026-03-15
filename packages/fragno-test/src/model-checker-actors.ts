@@ -1,6 +1,7 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { AnySchema } from "@fragno-dev/db/schema";
 import type { UOWInstrumentationContext } from "@fragno-dev/db/unit-of-work";
+
 import {
   defaultStateHasher,
   type ModelCheckerBounds,

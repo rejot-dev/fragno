@@ -1,11 +1,14 @@
-import { useState } from "react";
-import { JsonForms } from "@jsonforms/react";
-import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
 import { ClipboardList, CheckCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { surveyForm, SURVEY_FORM_SLUG } from "@/fragno/static-forms";
-import { formsClient } from "@/fragno/forms.client";
+import { useState } from "react";
+
+import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
+
+import { JsonForms } from "@jsonforms/react";
 import { Turnstile } from "@marsidev/react-turnstile";
+
+import { Button } from "@/components/ui/button";
+import { formsClient } from "@/fragno/forms.client";
+import { surveyForm, SURVEY_FORM_SLUG } from "@/fragno/static-forms";
 
 interface SurveyAboutFormsProps {
   turnstileSitekey: string;
@@ -48,7 +51,7 @@ export function SurveyAboutForms({ turnstileSitekey }: SurveyAboutFormsProps) {
   return (
     <section className="mx-auto max-w-3xl space-y-8">
       <div className="space-y-4 text-center">
-        <div className="bg-linear-to-br mx-auto flex h-16 w-16 items-center justify-center rounded-2xl from-blue-500/20 to-sky-500/20 dark:from-blue-400/30 dark:to-sky-400/30">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-blue-500/20 to-sky-500/20 dark:from-blue-400/30 dark:to-sky-400/30">
           <ClipboardList className="size-8 text-blue-600 dark:text-blue-400" />
         </div>
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">A Form about Forms</h2>

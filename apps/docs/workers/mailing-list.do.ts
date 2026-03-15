@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
+
+import { migrate } from "@fragno-dev/db";
+
 import type { MailingListFragment } from "@/fragno/mailing-list";
 import { createMailingListServer } from "@/fragno/mailing-list";
-import { migrate } from "@fragno-dev/db";
 
 export class MailingList extends DurableObject<CloudflareEnv> {
   #fragment: MailingListFragment;

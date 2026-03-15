@@ -1,5 +1,7 @@
-import { atom } from "nanostores";
 import { describe, expect, test, vi } from "vitest";
+
+import { atom } from "nanostores";
+
 import {
   NO_ORGANIZATIONS_ERROR_MESSAGE,
   clearDefaultOrganizationId,
@@ -30,9 +32,10 @@ class MemoryStorage implements Pick<Storage, "getItem" | "setItem" | "removeItem
   }
 }
 
-class MemoryWindow
-  implements Pick<Window, "addEventListener" | "removeEventListener" | "dispatchEvent">
-{
+class MemoryWindow implements Pick<
+  Window,
+  "addEventListener" | "removeEventListener" | "dispatchEvent"
+> {
   #listeners = new Map<string, Set<EventListenerOrEventListenerObject>>();
 
   addEventListener(type: string, callback: EventListenerOrEventListenerObject | null) {

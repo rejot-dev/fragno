@@ -1,5 +1,6 @@
-import type { HTTPMethod } from "./api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import type { HTTPMethod } from "./api";
 
 /**
  * Public configuration for Fragno fragments on the server side.

@@ -1,15 +1,17 @@
-import Stripe from "stripe";
 import type { TableToColumnValues, TableToInsertValues } from "@fragno-dev/db/query";
+import Stripe from "stripe";
+
+import { defineFragment } from "@fragno-dev/core";
+import { withDatabase, type DatabaseServiceContext } from "@fragno-dev/db";
+
+import { stripeSchema } from "./database/schema";
+import type { SubscriptionResponse } from "./models/subscriptions";
 import type {
   Logger,
   StripeFragmentConfig,
   StripeFragmentDeps,
   StripeFragmentServices,
 } from "./types";
-import { stripeSchema } from "./database/schema";
-import type { SubscriptionResponse } from "./models/subscriptions";
-import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type DatabaseServiceContext } from "@fragno-dev/db";
 import { stripeSubscriptionToInternalSubscription } from "./utils";
 
 const LOG_PREFIX = "[Stripe Fragment]";

@@ -1,13 +1,15 @@
+import {
+  createDurableHooksProcessor,
+  type DurableHooksDispatcherDurableObjectHandler,
+} from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { DurableObject } from "cloudflare:workers";
+
 import {
   resolveCloudflareDispatchNamespaceName,
   type CloudflareFragmentConfig,
 } from "@fragno-dev/cloudflare-fragment";
 import { migrate } from "@fragno-dev/db";
-import {
-  createDurableHooksProcessor,
-  type DurableHooksDispatcherDurableObjectHandler,
-} from "@fragno-dev/db/dispatchers/cloudflare-do";
+
 import { createCloudflareServer, type CloudflareFragment } from "@/fragno/cloudflare";
 import {
   loadDurableHookQueue,

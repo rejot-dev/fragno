@@ -1,11 +1,13 @@
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/auth/client";
-import { useState } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   // using seeded credentials (bun run db:seed)

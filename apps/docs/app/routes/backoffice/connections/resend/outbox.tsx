@@ -1,5 +1,7 @@
 import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+
 import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
+
 import type { Route } from "./+types/outbox";
 import { fetchResendConfig, fetchResendOutbox } from "./data";
 import { formatTimestamp, type ResendLayoutContext } from "./shared";
@@ -92,12 +94,12 @@ export default function BackofficeOrganisationResendOutbox() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Outbox
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Email activity</h2>
           </div>
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {emails.length} shown
           </span>
         </div>
@@ -145,7 +147,7 @@ export default function BackofficeOrganisationResendOutbox() {
                     ) : null}
                   </div>
                   <span
-                    className={`border px-2 py-1 text-[9px] uppercase tracking-[0.22em] ${statusTone}`}
+                    className={`border px-2 py-1 text-[9px] tracking-[0.22em] uppercase ${statusTone}`}
                   >
                     {email.status}
                   </span>

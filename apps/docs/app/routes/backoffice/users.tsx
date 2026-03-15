@@ -47,7 +47,7 @@ export default function BackofficeUsers() {
       <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Active roster
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -59,7 +59,7 @@ export default function BackofficeUsers() {
               <button
                 key={label}
                 type="button"
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 {label}
               </button>
@@ -70,7 +70,7 @@ export default function BackofficeUsers() {
         <div className="mt-4 overflow-hidden border border-[color:var(--bo-border)]">
           <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
             <thead className="bg-[var(--bo-panel-2)] text-left">
-              <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 <th scope="col" className="px-3 py-2">
                   Name
                 </th>
@@ -92,7 +92,7 @@ export default function BackofficeUsers() {
                   <td className="px-3 py-2">{user.role}</td>
                   <td className="px-3 py-2">{user.org}</td>
                   <td className="px-3 py-2">
-                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                       {user.status}
                     </span>
                   </td>

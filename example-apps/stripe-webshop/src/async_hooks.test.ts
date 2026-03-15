@@ -1,8 +1,10 @@
 import { test, expect, afterAll, beforeAll, describe } from "vitest";
+
 import { spawn, type ChildProcess } from "node:child_process";
-import { config } from "dotenv";
-import { resolve } from "node:path";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { config } from "dotenv";
 
 const isCI = !!process.env["CI"];
 const hasEnvFile =

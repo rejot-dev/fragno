@@ -1,11 +1,13 @@
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+
 import type {
   PiLiveToolExecution,
   PiSessionConnectionState,
   PiSessionDetail,
   PiSteeringMode,
 } from "@fragno-dev/pi-fragment";
-import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+
+import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
 export type OrgPiClient = {
   useSession: (args: { path: { sessionId: string }; initialData?: PiSessionDetail | null }) => {

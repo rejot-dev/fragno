@@ -1,7 +1,17 @@
-import { type Cursor, type DatabaseServiceContext } from "@fragno-dev/db";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { TypedUnitOfWork } from "@fragno-dev/db/unit-of-work";
+
+import { type Cursor, type DatabaseServiceContext } from "@fragno-dev/db";
+
 import { telegramSchema } from "./schema";
+import {
+  DEFAULT_COMMAND_SCOPES,
+  buildChatMemberId,
+  buildMessageId,
+  parseCommand,
+  parseCommandBindings,
+  parseTelegramUpdate,
+} from "./telegram-utils";
 import {
   telegramMessageSchema,
   type TelegramMessage,
@@ -17,14 +27,6 @@ import {
   type TelegramUpdateType,
   type TelegramUserSummary,
 } from "./types";
-import {
-  DEFAULT_COMMAND_SCOPES,
-  buildChatMemberId,
-  buildMessageId,
-  parseCommand,
-  parseCommandBindings,
-  parseTelegramUpdate,
-} from "./telegram-utils";
 
 const missingId = "__missing__";
 

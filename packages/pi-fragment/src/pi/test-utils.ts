@@ -1,5 +1,11 @@
+import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
+
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
+import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
+import type { WorkflowLiveStateStore } from "@fragno-dev/workflows";
+
 import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -7,15 +13,10 @@ import {
   type AssistantMessage,
   type Model,
 } from "@mariozechner/pi-ai";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
-import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
-import type { WorkflowLiveStateStore } from "@fragno-dev/workflows";
-import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
-import { piFragmentDefinition } from "./definition";
 import { piRoutesFactory } from "../routes";
 import { piSchema } from "../schema";
-import { createPiWorkflows } from "./workflow/workflow";
+import { piFragmentDefinition } from "./definition";
 import type { createPiFragment } from "./factory";
 import type {
   PiFragmentConfig,
@@ -24,6 +25,7 @@ import type {
   PiToolRegistry,
   PiWorkflowsService,
 } from "./types";
+import { createPiWorkflows } from "./workflow/workflow";
 
 export const mockModel: Model<Api> = {
   id: "test-model",

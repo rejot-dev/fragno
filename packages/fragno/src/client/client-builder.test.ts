@@ -1,9 +1,11 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
+
 import { z } from "zod";
-import { createClientBuilder } from "./client";
-import { defineRoute } from "../api/route";
+
 import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoute } from "../api/route";
 import type { FragnoPublicClientConfig } from "../api/shared-types";
+import { createClientBuilder } from "./client";
 
 // Test route configurations
 const testFragment = defineFragment("test-fragment").build();

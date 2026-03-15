@@ -1,16 +1,18 @@
-import type { HookContext } from "@fragno-dev/db";
 import type { TableToColumnValues } from "@fragno-dev/db/query";
+
+import type { HookContext } from "@fragno-dev/db";
+
 import type { EmitterWebhookEvent } from "@octokit/webhooks";
 
+import { githubAppSchema } from "../schema";
 import type { GitHubInstallationRepository } from "./api";
-import type { GitHubAppFragmentConfig, GitHubAppWebhookConfig, GitHubAppWebhookOn } from "./types";
 import {
   hasRepoChanges,
   type InstallationRepoRow,
   toRepoCreateRecord,
   toRepoRecord,
 } from "./repo-sync";
-import { githubAppSchema } from "../schema";
+import type { GitHubAppFragmentConfig, GitHubAppWebhookConfig, GitHubAppWebhookOn } from "./types";
 import { normalizeJoinedLinks, toExternalId } from "./utils";
 
 type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;

@@ -1,6 +1,7 @@
 import type { ControlProps, RankedTester } from "@jsonforms/core";
 import { isRangeControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
+
 import {
   Field,
   FieldDescription,
@@ -8,8 +9,9 @@ import {
   FieldLabel,
   FieldContent,
 } from "@/components/ui/field";
-import { ShadcnSlider } from "../shadcn-controls/ShadcnSlider";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnSlider } from "../shadcn-controls/ShadcnSlider";
 
 export const ShadcnSliderControl = ({
   data,

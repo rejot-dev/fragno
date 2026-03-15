@@ -1,10 +1,13 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
+
+import type { WebhookEventPayload } from "resend";
+
 import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
+
 import { resendFragmentDefinition } from "./definition";
 import type { ResendFragmentConfig } from "./definition";
 import { resendRoutesFactory, type ResendSendEmailInput } from "./routes";
-import type { WebhookEventPayload } from "resend";
 
 const sendMock = vi.fn();
 const verifyMock = vi.fn();

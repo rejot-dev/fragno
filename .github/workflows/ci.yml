@@ -26,7 +26,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting
-        run: pnpm exec prettier --ignore-unknown --check .
+        run: pnpm run format:check
 
       - name: Run lint
         run: pnpm exec oxlint

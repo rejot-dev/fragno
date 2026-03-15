@@ -1,8 +1,9 @@
 import { config } from "dotenv";
-import { auth } from "@/lib/auth/auth";
+import { eq } from "drizzle-orm";
+
 import { db } from "@/db";
 import { user } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth/auth";
 
 // Load environment variables
 config({ quiet: true });

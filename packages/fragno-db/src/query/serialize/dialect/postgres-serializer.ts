@@ -1,6 +1,6 @@
+import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import type { AnyColumn } from "../../../schema/create";
 import { SQLSerializer } from "../sql-serializer";
-import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
 
 /**
  * PostgreSQL-specific serializer.

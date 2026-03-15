@@ -1,18 +1,23 @@
 {
   "name": "@fragno-dev/cloudflare-fragment",
-  "description": "Fragno Cloudflare Workers for Platforms deployment fragment",
   "version": "0.0.1",
+  "private": true,
+  "description": "Fragno Cloudflare Workers for Platforms deployment fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
   "files": [
     "dist"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -63,17 +68,12 @@
       "default": "./dist/node/script-name.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsc --noEmit",
     "build": "tsdown --config-loader unrun",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
-  "type": "module",
-  "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",

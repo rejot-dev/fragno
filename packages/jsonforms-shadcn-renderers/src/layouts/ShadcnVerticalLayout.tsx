@@ -1,7 +1,9 @@
+import { Fragment } from "react";
+
 import type { LayoutProps, RankedTester, VerticalLayout } from "@jsonforms/core";
 import { rankWith, uiTypeIs } from "@jsonforms/core";
 import { JsonFormsDispatch, withJsonFormsLayoutProps } from "@jsonforms/react";
-import { Fragment } from "react";
+
 import { FieldSeparator, FieldGroup } from "@/components/ui/field";
 
 export const ShadcnVerticalLayout = ({

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 
+import { githubAppSchema } from "../schema";
 import { buildHarness } from "./test-utils";
 import { normalizeJoinedInstallation, normalizeJoinedLinks } from "./utils";
-import { githubAppSchema } from "../schema";
 
 const createConfig = () => ({
   appId: "42",

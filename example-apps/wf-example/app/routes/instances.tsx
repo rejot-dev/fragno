@@ -1,7 +1,7 @@
-import type { Route } from "./+types/instances";
-
 import { ClientOnly } from "~/components/client-only";
 import { InstancesView } from "~/workflows/instances-view";
+
+import type { Route } from "./+types/instances";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -14,7 +14,7 @@ export default function InstancesRoute() {
   return (
     <section className="grid gap-6">
       <header className="flex flex-col gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+        <p className="text-xs font-semibold tracking-[0.35em] text-slate-400 uppercase">
           Instances
         </p>
         <h1 className="text-3xl font-semibold text-slate-900">Workflow instances</h1>

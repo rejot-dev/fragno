@@ -1,5 +1,7 @@
-import type { CellProps, WithClassname } from "@jsonforms/core";
 import { memo } from "react";
+
+import type { CellProps, WithClassname } from "@jsonforms/core";
+
 import { Switch } from "@/components/ui/switch";
 
 type ShadcnSwitchProps = CellProps & WithClassname;

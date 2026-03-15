@@ -1,5 +1,6 @@
-import type { Route } from "./+types/github";
 import { getGitHubDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/github";
 
 const forwardToGitHub = async (
   request: Request,

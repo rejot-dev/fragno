@@ -1,6 +1,8 @@
-import { defineConfig, mergeConfig } from "vitest/config";
-import { baseConfig } from "@fragno-private/vitest-config";
 import path from "path";
+
+import { defineConfig, mergeConfig } from "vitest/config";
+
+import { baseConfig } from "@fragno-private/vitest-config";
 
 export default mergeConfig(
   baseConfig,

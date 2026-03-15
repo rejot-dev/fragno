@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { defineFragment, instantiate } from "@fragno-dev/core";
+
 import { defineRoute } from "@fragno-dev/core/route";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { withDatabase, type DatabaseRequestContext, type TxResult } from "@fragno-dev/db";
 import { z } from "zod";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { withDatabase, type DatabaseRequestContext, type TxResult } from "@fragno-dev/db";
+
 import { buildDatabaseFragmentsTest } from "./db-test";
 
 const userSchema = schema("user-roundtrip", (s) => {
@@ -182,19 +185,19 @@ describe("dbRoundtripGuard", () => {
       .withFragment("user", instantiate(userFragmentDef).withConfig({}))
       .build();
 
-    const result = await fragments.user.fragment.inContext(async function (
-      this: DatabaseRequestContext,
-    ) {
-      await this.handlerTx()
-        .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
-        .execute();
+    const result = await fragments.user.fragment.inContext(
+      async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
+          .execute();
 
-      await this.handlerTx()
-        .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
-        .execute();
+        await this.handlerTx()
+          .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
+          .execute();
 
-      return "ok";
-    });
+        return "ok";
+      },
+    );
 
     expect(result).toBe("ok");
 

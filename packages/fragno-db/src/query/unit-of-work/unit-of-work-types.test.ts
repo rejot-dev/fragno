@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, it } from "vitest";
+
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { JoinFindBuilder, UnitOfWork } from "./unit-of-work";
 import type { FragnoId, FragnoReference } from "../../schema/create";
+import { JoinFindBuilder, UnitOfWork } from "./unit-of-work";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];

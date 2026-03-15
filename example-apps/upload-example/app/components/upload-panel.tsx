@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+
 import type { UploadClient } from "~/uploads/upload-client";
+
 import {
   buildUploadFileKey,
   buildUploadKeyPrefix,
@@ -157,7 +159,7 @@ export function UploadPanel({
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="rounded-2xl border border-slate-200/70 bg-white p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <h2 className="text-sm font-semibold tracking-[0.2em] text-slate-400 uppercase">
             Upload
           </h2>
           <div className="mt-4 grid gap-4">
@@ -241,7 +243,7 @@ export function UploadPanel({
         <div className="rounded-2xl border border-slate-200/70 bg-white p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <h2 className="text-sm font-semibold tracking-[0.2em] text-slate-400 uppercase">
                 Files
               </h2>
               <p className="mt-2 text-xs text-slate-500">

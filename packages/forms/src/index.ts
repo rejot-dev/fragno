@@ -1,11 +1,14 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { instantiate } from "@fragno-dev/core";
-import { publicRoutes, adminRoutes } from "./routes";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
+import type { UISchemaElement } from "@jsonforms/core";
+
 import { formsFragmentDef } from "./definition";
 import type { Form, JSONSchema, FormResponse } from "./models";
-import type { UISchemaElement } from "@jsonforms/core";
+import { publicRoutes, adminRoutes } from "./routes";
 
 // Forms that exist in code, but submissions are stored in the DB
 // Static forms always have status: "static" and accept submissions

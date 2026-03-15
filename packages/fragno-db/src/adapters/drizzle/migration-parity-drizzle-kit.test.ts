@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+
 import { createRequire } from "node:module";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { writeAndLoadSchema } from "./test-utils";
-import { createPreparedMigrations } from "../generic-sql/migration/prepared-migrations";
+
 import { createNamingResolver } from "../../naming/sql-naming";
+import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { defaultNamingStrategyForDatabase } from "../generic-sql/driver-config";
+import { createPreparedMigrations } from "../generic-sql/migration/prepared-migrations";
+import { writeAndLoadSchema } from "./test-utils";
 
 const require = createRequire(import.meta.url);
 const {

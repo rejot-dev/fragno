@@ -1,12 +1,14 @@
 import { describe, expect, test } from "vitest";
+
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+
 import {
   defineFragment,
   instantiate,
   type InstantiatedFragmentFromDefinition,
 } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { defineWorkflow, type AnyTxResult } from "./workflow";
+
 import {
   createScenarioSteps,
   defineScenario,
@@ -14,6 +16,7 @@ import {
   type WorkflowScenarioEventRow,
   type WorkflowScenarioStepRow,
 } from "./scenario";
+import { defineWorkflow, type AnyTxResult } from "./workflow";
 
 describe("Workflows Runner (User Scenarios)", () => {
   test("loop consumes events until done", async () => {

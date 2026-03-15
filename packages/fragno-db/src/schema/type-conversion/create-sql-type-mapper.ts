@@ -1,7 +1,7 @@
 import type { SupportedDatabase } from "../../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../../adapters/generic-sql/sqlite-storage";
-import { PostgreSQLTypeMapper } from "./dialect/postgres";
 import { MySQLTypeMapper } from "./dialect/mysql";
+import { PostgreSQLTypeMapper } from "./dialect/postgres";
 import { SQLiteTypeMapper } from "./dialect/sqlite";
 
 /**

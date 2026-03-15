@@ -1,6 +1,8 @@
-import { define } from "gunshi";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { define } from "gunshi";
+
 import { runScenario, type ScenarioDefinition } from "../scenario.js";
 import { installIndexedDbGlobals } from "./utils.js";
 

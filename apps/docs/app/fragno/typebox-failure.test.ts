@@ -1,9 +1,12 @@
 /// <reference types="@cloudflare/vitest-pool-workers" />
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { validateToolArguments } from "@mariozechner/pi-ai";
-import { bashParametersSchema } from "./pi-schema";
+
 import AjvModule from "ajv";
+
+import { validateToolArguments } from "@mariozechner/pi-ai";
+
+import { bashParametersSchema } from "./pi-schema";
 
 describe("typebox failure reproduction", () => {
   it("eval is blocked in the workers test runtime", () => {

@@ -1,8 +1,11 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { stripeFragmentDefinition } from "./definition";
-import { instantiate } from "@fragno-dev/core";
+
 import type Stripe from "stripe";
+
+import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { stripeFragmentDefinition } from "./definition";
 import type { StripeServiceCall } from "./types";
 
 describe("Stripe Fragment Services", async () => {

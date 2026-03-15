@@ -1,3 +1,6 @@
+import { useState, type FormEvent } from "react";
+import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+
 import type {
   CloudflareAppState,
   CloudflareAppSummary,
@@ -5,15 +8,16 @@ import type {
   CloudflareDeploymentStatus,
   CloudflareDeploymentSummary,
 } from "@fragno-dev/cloudflare-fragment";
-import { useState, type FormEvent } from "react";
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
-import { BackofficePageHeader } from "@/components/backoffice";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import {
   buildCloudflareWorkerDispatchPath,
   isCloudflareWorkerDispatchEnabled,
 } from "@/cloudflare/worker-dispatch";
+import { BackofficePageHeader } from "@/components/backoffice";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAuthMe } from "@/fragno/auth-server";
+
+import type { Route } from "./+types/workers";
 import {
   fetchCloudflareAppState,
   fetchCloudflareApps,
@@ -26,7 +30,6 @@ import {
   toWorkersPath,
   type WorkersView,
 } from "./workers.route-state";
-import type { Route } from "./+types/workers";
 
 type WorkerDetailTab = "info" | "request" | "source";
 type WorkerRequestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
@@ -416,7 +419,7 @@ export default function BackofficeEnvironmentWorkers() {
         actions={
           <Link
             to="/backoffice/environments"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to environments
           </Link>
@@ -426,10 +429,10 @@ export default function BackofficeEnvironmentWorkers() {
       <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
         <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Active workers
             </p>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase">
               {activeWorkers.length}
             </span>
           </div>
@@ -445,7 +448,7 @@ export default function BackofficeEnvironmentWorkers() {
                   : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
               }
             >
-              <p className="text-[10px] uppercase tracking-[0.24em]">New worker</p>
+              <p className="text-[10px] tracking-[0.24em] uppercase">New worker</p>
               <p className="mt-2 text-sm font-semibold">Queue a fresh deployment</p>
             </Link>
 
@@ -480,7 +483,7 @@ export default function BackofficeEnvironmentWorkers() {
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-semibold">{worker.id}</p>
                       <span
-                        className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] ${statusClass}`}
+                        className={`rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase ${statusClass}`}
                       >
                         {statusLabel}
                       </span>
@@ -523,7 +526,7 @@ export default function BackofficeEnvironmentWorkers() {
             />
           ) : (
             <div className="space-y-4">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Worker not found
               </p>
               <p className="text-sm text-[var(--bo-muted)]">
@@ -531,7 +534,7 @@ export default function BackofficeEnvironmentWorkers() {
               </p>
               <Link
                 to={toWorkersPath({ view: "new" })}
-                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Create new worker
               </Link>
@@ -547,7 +550,7 @@ function WorkerDetailLoadingView({ workerId }: { workerId: string | null }) {
   return (
     <div aria-live="polite" className="space-y-5">
       <div className="overflow-hidden border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] p-5">
-        <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+        <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
           Switching workers
         </span>
         <h2 className="mt-3 truncate font-mono text-2xl font-semibold text-[var(--bo-fg)] md:text-3xl">
@@ -564,7 +567,7 @@ function WorkerDetailLoadingView({ workerId }: { workerId: string | null }) {
             key={label}
             className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
           >
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               {label}
             </p>
             <div className="h-3 w-2/3 animate-pulse bg-[rgba(var(--bo-grid),0.22)]" />
@@ -589,7 +592,7 @@ function NewWorkerView({
   return (
     <div className="space-y-5">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           New worker
         </p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--bo-fg)]">
@@ -645,7 +648,7 @@ function WorkerDetailView({
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Worker details
           </p>
           <h2 className="mt-2 truncate font-mono text-xl font-semibold text-[var(--bo-fg)] md:text-2xl">
@@ -655,7 +658,7 @@ function WorkerDetailView({
             Inspect the latest rollout state and queue a new deployment for this worker.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Live deployment
             </span>
             {liveDeployment ? (
@@ -670,7 +673,7 @@ function WorkerDetailView({
           </div>
         </div>
         <span
-          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${STATUS_CLASSES[status]}`}
+          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase ${STATUS_CLASSES[status]}`}
         >
           {STATUS_LABELS[status]}
         </span>
@@ -708,7 +711,7 @@ function WorkerDetailView({
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="h-auto flex-none rounded-none border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] shadow-none transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] data-[state=active]:border-[color:var(--bo-accent)] data-[state=active]:bg-[var(--bo-accent-bg)] data-[state=active]:text-[var(--bo-accent-fg)] data-[state=active]:shadow-none"
+              className="h-auto flex-none rounded-none border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase shadow-none transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] data-[state=active]:border-[color:var(--bo-accent)] data-[state=active]:bg-[var(--bo-accent-bg)] data-[state=active]:text-[var(--bo-accent-fg)] data-[state=active]:shadow-none"
             >
               {tab.label}
             </TabsTrigger>
@@ -805,7 +808,7 @@ function WorkerInfoTab({
 
       <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Recent deployments
           </p>
           <p className="mt-1 text-xs text-[var(--bo-muted)]">
@@ -909,7 +912,7 @@ function WorkerRequestView({
   return (
     <div className="space-y-4">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Request playground
         </p>
         <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -960,7 +963,7 @@ function WorkerRequestView({
 
         <div className="grid gap-3 md:grid-cols-[9rem_minmax(0,1fr)]">
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Method
             </span>
             <select
@@ -977,7 +980,7 @@ function WorkerRequestView({
           </label>
 
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Path
             </span>
             <input
@@ -987,14 +990,14 @@ function WorkerRequestView({
               autoComplete="off"
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
             />
-            <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+            <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Include query strings directly, for example <code>/api/hello?name=wilco</code>.
             </span>
           </label>
         </div>
 
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Headers
           </span>
           <textarea
@@ -1004,13 +1007,13 @@ function WorkerRequestView({
             placeholder={"content-type: application/json\nx-example: demo"}
             className="backoffice-scroll min-h-28 w-full overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             One header per line using <code>name: value</code>.
           </span>
         </label>
 
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Body
           </span>
           <textarea
@@ -1021,7 +1024,7 @@ function WorkerRequestView({
             disabled={!canSendBody}
             className="backoffice-scroll min-h-44 w-full overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             {canSendBody
               ? "Raw request body sent as-is."
               : "GET and HEAD requests do not send a request body."}
@@ -1032,7 +1035,7 @@ function WorkerRequestView({
           <button
             type="submit"
             disabled={isSending || !dispatchEnabled}
-            className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSending ? "Sending..." : "Send request"}
           </button>
@@ -1042,7 +1045,7 @@ function WorkerRequestView({
       <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Response
             </p>
             <p className="mt-1 text-xs text-[var(--bo-muted)]">
@@ -1050,7 +1053,7 @@ function WorkerRequestView({
             </p>
           </div>
           {response ? (
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase">
               {response.status} {response.statusText} · {response.durationMs} ms
             </span>
           ) : null}
@@ -1061,10 +1064,10 @@ function WorkerRequestView({
         ) : (
           <div className="space-y-3">
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                 Headers
               </p>
-              <pre className="backoffice-scroll mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-[var(--bo-fg)]">
+              <pre className="backoffice-scroll mt-2 max-h-48 overflow-auto font-mono text-xs break-all whitespace-pre-wrap text-[var(--bo-fg)]">
                 {response.headers.length > 0
                   ? response.headers.map(([name, value]) => `${name}: ${value}`).join("\n")
                   : "No response headers."}
@@ -1072,10 +1075,10 @@ function WorkerRequestView({
             </div>
 
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                 Body
               </p>
-              <pre className="backoffice-scroll mt-2 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-[var(--bo-fg)]">
+              <pre className="backoffice-scroll mt-2 max-h-[28rem] overflow-auto font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
                 {response.body || "Response body is empty."}
               </pre>
             </div>
@@ -1104,7 +1107,7 @@ function WorkerSourceView({
   return (
     <div className="space-y-4">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Source</p>
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Source</p>
         <p className="mt-2 text-sm text-[var(--bo-muted)]">
           View the latest stored deployment source, edit it, and queue a new rollout for this
           worker.
@@ -1177,7 +1180,7 @@ function WorkerDeploymentForm({
       {lockedWorkerId ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
           <input type="hidden" name="appId" value={lockedWorkerId} />
-          <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Worker id
           </p>
           <p className="mt-2 font-mono text-sm text-[var(--bo-fg)]">{lockedWorkerId}</p>
@@ -1187,7 +1190,7 @@ function WorkerDeploymentForm({
         </div>
       ) : (
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Worker id
           </span>
           <input
@@ -1197,7 +1200,7 @@ function WorkerDeploymentForm({
             autoComplete="off"
             className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             Worker ids are normalized to lowercase slug format before deployment.
           </span>
         </label>
@@ -1205,7 +1208,7 @@ function WorkerDeploymentForm({
 
       <div className="grid gap-3 md:grid-cols-3">
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Entrypoint
           </span>
           <input
@@ -1213,13 +1216,13 @@ function WorkerDeploymentForm({
             defaultValue={values.entrypoint}
             className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             Module file name used as the worker entrypoint.
           </span>
         </label>
 
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Compatibility date
           </span>
           <input
@@ -1230,13 +1233,13 @@ function WorkerDeploymentForm({
             autoComplete="off"
             className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             Optional override. Leave blank to use the runtime default.
           </span>
         </label>
 
         <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Compatibility flags
           </span>
           <input
@@ -1245,14 +1248,14 @@ function WorkerDeploymentForm({
             placeholder="nodejs_compat, no_global_navigator"
             className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
           />
-          <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+          <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
             Comma or newline separated.
           </span>
         </label>
       </div>
 
       <div className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Module source
         </p>
         <textarea
@@ -1271,7 +1274,7 @@ function WorkerDeploymentForm({
         <button
           type="submit"
           disabled={isDeploying}
-          className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+          className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isDeploying ? "Queueing..." : submitLabel}
         </button>
@@ -1294,7 +1297,7 @@ function RecentDeploymentsTable({
     <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
       <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
         <thead className="bg-[var(--bo-panel-2)] text-left">
-          <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             <th scope="col" className="px-3 py-2">
               Deployment
             </th>
@@ -1335,7 +1338,7 @@ function RecentDeploymentsTable({
                         {deployment.id}
                       </p>
                       {isLatest ? (
-                        <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--bo-muted)]">
+                        <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase">
                           Latest
                         </span>
                       ) : null}
@@ -1349,7 +1352,7 @@ function RecentDeploymentsTable({
                 </td>
                 <td className="px-3 py-2">
                   <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] ${STATUS_CLASSES[status]}`}
+                    className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.16em] uppercase ${STATUS_CLASSES[status]}`}
                   >
                     {STATUS_LABELS[status]}
                   </span>
@@ -1357,15 +1360,15 @@ function RecentDeploymentsTable({
                 <td className="px-3 py-2 font-mono text-xs text-[var(--bo-fg)]">
                   {deployment.entrypoint}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                <td className="px-3 py-2 whitespace-nowrap">
                   <div className="space-y-1">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                       {deploymentDate.label}
                     </p>
                     <p className="text-xs text-[var(--bo-fg)]">{deploymentDate.value}</p>
                   </div>
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-[var(--bo-fg)]">
+                <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-fg)]">
                   {deployment.sourceByteLength} B
                 </td>
               </tr>
@@ -1388,7 +1391,7 @@ function DetailItem({
 }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">{label}</p>
+      <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">{label}</p>
       <p className="mt-2 text-sm font-medium text-[var(--bo-fg)]">{value || "—"}</p>
       <p className="mt-1 text-xs text-[var(--bo-muted)]">{description}</p>
     </div>

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { uploadSchema } from "./schema";
 
 describe("uploadSchema", async () => {

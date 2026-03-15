@@ -1,7 +1,9 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { instantiate } from "@fragno-dev/core";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { telegramFragmentDefinition } from "./definition";
 import { telegramRoutesFactory } from "./routes";
 import type { TelegramFragmentConfig } from "./types";

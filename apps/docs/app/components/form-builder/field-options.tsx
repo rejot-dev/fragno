@@ -1,10 +1,11 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { EnumValuesEditor } from "./enum-values-editor";
-import { getFieldTypeConfig } from "./constants";
-import type { FieldType, FieldOptions as FieldOptionsType } from "./types";
 import { cn } from "@/lib/utils";
+
+import { getFieldTypeConfig } from "./constants";
+import { EnumValuesEditor } from "./enum-values-editor";
+import type { FieldType, FieldOptions as FieldOptionsType } from "./types";
 
 export interface FieldOptionsProps {
   fieldType: FieldType;

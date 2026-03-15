@@ -1,10 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+
 import type { JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE, RuleEffect } from "@jsonforms/core";
 import { JsonForms } from "@jsonforms/react";
-import { shadcnSliderControlTester, ShadcnSliderControlContext } from "./ShadcnSliderControl";
+import { render, screen, cleanup } from "@testing-library/react";
+
 import { createTesterContext } from "../util/test-utils";
+import { shadcnSliderControlTester, ShadcnSliderControlContext } from "./ShadcnSliderControl";
 
 const schema: JsonSchema = {
   type: "object",

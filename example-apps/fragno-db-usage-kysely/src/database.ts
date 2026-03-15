@@ -1,6 +1,7 @@
 import { Kysely } from "kysely";
 import type { Dialect } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
+
 import type { KyselyDatabase } from "./kysely-types";
 
 export const pgFolder = "./fragno-db-usage.pglite" as const;

@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+
 import { withSinclairSchema } from "./pi/typebox-compat";
 
 export const bashParametersSchema = withSinclairSchema(

@@ -1,7 +1,9 @@
 import { useState } from "react";
+
 import type { Categorization, Category, LayoutProps, RankedTester } from "@jsonforms/core";
 import { and, categorizationHasCategory, rankWith, uiTypeIs } from "@jsonforms/core";
 import { JsonFormsDispatch, withJsonFormsLayoutProps } from "@jsonforms/react";
+
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 

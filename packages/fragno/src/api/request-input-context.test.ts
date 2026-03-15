@@ -1,8 +1,10 @@
 import { test, expect, describe } from "vitest";
-import { RequestInputContext } from "./request-input-context";
-import { FragnoApiValidationError } from "./api";
+
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import { FragnoApiValidationError } from "./api";
 import { MutableRequestState } from "./mutable-request-state";
+import { RequestInputContext } from "./request-input-context";
 
 // Mock schema implementations for testing
 const createMockSchema = (shouldPass: boolean, returnValue?: unknown): StandardSchemaV1 => ({

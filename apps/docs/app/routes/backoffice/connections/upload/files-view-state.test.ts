@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { DELETED_SELECTED_FILE_MESSAGE, getVisibleSelectedFileError } from "./files-view-state";
 
 describe("getVisibleSelectedFileError", () => {

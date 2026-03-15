@@ -1,6 +1,8 @@
-import type { FragnoRuntime } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
+
+import type { FragnoRuntime } from "@fragno-dev/core";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
+
 import type { WorkflowsLoggerConfig } from "./debug-log";
 import type { WorkflowLiveStateStore } from "./live-state";
 
@@ -123,8 +125,9 @@ export interface WorkflowInstanceCreateOptions<TParams = unknown> {
 }
 
 /** Create options that require a user-specified instance id. */
-export interface WorkflowInstanceCreateOptionsWithId<TParams = unknown>
-  extends WorkflowInstanceCreateOptions<TParams> {
+export interface WorkflowInstanceCreateOptionsWithId<
+  TParams = unknown,
+> extends WorkflowInstanceCreateOptions<TParams> {
   id: string;
 }
 

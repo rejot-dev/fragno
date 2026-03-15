@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
+
 import { define } from "gunshi";
+
 import { importFragmentFiles } from "../../utils/find-fragno-databases";
 
 export const infoCommand = define({

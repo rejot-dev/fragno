@@ -18,7 +18,7 @@ export function FormContainer({
       <div className="flex flex-col gap-3 border-b border-[color:var(--bo-border)] pb-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           {eyebrow ? (
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               {eyebrow}
             </p>
           ) : null}
@@ -44,7 +44,7 @@ export function FormField({
   return (
     <label className="block space-y-2 text-sm">
       <span className="flex flex-col gap-1">
-        <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <span className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {label}
         </span>
         {hint ? <span className="text-xs text-[var(--bo-muted)]">{hint}</span> : null}

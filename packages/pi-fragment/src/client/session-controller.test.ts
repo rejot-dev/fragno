@@ -1,5 +1,6 @@
-import { atom } from "nanostores";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { atom } from "nanostores";
 
 import { createPiSessionControllerStore } from "./session-controller";
 import {

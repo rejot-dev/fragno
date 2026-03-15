@@ -1,8 +1,8 @@
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import { githubAppFragmentDefinition, type GitHubAppFragmentServices } from "./definition";
 import { githubAppRoutesFactory } from "../routes";
+import { githubAppFragmentDefinition, type GitHubAppFragmentServices } from "./definition";
 import type { GitHubAppFragmentConfig } from "./types";
 
 export function createGitHubAppFragment(

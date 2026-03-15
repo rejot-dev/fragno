@@ -1,8 +1,10 @@
-import { createMailingListFragment } from "@fragno-dev/fragment-mailing-list";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { sendEmail } from "@/resend/resend";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+
+import { createMailingListFragment } from "@fragno-dev/fragment-mailing-list";
+
+import { sendEmail } from "@/resend/resend";
 
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({

@@ -1,13 +1,15 @@
 import { describe, it, expect } from "vitest";
+
 import { Kysely, PostgresDialect } from "kysely";
-import { UnitOfWorkEncoder } from "./uow-encoder";
-import { schema, column, idColumn, referenceColumn } from "../../schema/create";
+
 import { dbNow } from "../../query/db-now";
+import { schema, column, idColumn, referenceColumn } from "../../schema/create";
 import {
   BetterSQLite3DriverConfig,
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
 } from "./driver-config";
+import { UnitOfWorkEncoder } from "./uow-encoder";
 
 describe("UnitOfWorkEncoder", () => {
   const testSchema = schema("test", (s) => {

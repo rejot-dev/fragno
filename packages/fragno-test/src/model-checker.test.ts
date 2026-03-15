@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryAdapter } from "@fragno-dev/db";
+
 import { column, idColumn, schema, type FragnoId } from "@fragno-dev/db/schema";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/unit-of-work";
+
+import { InMemoryAdapter } from "@fragno-dev/db";
+
 import {
   createRawUowTransaction,
   defaultStateHasher,

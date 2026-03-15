@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { stripJsonComments, convertTsconfigPathsToJitiAlias } from "./load-config";
+
 import { resolve } from "node:path";
+
+import { stripJsonComments, convertTsconfigPathsToJitiAlias } from "./load-config";
 
 describe("stripJsonComments", () => {
   it("should strip single-line comments", () => {

@@ -1,13 +1,15 @@
+import { z } from "zod";
+
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
-import { authSchema } from "../schema";
-import { z } from "zod";
-import { hashPassword, verifyPassword } from "./password";
-import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
+
 import type { authFragmentDefinition } from "..";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
-import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
+import { authSchema } from "../schema";
 import { resolveSessionSeedFromMembers, sessionSeedSchema } from "../session/session-seed";
+import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
+import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
+import { hashPassword, verifyPassword } from "./password";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;

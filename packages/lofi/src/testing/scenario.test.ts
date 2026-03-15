@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+
+import {
+  column,
+  FragnoId,
+  FragnoReference,
+  idColumn,
+  referenceColumn,
+  schema,
+} from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -10,19 +19,13 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
+
 import { ConcurrencyConflictError, defineSyncCommands } from "@fragno-dev/db";
-import {
-  column,
-  FragnoId,
-  FragnoReference,
-  idColumn,
-  referenceColumn,
-  schema,
-} from "@fragno-dev/db/schema";
+
+import { StackedLofiAdapter } from "../adapters/stacked/adapter";
 import type { LofiSubmitCommandDefinition, LofiSyncCommandTxFactory } from "../types";
 import { createScenarioSteps, defineScenario, runScenario } from "./scenario";
 import type { ScenarioDefinition } from "./scenario";
-import { StackedLofiAdapter } from "../adapters/stacked/adapter";
 
 const appSchema = schema("app", (s) =>
   s
@@ -96,8 +99,8 @@ const createIndexedDbGlobals = () => ({
 const runScenarioWithIndexedDb = async <
   TSchema extends typeof appSchema,
   TContext = unknown,
-  TCommands extends
-    ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TCommands extends ReadonlyArray<LofiSubmitCommandDefinition> =
+    ReadonlyArray<LofiSubmitCommandDefinition>,
   TVars extends ScenarioVars = ScenarioVars,
 >(
   scenario: ScenarioDefinition<TSchema, TContext, TCommands, TVars>,

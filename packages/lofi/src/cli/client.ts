@@ -1,8 +1,10 @@
-import { define } from "gunshi";
-import { openDB, type IDBPDatabase } from "idb";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
 import type { AnySchema } from "@fragno-dev/db/schema";
+import { define } from "gunshi";
+import { openDB, type IDBPDatabase } from "idb";
+
 import { IndexedDbAdapter, LofiClient, LofiSubmitClient } from "../mod.js";
 import type { LofiSchemaRegistration, LofiSubmitCommandDefinition } from "../types.js";
 import { buildOutboxUrl, coerceNumber, deriveEndpointName, formatError, sleep } from "./utils.js";

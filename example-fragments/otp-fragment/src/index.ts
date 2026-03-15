@@ -1,9 +1,11 @@
+import { generateId } from "@fragno-dev/db/schema";
+import z from "zod";
+
 import { defineFragment, defineRoute, defineRoutes, instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase, TxResult } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db";
+
 import { otpSchema, authSchema } from "./schema";
-import z from "zod";
-import { generateId } from "@fragno-dev/db/schema";
 
 /**
  * OTP Service interface that can be used by other fragments

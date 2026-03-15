@@ -1,13 +1,15 @@
 import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
+
 import { atom, type ReadableAtom } from "nanostores";
 import { z } from "zod";
-import { createClientBuilder } from "./client";
-import { useFragno } from "./vanilla";
-import { defineRoute } from "../api/route";
+
 import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoute } from "../api/route";
+import { waitForAsyncIterator } from "../util/async";
+import { createClientBuilder } from "./client";
 import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientFetchNetworkError } from "./client-error";
-import { waitForAsyncIterator } from "../util/async";
+import { useFragno } from "./vanilla";
 
 // Mock fetch globally
 global.fetch = vi.fn();

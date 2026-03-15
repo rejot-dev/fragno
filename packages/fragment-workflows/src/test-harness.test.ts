@@ -1,12 +1,14 @@
 import { describe, expect, test } from "vitest";
+
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 import {
   defineWorkflow,
   type WorkflowEnqueuedHookPayload,
   type WorkflowEvent,
   type WorkflowStep,
 } from "./workflow";
-import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 
 const SleepWorkflow = defineWorkflow(
   { name: "sleep-workflow" },

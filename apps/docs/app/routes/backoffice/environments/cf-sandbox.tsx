@@ -1,14 +1,16 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+
 import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth-server";
-import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import type {
   SandboxCommandResult,
   SandboxInstanceStatus,
   SandboxInstanceSummary,
   StartSandboxOptions,
 } from "@/sandbox/contracts";
+import { parseSleepAfterInput } from "@/sandbox/sleep-after";
+
 import type { Route } from "./+types/cf-sandbox";
 import { toCfSandboxPath, type CfSandboxView } from "./cf-sandbox-path";
 
@@ -404,7 +406,7 @@ export default function BackofficeEnvironmentCfSandbox() {
         actions={
           <Link
             to="/backoffice/environments"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to environments
           </Link>
@@ -414,7 +416,7 @@ export default function BackofficeEnvironmentCfSandbox() {
       <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
         <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
           <div className="mb-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]">
-            <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Organisation scope
             </span>
             <p className="mt-1 font-semibold text-[var(--bo-fg)]">
@@ -422,10 +424,10 @@ export default function BackofficeEnvironmentCfSandbox() {
             </p>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Active sandboxes
             </p>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase">
               {activeInstances.length}
             </span>
           </div>
@@ -440,7 +442,7 @@ export default function BackofficeEnvironmentCfSandbox() {
                   : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
               }
             >
-              <p className="text-[10px] uppercase tracking-[0.24em]">New sandbox</p>
+              <p className="text-[10px] tracking-[0.24em] uppercase">New sandbox</p>
               <p className="mt-2 text-sm font-semibold">Create a fresh instance</p>
             </Link>
 
@@ -466,7 +468,7 @@ export default function BackofficeEnvironmentCfSandbox() {
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-semibold">{instance.id}</p>
                       <span
-                        className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] ${STATUS_CLASSES[instance.status]}`}
+                        className={`rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase ${STATUS_CLASSES[instance.status]}`}
                       >
                         {STATUS_LABELS[instance.status]}
                       </span>
@@ -484,7 +486,7 @@ export default function BackofficeEnvironmentCfSandbox() {
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
           {needsActiveOrganization ? (
             <div className="space-y-4">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Active organisation required
               </p>
               <p className="text-sm text-[var(--bo-muted)]">
@@ -492,7 +494,7 @@ export default function BackofficeEnvironmentCfSandbox() {
               </p>
               <Link
                 to="/backoffice/organisations"
-                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Open organisations
               </Link>
@@ -514,7 +516,7 @@ export default function BackofficeEnvironmentCfSandbox() {
             />
           ) : (
             <div className="space-y-4">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Sandbox not found
               </p>
               <p className="text-sm text-[var(--bo-muted)]">
@@ -522,7 +524,7 @@ export default function BackofficeEnvironmentCfSandbox() {
               </p>
               <Link
                 to={toCfSandboxPath({ view: "new" })}
-                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Create new sandbox
               </Link>
@@ -546,7 +548,7 @@ function NewSandboxView({
   return (
     <div className="space-y-5">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           New sandbox
         </p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--bo-fg)]">
@@ -566,7 +568,7 @@ function NewSandboxView({
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Sandbox id (optional)
             </span>
             <input
@@ -575,14 +577,14 @@ function NewSandboxView({
               placeholder="auto-generated"
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
             />
-            <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+            <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Leave blank to auto-generate. This id is used to reference and reopen the sandbox. IDs
               are always normalized automatically.
             </span>
           </label>
 
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Sleep after
             </span>
             <input
@@ -594,14 +596,14 @@ function NewSandboxView({
               autoComplete="off"
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
             />
-            <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+            <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Idle timeout before the sandbox can sleep. Accepts duration text like `15m` or a
               seconds value like `900`.
             </span>
           </label>
 
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Startup command
             </span>
             <input
@@ -609,14 +611,14 @@ function NewSandboxView({
               defaultValue={values.startupCommand}
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
             />
-            <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+            <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Command executed immediately after provisioning. If it fails, sandbox startup is
               marked as failed.
             </span>
           </label>
 
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Startup timeout (ms)
             </span>
             <input
@@ -627,14 +629,14 @@ function NewSandboxView({
               defaultValue={values.startupTimeoutMs}
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
             />
-            <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+            <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Maximum time allowed for the startup command before it times out.
             </span>
           </label>
         </div>
 
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-3">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Runtime policy
           </p>
           <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3">
@@ -646,7 +648,7 @@ function NewSandboxView({
                 defaultChecked={values.keepAlive}
                 className="h-4 w-4 accent-[var(--bo-accent)]"
               />
-              <span className="text-xs uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+              <span className="text-xs tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
                 Keep alive
               </span>
             </label>
@@ -661,7 +663,7 @@ function NewSandboxView({
           <button
             type="submit"
             disabled={isStarting}
-            className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isStarting ? "Starting..." : "Start sandbox"}
           </button>
@@ -693,7 +695,7 @@ function SandboxDetailView({
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Sandbox details
           </p>
           <h2 className="mt-2 truncate font-mono text-xl font-semibold text-[var(--bo-fg)] md:text-2xl">
@@ -704,7 +706,7 @@ function SandboxDetailView({
           </p>
         </div>
         <span
-          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${STATUS_CLASSES[sandbox.status]}`}
+          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase ${STATUS_CLASSES[sandbox.status]}`}
         >
           {STATUS_LABELS[sandbox.status]}
         </span>
@@ -725,7 +727,7 @@ function SandboxDetailView({
 
       <div className="space-y-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Command runner
           </p>
           <p className="mt-1 text-xs text-[var(--bo-muted)]">
@@ -756,7 +758,7 @@ function SandboxDetailView({
 
           <div className="flex flex-wrap items-end gap-4">
             <label className="block min-w-56 space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-              <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--bo-muted-2)]">
+              <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
                 Timeout (ms)
               </span>
               <input
@@ -768,7 +770,7 @@ function SandboxDetailView({
                 placeholder="15000"
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
               />
-              <span className="block text-[11px] normal-case tracking-normal text-[var(--bo-muted)]">
+              <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
                 Optional command timeout. Leave blank for runtime default.
               </span>
             </label>
@@ -776,7 +778,7 @@ function SandboxDetailView({
             <button
               type="submit"
               disabled={commandDisabled || isExecuting}
-              className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isExecuting ? "Running..." : "Run command"}
             </button>
@@ -789,7 +791,7 @@ function SandboxDetailView({
       </div>
 
       <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Output</p>
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Output</p>
         <p className="text-xs text-[var(--bo-muted)]">
           Displays the most recent command result for the currently selected sandbox.
         </p>
@@ -806,7 +808,7 @@ function SandboxDetailView({
         <button
           type="submit"
           disabled={isKilling}
-          className="inline-flex border border-red-300 bg-red-100 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-red-700 transition-colors hover:border-red-400 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-70"
+          className="inline-flex border border-red-300 bg-red-100 px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isKilling ? "Stopping..." : "Kill sandbox"}
         </button>
@@ -856,7 +858,7 @@ function DetailItem({
 }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">{label}</p>
+      <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">{label}</p>
       <p className="mt-2 text-sm font-medium text-[var(--bo-fg)]">{value || "—"}</p>
       <p className="mt-1 text-xs text-[var(--bo-muted)]">{description}</p>
     </div>
@@ -866,7 +868,7 @@ function DetailItem({
 function LogBlock({ label, value }: { label: "stdout" | "stderr"; value?: string }) {
   return (
     <div className="space-y-1">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--bo-muted-2)]">{label}</p>
+      <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">{label}</p>
       <pre className="backoffice-scroll max-h-56 overflow-auto border border-[color:var(--bo-border)] bg-[rgba(var(--bo-grid),0.08)] px-3 py-2 font-mono text-xs text-[var(--bo-fg)]">
         {value?.trim() ? value : "(empty)"}
       </pre>

@@ -1,8 +1,9 @@
-import { Link } from "react-router";
 import { Lightbulb, ClipboardList, Workflow, Upload, Send } from "lucide-react";
-import { Stripe } from "@/components/logos/stripe";
-import { FragnoCircle } from "@/components/logos/fragno-circle";
 import type { ReactNode } from "react";
+import { Link } from "react-router";
+
+import { FragnoCircle } from "@/components/logos/fragno-circle";
+import { Stripe } from "@/components/logos/stripe";
 
 export function meta() {
   return [
@@ -62,7 +63,7 @@ export default function DocsIndexPage() {
         {/* Our Fragments Section */}
         <div className="mb-6 flex items-center gap-4">
           <div className="bg-fd-border h-px flex-1" />
-          <h2 className="text-fd-muted-foreground text-xs font-medium uppercase tracking-wider">
+          <h2 className="text-fd-muted-foreground text-xs font-medium tracking-wider uppercase">
             Our Fragments
           </h2>
           <div className="bg-fd-border h-px flex-1" />

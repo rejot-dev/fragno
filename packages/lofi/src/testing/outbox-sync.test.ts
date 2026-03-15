@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { column, FragnoReference, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import {
   IDBCursor,
   IDBDatabase,
@@ -10,6 +12,7 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
+
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   InMemoryAdapter,
@@ -19,7 +22,7 @@ import {
   type OutboxEntry,
   withDatabase,
 } from "@fragno-dev/db";
-import { column, FragnoReference, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
 import { IndexedDbAdapter, LofiClient } from "../mod";
 
 const appSchema = schema("app", (s) => {

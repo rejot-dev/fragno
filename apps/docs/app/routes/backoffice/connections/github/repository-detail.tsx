@@ -1,12 +1,13 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
+
 import type { Route } from "./+types/repository-detail";
 import {
   fetchGitHubLinkedRepositories,
   fetchGitHubPulls,
   type GitHubRepositorySummary,
 } from "./data";
-import { formatTimestamp } from "./shared";
 import type { GitHubRepositoriesOutletContext } from "./repositories";
+import { formatTimestamp } from "./shared";
 
 type GitHubRepositoryDetailLoaderData = {
   repo: GitHubRepositorySummary | null;
@@ -79,13 +80,13 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
   if (error || !repoId || !repo) {
     return (
       <div className="space-y-3 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Repository detail
         </p>
         <p>{error ?? "Repository not found."}</p>
         <Link
           to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
           Back to repositories
         </Link>
@@ -97,7 +98,7 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Repository
           </p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{repo.fullName}</h3>
@@ -107,7 +108,7 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
         </div>
         <Link
           to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
         >
           Back to repositories
         </Link>
@@ -115,7 +116,7 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
 
       <div className="grid gap-3 md:grid-cols-2">
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Repo metadata
           </p>
           <p className="mt-2 text-[var(--bo-fg)]">{repo.fullName}</p>
@@ -131,7 +132,7 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
         </section>
 
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Pull request feed
           </p>
           <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
@@ -145,10 +146,10 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
 
       <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Open pull requests
           </p>
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {pulls.length} shown
           </span>
         </div>
@@ -188,7 +189,7 @@ export default function BackofficeOrganisationGitHubRepositoryDetail() {
                         {draft ? " · draft" : ""}
                       </p>
                     </div>
-                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                       {state}
                     </span>
                   </div>

@@ -354,8 +354,9 @@ export interface WorkflowInstanceCreateOptions<TParams = unknown> {
   params?: TParams;
 }
 
-export interface WorkflowInstanceCreateOptionsWithId<TParams = unknown>
-  extends WorkflowInstanceCreateOptions<TParams> {
+export interface WorkflowInstanceCreateOptionsWithId<
+  TParams = unknown,
+> extends WorkflowInstanceCreateOptions<TParams> {
   id: string;
 }
 

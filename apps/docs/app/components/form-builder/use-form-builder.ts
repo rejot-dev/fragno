@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from "react";
-import type { FormField, FormBuilderState, FieldType, GeneratedSchemas } from "./types";
+
+import { getFieldTypeConfig } from "./constants";
 import { generateSchemas, labelToFieldName, ensureUniqueFieldName } from "./schema-generator";
 import { parseSchemas } from "./schema-parser";
-import { getFieldTypeConfig } from "./constants";
+import type { FormField, FormBuilderState, FieldType, GeneratedSchemas } from "./types";
 
 /**
  * Generates a unique ID for a field.

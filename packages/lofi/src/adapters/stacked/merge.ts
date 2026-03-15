@@ -1,14 +1,15 @@
-import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
+import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import { FindBuilder } from "@fragno-dev/db/unit-of-work";
-import type { LofiQueryInterface, LofiQueryableAdapter } from "../../types";
+
 import type { Condition } from "../../query/conditions";
 import { normalizeValue } from "../../query/normalize";
-import { compareNormalizedValues } from "../in-memory/value-comparison";
+import type { LofiQueryInterface, LofiQueryableAdapter } from "../../types";
 import type { InMemoryLofiAdapter } from "../in-memory/adapter";
 import type { InMemoryLofiRow } from "../in-memory/store";
+import { compareNormalizedValues } from "../in-memory/value-comparison";
 
 type CompiledJoin = {
   relation: AnyRelation;

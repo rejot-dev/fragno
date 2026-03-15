@@ -1,15 +1,16 @@
 {
   "name": "@fragno-dev/fragno-db-usage-drizzle",
   "private": true,
+  "type": "module",
+  "main": "./dist/node/mod.js",
+  "module": "./dist/node/mod.js",
+  "types": "./dist/node/mod.d.ts",
   "exports": {
     ".": {
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     }
   },
-  "main": "./dist/node/mod.js",
-  "module": "./dist/node/mod.js",
-  "types": "./dist/node/mod.d.ts",
   "scripts": {
     "build": "tsdown && pnpm run db:fragno:generate:all",
     "build:watch": "tsdown --watch",
@@ -23,15 +24,14 @@
     "db:drizzle:generate:sqlite": "drizzle-kit generate --config ./drizzle.sqlite.config.ts",
     "db:drizzle:generate:mysql": "drizzle-kit generate --config ./drizzle.mysql.config.ts"
   },
-  "type": "module",
   "dependencies": {
     "@electric-sql/pglite": "^0.3.15",
+    "@fragno-dev/auth": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
-    "@fragno-dev/workflows": "workspace:*",
     "@fragno-dev/node": "workspace:*",
-    "@fragno-dev/auth": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "gunshi": "^0.26.3",
     "kysely-pglite": "^0.6.1",

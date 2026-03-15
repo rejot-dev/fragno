@@ -1,4 +1,5 @@
 import { useOutletContext, useSearchParams } from "react-router";
+
 import type { PiSessionsOutletContext } from "./sessions";
 
 export default function BackofficePiSessionsIndex() {
@@ -10,7 +11,7 @@ export default function BackofficePiSessionsIndex() {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="space-y-4">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Session detail
           </p>
           <h3 className="text-xl font-semibold text-[var(--bo-fg)]">New session</h3>
@@ -26,7 +27,7 @@ export default function BackofficePiSessionsIndex() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Session detail
         </p>
         <h3 className="text-xl font-semibold text-[var(--bo-fg)]">Select a session</h3>

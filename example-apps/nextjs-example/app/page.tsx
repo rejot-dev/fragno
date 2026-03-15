@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+
 import { exampleFragment } from "@/lib/example-fragment-client";
 
 export default function Home() {

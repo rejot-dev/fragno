@@ -1,5 +1,6 @@
-import type { Route } from "./+types/uploads-direct";
 import { getUploadServers } from "~/uploads/upload-fragment.server";
+
+import type { Route } from "./+types/uploads-direct";
 
 export async function loader(args: Route.LoaderArgs) {
   const servers = await getUploadServers();

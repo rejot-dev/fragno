@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth-client";
 import type { PiConfigState } from "@/fragno/pi-shared";
@@ -145,7 +146,7 @@ export function PiErrorBoundary({ error, params }: { error: unknown; params: { o
     <div className="space-y-4">
       <PiHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}
         </p>
         <p className="mt-2 text-[var(--bo-fg)]">{message}</p>

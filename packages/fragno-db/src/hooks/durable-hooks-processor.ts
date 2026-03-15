@@ -1,7 +1,7 @@
-import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { createDurableHooksRunner } from "./hooks";
+import type { AnySchema } from "../schema/create";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
+import { createDurableHooksRunner } from "./hooks";
 
 export type DurableHooksProcessor = {
   processDue: () => Promise<number>;

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { cli, type Command } from "gunshi";
 import { rmSync } from "node:fs";
-import { dbFile } from "./database";
-import { userCommand, userSubCommands } from "./commands/user";
-import { postCommand, postSubCommands } from "./commands/post";
+
+import { cli, type Command } from "gunshi";
+
 import { commentCommand, commentSubCommands } from "./commands/comment";
+import { postCommand, postSubCommands } from "./commands/post";
 import { ratingCommand, ratingSubCommands } from "./commands/rating";
+import { userCommand, userSubCommands } from "./commands/user";
+import { dbFile } from "./database";
 
 // Clean command
 const cleanCommand: Command = {

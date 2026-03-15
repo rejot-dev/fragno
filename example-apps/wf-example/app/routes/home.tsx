@@ -1,6 +1,6 @@
-import type { Route } from "./+types/home";
-
 import { NavLink } from "react-router";
+
+import type { Route } from "./+types/home";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -14,7 +14,7 @@ export default function Home() {
     <main className="flex flex-col gap-12">
       <header className="grid gap-8 rounded-[32px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-200/70 p-10 shadow-sm lg:grid-cols-[1.2fr_0.8fr]">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
+          <p className="text-xs font-semibold tracking-[0.35em] text-slate-500 uppercase">
             Fragno workflows
           </p>
           <h1 className="mt-4 text-4xl font-semibold text-slate-900 lg:text-5xl">
@@ -40,7 +40,7 @@ export default function Home() {
           </div>
         </div>
         <div className="rounded-2xl bg-slate-900 p-6 text-slate-100">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <h2 className="text-sm font-semibold tracking-[0.3em] text-slate-400 uppercase">
             What you can do
           </h2>
           <ul className="mt-4 grid gap-3 text-sm text-slate-200">

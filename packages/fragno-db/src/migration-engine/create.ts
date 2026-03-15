@@ -1,6 +1,6 @@
-import { type MigrationOperation } from "./shared";
 import type { AnySchema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import { type MigrationOperation } from "./shared";
 
 type Awaitable<T> = T | Promise<T>;
 

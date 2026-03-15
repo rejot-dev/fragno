@@ -14,11 +14,11 @@ export function OriginalOgImage() {
         </div>
 
         {/* Title */}
-        <h1 className="text-6xl font-extrabold leading-tight tracking-tight text-gray-900 dark:text-white">
+        <h1 className="text-6xl leading-tight font-extrabold tracking-tight text-gray-900 dark:text-white">
           Build Full-
           <span className="relative inline-block">
             Stack
-            <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center">
+            <span className="absolute -top-2 -right-3 inline-flex rotate-12 items-center">
               <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-lg ring-1 ring-white/20">
                 <span className="text-xs font-semibold tracking-wider">Developer Beta</span>
               </span>

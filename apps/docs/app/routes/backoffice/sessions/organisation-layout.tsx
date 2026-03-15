@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
-import type { Route } from "./+types/organisation-layout";
-import { PiErrorBoundary, PiHeader, PiTabs, type PiTab } from "./shared";
-import { fetchPiConfig } from "./data";
+
 import { getAuthMe } from "@/fragno/auth-server";
 import type { PiConfigState } from "@/fragno/pi-shared";
+
+import type { Route } from "./+types/organisation-layout";
+import { fetchPiConfig } from "./data";
+import { PiErrorBoundary, PiHeader, PiTabs, type PiTab } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {

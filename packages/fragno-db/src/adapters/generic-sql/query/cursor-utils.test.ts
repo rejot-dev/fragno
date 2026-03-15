@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, schema } from "../../../schema/create";
-import { Cursor } from "../../../query/cursor";
+
 import type { Condition } from "../../../query/condition-builder";
+import { Cursor } from "../../../query/cursor";
+import { column, idColumn, schema } from "../../../schema/create";
 import { NodePostgresDriverConfig } from "../driver-config";
 import { buildCursorCondition } from "./cursor-utils";
 

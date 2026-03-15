@@ -1,6 +1,9 @@
 // Runner implementation of the WorkflowStep interface.
 
 import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
+
+import { isSystemEventActor } from "../system-events";
+import { parseDurationMs } from "../utils";
 import type {
   AnyTxResult,
   WorkflowDuration,
@@ -9,7 +12,6 @@ import type {
   WorkflowStepTx,
 } from "../workflow";
 import { WaitForEventTimeoutError } from "../workflow";
-import { parseDurationMs } from "../utils";
 import type { RunnerState, WorkflowStepSnapshot } from "./state";
 import type {
   RunnerTaskKind,
@@ -18,7 +20,6 @@ import type {
   WorkflowStepCreateDraft,
   WorkflowStepUpdateDraft,
 } from "./types";
-import { isSystemEventActor } from "../system-events";
 import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
 export type RunnerStepSuspendReason =

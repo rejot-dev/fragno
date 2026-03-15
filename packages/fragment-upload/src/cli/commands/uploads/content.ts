@@ -1,6 +1,8 @@
-import { define } from "gunshi";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
+
+import { define } from "gunshi";
+
 import { baseArgs, createClientFromContext } from "../../utils/options.js";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";

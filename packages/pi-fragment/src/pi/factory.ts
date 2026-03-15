@@ -1,8 +1,8 @@
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import { piFragmentDefinition } from "./definition";
 import { piRoutesFactory } from "../routes";
+import { piFragmentDefinition } from "./definition";
 import type { PiFragmentConfig, PiWorkflowsService } from "./types";
 
 type PiFragmentServices = {

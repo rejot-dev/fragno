@@ -1,6 +1,7 @@
 import type { ControlProps, RankedTester } from "@jsonforms/core";
 import { and, isBooleanControl, optionIs, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
+
 import {
   Field,
   FieldLabel,
@@ -8,8 +9,9 @@ import {
   FieldError,
   FieldContent,
 } from "@/components/ui/field";
-import { ShadcnSwitch } from "../shadcn-controls/ShadcnSwitch";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnSwitch } from "../shadcn-controls/ShadcnSwitch";
 
 export const ShadcnBooleanToggleControl = ({
   data,

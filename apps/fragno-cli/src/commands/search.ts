@@ -1,4 +1,5 @@
 import { define } from "gunshi";
+
 import {
   mergeResultsByUrl,
   formatAsMarkdown,

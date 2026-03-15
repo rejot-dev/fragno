@@ -17,9 +17,9 @@
     "@sveltejs/adapter-auto": "^6.1.1",
     "@sveltejs/kit": "^2.55.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@typescript/native-preview": "catalog:",
     "svelte": "^5.47.0",
     "svelte-check": "^4.3.5",
-    "@typescript/native-preview": "catalog:",
     "vite": "catalog:"
   }
 }

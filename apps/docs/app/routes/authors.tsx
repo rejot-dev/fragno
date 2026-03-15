@@ -1,6 +1,3 @@
-import { useState, type ReactNode } from "react";
-import { Link } from "react-router";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import {
   Shield,
   Target,
@@ -14,17 +11,21 @@ import {
   Layers,
   BookOpen,
 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
-import Frameworks from "@/components/frameworks";
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
+import { validateTurnstileToken } from "@/cloudflare/turnstile";
+import { CommunitySection } from "@/components/community-section";
 import DatabaseIntegration from "@/components/database-integration";
 import { DatabaseSupport } from "@/components/database-support";
-import type { Route } from "./+types/authors";
-import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { validateTurnstileToken } from "@/cloudflare/turnstile";
-import { SkillCta } from "@/components/skill-cta";
-import { CommunitySection } from "@/components/community-section";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import Frameworks from "@/components/frameworks";
 import { Cake } from "@/components/logos/cakes";
+import { SkillCta } from "@/components/skill-cta";
+
+import type { Route } from "./+types/authors";
 
 export function meta() {
   return [
@@ -323,7 +324,7 @@ export function Chat() {
           <div className="text-fd-muted-foreground flex items-center font-medium">
             <Cake
               variant="cake-crumbs"
-              className="dark:drop-shadow-slate-600 mr-2 size-12 md:size-16 dark:drop-shadow-md"
+              className="mr-2 size-12 md:size-16 dark:drop-shadow-md dark:drop-shadow-slate-600"
             />
             <span>With Fragno you build</span>
           </div>
@@ -344,15 +345,15 @@ export function Chat() {
         <div className="relative min-w-0 flex-1 overflow-hidden">
           <div
             aria-hidden
-            className="bg-linear-to-br pointer-events-none absolute -right-6 -top-16 h-48 w-48 rounded-full from-blue-400/25 via-transparent to-transparent blur-3xl"
+            className="pointer-events-none absolute -top-16 -right-6 h-48 w-48 rounded-full bg-linear-to-br from-blue-400/25 via-transparent to-transparent blur-3xl"
           />
           <div
             aria-hidden
-            className="bg-linear-to-br pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full from-purple-400/20 via-transparent to-transparent blur-3xl"
+            className="pointer-events-none absolute bottom-[-60px] -left-10 h-40 w-56 rounded-full bg-linear-to-br from-purple-400/20 via-transparent to-transparent blur-3xl"
           />
 
-          <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] dark:bg-slate-900/75">
-            <div className="bg-white/92 flex flex-wrap gap-2 rounded-full p-1 dark:bg-slate-900/70">
+          <div className="relative overflow-hidden rounded-[26px] bg-white/94 p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] dark:bg-slate-900/75">
+            <div className="flex flex-wrap gap-2 rounded-full bg-white/92 p-1 dark:bg-slate-900/70">
               {providesTabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -369,7 +370,7 @@ export function Chat() {
                 </button>
               ))}
             </div>
-            <div className="bg-white/97 relative rounded-2xl p-2 dark:bg-slate-950/60">
+            <div className="relative rounded-2xl bg-white/97 p-2 dark:bg-slate-950/60">
               {activeTab === "server-core" && (
                 <p className="text-fd-muted-foreground mb-4 text-sm">
                   Define your API routes with full type safety. Routes are embedded directly in your
@@ -409,13 +410,13 @@ export function Chat() {
         {highlightItems.map((item) => (
           <div
             key={item.title}
-            className="dark:border-white/12 relative overflow-hidden rounded-3xl border border-white/20 bg-white/70 p-6 dark:bg-slate-900/70"
+            className="relative overflow-hidden rounded-3xl border border-white/20 bg-white/70 p-6 dark:border-white/12 dark:bg-slate-900/70"
           >
             <span
               className={`pointer-events-none absolute inset-0 opacity-30 ${item.background}`}
             />
             <div className="relative flex items-start gap-4">
-              <span className="bg-linear-to-br flex h-11 w-11 items-center justify-center rounded-xl from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-linear-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
                 {item.icon}
               </span>
               <div>
@@ -437,10 +438,10 @@ export function Chat() {
 function UseCases() {
   return (
     <section className="relative w-full max-w-6xl space-y-12">
-      <div aria-hidden className="pointer-events-none absolute -right-12 -top-16 hidden lg:block">
+      <div aria-hidden className="pointer-events-none absolute -top-16 -right-12 hidden lg:block">
         <Cake
           variant="cake-full"
-          className="dark:drop-shadow-slate-600 size-48 md:size-64 dark:drop-shadow-md"
+          className="size-48 md:size-64 dark:drop-shadow-md dark:drop-shadow-slate-600"
         />
       </div>
       <div className="space-y-4 text-center">
@@ -545,12 +546,12 @@ function UserCta() {
     <section className="w-full max-w-5xl">
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-8 py-10 text-white shadow-xl">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-10 top-0 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
+          <div className="absolute top-0 -left-10 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
           <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-purple-500/30 blur-3xl" />
         </div>
         <div className="relative flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-blue-200">
+            <p className="text-sm font-semibold tracking-wide text-blue-200 uppercase">
               Integrating fragments?
             </p>
             <h2 className="text-3xl font-bold">Go to the user landing</h2>
@@ -575,7 +576,7 @@ export default function AuthorsPage({ loaderData }: Route.ComponentProps) {
   return (
     <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-10 md:px-8 md:py-12">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="bg-linear-to-br opacity-4 mx-auto -mt-20 h-[520px] w-[1000px] from-blue-500 via-sky-400 to-purple-500 blur-3xl dark:opacity-15" />
+        <div className="mx-auto -mt-20 h-[520px] w-[1000px] bg-linear-to-br from-blue-500 via-sky-400 to-purple-500 opacity-4 blur-3xl dark:opacity-15" />
       </div>
 
       <Hero />

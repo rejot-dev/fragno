@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+
+import { internalSchema } from "../fragments/internal-fragment";
 import { column, idColumn, referenceColumn, schema } from "../schema/create";
 import { generateDrizzleSchema } from "./drizzle";
-import { internalSchema } from "../fragments/internal-fragment";
 
 describe("generateDrizzleSchema", () => {
   const testSchema = schema("test", (s) => {

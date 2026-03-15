@@ -1,4 +1,5 @@
 import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+
 import type { Route } from "./+types/repositories";
 import {
   fetchGitHubAdminConfig,
@@ -84,12 +85,12 @@ export default function BackofficeOrganisationGitHubRepositories() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Repositories
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Linked repositories</h2>
           </div>
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {repos.length} total
           </span>
         </div>
@@ -116,7 +117,7 @@ export default function BackofficeOrganisationGitHubRepositories() {
                       {repo.defaultBranch ? `default ${repo.defaultBranch}` : "no default branch"}
                     </p>
                   </div>
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
                     {repo.isPrivate ? "Private" : "Public"}
                   </span>
                 </div>

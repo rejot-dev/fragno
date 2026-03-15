@@ -1,7 +1,8 @@
 import type { UnpluginFactory } from "unplugin";
-import type { Options } from "./types";
 import { createUnplugin } from "unplugin";
+
 import { transform } from "./transform";
+import type { Options } from "./types";
 
 export const unpluginFactory: UnpluginFactory<Options | undefined> = (options = {}) => {
   const { platform } = options;

@@ -1,16 +1,17 @@
+import { Package, Route as RouteIcon, Layers } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
-import { Package, Route as RouteIcon, Layers } from "lucide-react";
 
-import Frameworks from "@/components/frameworks";
-import { DatabaseSupport } from "@/components/database-support";
-import type { Route } from "./+types/home";
-import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
 import { CommunitySection } from "@/components/community-section";
+import { DatabaseSupport } from "@/components/database-support";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import Frameworks from "@/components/frameworks";
 import { SkillCta } from "@/components/skill-cta";
+
+import type { Route } from "./+types/home";
 
 export function meta() {
   return [
@@ -378,7 +379,7 @@ function FragmentShowcase() {
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-fd-muted-foreground text-sm font-medium">{activeItem.label}</p>
                 {activeItem.comingSoon && (
-                  <span className="rounded-full border border-amber-400/30 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  <span className="rounded-full border border-amber-400/30 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
                     Coming soon
                   </span>
                 )}
@@ -401,7 +402,7 @@ function FragmentShowcase() {
                 </ul>
               </div>
               <div className="space-y-2 pt-2">
-                <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                   Install
                 </p>
                 <FragnoCodeBlock
@@ -443,18 +444,18 @@ function FragmentShowcase() {
                   type="button"
                   onClick={() => setActiveId(item.id)}
                   aria-pressed={isActive}
-                  className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-white/10 dark:bg-slate-950/60 ${
+                  className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:outline-none dark:border-white/10 dark:bg-slate-950/60 ${
                     isActive ? `ring-2 ring-inset ${item.activeRing}` : ""
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                        <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                           {item.label}
                         </p>
                         {item.comingSoon && (
-                          <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
                             Coming soon
                           </span>
                         )}
@@ -475,15 +476,15 @@ function FragmentShowcase() {
           </div>
           <div
             aria-hidden
-            className="bg-linear-to-b pointer-events-none absolute inset-x-0 top-0 h-10 from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
+            className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-linear-to-b from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
           />
           <div
             aria-hidden
-            className="bg-linear-to-t pointer-events-none absolute inset-x-0 bottom-0 h-14 from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-linear-to-t from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute bottom-4 right-4 inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-sm dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-300"
+            className="pointer-events-none absolute right-4 bottom-4 inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/80 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase shadow-sm dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-300"
           >
             Scroll
           </div>
@@ -498,12 +499,12 @@ function AuthorCta() {
     <section className="w-full max-w-5xl">
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-8 py-10 text-white shadow-xl">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-10 top-0 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
+          <div className="absolute top-0 -left-10 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
           <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-purple-500/30 blur-3xl" />
         </div>
         <div className="relative flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-blue-200">
+            <p className="text-sm font-semibold tracking-wide text-blue-200 uppercase">
               Building fragments?
             </p>
             <h2 className="text-3xl font-bold">Create portable full-stack libraries</h2>
@@ -528,7 +529,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
   return (
     <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-10 md:px-8 md:py-12">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="bg-linear-to-br opacity-4 mx-auto -mt-20 h-[520px] w-[1000px] from-blue-500 via-sky-400 to-purple-500 blur-3xl dark:opacity-15" />
+        <div className="mx-auto -mt-20 h-[520px] w-[1000px] bg-linear-to-br from-blue-500 via-sky-400 to-purple-500 opacity-4 blur-3xl dark:opacity-15" />
       </div>
 
       <Hero />

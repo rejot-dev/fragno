@@ -1,3 +1,5 @@
+import type { AnyColumn } from "@fragno-dev/db/schema";
+
 import {
   dbInterval,
   dbNow,
@@ -5,7 +7,6 @@ import {
   type DbIntervalInput,
   type DbNow,
 } from "@fragno-dev/db";
-import type { AnyColumn } from "@fragno-dev/db/schema";
 
 export type ConditionType = "compare" | "and" | "or" | "not";
 

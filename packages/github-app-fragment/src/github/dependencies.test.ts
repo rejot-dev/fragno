@@ -1,5 +1,6 @@
-import { generateKeyPairSync } from "crypto";
 import { describe, expect, it } from "vitest";
+
+import { generateKeyPairSync } from "crypto";
 
 import { buildHarness } from "./test-utils";
 

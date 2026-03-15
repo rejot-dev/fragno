@@ -1,14 +1,17 @@
-import { reactRouter } from "@react-router/dev/vite";
-import { cloudflare } from "@cloudflare/vite-plugin";
-import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
-import mdx from "fumadocs-mdx/vite";
-import devtoolsJson from "vite-plugin-devtools-json";
-import * as MdxConfig from "./source.config";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import path from "path";
+
+import { reactRouter } from "@react-router/dev/vite";
+import mdx from "fumadocs-mdx/vite";
+import { defineConfig } from "vite";
 import type { Plugin } from "vite";
+import devtoolsJson from "vite-plugin-devtools-json";
+
+import { cloudflare } from "@cloudflare/vite-plugin";
+import tailwindcss from "@tailwindcss/vite";
+
+import * as MdxConfig from "./source.config";
 
 const fumadocsDeps = [
   "fumadocs-ui/components/callout",

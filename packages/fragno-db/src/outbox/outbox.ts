@@ -1,5 +1,5 @@
-import type { AnySchema, AnyTable, FragnoId } from "../schema/create";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
+import type { AnySchema, AnyTable, FragnoId } from "../schema/create";
 
 export type OutboxConfig = {
   enabled: boolean;

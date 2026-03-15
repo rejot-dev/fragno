@@ -1,7 +1,9 @@
 import { test, expect, describe, vi } from "vitest";
-import { RequestOutputContext } from "./request-output-context";
+
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import { ResponseStream } from "./internal/response-stream";
+import { RequestOutputContext } from "./request-output-context";
 
 // Mock schema implementations for testing
 const createMockSchema = (shouldPass: boolean, returnValue?: unknown): StandardSchemaV1 => ({

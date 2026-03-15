@@ -1,16 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
-import { createColdKysely } from "./cold-kysely";
-import { SQLiteSQLGenerator } from "./dialect/sqlite";
-import { PostgresSQLGenerator } from "./dialect/postgres";
-import { MySQLSQLGenerator } from "./dialect/mysql";
-import { createPreparedMigrations } from "./prepared-migrations";
+
 import {
   createNamingResolver,
   schemaNamingStrategy,
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../../naming/sql-naming";
+import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import { createColdKysely } from "./cold-kysely";
+import { MySQLSQLGenerator } from "./dialect/mysql";
+import { PostgresSQLGenerator } from "./dialect/postgres";
+import { SQLiteSQLGenerator } from "./dialect/sqlite";
+import { createPreparedMigrations } from "./prepared-migrations";
 
 const testSchema = schema("test", (s) => {
   return s

@@ -1,8 +1,11 @@
+import "../../backoffice.css";
+
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+
 import { FormContainer, FormField } from "@/components/backoffice";
 import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
+
 import type { Route } from "./+types/sign-up";
-import "../../backoffice.css";
 
 type BackofficeSignUpActionData = {
   ok: false;
@@ -96,10 +99,10 @@ export default function BackofficeSignUp() {
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-6 px-4 py-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="w-full max-w-xl space-y-4">
-          <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[11px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Fragno Backoffice
           </p>
-          <h1 className="text-3xl font-semibold leading-tight text-[var(--bo-fg)] md:text-4xl">
+          <h1 className="text-3xl leading-tight font-semibold text-[var(--bo-fg)] md:text-4xl">
             Create a backoffice account for local development access.
           </h1>
           <p className="text-sm text-[var(--bo-muted)]">
@@ -109,13 +112,13 @@ export default function BackofficeSignUp() {
           <div className="flex flex-wrap gap-2">
             <Link
               to="/backoffice/login"
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               Back to sign in
             </Link>
             <Link
               to="/docs"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               Return to docs
             </Link>
@@ -136,7 +139,7 @@ export default function BackofficeSignUp() {
                   autoComplete="username"
                   required
                   placeholder="team@fragno.dev"
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                 />
               </FormField>
               <FormField label="Create password" hint="At least 8 characters.">
@@ -146,7 +149,7 @@ export default function BackofficeSignUp() {
                   autoComplete="new-password"
                   required
                   placeholder="••••••••"
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                 />
               </FormField>
               <FormField label="Confirm password" hint="Re-type to confirm.">
@@ -156,7 +159,7 @@ export default function BackofficeSignUp() {
                   autoComplete="new-password"
                   required
                   placeholder="••••••••"
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                 />
               </FormField>
               {signUpError ? (
@@ -170,7 +173,7 @@ export default function BackofficeSignUp() {
                 <button
                   type="submit"
                   disabled={signUpPending}
-                  className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                  className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                 >
                   {signUpPending ? "Creating account…" : "Sign up"}
                 </button>
@@ -178,7 +181,7 @@ export default function BackofficeSignUp() {
                   Already registered?{" "}
                   <Link
                     to="/backoffice/login"
-                    className="font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent)] transition-colors hover:text-[var(--bo-accent-strong)]"
+                    className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
                   >
                     Sign in
                   </Link>

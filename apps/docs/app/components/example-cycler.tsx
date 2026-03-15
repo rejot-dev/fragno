@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
+import { useState } from "react";
+
 import { FlipWords } from "@/components/ui/flip-text";
 
 const backendCode = `import { Hono } from "hono";
@@ -41,15 +42,15 @@ export default function ExampleCycler({ className }: { className?: string }) {
       <div className="relative">
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-6 -top-16 h-48 w-48 rounded-full bg-gradient-to-br from-blue-400/25 via-transparent to-transparent blur-3xl"
+          className="pointer-events-none absolute -top-16 -right-6 h-48 w-48 rounded-full bg-gradient-to-br from-blue-400/25 via-transparent to-transparent blur-3xl"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full bg-gradient-to-br from-purple-400/20 via-transparent to-transparent blur-3xl"
+          className="pointer-events-none absolute bottom-[-60px] -left-10 h-40 w-56 rounded-full bg-gradient-to-br from-purple-400/20 via-transparent to-transparent blur-3xl"
         />
 
-        <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] transition-transform duration-500 dark:bg-slate-900/75">
-          <div className="bg-white/92 flex flex-wrap gap-2 rounded-full p-1 dark:bg-slate-900/70">
+        <div className="relative overflow-hidden rounded-[26px] bg-white/94 p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] transition-transform duration-500 dark:bg-slate-900/75">
+          <div className="flex flex-wrap gap-2 rounded-full bg-white/92 p-1 dark:bg-slate-900/70">
             <button
               onClick={() => setCodeView("backend")}
               className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
@@ -71,7 +72,7 @@ export default function ExampleCycler({ className }: { className?: string }) {
               Frontend
             </button>
           </div>
-          <div className="bg-white/97 relative mt-4 rounded-2xl p-3.5 text-left dark:bg-slate-950/60">
+          <div className="relative mt-4 rounded-2xl bg-white/97 p-3.5 text-left dark:bg-slate-950/60">
             <div className="relative overflow-hidden">
               <div
                 className={`transition-all duration-500 ease-in-out ${

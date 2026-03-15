@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { StatusCode } from "../http/http-status";
 
 export class FragnoApiError extends Error {

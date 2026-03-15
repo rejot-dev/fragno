@@ -1,10 +1,12 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
 import { JsonFormsStateProvider } from "@jsonforms/react";
-import { ShadcnEnumCellContext, shadcnEnumCellTester } from "./ShadcnEnumCell";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+
 import { initCore, createTesterContext } from "../util/test-utils";
+import { ShadcnEnumCellContext, shadcnEnumCellTester } from "./ShadcnEnumCell";
 
 const schema = {
   type: "object",

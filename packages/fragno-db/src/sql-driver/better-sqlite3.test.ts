@@ -1,9 +1,11 @@
-import SQLite from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { SqlDriverAdapter } from "./sql-driver-adapter";
+
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
+
 import type { GenericSQLPlugin } from "./query-executor/plugin";
 import { sql } from "./sql";
-import { SqliteDialect } from "kysely";
+import { SqlDriverAdapter } from "./sql-driver-adapter";
 
 describe("better-sqlite3", () => {
   it("Should be able to execute queries using better-sqlite3", async () => {

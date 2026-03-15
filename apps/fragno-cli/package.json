@@ -1,29 +1,30 @@
 {
   "name": "@fragno-dev/cli",
   "version": "0.2.1",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/fragno-cli"
+  },
+  "bin": {
+    "fragno-cli": "./bin/run.js"
+  },
+  "type": "module",
+  "main": "./dist/cli.js",
+  "module": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
   "exports": {
     ".": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.js"
     }
   },
-  "type": "module",
-  "bin": {
-    "fragno-cli": "./bin/run.js"
-  },
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "devDependencies": {
-    "@fragno-private/typescript-config": "workspace:*",
-    "@fragno-private/vitest-config": "workspace:*",
-    "@types/node": "^22.19.7",
-    "@vitest/coverage-istanbul": "^3.2.4"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
@@ -36,14 +37,13 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0"
   },
-  "main": "./dist/cli.js",
-  "module": "./dist/cli.js",
-  "types": "./dist/cli.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "apps/fragno-cli"
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "@vitest/coverage-istanbul": "^3.2.4"
   },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  "engines": {
+    "node": ">=22"
+  }
 }

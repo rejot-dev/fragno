@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
-import { createAssistantMessageEventStream, type AssistantMessage } from "@mariozechner/pi-ai";
+
 import { drainDurableHooks } from "@fragno-dev/test";
+import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
+
+import { createAssistantMessageEventStream, type AssistantMessage } from "@mariozechner/pi-ai";
 
 import { buildHarness, createDelayedStreamFn, createStreamFn, mockModel } from "./test-utils";
 import type {

@@ -1,5 +1,9 @@
 import { test, expectTypeOf, describe } from "vitest";
+
 import { z } from "zod";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import { type FragnoRouteConfig, type HTTPMethod } from "../api/api";
 import { defineRoute } from "../api/route";
 import type {
@@ -12,7 +16,6 @@ import type {
   HasGetRoutes,
   FragnoClientMutatorData,
 } from "./client";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // Test route configurations for type testing
 const _testRoutes = [

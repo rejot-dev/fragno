@@ -1,8 +1,10 @@
+import { z } from "zod";
+
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { defineSyncCommands, withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
 import { upvoteSchema } from "./schema/upvote";
-import { z } from "zod";
 
 export { upvoteSchema };
 

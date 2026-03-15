@@ -1,5 +1,7 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { describe, expect, it } from "vitest";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import {
   FragnoDbValidationError,
   FragnoId,

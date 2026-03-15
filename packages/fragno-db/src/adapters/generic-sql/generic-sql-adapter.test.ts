@@ -1,9 +1,11 @@
-import { SQLocalKysely } from "sqlocal/kysely";
 import { assert, describe, expect, it } from "vitest";
+
+import { SQLocalKysely } from "sqlocal/kysely";
+
+import { internalSchema } from "../../fragments/internal-fragment";
+import { column, idColumn, schema } from "../../schema/create";
 import { SQLocalDriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
-import { column, idColumn, schema } from "../../schema/create";
-import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("SqlAdapter", () => {
   const testSchema = schema("test", (s) => {

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { useEffect, useRef, useState } from "react";
 import {
   Form,
   Link,
@@ -9,11 +9,13 @@ import {
   useOutletContext,
   useParams,
 } from "react-router";
+
 import type { TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
+
 import type { Route } from "./+types/message-thread";
 import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
-import { formatTimestamp } from "./shared";
 import type { TelegramMessagesOutletContext } from "./messages";
+import { formatTimestamp } from "./shared";
 
 type TelegramMessagesThreadData = {
   messages: TelegramMessageSummary[];
@@ -149,7 +151,7 @@ function ChatMessages({
     <div className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Messages
           </p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{chatTitle}</h3>
@@ -157,7 +159,7 @@ function ChatMessages({
         </div>
         <Link
           to={backPath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
         >
           Back to chats
         </Link>
@@ -183,13 +185,13 @@ function ChatMessages({
                   >
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-semibold text-[var(--bo-fg)]">{author}</p>
-                      <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                      <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                         {formatTimestamp(message.sentAt)}
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-[var(--bo-muted)]">{content}</p>
                     {message.commandName ? (
-                      <span className="mt-2 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                      <span className="mt-2 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                         /{message.commandName}
                       </span>
                     ) : null}
@@ -201,7 +203,7 @@ function ChatMessages({
             )}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar orientation="vertical" className="flex w-2.5 select-none p-[2px]">
+        <ScrollArea.Scrollbar orientation="vertical" className="flex w-2.5 p-[2px] select-none">
           <ScrollArea.Thumb className="w-full rounded-full bg-[rgba(var(--bo-grid),0.45)] transition-colors hover:bg-[rgba(var(--bo-grid),0.65)]" />
         </ScrollArea.Scrollbar>
         <ScrollArea.Corner className="bg-transparent" />
@@ -216,12 +218,12 @@ function ChatMessages({
             required
             minLength={1}
             placeholder="Write a message as the bot..."
-            className="focus:ring-[color:var(--bo-accent)]/20 w-full flex-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+            className="w-full flex-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
           />
           <button
             type="submit"
             disabled={isSending}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSending ? "Sending..." : "Send"}
           </button>

@@ -1,6 +1,6 @@
-import type { Route } from "./+types/workflows";
-
 import { getWorkflowsServer } from "~/workflows/workflows-fragment.server";
+
+import type { Route } from "./+types/workflows";
 
 export async function loader(args: Route.LoaderArgs) {
   const { fragment } = await getWorkflowsServer();

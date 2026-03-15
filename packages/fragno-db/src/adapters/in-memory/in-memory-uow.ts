@@ -1,12 +1,29 @@
-import type { AnySchema, AnyTable } from "../../schema/create";
-import { FragnoId, FragnoReference } from "../../schema/create";
 import superjson from "superjson";
-import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+
 import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
   internalSchema,
 } from "../../fragments/internal-fragment";
+import type { NamingResolver } from "../../naming/sql-naming";
+import {
+  type OutboxRefLookup,
+  type OutboxRefMap,
+  encodeVersionstamp,
+  versionstampToHex,
+  parseOutboxVersionValue,
+} from "../../outbox/outbox";
+import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
+import { buildCondition } from "../../query/condition-builder";
+import {
+  createCursorFromRecord,
+  decodeCursor,
+  type Cursor,
+  type CursorResult,
+} from "../../query/cursor";
+import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
+import type { CompiledJoin } from "../../query/orm/orm";
+import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import type {
   CompiledMutation,
   MutationOperation,
@@ -16,29 +33,17 @@ import type {
   UOWDecoder,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { buildCondition } from "../../query/condition-builder";
 import {
   encodeValues,
   encodeValuesWithDbDefaults,
   ReferenceSubquery,
 } from "../../query/value-encoding";
-import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
-import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
-import type { CompiledJoin } from "../../query/orm/orm";
-import {
-  createCursorFromRecord,
-  decodeCursor,
-  type Cursor,
-  type CursorResult,
-} from "../../query/cursor";
-import {
-  type OutboxRefLookup,
-  type OutboxRefMap,
-  encodeVersionstamp,
-  versionstampToHex,
-  parseOutboxVersionValue,
-} from "../../outbox/outbox";
-import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
+import type { AnySchema, AnyTable } from "../../schema/create";
+import { FragnoId, FragnoReference } from "../../schema/create";
+import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+import { evaluateCondition } from "./condition-evaluator";
+import type { ResolvedInMemoryAdapterOptions } from "./options";
+import { resolveReferenceSubqueries } from "./reference-resolution";
 import type {
   InMemoryNamespaceStore,
   InMemoryRow,
@@ -46,11 +51,7 @@ import type {
   InMemoryTableStore,
 } from "./store";
 import { buildIndexKey, ensureNamespaceStore, normalizeIndexValue } from "./store";
-import { evaluateCondition } from "./condition-evaluator";
-import { resolveReferenceSubqueries } from "./reference-resolution";
-import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { compareNormalizedValues } from "./value-comparison";
-import type { NamingResolver } from "../../naming/sql-naming";
 
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];

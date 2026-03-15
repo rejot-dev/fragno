@@ -1,27 +1,29 @@
 #!/usr/bin/env node
 
-import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { uploadsCreateCommand } from "./commands/uploads/create.js";
-import { uploadsGetCommand } from "./commands/uploads/get.js";
-import { uploadsProgressCommand } from "./commands/uploads/progress.js";
-import { uploadsPartsUrlsCommand } from "./commands/uploads/parts-urls.js";
-import { uploadsPartsListCommand } from "./commands/uploads/parts-list.js";
-import { uploadsPartsCompleteCommand } from "./commands/uploads/parts-complete.js";
-import { uploadsCompleteCommand } from "./commands/uploads/complete.js";
-import { uploadsAbortCommand } from "./commands/uploads/abort.js";
-import { uploadsContentCommand } from "./commands/uploads/content.js";
-import { uploadsTransferCommand } from "./commands/uploads/transfer.js";
-import { filesUploadCommand } from "./commands/files/upload.js";
-import { filesListCommand } from "./commands/files/list.js";
-import { filesGetCommand } from "./commands/files/get.js";
-import { filesUpdateCommand } from "./commands/files/update.js";
+
+import { cli, define } from "gunshi";
+import type { Args, Command } from "gunshi";
+
 import { filesDeleteCommand } from "./commands/files/delete.js";
 import { filesDownloadUrlCommand } from "./commands/files/download-url.js";
 import { filesDownloadCommand } from "./commands/files/download.js";
+import { filesGetCommand } from "./commands/files/get.js";
+import { filesListCommand } from "./commands/files/list.js";
+import { filesUpdateCommand } from "./commands/files/update.js";
+import { filesUploadCommand } from "./commands/files/upload.js";
+import { uploadsAbortCommand } from "./commands/uploads/abort.js";
+import { uploadsCompleteCommand } from "./commands/uploads/complete.js";
+import { uploadsContentCommand } from "./commands/uploads/content.js";
+import { uploadsCreateCommand } from "./commands/uploads/create.js";
+import { uploadsGetCommand } from "./commands/uploads/get.js";
+import { uploadsPartsCompleteCommand } from "./commands/uploads/parts-complete.js";
+import { uploadsPartsListCommand } from "./commands/uploads/parts-list.js";
+import { uploadsPartsUrlsCommand } from "./commands/uploads/parts-urls.js";
+import { uploadsProgressCommand } from "./commands/uploads/progress.js";
+import { uploadsTransferCommand } from "./commands/uploads/transfer.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(__dirname, "../../package.json"), "utf-8"));

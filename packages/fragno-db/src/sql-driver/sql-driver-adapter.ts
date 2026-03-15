@@ -5,13 +5,13 @@
  * Copyright (c) 2022 Sami Koskimäki
  */
 
-import type { CompiledQuery, Dialect, QueryResult } from "./sql-driver";
 import { DefaultConnectionProvider } from "./connection/connection-provider";
 import { SingleConnectionProvider } from "./connection/single-connection-provider";
 import { RuntimeDriver } from "./driver/runtime-driver";
+import { DefaultQueryExecutor } from "./query-executor/default-query-executor";
 import type { GenericSQLPlugin } from "./query-executor/plugin";
 import type { QueryExecutor } from "./query-executor/query-executor";
-import { DefaultQueryExecutor } from "./query-executor/default-query-executor";
+import type { CompiledQuery, Dialect, QueryResult } from "./sql-driver";
 
 export class SqlDriverAdapter {
   readonly #dialect: Dialect;

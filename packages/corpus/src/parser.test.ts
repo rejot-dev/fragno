@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+
 import { parseMarkdownFile, markdownToSubject } from "./parser.js";
 
 describe("parseMarkdownFile", () => {

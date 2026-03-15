@@ -1,5 +1,5 @@
-import { Stripe } from "@/components/logos/stripe";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
+import { Stripe } from "@/components/logos/stripe";
 
 const icons = {
   Stripe,

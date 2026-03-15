@@ -1,9 +1,10 @@
-import { Link } from "react-router";
 import { Activity, CreditCard, Database, Route as RouteIcon } from "lucide-react";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
-import { FragmentSubnav } from "@/components/fragment-subnav";
-import { StripeDataFlow } from "@/components/stripe-data-flow";
 import type { ReactNode } from "react";
+import { Link } from "react-router";
+
+import { FragmentSubnav } from "@/components/fragment-subnav";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { StripeDataFlow } from "@/components/stripe-data-flow";
 
 export function meta() {
   return [
@@ -174,7 +175,7 @@ export default function StripePage() {
               </Link>
             </div>
             <div className="max-w-md space-y-2 pt-3">
-              <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+              <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                 Install
               </p>
               <FragnoCodeBlock
@@ -320,7 +321,7 @@ export default function StripePage() {
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_1fr] lg:items-center">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+            <p className="text-xs font-semibold tracking-wide text-violet-600 uppercase dark:text-violet-300">
               We fix split brain
             </p>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">

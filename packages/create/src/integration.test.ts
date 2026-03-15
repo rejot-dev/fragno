@@ -1,9 +1,11 @@
 import { test, expect, afterAll, beforeAll, describe } from "vitest";
+
 import { exec } from "node:child_process";
-import { promisify } from "node:util";
+import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import fs from "node:fs/promises";
+import { promisify } from "node:util";
+
 import { create } from ".";
 
 const execAsync = promisify(exec);

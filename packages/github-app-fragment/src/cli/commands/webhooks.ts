@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 
 import { define } from "gunshi";
 
+import { resolveWebhookSecret } from "../utils/config.js";
 import { baseArgs, createClientFromContext, parseJsonValue } from "../utils/options.js";
 import { printResult } from "../utils/output.js";
-import { resolveWebhookSecret } from "../utils/config.js";
 
 export const webhooksCommand = define({
   name: "webhooks",

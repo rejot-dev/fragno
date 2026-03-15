@@ -1,5 +1,6 @@
-import { useState } from "react";
 import { Grid2x2, Grid3x3, Square, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
+
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -94,7 +95,7 @@ export default function CodePreviewPage() {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950">
       {/* Controls - Top Right */}
-      <div className="absolute right-4 top-4 z-20 flex flex-col gap-3">
+      <div className="absolute top-4 right-4 z-20 flex flex-col gap-3">
         <ThemeToggle />
 
         {/* Layout Mode Toggle */}
@@ -173,7 +174,7 @@ export default function CodePreviewPage() {
             <div className="flex h-full flex-col overflow-hidden rounded-xl border-2 border-slate-300 bg-gradient-to-br from-slate-50 to-white dark:border-slate-600 dark:from-slate-800/50 dark:to-slate-900/50">
               {/* Description Section */}
               <div className="border-b border-slate-200 bg-gradient-to-br from-blue-50/50 to-purple-50/30 px-8 py-6 dark:border-slate-700 dark:from-blue-950/30 dark:to-purple-950/20">
-                <p className="text-lg font-medium leading-relaxed text-slate-700 dark:text-slate-200">
+                <p className="text-lg leading-relaxed font-medium text-slate-700 dark:text-slate-200">
                   {description}
                 </p>
               </div>
@@ -230,7 +231,7 @@ export default function CodePreviewPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                 placeholder="Enter description..."
               />
             </div>
@@ -244,7 +245,7 @@ export default function CodePreviewPage() {
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   rows={15}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 font-mono text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 font-mono text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                   placeholder="Enter code..."
                   spellCheck={false}
                 />
@@ -257,7 +258,7 @@ export default function CodePreviewPage() {
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                 >
                   <option value="typescript">TypeScript</option>
                   <option value="tsx">TSX</option>

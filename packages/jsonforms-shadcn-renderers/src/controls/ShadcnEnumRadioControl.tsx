@@ -1,9 +1,11 @@
 import type { ControlProps, OwnPropsOfEnum, RankedTester } from "@jsonforms/core";
 import { and, isEnumControl, optionIs, rankWith } from "@jsonforms/core";
 import { withJsonFormsEnumProps } from "@jsonforms/react";
+
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
-import { ShadcnRadioGroup } from "../shadcn-controls/ShadcnRadioGroup";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnRadioGroup } from "../shadcn-controls/ShadcnRadioGroup";
 
 export const ShadcnEnumRadioControl = ({
   data,

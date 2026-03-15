@@ -1,11 +1,13 @@
-import { z } from "zod";
 import type {
   EasyInputMessage,
   ResponseFunctionToolCall,
   ResponseInputItem,
 } from "openai/resources/responses/responses.mjs";
-import type { chatnoDefinition } from "../index";
+import { z } from "zod";
+
 import { defineRoutes } from "@fragno-dev/core";
+
+import type { chatnoDefinition } from "../index";
 
 export const ChatMessageSchema = z.object({
   type: z.literal("chat"),

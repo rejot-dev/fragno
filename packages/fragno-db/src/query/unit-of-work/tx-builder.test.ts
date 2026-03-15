@@ -7,8 +7,8 @@
  * not the runtime behavior (which is covered by execute-unit-of-work.test.ts).
  */
 import { describe, expectTypeOf, it } from "vitest";
+
 import type { AnySchema } from "../../schema/create";
-import type { TypedUnitOfWork } from "./unit-of-work";
 import {
   ServiceTxBuilder,
   HandlerTxBuilder,
@@ -22,6 +22,7 @@ import {
   type ExtractServiceFinalResults,
   type AwaitedPromisesInObject,
 } from "./execute-unit-of-work";
+import type { TypedUnitOfWork } from "./unit-of-work";
 
 // =============================================================================
 // Helper types for extracting TxResult type parameters

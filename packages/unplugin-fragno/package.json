@@ -1,12 +1,33 @@
 {
   "name": "@fragno-dev/unplugin-fragno",
-  "type": "module",
   "version": "0.0.8",
   "description": "",
   "keywords": [
     "fragno",
     "unplugin"
   ],
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/unplugin-fragno"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/*",
+        "./*"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -51,26 +72,43 @@
     "./types": "./dist/types.js",
     "./package.json": "./package.json"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "*": [
-        "./dist/*",
-        "./*"
-      ]
-    }
-  },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "test": "vitest run",
     "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/generator": "^7.28.6",
+    "@babel/parser": "^7.28.6",
+    "@babel/traverse": "^7.28.6",
+    "@babel/types": "^7.28.6",
+    "babel-dead-code-elimination": "^1.0.12",
+    "unplugin": "^2.3.11"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^4.19.0",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@nuxt/kit": "^4.2.2",
+    "@nuxt/schema": "^4.2.2",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^22.19.7",
+    "@typescript/native-preview": "catalog:",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "dedent": "^1.7.1",
+    "eslint": "^9.39.2",
+    "nodemon": "^3.1.11",
+    "rollup": "^4.55.2",
+    "tsdown": "^0.12.9",
+    "tsx": "^4.21.0",
+    "vite": "catalog:",
+    "vitest": "^3.2.4",
+    "webpack": "^5.104.1"
   },
   "peerDependencies": {
     "@farmfe/core": ">=1",
@@ -103,43 +141,5 @@
     "webpack": {
       "optional": true
     }
-  },
-  "dependencies": {
-    "@babel/core": "^7.28.6",
-    "@babel/generator": "^7.28.6",
-    "@babel/parser": "^7.28.6",
-    "@babel/traverse": "^7.28.6",
-    "@babel/types": "^7.28.6",
-    "babel-dead-code-elimination": "^1.0.12",
-    "unplugin": "^2.3.11"
-  },
-  "devDependencies": {
-    "@antfu/eslint-config": "^4.19.0",
-    "@fragno-private/typescript-config": "workspace:*",
-    "@fragno-private/vitest-config": "workspace:*",
-    "@nuxt/kit": "^4.2.2",
-    "@nuxt/schema": "^4.2.2",
-    "@types/babel__core": "^7.20.5",
-    "@types/babel__generator": "^7.27.0",
-    "@types/babel__traverse": "^7.28.0",
-    "@types/node": "^22.19.7",
-    "@vitest/coverage-istanbul": "^3.2.4",
-    "dedent": "^1.7.1",
-    "eslint": "^9.39.2",
-    "nodemon": "^3.1.11",
-    "rollup": "^4.55.2",
-    "tsdown": "^0.12.9",
-    "tsx": "^4.21.0",
-    "@typescript/native-preview": "catalog:",
-    "vite": "catalog:",
-    "vitest": "^3.2.4",
-    "webpack": "^5.104.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/unplugin-fragno"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  }
 }

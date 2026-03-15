@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 
 const INTERNALS = [
@@ -62,12 +63,12 @@ export default function BackofficeInternals() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                     {item.status}
                   </p>
                   <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{item.name}</h2>
                 </div>
-                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                   {isAvailable ? "Live" : "Soon"}
                 </span>
               </div>
@@ -76,12 +77,12 @@ export default function BackofficeInternals() {
                 {isAvailable ? (
                   <Link
                     to={item.to!}
-                    className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                    className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                   >
                     Open
                   </Link>
                 ) : (
-                  <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                  <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Coming soon
                   </span>
                 )}

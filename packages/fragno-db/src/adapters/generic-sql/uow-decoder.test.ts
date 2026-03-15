@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { schema, idColumn, column, FragnoId } from "../../schema/create";
-import { UnitOfWorkDecoder } from "./uow-decoder";
-import { SQLocalDriverConfig } from "./driver-config";
+
 import type { RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
+import { schema, idColumn, column, FragnoId } from "../../schema/create";
 import type { AnySchema } from "../../schema/create";
+import { SQLocalDriverConfig } from "./driver-config";
+import { UnitOfWorkDecoder } from "./uow-decoder";
 
 describe("UnitOfWorkDecoder", () => {
   const driverConfig = new SQLocalDriverConfig();

@@ -1,8 +1,10 @@
-import { SQLocalKysely } from "sqlocal/kysely";
 import { describe, expect, it } from "vitest";
-import { SqlDriverAdapter } from "./sql-driver-adapter";
+
+import { SQLocalKysely } from "sqlocal/kysely";
+
 import type { GenericSQLPlugin } from "./query-executor/plugin";
 import { sql } from "./sql";
+import { SqlDriverAdapter } from "./sql-driver-adapter";
 
 describe("SQLocal", () => {
   it("should create a new SQLocal instance", async () => {

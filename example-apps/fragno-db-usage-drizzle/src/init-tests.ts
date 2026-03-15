@@ -1,8 +1,11 @@
-import { cli, parseArgs, resolveArgs } from "gunshi";
-import { generateCommand } from "@fragno-dev/cli";
 import { rm, writeFile } from "node:fs/promises";
-import { PGlite } from "@electric-sql/pglite";
 import { createRequire } from "node:module";
+
+import { cli, parseArgs, resolveArgs } from "gunshi";
+
+import { generateCommand } from "@fragno-dev/cli";
+
+import { PGlite } from "@electric-sql/pglite";
 
 // Inline the pgFolder constant to avoid importing from database.ts
 const pgFolder = "./fragno-db-usage.pglite" as const;

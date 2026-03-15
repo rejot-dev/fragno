@@ -10,6 +10,33 @@ export * from "./additional";
 export * from "./shadcn-controls";
 export * from "./hooks";
 
+import { shadcnLabelRendererTester, ShadcnLabelRendererContext } from "./additional";
+import {
+  shadcnBooleanCellTester,
+  ShadcnBooleanCellContext,
+  shadcnBooleanToggleCellTester,
+  ShadcnBooleanToggleCellContext,
+  shadcnTextCellTester,
+  ShadcnTextCellContext,
+  shadcnDateCellTester,
+  ShadcnDateCellContext,
+  shadcnTimeCellTester,
+  ShadcnTimeCellContext,
+  shadcnDateTimeCellTester,
+  ShadcnDateTimeCellContext,
+  shadcnIntegerCellTester,
+  ShadcnIntegerCellContext,
+  shadcnNumberCellTester,
+  ShadcnNumberCellContext,
+  shadcnEnumCellTester,
+  ShadcnEnumCellContext,
+  shadcnEnumRadioCellTester,
+  ShadcnEnumRadioCellContext,
+  shadcnOneOfEnumCellTester,
+  ShadcnOneOfEnumCellContext,
+  shadcnSliderCellTester,
+  ShadcnSliderCellContext,
+} from "./cells";
 import {
   shadcnBooleanControlTester,
   ShadcnBooleanControlContext,
@@ -40,34 +67,6 @@ import {
   shadcnObjectControlTester,
   ShadcnObjectControlContext,
 } from "./controls";
-
-import {
-  shadcnBooleanCellTester,
-  ShadcnBooleanCellContext,
-  shadcnBooleanToggleCellTester,
-  ShadcnBooleanToggleCellContext,
-  shadcnTextCellTester,
-  ShadcnTextCellContext,
-  shadcnDateCellTester,
-  ShadcnDateCellContext,
-  shadcnTimeCellTester,
-  ShadcnTimeCellContext,
-  shadcnDateTimeCellTester,
-  ShadcnDateTimeCellContext,
-  shadcnIntegerCellTester,
-  ShadcnIntegerCellContext,
-  shadcnNumberCellTester,
-  ShadcnNumberCellContext,
-  shadcnEnumCellTester,
-  ShadcnEnumCellContext,
-  shadcnEnumRadioCellTester,
-  ShadcnEnumRadioCellContext,
-  shadcnOneOfEnumCellTester,
-  ShadcnOneOfEnumCellContext,
-  shadcnSliderCellTester,
-  ShadcnSliderCellContext,
-} from "./cells";
-
 import {
   shadcnVerticalLayoutTester,
   ShadcnVerticalLayoutContext,
@@ -80,8 +79,6 @@ import {
   shadcnCategorizationStepperLayoutTester,
   ShadcnCategorizationStepperLayoutContext,
 } from "./layouts";
-
-import { shadcnLabelRendererTester, ShadcnLabelRendererContext } from "./additional";
 
 /**
  * Shadcn renderers for JSON Forms.

@@ -1,12 +1,12 @@
-import { defineRoutes } from "@fragno-dev/core";
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { FragnoId } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
-import { githubAppFragmentDefinition } from "./github/definition";
+import { defineRoutes } from "@fragno-dev/core";
+
 import type { GitHubInstallationDetails, GitHubInstallationRepository } from "./github/api";
+import { githubAppFragmentDefinition } from "./github/definition";
 import { hasRepoChanges, toRepoCreateRecord, toRepoRecord } from "./github/repo-sync";
-import type { WebhookProcessingPayload } from "./github/webhook-processing";
 import {
   isRecord,
   normalizeJoinedInstallation,
@@ -14,6 +14,7 @@ import {
   toExternalId,
   toStringValue,
 } from "./github/utils";
+import type { WebhookProcessingPayload } from "./github/webhook-processing";
 import { githubAppSchema } from "./schema";
 
 type InstallationRepoRow = TableToColumnValues<

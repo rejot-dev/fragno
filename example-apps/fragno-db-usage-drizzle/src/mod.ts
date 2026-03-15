@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
-import { cli, type Command } from "gunshi";
 import { rmSync } from "node:fs";
 import { createServer } from "node:http";
+
+import { cli, type Command } from "gunshi";
+
 import { toNodeHandler } from "@fragno-dev/node";
-import { pgFolder } from "./database";
-import { adapter } from "./fragno-adapter";
-import { userCommand, userSubCommands } from "./commands/user";
-import { postCommand, postSubCommands } from "./commands/post";
+
 import { commentCommand, commentSubCommands } from "./commands/comment";
+import { postCommand, postSubCommands } from "./commands/post";
 import { ratingCommand, ratingSubCommands } from "./commands/rating";
 import { relationsCommand, relationsSubCommands } from "./commands/relations";
+import { userCommand, userSubCommands } from "./commands/user";
+import { pgFolder } from "./database";
+import { adapter } from "./fragno-adapter";
 import { fragment as authFragment } from "./fragno/auth-fragment";
 import { createCommentFragmentServer } from "./fragno/comment-fragment";
 import { createRatingFragmentServer } from "./fragno/rating-fragment";

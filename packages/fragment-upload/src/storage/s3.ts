@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import type { StorageAdapter, UploadChecksum } from "./types";
+
 import { assertFileKey } from "../file-key";
+import type { StorageAdapter, UploadChecksum } from "./types";
 
 const BYTES_IN_MIB = 1024 * 1024;
 const BYTES_IN_GIB = 1024 * BYTES_IN_MIB;

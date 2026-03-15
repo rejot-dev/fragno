@@ -1,4 +1,3 @@
-import { Collapsible, Progress } from "@base-ui/react";
 import {
   ChevronRight,
   Download,
@@ -9,6 +8,16 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import {
   Form,
   Link,
@@ -22,18 +31,12 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type DragEvent,
-} from "react";
+
+import { Collapsible, Progress } from "@base-ui/react";
+
 import { formatBytes } from "@/components/backoffice";
 import { createUploadClient } from "@/fragno/upload-client";
+
 import {
   deleteUploadFile,
   fetchUploadConfig,
@@ -1108,7 +1111,7 @@ export default function BackofficeOrganisationUploadFiles() {
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Explorer
               </p>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -1117,7 +1120,7 @@ export default function BackofficeOrganisationUploadFiles() {
               </p>
             </div>
 
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
               {files.length} loaded
             </span>
           </div>
@@ -1139,7 +1142,7 @@ export default function BackofficeOrganisationUploadFiles() {
                 <FolderOpen className="h-4 w-4 shrink-0" />
                 <span className="truncate text-sm font-semibold">Root</span>
               </span>
-              <span className="text-current/70 shrink-0 text-[11px] uppercase tracking-[0.22em]">
+              <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
                 {fileTree.fileCount} files
               </span>
             </Link>
@@ -1180,20 +1183,20 @@ export default function BackofficeOrganisationUploadFiles() {
                 <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                      <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                         File detail
                       </p>
                       <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
                         {selectedFile.filename}
                       </p>
-                      <p className="mt-1 break-all text-xs text-[var(--bo-muted)]">
+                      <p className="mt-1 text-xs break-all text-[var(--bo-muted)]">
                         {selectedFile.fileKey}
                       </p>
                     </div>
 
                     <Link
                       to={missingFileParentHref}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Open folder
                     </Link>
@@ -1217,7 +1220,7 @@ export default function BackofficeOrganisationUploadFiles() {
 
                 {downloadUrl ? (
                   <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                       Download URL
                     </p>
                     <p className="mt-2 break-all text-[var(--bo-fg)]">{downloadUrl.url}</p>
@@ -1232,7 +1235,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     type="button"
                     onClick={() => revalidator.revalidate()}
                     disabled={refreshing}
-                    className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                   >
                     <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
                     {refreshing ? "Refreshing…" : "Refresh detail"}
@@ -1246,7 +1249,7 @@ export default function BackofficeOrganisationUploadFiles() {
                       <button
                         type="submit"
                         disabled={actionBusy}
-                        className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                        className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                       >
                         <Download className="h-3.5 w-3.5" />
                         Generate download URL
@@ -1257,7 +1260,7 @@ export default function BackofficeOrganisationUploadFiles() {
                       type="button"
                       onClick={() => void handleDownloadFile()}
                       disabled={actionBusy || downloadingFile}
-                      className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                     >
                       <Download className="h-3.5 w-3.5" />
                       {downloadingFile ? "Downloading…" : "Download file"}
@@ -1271,7 +1274,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     <button
                       type="submit"
                       disabled={actionBusy}
-                      className="inline-flex w-full items-center justify-center gap-2 border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-red-600 transition-colors hover:border-red-400 disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center gap-2 border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-red-600 uppercase transition-colors hover:border-red-400 disabled:opacity-60"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Delete file
@@ -1282,7 +1285,7 @@ export default function BackofficeOrganisationUploadFiles() {
             ) : (
               <div className="space-y-4">
                 <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                     File detail
                   </p>
                   <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -1292,7 +1295,7 @@ export default function BackofficeOrganisationUploadFiles() {
                   <div className="mt-4">
                     <Link
                       to={missingFileParentHref}
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       <FolderOpen className="h-3.5 w-3.5" />
                       Open containing folder
@@ -1306,7 +1309,7 @@ export default function BackofficeOrganisationUploadFiles() {
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       Upload target
                     </p>
                     <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
@@ -1324,7 +1327,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     </p>
                   </div>
 
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                     Uploads via: {defaultProvider ?? "not set"}
                   </span>
                 </div>
@@ -1346,7 +1349,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     {selectedFolderNode.providers.map((provider) => (
                       <span
                         key={provider}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]"
+                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase"
                       >
                         {provider}
                       </span>
@@ -1364,7 +1367,7 @@ export default function BackofficeOrganisationUploadFiles() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       Create folder
                     </p>
                     <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -1388,12 +1391,12 @@ export default function BackofficeOrganisationUploadFiles() {
                       }
                     }}
                     placeholder={uploadTargetPrefix ? "nested/reports" : "assets/images"}
-                    className="min-w-0 flex-1 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none transition-colors placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+                    className="min-w-0 flex-1 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] transition-colors outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
                   />
                   <button
                     type="submit"
                     disabled={!pendingFolderName.trim()}
-                    className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                    className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                   >
                     <Folder className="h-3.5 w-3.5" />
                     Create folder
@@ -1431,7 +1434,7 @@ export default function BackofficeOrganisationUploadFiles() {
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       Drop zone
                     </p>
                     <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -1447,7 +1450,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       <Upload className="h-3.5 w-3.5" />
                       Choose files
@@ -1459,7 +1462,7 @@ export default function BackofficeOrganisationUploadFiles() {
                           uploadTargetPrefix !== null && void startUploads(uploadTargetPrefix)
                         }
                         disabled={uploadingFiles || uploadTargetPrefix === null}
-                        className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                        className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                       >
                         <RefreshCcw className="h-3.5 w-3.5" />
                         {uploadingFiles && activeUploadPrefix === uploadTargetPrefix
@@ -1475,7 +1478,7 @@ export default function BackofficeOrganisationUploadFiles() {
                       disabled={
                         !hasFinishedUploads || uploadingFiles || uploadTargetPrefix === null
                       }
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Clear finished
@@ -1513,7 +1516,7 @@ export default function BackofficeOrganisationUploadFiles() {
 function DetailStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">{label}</p>
+      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">{label}</p>
       <p className="mt-2 text-sm font-semibold text-[var(--bo-fg)]">{value}</p>
     </div>
   );
@@ -1615,7 +1618,7 @@ function UploadFolderTreeNode({
               <span className="truncate text-sm font-medium">{folder.name}</span>
             </span>
 
-            <span className="text-current/70 shrink-0 text-[11px] uppercase tracking-[0.22em]">
+            <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
               {folder.fileCount} files
             </span>
           </Link>
@@ -1679,16 +1682,16 @@ function UploadFileTreeLeaf({
     >
       <span className="min-w-0">
         <span className="flex items-center gap-2">
-          <FileIcon className="text-current/70 h-4 w-4 shrink-0" />
+          <FileIcon className="h-4 w-4 shrink-0 text-current/70" />
           <span className="truncate text-sm font-medium">{keyLeaf}</span>
         </span>
-        <span className="text-current/70 mt-1 flex flex-wrap gap-2 text-[11px]">
+        <span className="mt-1 flex flex-wrap gap-2 text-[11px] text-current/70">
           <span>{formatBytes(file.sizeBytes)}</span>
           {showOriginalName ? <span className="truncate">{file.filename}</span> : null}
         </span>
       </span>
 
-      <span className="border-current/10 text-current/60 shrink-0 rounded-sm border bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em]">
+      <span className="shrink-0 rounded-sm border border-current/10 bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-current/60 uppercase">
         {file.provider}
       </span>
     </Link>

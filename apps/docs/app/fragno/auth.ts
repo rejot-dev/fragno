@@ -1,7 +1,8 @@
-import { createAuthFragment, github, type AuthOAuthConfig } from "@fragno-dev/auth";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+
+import { createAuthFragment, github, type AuthOAuthConfig } from "@fragno-dev/auth";
 
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({

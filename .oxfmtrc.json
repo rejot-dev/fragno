@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": false,
+  "semi": true,
+  "tabWidth": 2,
+  "useTabs": false,
+  "printWidth": 100,
+  "proseWrap": "always",
+  "trailingComma": "all",
+  "sortImports": {
+    "sortSideEffects": true,
+    "internalPattern": ["~/", "@/"],
+    "customGroups": [
+      {
+        "groupName": "test",
+        "selector": "import",
+        "elementNamePattern": ["*test", "vitest"]
+      },
+      {
+        "groupName": "fragno-package",
+        "selector": "external",
+        "elementNamePattern": ["@fragno-dev/*", "@rejot-dev/*"]
+      },
+      {
+        "groupName": "scoped-package",
+        "selector": "external",
+        "elementNamePattern": ["@*/*"]
+      }
+    ],
+    "groups": [
+      ["side_effect", "side_effect_style"],
+      "test",
+      "builtin",
+      "external",
+      "fragno-package",
+      "scoped-package",
+      ["internal", "unknown", "subpath"],
+      ["parent", "sibling", "index"],
+      "style"
+    ]
+  },
+  "sortTailwindcss": {},
+  "sortPackageJson": true
+}

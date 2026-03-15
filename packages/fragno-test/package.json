@@ -1,16 +1,23 @@
 {
   "name": "@fragno-dev/test",
   "version": "2.0.0",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno-test"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -22,28 +29,6 @@
     "@standard-schema/spec": "^1.1.0",
     "kysely": "^0.28.10",
     "sqlocal": "^0.15.2"
-  },
-  "peerDependencies": {
-    "@electric-sql/pglite": "^0.3.11",
-    "drizzle-kit": "^0.31.7",
-    "drizzle-orm": "^0.44.7",
-    "kysely-pglite": "^0.6.1",
-    "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@electric-sql/pglite": {
-      "optional": true
-    },
-    "drizzle-kit": {
-      "optional": true
-    },
-    "drizzle-orm": {
-      "optional": true
-    },
-    "kysely-pglite": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.15",
@@ -61,11 +46,26 @@
     "vitest": "^3.2.4",
     "zod": "^4.3.5"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/fragno-test"
+  "peerDependencies": {
+    "@electric-sql/pglite": "^0.3.11",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "drizzle-kit": "^0.31.7",
+    "drizzle-orm": "^0.44.7",
+    "kysely-pglite": "^0.6.1"
   },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": {
+      "optional": true
+    },
+    "drizzle-kit": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "kysely-pglite": {
+      "optional": true
+    }
+  }
 }

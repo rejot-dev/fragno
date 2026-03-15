@@ -1,5 +1,5 @@
-import { Link } from "react-router";
 import { Home, BookOpen } from "lucide-react";
+import { Link } from "react-router";
 
 type NotFoundContentProps = {
   message?: string;

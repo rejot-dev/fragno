@@ -1,10 +1,11 @@
 "use client";
-import { useMemo } from "react";
+import { cva } from "class-variance-authority";
+import { Popover, PopoverContent, PopoverTrigger } from "fumadocs-ui/components/ui/popover";
 import { ChevronDown, ExternalLinkIcon, FileText, MessageCircleIcon } from "lucide-react";
+import { useMemo } from "react";
+
 import { cn } from "../lib/cn";
 import { buttonVariants } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "fumadocs-ui/components/ui/popover";
-import { cva } from "class-variance-authority";
 
 const optionVariants = cva(
   "text-sm p-2 rounded-lg inline-flex items-center gap-2 hover:text-fd-accent-foreground hover:bg-fd-accent [&_svg]:size-4",

@@ -1,6 +1,7 @@
 import { define } from "gunshi";
-import { baseArgs, createClientFromContext, parseJsonValue } from "../../utils/options.js";
+
 import { formatJson } from "../../utils/format.js";
+import { baseArgs, createClientFromContext, parseJsonValue } from "../../utils/options.js";
 
 export const instancesSendEventCommand = define({
   name: "send-event",

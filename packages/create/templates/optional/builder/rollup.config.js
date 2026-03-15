@@ -1,6 +1,7 @@
-import typescript from "@rollup/plugin-typescript";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+
 import resolve from "@rollup/plugin-node-resolve";
+import typescript from "@rollup/plugin-typescript";
 
 export default [
   // Browser build

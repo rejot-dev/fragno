@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { cli, define } from "gunshi";
+import type { Args, Command } from "gunshi";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = existsSync(join(__dirname, "../../package.json"))

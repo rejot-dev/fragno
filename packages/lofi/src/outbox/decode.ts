@@ -1,5 +1,6 @@
-import type { OutboxPayload } from "@fragno-dev/db";
 import superjson, { type SuperJSONResult } from "superjson";
+
+import type { OutboxPayload } from "@fragno-dev/db";
 
 export function decodeOutboxPayload(payload: unknown): OutboxPayload {
   const decoded = superjson.deserialize(payload as SuperJSONResult);

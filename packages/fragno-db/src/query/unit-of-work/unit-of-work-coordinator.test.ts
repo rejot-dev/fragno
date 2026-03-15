@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
+
+import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
+import { GenericSQLUOWOperationCompiler } from "../../adapters/generic-sql/query/generic-sql-uow-operation-compiler";
+import { createUOWCompilerFromOperationCompiler } from "../../adapters/shared/uow-operation-compiler";
 import { schema, idColumn, type FragnoId, referenceColumn } from "../../schema/create";
+import type { CompiledQuery } from "../../sql-driver/sql-driver";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -7,10 +12,6 @@ import {
   type CompiledMutation,
   type UOWExecutor,
 } from "./unit-of-work";
-import { GenericSQLUOWOperationCompiler } from "../../adapters/generic-sql/query/generic-sql-uow-operation-compiler";
-import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
-import { createUOWCompilerFromOperationCompiler } from "../../adapters/shared/uow-operation-compiler";
-import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
 // Create compiler using actual implementation
 function createCompiler(): UOWCompiler<CompiledQuery> {

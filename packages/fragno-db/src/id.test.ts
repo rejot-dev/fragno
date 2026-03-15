@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { createId, init } from "./id";
 
 const idPattern = /^[a-z][0-9a-z]*$/;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
 import { createAdapter, type SupportedAdapter } from "./adapters";
 
 const conformanceSchema = schema("conformance", (s) =>

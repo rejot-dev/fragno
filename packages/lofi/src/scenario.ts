@@ -1,10 +1,18 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
-import { toNodeHandler } from "@fragno-dev/node";
-import { InMemoryAdapter, withDatabase, type SyncCommandRegistry } from "@fragno-dev/db";
+
 import type { AnySchema } from "@fragno-dev/db/schema";
+
+import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import { InMemoryAdapter, withDatabase, type SyncCommandRegistry } from "@fragno-dev/db";
+import { toNodeHandler } from "@fragno-dev/node";
+
+import { InMemoryLofiAdapter } from "./adapters/in-memory/adapter";
+import type { InMemoryLofiStore } from "./adapters/in-memory/store";
+import { StackedLofiAdapter } from "./adapters/stacked/adapter";
 import { LofiClient } from "./client/client";
+import { IndexedDbAdapter } from "./indexeddb/adapter";
+import { LofiOverlayManager } from "./optimistic/overlay-manager";
 import { LofiSubmitClient } from "./submit/client";
 import type {
   LofiAdapter,
@@ -15,11 +23,6 @@ import type {
   LofiSubmitResponse,
   LofiSyncResult,
 } from "./types";
-import { IndexedDbAdapter } from "./indexeddb/adapter";
-import { InMemoryLofiAdapter } from "./adapters/in-memory/adapter";
-import { StackedLofiAdapter } from "./adapters/stacked/adapter";
-import { LofiOverlayManager } from "./optimistic/overlay-manager";
-import type { InMemoryLofiStore } from "./adapters/in-memory/store";
 
 export type ScenarioServerConfig<TSchema extends AnySchema = AnySchema> =
   | {
@@ -114,8 +117,8 @@ const installIndexedDbGlobals = (
 export type ScenarioDefinition<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
-  TCommands extends
-    ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TCommands extends ReadonlyArray<LofiSubmitCommandDefinition> =
+    ReadonlyArray<LofiSubmitCommandDefinition>,
   TVars extends ScenarioVars = ScenarioVars,
 > = {
   name: string;
@@ -281,8 +284,8 @@ export type ScenarioStep<
 export function defineScenario<
   TSchema extends AnySchema,
   TCommandContext,
-  TCommands extends
-    ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TCommands extends ReadonlyArray<LofiSubmitCommandDefinition> =
+    ReadonlyArray<LofiSubmitCommandDefinition>,
   TVars extends ScenarioVars = ScenarioVars,
 >(
   scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars> & {
@@ -292,8 +295,8 @@ export function defineScenario<
 export function defineScenario<
   TSchema extends AnySchema,
   TCommandContext = unknown,
-  TCommands extends
-    ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TCommands extends ReadonlyArray<LofiSubmitCommandDefinition> =
+    ReadonlyArray<LofiSubmitCommandDefinition>,
   TVars extends ScenarioVars = ScenarioVars,
 >(
   scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>,
@@ -604,8 +607,8 @@ const isScenarioFragmentConfig = <TSchema extends AnySchema>(
 export const runScenario = async <
   TSchema extends AnySchema,
   TCommandContext = unknown,
-  TCommands extends
-    ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TCommands extends ReadonlyArray<LofiSubmitCommandDefinition> =
+    ReadonlyArray<LofiSubmitCommandDefinition>,
   TVars extends ScenarioVars = ScenarioVars,
 >(
   scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>,

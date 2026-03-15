@@ -51,7 +51,7 @@ export function Example() {
 
       <Show when={data()}>
         <div class="rounded-lg border border-green-200 bg-green-50 p-4">
-          <p class="mb-2 text-xs font-medium uppercase tracking-wide text-green-700">
+          <p class="mb-2 text-xs font-medium tracking-wide text-green-700 uppercase">
             Example Fragment Data
           </p>
           <div class="text-green-900">{data()}</div>
@@ -64,7 +64,7 @@ export function Example() {
         </div>
       </Show>
       <button
-        class="w-full rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        class="w-full rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => handleMutate("1")}
         disabled={mutateLoading()}
       >
@@ -72,7 +72,7 @@ export function Example() {
       </button>
 
       <button
-        class="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        class="w-full rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => handleMutate((data() || "") + "!")}
         disabled={mutateLoading()}
       >

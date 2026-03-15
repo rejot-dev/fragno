@@ -1,7 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect } from "react";
+
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/lib/auth/client";
 
 type CheckoutType = "subscribe" | "cancel";

@@ -1,7 +1,8 @@
 import { defineFragment } from "@fragno-dev/core";
-import { mailingListSchema } from "./schema";
 import { withDatabase, type Cursor } from "@fragno-dev/db";
+
 import type { MailingListConfig } from ".";
+import { mailingListSchema } from "./schema";
 
 export type SortField = "email" | "subscribedAt";
 export type SortOrder = "asc" | "desc";

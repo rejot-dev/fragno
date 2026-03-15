@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { buildMarkdownApiUrl } from "./markdown-redirect";
 
 describe("buildMarkdownApiUrl", () => {

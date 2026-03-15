@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "./async";
 
 describe("createAsyncIteratorFromCallback", () => {

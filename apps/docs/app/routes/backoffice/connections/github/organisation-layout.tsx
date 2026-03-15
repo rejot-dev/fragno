@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
+
+import { getAuthMe } from "@/fragno/auth-server";
+
+import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/organisation-layout";
+import { fetchGitHubAdminConfig } from "./data";
 import {
   GitHubErrorBoundary,
   GitHubHeader,
@@ -8,9 +13,6 @@ import {
   type GitHubAdminConfigState,
   type GitHubTab,
 } from "./shared";
-import { fetchGitHubAdminConfig } from "./data";
-import { getAuthMe } from "@/fragno/auth-server";
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {

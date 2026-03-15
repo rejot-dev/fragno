@@ -1,6 +1,6 @@
-import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
+import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import { createDurableHooksDispatcher, type DurableHooksDispatcher } from "./dispatcher";
 
 export type DurableHooksProcessorOptions = {

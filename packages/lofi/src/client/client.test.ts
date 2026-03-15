@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import superjson from "superjson";
-import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
+
 import { FragnoId } from "@fragno-dev/db/schema";
+import superjson from "superjson";
+
+import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
+
 import { LofiClient } from "../mod";
 
 const baseOutboxUrl = "https://example.com/outbox?foo=bar";

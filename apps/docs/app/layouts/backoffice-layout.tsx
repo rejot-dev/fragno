@@ -1,10 +1,13 @@
+import "../backoffice.css";
+
 import type { ReactNode } from "react";
 import { Link, Outlet, isRouteErrorResponse, redirect, useRouteError } from "react-router";
+
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
-import type { Route } from "./+types/backoffice-layout";
 import { getAuthMe } from "@/fragno/auth-server";
 import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
-import "../backoffice.css";
+
+import type { Route } from "./+types/backoffice-layout";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -69,7 +72,7 @@ export function ErrorBoundary() {
           actions={
             <Link
               to="/backoffice"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               Back to dashboard
             </Link>

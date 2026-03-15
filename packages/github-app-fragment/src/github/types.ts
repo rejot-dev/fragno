@@ -1,4 +1,5 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
 import type { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 
 export type GitHubAppWebhookHandler<TEventName extends EmitterWebhookEventName> = (

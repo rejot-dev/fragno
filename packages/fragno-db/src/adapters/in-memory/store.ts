@@ -1,9 +1,9 @@
-import type { AnyColumn, AnySchema, AnyTable } from "../../schema/create";
-import { SortedArrayIndex } from "./sorted-array-index";
-import { SQLocalDriverConfig } from "../generic-sql/driver-config";
-import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
-import { compareNormalizedValues } from "./value-comparison";
 import type { NamingResolver } from "../../naming/sql-naming";
+import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
+import type { AnyColumn, AnySchema, AnyTable } from "../../schema/create";
+import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+import { SortedArrayIndex } from "./sorted-array-index";
+import { compareNormalizedValues } from "./value-comparison";
 
 export type InMemoryRow = Record<string, unknown>;
 
