@@ -7,7 +7,7 @@ import {
 } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { defineWorkflow } from "./workflow";
+import { defineWorkflow, WaitForEventTimeoutError } from "./workflow";
 import {
   createScenarioSteps,
   defineScenario,
@@ -865,6 +865,205 @@ describe("Workflows Runner (Scenario DSL)", () => {
             status: "errored",
             errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
           });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("waitForEvent timeout can be caught to complete the workflow gracefully", async () => {
+    const GracefulTimeoutWorkflow = defineWorkflow(
+      { name: "graceful-timeout-workflow" },
+      async (_event, step) => {
+        try {
+          await step.waitForEvent("ready", { type: "ready", timeout: "5 minutes" });
+          return { ok: true, timedOut: false };
+        } catch (err) {
+          if (err instanceof WaitForEventTimeoutError) {
+            return { ok: true, timedOut: true };
+          }
+          throw err;
+        }
+      },
+    );
+
+    const workflows = { GRACEFUL: GracefulTimeoutWorkflow };
+
+    type ScenarioVars = {
+      waiting?: { status: string };
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      final?: { status: string; output?: { ok: boolean; timedOut: boolean } };
+      finalSteps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "wait-timeout-graceful",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "GRACEFUL", id: "graceful-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
+          storeAs: "waiting",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("GRACEFUL", "graceful-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+          storeAs: "wakeAt",
+        }),
+        scenarioSteps.advanceTimeAndRunUntilIdle({
+          workflow: "GRACEFUL",
+          instanceId: "graceful-1",
+          setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
+          storeAs: "final",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("GRACEFUL", "graceful-1"),
+          storeAs: "finalSteps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.waiting?.status).toBe("waiting");
+          expect(ctx.vars.final?.status).toBe("complete");
+          expect(ctx.vars.final?.output).toEqual({ ok: true, timedOut: true });
+          expect(ctx.vars.finalSteps?.[0]).toMatchObject({
+            stepKey: "waitForEvent:ready",
+            status: "errored",
+            errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("caught timeout uses tx.mutate (not onTerminalError) for post-timeout writes", async () => {
+    const timeoutMutationSchema = schema("timeout_mutation_test", (s) =>
+      s.addTable("session_status", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("status", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_status", ["status"]),
+      ),
+    );
+
+    const timeoutMutationFragmentDefinition = defineFragment("timeout-mutation-fragment")
+      .extend(withDatabase(timeoutMutationSchema))
+      .build();
+
+    const TimeoutMutationWorkflow = defineWorkflow(
+      { name: "timeout-mutation-workflow" },
+      async (_event, step) => {
+        await step.do("init", (tx) => {
+          tx.mutate((ctx) => {
+            ctx.forSchema(timeoutMutationSchema).create("session_status", { status: "waiting" });
+          });
+          return "initialized";
+        });
+
+        try {
+          await step.waitForEvent("approval", { type: "approval", timeout: "5 minutes" });
+          await step.do("mark-approved", (tx) => {
+            tx.mutate((ctx) => {
+              ctx.forSchema(timeoutMutationSchema).create("session_status", { status: "approved" });
+            });
+            return "approved";
+          });
+          return { finalStatus: "approved" };
+        } catch (err) {
+          if (err instanceof WaitForEventTimeoutError) {
+            await step.do("mark-timed-out", (tx) => {
+              tx.onTerminalError.mutate((ctx) => {
+                ctx
+                  .forSchema(timeoutMutationSchema)
+                  .create("session_status", { status: "error-cleanup" });
+              });
+              tx.mutate((ctx) => {
+                ctx.forSchema(timeoutMutationSchema).create("session_status", { status: "done" });
+              });
+              return "timed-out";
+            });
+            return { finalStatus: "timed-out" };
+          }
+          throw err;
+        }
+      },
+    );
+
+    const workflows = { TIMEOUT_MUTATE: TimeoutMutationWorkflow };
+
+    type ScenarioVars = {
+      waitingSteps?: WorkflowScenarioStepRow[];
+      wakeAt?: Date;
+      final?: { status: string; output?: { finalStatus: string } };
+      finalSteps?: WorkflowScenarioStepRow[];
+      rows?: Array<{ status: string }>;
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "timeout-mutation",
+      workflows,
+      harness: {
+        configureBuilder: (builder) =>
+          builder.withFragment("timeoutMutation", instantiate(timeoutMutationFragmentDefinition)),
+      },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({
+          workflow: "TIMEOUT_MUTATE",
+          id: "tm-1",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_MUTATE", "tm-1"),
+          storeAs: "waitingSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) =>
+            ctx.vars.waitingSteps?.find((s) => s.stepKey === "waitForEvent:approval")?.wakeAt ??
+            null,
+          storeAs: "wakeAt",
+        }),
+        scenarioSteps.advanceTimeAndRunUntilIdle({
+          workflow: "TIMEOUT_MUTATE",
+          instanceId: "tm-1",
+          setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("TIMEOUT_MUTATE", "tm-1"),
+          storeAs: "final",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("TIMEOUT_MUTATE", "tm-1"),
+          storeAs: "finalSteps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) =>
+            ctx.harness.fragments["timeoutMutation"].db.find("session_status", (b) =>
+              b.whereIndex("primary"),
+            ),
+          storeAs: "rows",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.final?.status).toBe("complete");
+          expect(ctx.vars.final?.output).toEqual({ finalStatus: "timed-out" });
+
+          // The "mark-timed-out" step completed successfully (no terminal error),
+          // so tx.mutate runs and tx.onTerminalError.mutate does NOT.
+          const statuses = (ctx.vars.rows ?? []).map((r) => r.status).sort();
+          expect(statuses).toEqual(["done", "waiting"]);
+          expect(statuses).not.toContain("error-cleanup");
         }),
       ],
     });

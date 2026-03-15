@@ -8,6 +8,7 @@ import type {
   WorkflowStepConfig,
   WorkflowStepTx,
 } from "../workflow";
+import { WaitForEventTimeoutError } from "../workflow";
 import { parseDurationMs } from "../utils";
 import type { RunnerState, WorkflowStepSnapshot } from "./state";
 import type {
@@ -435,7 +436,7 @@ export class RunnerStep implements WorkflowStep {
         });
       }
 
-      const error = new Error("WAIT_FOR_EVENT_TIMEOUT");
+      const error = new WaitForEventTimeoutError();
       this.#upsertStep(stepKey, {
         name,
         type: "waitForEvent",
