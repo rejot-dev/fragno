@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { auth } from "@/lib/auth/auth";
 import { stripeFragment } from "@/lib/stripe";
 

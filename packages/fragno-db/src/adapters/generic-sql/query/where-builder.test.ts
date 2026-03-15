@@ -1,11 +1,13 @@
-import { Kysely, PostgresDialect } from "kysely";
 import { beforeAll, describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
-import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
-import { ReferenceSubquery } from "../../../query/value-encoding";
-import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
-import { dbNow } from "../../../query/db-now";
+
+import { Kysely, PostgresDialect } from "kysely";
+
 import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
+import { dbNow } from "../../../query/db-now";
+import { ReferenceSubquery } from "../../../query/value-encoding";
+import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
+import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
 
 describe("where-builder", () => {
   const testSchema = schema("test", (s) => {

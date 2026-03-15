@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+
 import { ReferenceSubquery } from "../../query/value-encoding";
-import { createInMemoryStore, ensureNamespaceStore } from "./store";
+import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { resolveReferenceSubqueries } from "./reference-resolution";
+import { createInMemoryStore, ensureNamespaceStore } from "./store";
 
 const testSchema = schema("test", (s) =>
   s

@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
+
 import type { HookHandlerTx } from "@fragno-dev/db";
-import type { TelegramApi } from "./types";
+
 import { createCommandHandlerApi } from "./command-handler-api";
+import type { TelegramApi } from "./types";
 
 const buildHandlerTx = () => {
   const triggered: Array<{ hookName: string; payload: unknown }> = [];

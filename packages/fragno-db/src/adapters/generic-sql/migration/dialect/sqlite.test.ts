@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+
 import type { MigrationOperation } from "../../../../migration-engine/shared";
+import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
+import { column, idColumn, schema } from "../../../../schema/create";
+import { sqliteStoragePrisma } from "../../sqlite-storage";
 import { createColdKysely } from "../cold-kysely";
 import { SQLiteSQLGenerator } from "./sqlite";
-import { sqliteStoragePrisma } from "../../sqlite-storage";
-import { column, idColumn, schema } from "../../../../schema/create";
-import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
 
 describe("SQLiteSQLGenerator", () => {
   const coldKysely = createColdKysely("sqlite");

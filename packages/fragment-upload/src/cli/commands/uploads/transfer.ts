@@ -1,7 +1,9 @@
-import { define } from "gunshi";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
+
+import { define } from "gunshi";
+
 import {
   baseArgs,
   createClientFromContext,

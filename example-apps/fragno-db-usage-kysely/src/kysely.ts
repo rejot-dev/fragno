@@ -1,4 +1,5 @@
 import { sql } from "kysely";
+
 import { db } from "./database";
 
 async function printSettings() {

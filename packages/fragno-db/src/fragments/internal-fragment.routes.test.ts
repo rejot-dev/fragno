@@ -1,15 +1,18 @@
+import { describe, expect, it } from "vitest";
+
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { describe, expect, it } from "vitest";
+
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "../with-database";
-import { schema, idColumn, column } from "../schema/create";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
-import { SchemaRegistryCollisionError, internalSchema } from "./internal-fragment";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
-import type { SyncCommandDefinition } from "../sync/types";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
+import { schema, idColumn, column } from "../schema/create";
+import type { SyncCommandDefinition } from "../sync/types";
+import { withDatabase } from "../with-database";
+import { SchemaRegistryCollisionError, internalSchema } from "./internal-fragment";
 
 const alphaSchema = schema("alpha", (s) =>
   s.addTable("alpha_items", (t) =>

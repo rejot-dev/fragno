@@ -1,14 +1,16 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import type { StripeFragmentConfig } from "./types";
-import { stripeFragmentDefinition } from "./definition";
-import { webhookRoutesFactory } from "./routes/webhooks";
-import { customersRoutesFactory } from "./routes/customers";
-import { subscriptionsRoutesFactory } from "./routes/subscriptions";
-import { productsRoutesFactory } from "./routes/products";
-import { pricesRoutesFactory } from "./routes/prices";
+
 import { instantiate } from "@fragno-dev/core";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+
+import { stripeFragmentDefinition } from "./definition";
+import { customersRoutesFactory } from "./routes/customers";
+import { pricesRoutesFactory } from "./routes/prices";
+import { productsRoutesFactory } from "./routes/products";
+import { subscriptionsRoutesFactory } from "./routes/subscriptions";
+import { webhookRoutesFactory } from "./routes/webhooks";
+import type { StripeFragmentConfig } from "./types";
 
 const routes = [
   webhookRoutesFactory,

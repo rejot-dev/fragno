@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
-import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
+
 import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
-import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
+import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
+
 import type { Route } from "./+types/configuration";
+import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
 
 const SETUP_STEPS = [
   {
@@ -198,7 +200,7 @@ export default function BackofficeOrganisationResendConfiguration() {
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Status
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Resend connection</h2>
@@ -207,7 +209,7 @@ export default function BackofficeOrganisationResendConfiguration() {
               </p>
             </div>
             <span
-              className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${statusTone}`}
+              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
             >
               {statusLabel}
             </span>
@@ -302,7 +304,7 @@ export default function BackofficeOrganisationResendConfiguration() {
                   }));
                 }}
                 placeholder="re_..."
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
@@ -325,7 +327,7 @@ export default function BackofficeOrganisationResendConfiguration() {
                   }));
                 }}
                 placeholder="Fragno <hello@example.com>"
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
@@ -341,7 +343,7 @@ export default function BackofficeOrganisationResendConfiguration() {
                   }));
                 }}
                 placeholder="support@example.com"
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
@@ -357,7 +359,7 @@ export default function BackofficeOrganisationResendConfiguration() {
                   }));
                 }}
                 placeholder={origin}
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
               {webhookBaseUrlError ? (
                 <p className="text-xs text-red-500">{webhookBaseUrlError}</p>
@@ -367,7 +369,7 @@ export default function BackofficeOrganisationResendConfiguration() {
 
           <div className="space-y-3">
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Webhook URL
               </p>
               <p className="mt-2 break-all text-[var(--bo-fg)]">{webhookUrl}</p>
@@ -383,7 +385,7 @@ export default function BackofficeOrganisationResendConfiguration() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save Resend config"}
           </button>

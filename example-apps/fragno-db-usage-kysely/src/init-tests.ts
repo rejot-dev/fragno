@@ -1,7 +1,9 @@
-import { cli, parseArgs, resolveArgs } from "gunshi";
-import { migrateCommand } from "@fragno-dev/cli";
-import { rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
+import { rm } from "node:fs/promises";
+
+import { cli, parseArgs, resolveArgs } from "gunshi";
+
+import { migrateCommand } from "@fragno-dev/cli";
 
 // Inline the pgFolder constant to avoid importing from database.ts
 const pgFolder = "./fragno-db-usage.pglite" as const;

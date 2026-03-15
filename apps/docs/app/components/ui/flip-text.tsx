@@ -1,7 +1,8 @@
+import { AnimatePresence, motion } from "motion/react";
 // Manually imported from
 // https://ui.aceternity.com/components/flip-words
 import React, { useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+
 import { cn } from "@/lib/cn";
 
 export const FlipWords = ({

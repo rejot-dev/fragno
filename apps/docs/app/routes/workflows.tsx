@@ -1,8 +1,9 @@
+import { ArrowRight, Activity, Route as RouteIcon, RotateCcw, Terminal, Timer } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Activity, Route as RouteIcon, RotateCcw, Terminal, Timer } from "lucide-react";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
+
 import { FragmentSubnav } from "@/components/fragment-subnav";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
   return [
@@ -213,7 +214,7 @@ export default function WorkflowsPage() {
             </Link>
           </div>
           <div className="mx-auto max-w-xl space-y-2 pt-4 text-left">
-            <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+            <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Install
             </p>
             <FragnoCodeBlock
@@ -360,7 +361,7 @@ export default function WorkflowsPage() {
                         : "border-black/5 bg-white text-slate-600 hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-300"
                     }`}
                   >
-                    <p className="text-sm font-semibold uppercase tracking-wide">{example.title}</p>
+                    <p className="text-sm font-semibold tracking-wide uppercase">{example.title}</p>
                     <p className="mt-1 text-sm opacity-80">{example.summary}</p>
                   </button>
                 );

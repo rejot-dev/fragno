@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { OAuth2Tokens } from "../../types";
 import type { GithubOAuthClient } from "./client";
 import type { GithubEmail, GithubProfile } from "./github";

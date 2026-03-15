@@ -1,7 +1,8 @@
-import { loadConfig as c12LoadConfig } from "c12";
+import { constants } from "node:fs";
 import { readFile, access } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
-import { constants } from "node:fs";
+
+import { loadConfig as c12LoadConfig } from "c12";
 
 /**
  * Checks if a file exists using async API.

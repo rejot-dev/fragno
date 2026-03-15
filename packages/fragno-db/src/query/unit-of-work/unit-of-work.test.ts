@@ -1,5 +1,8 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
+
 import { column, schema, idColumn, FragnoId } from "../../schema/create";
+import { createIndexedBuilder } from "../condition-builder";
+import type { SimpleQueryInterface } from "../simple-query-interface";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -8,8 +11,6 @@ import {
   type InferIdColumnName,
   type IndexColumns,
 } from "./unit-of-work";
-import { createIndexedBuilder } from "../condition-builder";
-import type { SimpleQueryInterface } from "../simple-query-interface";
 
 // Mock compiler and executor for testing
 function createMockCompiler(): UOWCompiler<unknown> {

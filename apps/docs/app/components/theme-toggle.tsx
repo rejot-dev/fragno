@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
 import { cn } from "@/lib/utils";
 
 type ThemeChoice = "light" | "dark" | "system";

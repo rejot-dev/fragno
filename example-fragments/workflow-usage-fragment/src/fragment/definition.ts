@@ -3,8 +3,8 @@ import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { workflowsFragmentDefinition } from "@fragno-dev/workflows";
 
-import { workflowUsageSchema } from "./schema";
 import type { WorkflowUsageAgentDefinition, WorkflowUsageSessionCompletedPayload } from "./dsl";
+import { workflowUsageSchema } from "./schema";
 
 export interface WorkflowUsageConfig {
   agents: Record<string, WorkflowUsageAgentDefinition>;

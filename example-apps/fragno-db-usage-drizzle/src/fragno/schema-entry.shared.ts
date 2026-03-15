@@ -1,9 +1,10 @@
-import type { DatabaseAdapter } from "@fragno-dev/db";
-import { createAuthFragment } from "@fragno-dev/auth";
-import { createCommentFragment } from "@fragno-dev/fragno-db-library";
 import { createRatingFragment } from "@fragno-dev/fragno-db-library/upvote";
-import { createWorkflowsFragment } from "@fragno-dev/workflows";
+
+import { createAuthFragment } from "@fragno-dev/auth";
 import { defaultFragnoRuntime } from "@fragno-dev/core";
+import type { DatabaseAdapter } from "@fragno-dev/db";
+import { createCommentFragment } from "@fragno-dev/fragno-db-library";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 // Shared fragment setup for schema generation entrypoints.
 export function createSchemaFragments<TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) {

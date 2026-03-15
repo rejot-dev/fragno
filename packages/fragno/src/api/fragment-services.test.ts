@@ -1,4 +1,5 @@
 import { describe, test, expect, expectTypeOf } from "vitest";
+
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate } from "./fragment-instantiator";
 

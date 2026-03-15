@@ -1,7 +1,10 @@
+import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
+
+import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
+import { normalizeValue } from "../query/normalize";
 import type {
   IndexedDbAdapterOptions,
   LofiAdapter,
@@ -11,8 +14,6 @@ import type {
   LofiQueryableAdapter,
 } from "../types";
 import type { ReferenceTarget } from "./types";
-import { normalizeValue } from "../query/normalize";
-import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
 
 type LofiRow = {
   key: [string, string, string, string];

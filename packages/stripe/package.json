@@ -1,18 +1,30 @@
 {
   "name": "@fragno-dev/stripe",
-  "description": "Stripe integration using Fragno",
   "version": "2.0.0",
+  "private": false,
+  "description": "Stripe integration using Fragno",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/stripe"
+  },
   "files": [
     "dist"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -39,15 +51,11 @@
       "default": "./dist/browser/client/vanilla.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "test": "vitest run",
     "types:check": "tsgo --noEmit",
     "build": "tsdown"
   },
-  "type": "module",
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "stripe": "^19.3.1",
@@ -63,20 +71,12 @@
     "tsdown": "^0.11.13",
     "vitest": "^3.2.4"
   },
-  "private": false,
   "peerDependencies": {
+    "@fragno-dev/db": "^0.3.0",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
-    "@typescript/native-preview": "catalog:",
-    "vue": ">=3.0.0",
-    "@fragno-dev/db": "^0.3.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/stripe"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+    "vue": ">=3.0.0"
+  }
 }

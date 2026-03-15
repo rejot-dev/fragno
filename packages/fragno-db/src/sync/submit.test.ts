@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+
+import type { OutboxEntry } from "../outbox/outbox";
 import { FragnoId } from "../schema/create";
 import { submitSyncRequest, type SyncRequestRecord, type SyncSubmitRuntime } from "./submit";
-import type { OutboxEntry } from "../outbox/outbox";
 import type { SyncCommandDefinition } from "./types";
 
 const createEntry = (versionstamp: string): OutboxEntry => ({

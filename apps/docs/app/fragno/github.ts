@@ -1,10 +1,11 @@
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+
 import {
   createGitHubAppFragment,
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 
 export type GitHubConfig = Pick<
   GitHubAppFragmentConfig,

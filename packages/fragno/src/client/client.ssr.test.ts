@@ -7,12 +7,14 @@
  */
 
 import { describe, expect, test } from "vitest";
+
+import { z } from "zod";
+
+import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoute } from "../api/route";
+import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import { type FragnoPublicClientConfig } from "./client";
 import { createClientBuilder } from "./client";
-import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment-definition-builder";
-import { z } from "zod";
-import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 
 describe("server side rendering", () => {
   const testFragmentDefinition = defineFragment("test-fragment").build();

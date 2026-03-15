@@ -1,5 +1,5 @@
-import { sqliteTable, text, integer, uniqueIndex, blob, index } from "drizzle-orm/sqlite-core";
 import { createId } from "@fragno-dev/db/id";
+import { sqliteTable, text, integer, uniqueIndex, blob, index } from "drizzle-orm/sqlite-core";
 
 // ============================================================================
 // Fragment:

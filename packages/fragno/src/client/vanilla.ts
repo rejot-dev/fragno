@@ -1,6 +1,15 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ReadableAtom } from "nanostores";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { NonGetHTTPMethod } from "../api/api";
+import type {
+  ExtractPathParamsOrWiden,
+  HasPathParams,
+  MaybeExtractPathParamsOrWiden,
+} from "../api/internal/path";
+import { createAsyncIteratorFromCallback } from "../util/async";
+import type { InferOr } from "../util/types-util";
 import {
   isGetHook,
   isMutatorHook,
@@ -12,13 +21,6 @@ import {
   type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
-import { createAsyncIteratorFromCallback } from "../util/async";
-import type { InferOr } from "../util/types-util";
-import type {
-  ExtractPathParamsOrWiden,
-  HasPathParams,
-  MaybeExtractPathParamsOrWiden,
-} from "../api/internal/path";
 
 export type StoreData<
   TOutputSchema extends StandardSchemaV1 | undefined,

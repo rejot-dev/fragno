@@ -1,3 +1,5 @@
+import type { CursorResult } from "../../query/cursor";
+import { dbInterval, dbNow, type DbInterval, type DbIntervalInput } from "../../query/db-now";
 import type {
   SimpleQueryInterface,
   TableToUpdateValues,
@@ -6,8 +8,6 @@ import type {
   ExtractSelect,
   SelectClause,
 } from "../../query/simple-query-interface";
-import { dbInterval, dbNow, type DbInterval, type DbIntervalInput } from "../../query/db-now";
-import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
   FindBuilder,
@@ -19,7 +19,7 @@ import type {
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
-import type { CursorResult } from "../../query/cursor";
+import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
 /**

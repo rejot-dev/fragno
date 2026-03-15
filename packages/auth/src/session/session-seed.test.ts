@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { parseSessionSeedFromQuery, serializeSessionSeedForQuery } from "./session-seed";
 
 describe("session seed query parsing", () => {

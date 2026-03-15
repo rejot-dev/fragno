@@ -1,5 +1,6 @@
-import type { Route } from "./+types/feed";
 import { blogSource } from "@/lib/source";
+
+import type { Route } from "./+types/feed";
 
 const BASE_URL = "https://fragno.dev";
 

@@ -1,6 +1,7 @@
 import { define } from "gunshi";
-import { baseArgs, createClientFromContext } from "../../utils/options.js";
+
 import { formatLogLine } from "../../utils/format.js";
+import { baseArgs, createClientFromContext } from "../../utils/options.js";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

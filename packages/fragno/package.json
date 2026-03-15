@@ -1,6 +1,18 @@
 {
   "name": "@fragno-dev/core",
   "version": "0.2.0",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/mod.js",
+  "module": "./dist/mod.js",
+  "types": "./dist/mod.d.ts",
   "exports": {
     ".": {
       "workerd": {
@@ -72,9 +84,6 @@
     },
     "./package.json": "./package.json"
   },
-  "main": "./dist/mod.js",
-  "module": "./dist/mod.js",
-  "types": "./dist/mod.d.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -82,8 +91,6 @@
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
-  "type": "module",
-  "sideEffects": false,
   "dependencies": {
     "@nanostores/query": "^0.3.4",
     "@nanostores/solid": "^1.1.1",
@@ -113,9 +120,9 @@
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "vue": "^3",
+    "solid-js": "^1.0.0",
     "svelte": "^5",
-    "solid-js": "^1.0.0"
+    "vue": "^3"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -130,12 +137,5 @@
     "solid-js": {
       "optional": true
     }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/fragno"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  }
 }

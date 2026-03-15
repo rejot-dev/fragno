@@ -1,12 +1,13 @@
 import { type ColumnDefinitionBuilder, type CompiledQuery, type RawBuilder, sql } from "kysely";
+
 import type {
   ColumnInfo,
   ColumnOperation,
   MigrationOperation,
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
-import { SQLGenerator } from "../sql-generator";
 import type { NamingResolver } from "../../../../naming/sql-naming";
+import { SQLGenerator } from "../sql-generator";
 
 const errors = {
   IdColumnUpdate:

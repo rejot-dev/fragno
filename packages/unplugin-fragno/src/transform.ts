@@ -1,16 +1,17 @@
+import { deadCodeElimination, findReferencedIdentifiers } from "babel-dead-code-elimination";
+
 import * as babel from "@babel/core";
-import { parse } from "@babel/parser";
 import { generate } from "@babel/generator";
 import type { GeneratorResult } from "@babel/generator";
+import { parse } from "@babel/parser";
 
-import { deadCodeElimination, findReferencedIdentifiers } from "babel-dead-code-elimination";
-import { transformMacros } from "./transform-macros";
-import { transformDefineRoute } from "./transform-define-route";
-import { transformIdentifierReplacements } from "./transform-identifier-replacements";
 import { transformDefineLibrary } from "./transform-define-library";
+import { transformDefineRoute } from "./transform-define-route";
 import { transformDefineSyncCommands } from "./transform-define-sync-commands";
 import { transformFragmentBuilder } from "./transform-fragment-builder";
+import { transformIdentifierReplacements } from "./transform-identifier-replacements";
 import { transformInstantiate } from "./transform-instantiate";
+import { transformMacros } from "./transform-macros";
 
 export const transform = (code: string, id: string, options: { ssr: boolean }): GeneratorResult => {
   const ast = parse(code, { sourceType: "module", plugins: [["typescript", {}]] });

@@ -1,5 +1,6 @@
-import type { Route } from "./+types/sitemap";
 import { source, blogSource } from "@/lib/source";
+
+import type { Route } from "./+types/sitemap";
 
 export async function loader(_: Route.LoaderArgs) {
   const baseUrl = "https://fragno.dev";

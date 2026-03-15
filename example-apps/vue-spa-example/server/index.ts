@@ -1,6 +1,7 @@
-import { toNodeHandler } from "@fragno-dev/node";
-import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { createServer, type Server } from "node:http";
+
+import { createExampleFragment } from "@fragno-dev/example-fragment";
+import { toNodeHandler } from "@fragno-dev/node";
 
 const fragment = createExampleFragment();
 const server = createServer(toNodeHandler(fragment.handler));

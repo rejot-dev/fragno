@@ -1,7 +1,9 @@
-import { LoginForm } from "@/components/login-form";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useSession } from "@/lib/auth/client";
 import { useEffect } from "react";
+
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+
+import { LoginForm } from "@/components/login-form";
+import { useSession } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,

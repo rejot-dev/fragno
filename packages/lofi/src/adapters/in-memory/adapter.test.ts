@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
+
 import { InMemoryLofiAdapter } from "./adapter";
 
 const appSchema = schema("app", (s) =>

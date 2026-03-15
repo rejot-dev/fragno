@@ -1,7 +1,8 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { ContentlessStatusCode, StatusCode } from "../http/http-status";
-import { ResponseStream } from "./internal/response-stream";
 import type { InferOrUnknown } from "../util/types-util";
+import { ResponseStream } from "./internal/response-stream";
 
 export type ResponseData = string | ArrayBuffer | ReadableStream | Uint8Array<ArrayBuffer>;
 

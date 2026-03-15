@@ -1,9 +1,10 @@
 "use client";
 
 import { Database } from "lucide-react";
-import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { useState } from "react";
+
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
 import type { CarouselApi } from "@/components/ui/carousel";
 
 export default function DatabaseIntegration() {
@@ -216,7 +217,7 @@ describe("auth fragment", async () => {
       >
         <CarouselContent className="ml-0">
           {carouselItems.map((item) => (
-            <CarouselItem key={item.id} className="basis-[90%] pl-0 pr-6 sm:basis-[600px]">
+            <CarouselItem key={item.id} className="basis-[90%] pr-6 pl-0 sm:basis-[600px]">
               <div className="h-full space-y-4">
                 <div className="space-y-1.5">
                   <h3 className="text-xl font-bold tracking-tight">{item.title}</h3>

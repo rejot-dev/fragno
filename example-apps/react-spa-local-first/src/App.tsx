@@ -1,15 +1,16 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { OutboxEntry, SyncCommandDefinition, SyncCommandRegistry } from "@fragno-dev/db";
 import type { AnySchema } from "@fragno-dev/db/schema";
+import { commentSchema, upvoteSchema } from "@fragno-dev/fragno-db-library/schema";
+import { ratingSyncCommands } from "@fragno-dev/fragno-db-library/upvote";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { OutboxEntry, SyncCommandDefinition, SyncCommandRegistry } from "@fragno-dev/db";
+import { commentSyncCommands } from "@fragno-dev/fragno-db-library";
 import {
   decodeOutboxPayload,
   IndexedDbAdapter,
   LofiClient,
   LofiSubmitClient,
 } from "@fragno-dev/lofi";
-import { commentSyncCommands } from "@fragno-dev/fragno-db-library";
-import { ratingSyncCommands } from "@fragno-dev/fragno-db-library/upvote";
-import { commentSchema, upvoteSchema } from "@fragno-dev/fragno-db-library/schema";
 
 type SchemaDescriptor = {
   name: string;

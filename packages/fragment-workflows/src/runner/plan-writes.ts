@@ -1,9 +1,11 @@
 // Helpers for translating runner state into UOW mutations.
 
 import type { HandlerTxContext, HooksMap, IUnitOfWork, TypedUnitOfWork } from "@fragno-dev/db";
+
 import { workflowsSchema } from "../schema";
 import type { AnyTxResult } from "../workflow";
 import type { RunnerState } from "./state";
+import type { RunnerStepSuspended } from "./step";
 import type {
   WorkflowInstanceRecord,
   WorkflowStepCreate,
@@ -11,7 +13,6 @@ import type {
   WorkflowStepUpdate,
   WorkflowStepUpdateDraft,
 } from "./types";
-import type { RunnerStepSuspended } from "./step";
 import { isMutateOnlyTx } from "./utils";
 
 export type RunnerTaskOutcome =

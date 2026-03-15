@@ -11,11 +11,11 @@ export function TopNav() {
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="flex w-full items-center justify-between px-6 py-4 lg:px-10">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-xs font-semibold uppercase tracking-[0.2em] text-white">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-xs font-semibold tracking-[0.2em] text-white uppercase">
             wf
           </span>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <p className="text-xs font-semibold tracking-[0.3em] text-slate-400 uppercase">
               Fragno
             </p>
             <p className="text-sm font-semibold text-slate-900">Workflow Fragment</p>

@@ -1,11 +1,10 @@
-import type { FragnoDatabase } from "../mod";
-import type { AnySchema } from "../schema/create";
+import { instantiate } from "@fragno-dev/core";
+
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "../adapters/adapters";
-import { generateDrizzleSchema } from "../schema-output/drizzle";
-import { generatePrismaSchema } from "../schema-output/prisma";
+import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
 import {
   internalFragmentDef,
   internalSchema,
@@ -13,8 +12,10 @@ import {
   getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
-import { instantiate } from "@fragno-dev/core";
-import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
+import type { FragnoDatabase } from "../mod";
+import { generateDrizzleSchema } from "../schema-output/drizzle";
+import { generatePrismaSchema } from "../schema-output/prisma";
+import type { AnySchema } from "../schema/create";
 
 export interface GenerationEngineResult {
   schema: string;

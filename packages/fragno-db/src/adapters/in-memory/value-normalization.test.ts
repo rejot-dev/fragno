@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { buildIndexKey } from "./store";
 

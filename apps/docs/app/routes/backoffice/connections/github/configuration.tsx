@@ -8,6 +8,15 @@ import {
   useNavigation,
   useOutletContext,
 } from "react-router";
+
+import {
+  getGitHubDurableObject,
+  getGitHubWebhookRouterDurableObject,
+} from "@/cloudflare/cloudflare-utils";
+import { FormContainer } from "@/components/backoffice";
+import { getAuthMe } from "@/fragno/auth-server";
+
+import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/configuration";
 import {
   fetchGitHubAdminConfig,
@@ -18,13 +27,6 @@ import {
   type GitHubInstallationSummary,
   type GitHubRepositorySummary,
 } from "./data";
-import { FormContainer } from "@/components/backoffice";
-import {
-  getGitHubDurableObject,
-  getGitHubWebhookRouterDurableObject,
-} from "@/cloudflare/cloudflare-utils";
-import { getAuthMe } from "@/fragno/auth-server";
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { formatTimestamp, type GitHubLayoutContext } from "./shared";
 
 const INSTALL_FLOW_QUERY = "installFlow";
@@ -493,7 +495,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
           <div className="mt-3">
             <Link
               to="/backoffice/internals/github"
-              className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               View operator details
             </Link>
@@ -516,7 +518,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                   href={githubInstallationUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                  className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   View installation on GitHub
                 </a>
@@ -532,7 +534,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                    className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                   >
                     Start installation
                   </button>
@@ -563,7 +565,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                             Installation {installation.id}
                           </p>
                           <h3 className="mt-1 text-lg font-semibold text-[var(--bo-fg)]">
@@ -575,7 +577,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                             {linkedCount}/{repos.length} linked
                           </span>
                         </div>
@@ -616,7 +618,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                                       <button
                                         type="submit"
                                         disabled={saving}
-                                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                                       >
                                         Unlink
                                       </button>
@@ -633,7 +635,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                                       <button
                                         type="submit"
                                         disabled={saving}
-                                        className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                                        className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                                       >
                                         Link repo
                                       </button>

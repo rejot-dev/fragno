@@ -1,15 +1,26 @@
 {
   "name": "create-fragno",
   "version": "0.1.7",
+  "private": false,
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/create-cli"
+  },
+  "bin": {
+    "create-fragno": "./dist/index.js"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
-  },
-  "type": "module",
-  "bin": {
-    "create-fragno": "./dist/index.js"
   },
   "scripts": {
     "build": "tsdown",
@@ -17,28 +28,17 @@
     "test": "vitest run",
     "types:check": "tsgo --noEmit"
   },
-  "engines": {
-    "node": ">=22"
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "@fragno-dev/create": "workspace:*",
+    "citty": "^0.1.6"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7"
   },
-  "dependencies": {
-    "@clack/prompts": "^0.11.0",
-    "@fragno-dev/create": "workspace:*",
-    "citty": "^0.1.6"
-  },
-  "private": false,
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "apps/create-cli"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  "engines": {
+    "node": ">=22"
+  }
 }

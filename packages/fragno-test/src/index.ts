@@ -1,4 +1,8 @@
+import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
+
+import type { DatabaseAdapter } from "@fragno-dev/db";
+
 import type {
   SupportedAdapter,
   AdapterContext,
@@ -7,8 +11,6 @@ import type {
   DrizzlePgliteAdapter,
   InMemoryAdapterConfig,
 } from "./adapters";
-import type { DatabaseAdapter } from "@fragno-dev/db";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 
 // Re-export utilities from @fragno-dev/core/test
 export {

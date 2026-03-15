@@ -1,8 +1,9 @@
+import { ArrowRight, Database, FolderUp, Server, Terminal, Upload } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Database, FolderUp, Server, Terminal, Upload } from "lucide-react";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
+
 import { FragmentSubnav } from "@/components/fragment-subnav";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
   return [
@@ -188,7 +189,7 @@ export default function UploadPage() {
               </Link>
             </div>
             <div className="max-w-md space-y-2 pt-3">
-              <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+              <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                 Install
               </p>
               <FragnoCodeBlock

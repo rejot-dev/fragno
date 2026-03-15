@@ -1,6 +1,7 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { dialect } from "../database";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
+
+import { dialect } from "../database";
 
 export function createAdapter() {
   return new SqlAdapter({

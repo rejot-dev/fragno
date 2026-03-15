@@ -1,6 +1,7 @@
-import type { CellProps, WithClassname, EnumOption } from "@jsonforms/core";
 import { memo } from "react";
-import { cn } from "@/lib/utils";
+
+import type { CellProps, WithClassname, EnumOption } from "@jsonforms/core";
+
 import {
   Select,
   SelectContent,
@@ -8,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type ShadcnSelectProps = CellProps &
   WithClassname & {

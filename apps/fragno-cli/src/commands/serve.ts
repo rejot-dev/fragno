@@ -1,10 +1,13 @@
 import { createServer, type Server } from "node:http";
 import { resolve, relative } from "node:path";
+
 import { define } from "gunshi";
-import { toNodeHandler } from "@fragno-dev/node";
+
 import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
-import { loadConfig } from "../utils/load-config";
+import { toNodeHandler } from "@fragno-dev/node";
+
 import { findFragnoFragments } from "../utils/find-fragno-databases";
+import { loadConfig } from "../utils/load-config";
 
 export const serveCommand = define({
   name: "serve",

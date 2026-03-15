@@ -1,7 +1,9 @@
-import { SignupForm } from "@/components/signup-form";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useSession } from "@/lib/auth/client";
 import { useEffect } from "react";
+
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+
+import { SignupForm } from "@/components/signup-form";
+import { useSession } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/signup")({
   component: SignupPage,

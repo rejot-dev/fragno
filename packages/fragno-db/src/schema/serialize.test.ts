@@ -1,13 +1,14 @@
 import { assert, describe, expect, it } from "vitest";
-import { column, referenceColumn, internalIdColumn } from "./create";
-import { createSQLSerializer } from "../query/serialize/create-sql-serializer";
-import type { AnyColumn } from "./create";
+
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import {
   BetterSQLite3DriverConfig,
   NodePostgresDriverConfig,
   MySQL2DriverConfig,
 } from "../adapters/generic-sql/driver-config";
+import { createSQLSerializer } from "../query/serialize/create-sql-serializer";
+import { column, referenceColumn, internalIdColumn } from "./create";
+import type { AnyColumn } from "./create";
 
 function createMockDriverConfig(provider: string): DriverConfig {
   if (provider === "postgresql" || provider === "cockroachdb") {

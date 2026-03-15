@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+
 import type { Condition } from "../../query/condition-builder";
 import { buildCondition } from "../../query/condition-builder";
+import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { evaluateCondition } from "./condition-evaluator";
 import { createNamespaceStore } from "./store";
 

@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { defineFragment, instantiate } from "@fragno-dev/core";
-import { SQLocalKysely } from "sqlocal/kysely";
+
 import { KyselyPGlite } from "kysely-pglite";
-import { PGlite } from "@electric-sql/pglite";
+import { SQLocalKysely } from "sqlocal/kysely";
 import superjson, { type SuperJSONResult } from "superjson";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
+
+import { PGlite } from "@electric-sql/pglite";
+
 import { PGLiteDriverConfig, SQLocalDriverConfig } from "../adapters/generic-sql/driver-config";
-import type { AnyFragnoInstantiatedDatabaseFragment, DatabaseRequestContext } from "../mod";
-import { withDatabase } from "../with-database";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { internalSchema, type InternalFragmentInstance } from "../fragments/internal-fragment";
+import { getInternalFragment } from "../internal/adapter-registry";
+import type { AnyFragnoInstantiatedDatabaseFragment, DatabaseRequestContext } from "../mod";
 import type { AnySchema } from "../schema/create";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
-import { getInternalFragment } from "../internal/adapter-registry";
+import { withDatabase } from "../with-database";
 import type { OutboxEntry, OutboxPayload } from "./outbox";
 
 const outboxSchema = schema("outbox", (s) => {

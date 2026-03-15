@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+
 import { cn } from "@/lib/cn";
 
 const fragments = [
@@ -26,7 +27,7 @@ export function FragmentSubnav({
         className,
       )}
     >
-      <span className="rounded-full border border-slate-200/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-300">
+      <span className="rounded-full border border-slate-200/70 px-3 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase dark:border-white/10 dark:text-slate-300">
         First party fragment
       </span>
       <span

@@ -1,6 +1,7 @@
 "use client";
 
 import { User } from "lucide-react";
+
 import { Stripe } from "./logos/stripe";
 
 export function StripeDataFlow({

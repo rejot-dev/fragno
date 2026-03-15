@@ -1,6 +1,7 @@
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
-import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import {
   workflowsFragmentDefinition,
   workflowsRoutesFactory,

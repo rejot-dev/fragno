@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { SQLiteSerializer } from "./sqlite-serializer";
-import type { AnyColumn } from "../../../schema/create";
+
 import { BetterSQLite3DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import { sqliteStoragePrisma } from "../../../adapters/generic-sql/sqlite-storage";
+import type { AnyColumn } from "../../../schema/create";
+import { SQLiteSerializer } from "./sqlite-serializer";
 
 describe("SQLiteSerializer", () => {
   const mockDriverConfig = new BetterSQLite3DriverConfig();

@@ -1,7 +1,7 @@
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-import { githubAppFragmentDefinition } from "./definition";
 import { githubAppRoutesFactory } from "../routes";
+import { githubAppFragmentDefinition } from "./definition";
 
 export type { GitHubAppFragmentPublicClientConfig } from "./types";
 

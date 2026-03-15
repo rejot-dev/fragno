@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router";
+
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
+
 import type { OrganisationLayoutContext } from "./organisation-layout";
 import {
   Notice,
@@ -70,23 +72,23 @@ export default function BackofficeOrganisationOverview() {
       >
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Slug</p>
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Slug</p>
             <p className="mt-1 font-semibold text-[var(--bo-fg)]">{organization.slug}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Status
             </p>
             <p className="mt-1 font-semibold text-[var(--bo-fg)]">{isActive ? "Active" : "Idle"}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Your roles
             </p>
             <p className="mt-1 font-semibold text-[var(--bo-fg)]">{formatRoles(member.roles)}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Created
             </p>
             <p className="mt-1 font-semibold text-[var(--bo-fg)]">
@@ -111,14 +113,14 @@ export default function BackofficeOrganisationOverview() {
                 setNameNotice(null);
               }}
               disabled={!canManageOrganization}
-              className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2 disabled:opacity-60"
+              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
             />
           </FormField>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
               disabled={!canManageOrganization || !nameDirty || !nameValid || updatingOrganization}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
             >
               {updatingOrganization ? "Saving..." : "Save name"}
             </button>

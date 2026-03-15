@@ -1,7 +1,8 @@
 import { test, expect, describe } from "vitest";
-import { FragnoClientApiError, FragnoClientUnknownApiError } from "./client-error";
+
 import { FragnoApiError } from "../api/error";
 import { RequestOutputContext } from "../api/request-output-context";
+import { FragnoClientApiError, FragnoClientUnknownApiError } from "./client-error";
 
 describe("Error Conversion", () => {
   test("should convert API error to client error", async () => {

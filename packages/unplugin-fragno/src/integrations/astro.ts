@@ -1,6 +1,5 @@
-import type { Options } from "../types";
-
 import unplugin from "..";
+import type { Options } from "../types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default (options: Options): any => ({

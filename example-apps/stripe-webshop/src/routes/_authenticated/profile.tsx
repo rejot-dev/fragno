@@ -1,12 +1,14 @@
+import { useState } from "react";
+
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { signOut, useSession } from "@/lib/auth/client";
-import { useState } from "react";
-import { stripeClient } from "@/lib/stripe.client";
-import { PLANS } from "@/lib/plans";
 import { formatDate } from "@/lib/dates";
+import { PLANS } from "@/lib/plans";
+import { stripeClient } from "@/lib/stripe.client";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,

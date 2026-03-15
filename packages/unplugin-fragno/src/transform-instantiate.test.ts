@@ -1,8 +1,11 @@
-import { parse } from "@babel/parser";
-import { generate } from "@babel/generator";
 import { describe, expect, test } from "vitest";
-import { transformInstantiate } from "./transform-instantiate";
+
 import dedent from "dedent";
+
+import { generate } from "@babel/generator";
+import { parse } from "@babel/parser";
+
+import { transformInstantiate } from "./transform-instantiate";
 
 function transform(source: string, _id: string, options: { ssr: boolean }) {
   const ast = parse(source, { sourceType: "module", plugins: [["typescript", {}]] });

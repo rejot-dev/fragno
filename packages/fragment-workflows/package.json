@@ -1,10 +1,14 @@
 {
   "name": "@fragno-dev/workflows",
-  "description": "Fragno workflows fragment",
   "version": "0.0.1",
+  "description": "Fragno workflows fragment",
   "files": [
     "dist"
   ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -43,16 +47,12 @@
       "default": "./dist/node/scenario.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
-  "type": "module",
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
@@ -69,10 +69,10 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
-    "@typescript/native-preview": "catalog:",
     "vue": ">=3.0.0"
   }
 }

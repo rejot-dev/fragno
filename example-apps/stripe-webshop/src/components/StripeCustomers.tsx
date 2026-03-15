@@ -1,4 +1,6 @@
 import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -8,9 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { stripeClient } from "@/lib/stripe.client";
 import { formatDate } from "@/lib/dates";
+import { stripeClient } from "@/lib/stripe.client";
 
 export function StripeCustomers() {
   const [customerPage, setCustomerPage] = useState<string | undefined>(undefined);

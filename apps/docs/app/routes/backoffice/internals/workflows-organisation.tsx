@@ -1,7 +1,9 @@
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from "react-router";
-import type { Route } from "./+types/workflows-organisation";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth-server";
+
+import type { Route } from "./+types/workflows-organisation";
 import {
   loadWorkflowInstanceSummaries,
   parsePageSize,
@@ -144,7 +146,7 @@ export default function BackofficeWorkflowsOrganisation() {
         actions={
           <Link
             to="/backoffice/internals/workflows"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to scopes
           </Link>
@@ -198,7 +200,7 @@ export default function BackofficeWorkflowsOrganisation() {
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Workflow queue
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -208,7 +210,7 @@ export default function BackofficeWorkflowsOrganisation() {
                 {workflows.length} workflow{workflows.length === 1 ? "" : "s"} registered
               </p>
             </div>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
               {instances.length} shown
             </span>
           </div>
@@ -241,7 +243,7 @@ export default function BackofficeWorkflowsOrganisation() {
                 <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
                   <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
                     <thead className="bg-[var(--bo-panel-2)] text-left">
-                      <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                      <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                         <th scope="col" className="px-3 py-2">
                           Workflow
                         </th>
@@ -299,7 +301,7 @@ export default function BackofficeWorkflowsOrganisation() {
                                 <p
                                   className={
                                     isSelected
-                                      ? "text-[var(--bo-accent-fg)]/80 text-xs"
+                                      ? "text-xs text-[var(--bo-accent-fg)]/80"
                                       : "text-xs text-[var(--bo-muted-2)]"
                                   }
                                 >
@@ -309,7 +311,7 @@ export default function BackofficeWorkflowsOrganisation() {
                             </td>
                             <td className="px-3 py-2">
                               <span
-                                className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${getWorkflowStatusBadgeClasses(instance.status)}`}
+                                className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getWorkflowStatusBadgeClasses(instance.status)}`}
                               >
                                 {instance.status}
                               </span>
@@ -323,8 +325,8 @@ export default function BackofficeWorkflowsOrganisation() {
                                 onClick={(event) => event.stopPropagation()}
                                 className={
                                   isSelected
-                                    ? "text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-                                    : "text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                                    ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+                                    : "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
                                 }
                               >
                                 View

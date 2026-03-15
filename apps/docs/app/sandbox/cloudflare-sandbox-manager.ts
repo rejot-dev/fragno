@@ -1,3 +1,5 @@
+import type { SandboxOptions as CloudflareSdkSandboxOptions } from "@cloudflare/sandbox";
+
 import type {
   ExecuteSandboxCommandOptions,
   SandboxCommandFailure,
@@ -8,7 +10,6 @@ import type {
   StartSandboxOptions,
 } from "./contracts";
 import { parseSleepAfterInput } from "./sleep-after";
-import type { SandboxOptions as CloudflareSdkSandboxOptions } from "@cloudflare/sandbox";
 
 type CloudflareSandboxNamespace = CloudflareEnv["SANDBOX"];
 type CloudflareSandboxOptions = Pick<CloudflareSdkSandboxOptions, "keepAlive" | "sleepAfter">;

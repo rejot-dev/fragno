@@ -1,8 +1,11 @@
-import { useState, useEffect, type ComponentProps } from "react";
-import { JsonForms } from "@jsonforms/react";
-import { RuleEffect, type JsonSchema, type UISchemaElement } from "@jsonforms/core";
-import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
 import { ClipboardList, MessageSquare, BarChart3, Settings, Calendar } from "lucide-react";
+import { useState, useEffect, type ComponentProps } from "react";
+
+import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
+
+import { RuleEffect, type JsonSchema, type UISchemaElement } from "@jsonforms/core";
+import { JsonForms } from "@jsonforms/react";
+
 import { cn } from "@/lib/utils";
 
 // =============================================================================

@@ -1,4 +1,5 @@
 import type { CompiledQuery } from "kysely";
+
 import type { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
 
 /**

@@ -1,8 +1,10 @@
-import type { CellProps, WithClassname, EnumOption } from "@jsonforms/core";
 import { memo } from "react";
-import { cn } from "@/lib/utils";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+import type { CellProps, WithClassname, EnumOption } from "@jsonforms/core";
+
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
 
 type ShadcnRadioGroupProps = CellProps &
   WithClassname & {

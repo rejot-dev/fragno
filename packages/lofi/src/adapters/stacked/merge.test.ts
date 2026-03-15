@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+
 import { column, FragnoId, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
-import { InMemoryLofiAdapter } from "../in-memory/adapter";
+
 import type { LofiAdapter, LofiQueryableAdapter } from "../../types";
+import { InMemoryLofiAdapter } from "../in-memory/adapter";
 import { createStackedQueryEngine } from "./merge";
 
 const createStackedQuery = (appSchema: ReturnType<typeof schema>) => {

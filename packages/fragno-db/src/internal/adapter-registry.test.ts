@@ -1,8 +1,10 @@
+import { describe, expect, it } from "vitest";
+
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { describe, expect, it } from "vitest";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { getRegistryForAdapterSync } from "./adapter-registry";
 import { getOutboxConfigForAdapter } from "./outbox-state";
 

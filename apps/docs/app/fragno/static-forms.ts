@@ -1,4 +1,5 @@
 import type { StaticForm } from "@fragno-dev/forms";
+
 import { RuleEffect } from "@jsonforms/core";
 
 export const SURVEY_FORM_ID = "static_form_survey";

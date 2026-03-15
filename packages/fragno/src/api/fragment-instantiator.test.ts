@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
+
+import { z } from "zod";
+
+import type { RequestThisContext } from "./api";
 import { defineFragment } from "./fragment-definition-builder";
 import {
   instantiate,
@@ -7,8 +11,6 @@ import {
 } from "./fragment-instantiator";
 import { defineRoute, defineRoutes, type AnyFragmentDefinition } from "./route";
 import type { FragnoPublicConfig } from "./shared-types";
-import type { RequestThisContext } from "./api";
-import { z } from "zod";
 
 describe("fragment-instantiator", () => {
   describe("basic instantiation", () => {

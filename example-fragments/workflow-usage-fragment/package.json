@@ -1,18 +1,27 @@
 {
-  "description": "A Fragno fragment",
+  "name": "@fragno-dev/workflow-usage-fragment",
   "version": "0.0.1",
+  "private": true,
+  "description": "A Fragno fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "bin": {
+    "workflow-usage": "./bin/run.js"
+  },
   "files": [
     "dist",
     "bin"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/fragment/index.js",
+  "module": "./dist/node/fragment/index.js",
+  "types": "./dist/node/fragment/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/fragment/index.d.ts",
@@ -67,12 +76,6 @@
       "default": "./dist/node/server/test-server.js"
     }
   },
-  "main": "./dist/node/fragment/index.js",
-  "module": "./dist/node/fragment/index.js",
-  "types": "./dist/node/fragment/index.d.ts",
-  "bin": {
-    "workflow-usage": "./bin/run.js"
-  },
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
@@ -81,8 +84,6 @@
     "db:dump": "sqlite3 ${WORKFLOW_USAGE_DB_PATH:-usage-fragment.sqlite} .dump | grep -E '^INSERT' > db-dump.txt",
     "db:dump:full": "sqlite3 ${WORKFLOW_USAGE_DB_PATH:-usage-fragment.sqlite} .dump > db-dump-full.txt"
   },
-  "type": "module",
-  "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
@@ -94,19 +95,18 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.2.2",
     "@fragno-dev/cli": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.2.2",
     "tsdown": "^0.20.3",
     "tsx": "^4.21.0"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
-    "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
     "vue": ">=3.0.0"
-  },
-  "name": "@fragno-dev/workflow-usage-fragment"
+  }
 }

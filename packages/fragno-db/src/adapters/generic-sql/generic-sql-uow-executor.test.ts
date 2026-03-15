@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { CompiledMutation } from "../../query/unit-of-work/unit-of-work";
 import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";

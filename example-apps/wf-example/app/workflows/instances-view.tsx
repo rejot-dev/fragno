@@ -172,7 +172,7 @@ export function InstancesView() {
     <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-stretch">
       <aside className="flex h-[calc(100vh-220px)] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="p-5">
-          <label className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+          <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
             Workflow type
           </label>
           <select
@@ -189,7 +189,7 @@ export function InstancesView() {
           {workflowsLoading && <p className="mt-2 text-xs text-slate-400">Loading…</p>}
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 px-5 pb-5 pt-4">
+        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 px-5 pt-4 pb-5">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">Instances</h3>
             <span className="text-xs text-slate-400">{instances.length} total</span>
@@ -215,7 +215,7 @@ export function InstancesView() {
                       : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <span className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     {instance.id}
                   </span>
                   <span className="font-semibold text-slate-700">
@@ -232,7 +232,7 @@ export function InstancesView() {
         {!selectedInstance ? (
           <div className="grid h-full gap-6">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+              <p className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
                 Overview
               </p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-900">Instance summary</h2>
@@ -243,20 +243,20 @@ export function InstancesView() {
             </div>
             <div className="grid gap-4 rounded-2xl bg-slate-50 p-6 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                   Completed
                 </p>
                 <p className="mt-2 text-3xl font-semibold text-slate-900">{completedCount}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                   Errored
                 </p>
                 <p className="mt-2 text-3xl font-semibold text-slate-900">{erroredCount}</p>
               </div>
             </div>
             <div className="rounded-2xl bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                 Status snapshot
               </p>
               <div className="mt-3 grid gap-2 text-sm text-slate-600">
@@ -412,7 +412,7 @@ function InstanceDetailPanel({
     <div className="grid gap-5">
       <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
             Instance
           </p>
           <h3 className="mt-2 text-xl font-semibold text-slate-900">{instanceId}</h3>
@@ -471,7 +471,7 @@ function InstanceDetailPanel({
             key={tab}
             type="button"
             onClick={() => setDetailTab(tab)}
-            className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition ${
+            className={`rounded-full px-4 py-2 text-xs font-semibold tracking-[0.2em] uppercase transition ${
               detailTab === tab
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -491,18 +491,18 @@ function InstanceDetailPanel({
             {!loading && !error && data && (
               <div className="mt-3 grid gap-3 text-sm text-slate-600">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Status</span>
+                  <span className="text-xs tracking-[0.2em] text-slate-400 uppercase">Status</span>
                   <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold">
                     {helpers.statusLabel(data.details.status)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Created</span>
+                  <span className="text-xs tracking-[0.2em] text-slate-400 uppercase">Created</span>
                   <span>{data.meta.createdAt.toLocaleString()}</span>
                 </div>
                 {data.meta.currentStep && (
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                       Current step
                     </p>
                     <p className="mt-1 text-sm text-slate-700">
@@ -511,7 +511,7 @@ function InstanceDetailPanel({
                   </div>
                 )}
                 <details className="rounded-lg bg-white p-3" open={false}>
-                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <summary className="cursor-pointer text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     Input (params)
                   </summary>
                   <pre className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -519,7 +519,7 @@ function InstanceDetailPanel({
                   </pre>
                 </details>
                 <details className="rounded-lg bg-white p-3" open={false}>
-                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <summary className="cursor-pointer text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     Output
                   </summary>
                   {typeof data.details.output === "undefined" ? (
@@ -551,7 +551,7 @@ function InstanceDetailPanel({
             {!historyLoading && !historyError && historyData && (
               <div className="mt-4 grid gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     Steps
                   </p>
                   <div className="mt-2 grid gap-2">
@@ -596,7 +596,7 @@ function InstanceDetailPanel({
                               className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600"
                               open={false}
                             >
-                              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                              <summary className="cursor-pointer text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                                 Step output
                               </summary>
                               <pre className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -611,7 +611,7 @@ function InstanceDetailPanel({
                 </div>
 
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <p className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
                     Events
                   </p>
                   <div className="mt-2 grid gap-2">
@@ -644,7 +644,7 @@ function InstanceDetailPanel({
           </p>
 
           <div className="mt-4 grid gap-3">
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
               Event type
             </label>
             <input
@@ -652,7 +652,7 @@ function InstanceDetailPanel({
               onChange={(event) => setEventType(event.target.value)}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             />
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
               Payload (JSON)
             </label>
             <textarea

@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router";
+
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
+import { cn } from "@/lib/utils";
+
 import type { OrganisationLayoutContext } from "./organisation-layout";
 import {
   Notice,
@@ -11,7 +14,6 @@ import {
   formatRoles,
   getErrorMessage,
 } from "./organisation-shared";
-import { cn } from "@/lib/utils";
 
 function CopyButton({
   text,
@@ -42,7 +44,7 @@ function CopyButton({
       type="button"
       onClick={handleCopy}
       disabled={disabled}
-      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
     >
       {copied ? "Copied" : label}
     </button>
@@ -164,11 +166,11 @@ export default function BackofficeOrganisationInvites() {
               }}
               placeholder="teammate@fragno.dev"
               disabled={!canManageMembers}
-              className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2 disabled:opacity-60"
+              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
             />
           </FormField>
           <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Roles
             </p>
             <div className="flex flex-wrap gap-2">
@@ -198,7 +200,7 @@ export default function BackofficeOrganisationInvites() {
             <button
               type="submit"
               disabled={!canManageMembers || invitingMember}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
             >
               {invitingMember ? "Sending..." : "Send invite"}
             </button>
@@ -214,7 +216,7 @@ export default function BackofficeOrganisationInvites() {
           <Notice notice={inviteNotice} />
           {inviteLink ? (
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Invite link
               </p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -245,7 +247,7 @@ export default function BackofficeOrganisationInvites() {
           <div className="overflow-hidden border border-[color:var(--bo-border)]">
             <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
               <thead className="bg-[var(--bo-panel-2)] text-left">
-                <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   <th scope="col" className="px-3 py-2">
                     Email
                   </th>
@@ -273,7 +275,7 @@ export default function BackofficeOrganisationInvites() {
                       </td>
                       <td className="px-3 py-2">{formatRoles(invitation.roles)}</td>
                       <td className="px-3 py-2">
-                        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                           {invitation.status}
                         </span>
                       </td>

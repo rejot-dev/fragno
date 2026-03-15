@@ -1,17 +1,19 @@
-import { define } from "gunshi";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import type { AnySchema } from "@fragno-dev/db/schema";
+import { define } from "gunshi";
+
 import {
   defineFragment,
   instantiate,
   type AnyFragnoInstantiatedFragment,
   type AnyRouteOrFactory,
 } from "@fragno-dev/core";
-import { toNodeHandler } from "@fragno-dev/node";
 import { InMemoryAdapter, withDatabase, type SyncCommandRegistry } from "@fragno-dev/db";
-import type { AnySchema } from "@fragno-dev/db/schema";
+import { toNodeHandler } from "@fragno-dev/node";
 
 type ServerDefinitionConfig = {
   fragmentName: string;
@@ -33,10 +35,10 @@ type ServerModule = {
 const isDefinitionConfig = (value: unknown): value is ServerDefinitionConfig =>
   Boolean(
     value &&
-      typeof value === "object" &&
-      "fragmentName" in value &&
-      "schema" in value &&
-      "syncCommands" in value,
+    typeof value === "object" &&
+    "fragmentName" in value &&
+    "schema" in value &&
+    "syncCommands" in value,
   );
 
 const isFragmentInstance = (value: unknown): value is AnyFragnoInstantiatedFragment =>

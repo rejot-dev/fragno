@@ -1,9 +1,10 @@
 "use client";
 import type { HighlightOptions } from "fumadocs-core/highlight";
 import { useShiki } from "fumadocs-core/highlight/client";
-import { cn } from "@/lib/cn";
-import { type ComponentProps, createContext, type FC, Suspense, use } from "react";
 import { CodeBlock, Pre, type CodeBlockProps } from "fumadocs-ui/components/codeblock";
+import { type ComponentProps, createContext, type FC, Suspense, use } from "react";
+
+import { cn } from "@/lib/cn";
 
 export interface DynamicCodeblockProps {
   lang: string;
@@ -96,7 +97,7 @@ function Placeholder({
   const { pre: Pre = "pre", code: Code = "code" } = components as Record<string, FC>;
 
   return (
-    <Pre className="my-0 block w-full min-w-0 max-w-full overflow-x-auto">
+    <Pre className="my-0 block w-full max-w-full min-w-0 overflow-x-auto">
       <Code className="block w-fit min-w-full">
         {code.split("\n").map((line, i) => (
           <span key={i} className="line">

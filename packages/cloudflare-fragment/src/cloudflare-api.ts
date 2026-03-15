@@ -7,6 +7,7 @@ import type {
   ScriptUpdateParams,
   ScriptUpdateResponse,
 } from "cloudflare/resources/workers-for-platforms/dispatch/namespaces/scripts/scripts";
+
 import {
   buildCloudflareAppTag,
   buildCloudflareDeploymentTag,

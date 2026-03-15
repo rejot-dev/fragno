@@ -1,3 +1,4 @@
+import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
 import type {
   AnySchema,
   AnyTable,
@@ -8,8 +9,13 @@ import type {
 } from "../../schema/create";
 import { FragnoId } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
+import type { Prettify } from "../../util/types";
 import type { Condition, ConditionBuilder } from "../condition-builder";
+import { buildCondition } from "../condition-builder";
+import type { CursorResult } from "../cursor";
+import { Cursor } from "../cursor";
 import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
+import type { CompiledJoin } from "../orm/orm";
 import type {
   SelectClause,
   TableToInsertValues,
@@ -18,12 +24,6 @@ import type {
   ExtractSelect,
   ExtractJoinOut,
 } from "../simple-query-interface";
-import { buildCondition } from "../condition-builder";
-import type { CompiledJoin } from "../orm/orm";
-import type { CursorResult } from "../cursor";
-import { Cursor } from "../cursor";
-import type { Prettify } from "../../util/types";
-import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -376,6 +376,7 @@ export class FindBuilder<
           `Use either select() or selectCount(), not both.`,
       );
     }
+    // prettier-ignore
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).#selectClause = columns;
     return this as unknown as FindBuilder<TTable, TNewSelect, TJoinOut>;
@@ -732,6 +733,7 @@ export class JoinFindBuilder<
   select<const TNewSelect extends SelectClause<TTable>>(
     columns: TNewSelect,
   ): JoinFindBuilder<TTable, TNewSelect, TJoinOut> {
+    // prettier-ignore
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).#selectClause = columns;
     return this as unknown as JoinFindBuilder<TTable, TNewSelect, TJoinOut>;
@@ -831,11 +833,10 @@ export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
     infer TTargetTable
   >
     ? <
-        TBuilderFn extends (
-          builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
-        ) => unknown = (
-          builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
-        ) => JoinFindBuilder<TTable["relations"][K]["table"]>,
+        TBuilderFn extends (builder: JoinFindBuilder<TTable["relations"][K]["table"]>) => unknown =
+          (
+            builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
+          ) => JoinFindBuilder<TTable["relations"][K]["table"]>,
       >(
         builderFn?: TBuilderFn,
       ) => IndexedJoinBuilder<
@@ -991,8 +992,10 @@ export interface IUnitOfWork {
  *
  * Note: This is just a marker interface. Restriction is enforced by the UnitOfWork class itself.
  */
-export interface IUnitOfWorkRestricted
-  extends Omit<IUnitOfWork, "executeRetrieve" | "executeMutations"> {}
+export interface IUnitOfWorkRestricted extends Omit<
+  IUnitOfWork,
+  "executeRetrieve" | "executeMutations"
+> {}
 
 export type UOWInstrumentationPhase =
   | "beforeRetrieve"

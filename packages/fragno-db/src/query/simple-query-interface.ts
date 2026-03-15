@@ -1,5 +1,7 @@
 import type { IdColumn, AnySchema, AnyTable, Relation, FragnoId } from "../schema/create";
+import type { Prettify } from "../util/types";
 import type { Condition, ConditionBuilder } from "./condition-builder";
+import type { CursorResult } from "./cursor";
 import type {
   TypedUnitOfWork,
   FindBuilder,
@@ -8,8 +10,6 @@ import type {
   UpdateManyBuilder,
 } from "./unit-of-work/unit-of-work";
 import type { IUnitOfWork } from "./unit-of-work/unit-of-work";
-import type { Prettify } from "../util/types";
-import type { CursorResult } from "./cursor";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 

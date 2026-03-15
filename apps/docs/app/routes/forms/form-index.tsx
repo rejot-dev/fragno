@@ -1,20 +1,24 @@
-import { useState, useEffect, type ComponentProps } from "react";
 import { Palette, Database, FileJson, Check, Hammer } from "lucide-react";
-import { JsonForms } from "@jsonforms/react";
+import { useState, useEffect, type ComponentProps } from "react";
+import { Link } from "react-router";
+
 import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
-import { SurveyAboutForms } from "../../components/survey-about-forms";
-import { FormDemo } from "../../components/form-demo";
-import { CopyFormsPromptButton } from "../../components/copy-forms-prompt-button";
+
+import { JsonForms } from "@jsonforms/react";
+
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { FormBuilder, type GeneratedSchemas } from "@/components/form-builder";
+import { FragmentSubnav } from "@/components/fragment-subnav";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { GitHub } from "@/components/logos/github";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { CopyFormsPromptButton } from "../../components/copy-forms-prompt-button";
+import { FormDemo } from "../../components/form-demo";
+import { SurveyAboutForms } from "../../components/survey-about-forms";
 import type { Route } from "./+types/form-index";
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { Link } from "react-router";
-import { GitHub } from "@/components/logos/github";
-import { FragmentSubnav } from "@/components/fragment-subnav";
 
 export function meta() {
   return [

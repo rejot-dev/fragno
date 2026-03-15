@@ -1,16 +1,17 @@
 import { instantiate } from "@fragno-dev/core";
+
 import type { DatabaseAdapter } from "../adapters/adapters";
 import {
   SchemaRegistryCollisionError,
   internalFragmentDef,
   type InternalFragmentInstance,
 } from "../fragments/internal-fragment";
-import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import {
   createInternalFragmentDescribeRoutes,
   createInternalFragmentOutboxRoutes,
   createInternalFragmentSyncRoutes,
 } from "../fragments/internal-fragment.routes";
+import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import { getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
 
 export type SchemaInfo = {

@@ -1,7 +1,10 @@
-import { cli, parseArgs, resolveArgs } from "gunshi";
-import { migrateCommand } from "@fragno-dev/cli";
-import { rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
+import { rm } from "node:fs/promises";
+
+import { cli, parseArgs, resolveArgs } from "gunshi";
+
+import { migrateCommand } from "@fragno-dev/cli";
+
 import { dbFile } from "./constants";
 
 export default async function setup() {

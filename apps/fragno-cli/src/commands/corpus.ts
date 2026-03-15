@@ -1,4 +1,10 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { define } from "gunshi";
+import { marked } from "marked";
+// @ts-expect-error - marked-terminal types are outdated for v7
+import { markedTerminal } from "marked-terminal";
+
 import {
   getSubjects,
   getSubject,
@@ -10,10 +16,6 @@ import {
   getCategoryTitle,
 } from "@fragno-dev/corpus";
 import type { Subject, Example } from "@fragno-dev/corpus";
-import { marked } from "marked";
-// @ts-expect-error - marked-terminal types are outdated for v7
-import { markedTerminal } from "marked-terminal";
-import { stripVTControlCharacters } from "node:util";
 
 // Always configure marked to use terminal renderer
 marked.use(markedTerminal());

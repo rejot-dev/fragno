@@ -1,5 +1,6 @@
-import { createHmac, generateKeyPairSync } from "crypto";
 import { describe, expect, it, vi } from "vitest";
+
+import { createHmac, generateKeyPairSync } from "crypto";
 
 import { createGitHubApiClient } from "./api";
 

@@ -1,7 +1,7 @@
 import type { DatabaseAdapter } from "../adapters/adapters";
+import type { OutboxConfig } from "../outbox/outbox";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../schema/create";
-import type { OutboxConfig } from "../outbox/outbox";
 
 export type OutboxState = {
   config: OutboxConfig;

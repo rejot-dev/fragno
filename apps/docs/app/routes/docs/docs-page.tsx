@@ -1,16 +1,18 @@
-import type { Route } from "./+types/docs-page";
-import { DocsLayout } from "fumadocs-ui/layouts/docs";
-import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
-import { source } from "@/lib/source";
+import { isMarkdownPreferred } from "fumadocs-core/negotiation";
 import type * as PageTree from "fumadocs-core/page-tree";
 import browserCollections from "fumadocs-mdx:collections/browser";
-import { baseOptions } from "@/lib/layout.shared";
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
+import { createElement, createContext, useContext } from "react";
+
 import { CopyMarkdownButton } from "@/components/copy-markdown-button";
 import { ViewOptions } from "@/components/page-actions";
-import { getMDXComponents } from "@/lib/mdx-components";
-import { createElement, createContext, useContext } from "react";
-import { isMarkdownPreferred } from "fumadocs-core/negotiation";
 import { iconComponents } from "@/lib/icons";
+import { baseOptions } from "@/lib/layout.shared";
+import { getMDXComponents } from "@/lib/mdx-components";
+import { source } from "@/lib/source";
+
+import type { Route } from "./+types/docs-page";
 import { buildMarkdownApiUrl } from "./markdown-redirect";
 
 /**
@@ -120,7 +122,7 @@ const clientLoader = browserCollections.docs.createClientLoader<Record<string, n
         <meta name="description" content={frontmatter.description} />
         <DocsTitle>{frontmatter.title}</DocsTitle>
         <DocsDescription>{frontmatter.description}</DocsDescription>
-        <div className="-mt-6 flex flex-row items-center gap-2 border-b pb-6 pt-2">
+        <div className="-mt-6 flex flex-row items-center gap-2 border-b pt-2 pb-6">
           <CopyMarkdownButton markdownText={processedMarkdown} />
           <ViewOptions
             markdownUrl={`${url}.md`}

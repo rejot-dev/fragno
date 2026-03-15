@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { Link, useLoaderData } from "react-router";
-import type { Route } from "./+types/workflows-organisation-detail";
+
 import { getAuthMe } from "@/fragno/auth-server";
+
+import type { Route } from "./+types/workflows-organisation-detail";
 import {
   loadWorkflowInstanceDetail,
   resolveWorkflowFragment,
@@ -75,7 +77,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Workflow instance
           </p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -85,7 +87,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
         </div>
         <Link
           to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
         >
           Back to list
         </Link>
@@ -96,7 +98,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
           label="State"
           value={
             <span
-              className={`inline-flex border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${getWorkflowStatusBadgeClasses(detail.details.status)}`}
+              className={`inline-flex border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getWorkflowStatusBadgeClasses(detail.details.status)}`}
             >
               {detail.details.status}
             </span>
@@ -116,7 +118,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
       </div>
 
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Current step
         </p>
         {!currentStep ? (
@@ -127,7 +129,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
               <span className="text-sm font-semibold text-[var(--bo-fg)]">{currentStep.name}</span>
               <span className="text-xs text-[var(--bo-muted-2)]">{currentStep.type}</span>
               <span
-                className={`inline-flex border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${getStepStatusBadgeClasses(currentStep.status)}`}
+                className={`inline-flex border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStepStatusBadgeClasses(currentStep.status)}`}
               >
                 {currentStep.status}
               </span>
@@ -167,7 +169,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
 
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
         <div className="border-b border-[color:var(--bo-border)] px-3 py-2">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Params</p>
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Params</p>
         </div>
         <pre className="max-h-[220px] overflow-auto p-3 text-xs text-[var(--bo-fg)]">
           {paramsText || "No params recorded."}
@@ -176,7 +178,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
 
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
         <div className="border-b border-[color:var(--bo-border)] px-3 py-2">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Output</p>
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Output</p>
         </div>
         <pre className="max-h-[220px] overflow-auto p-3 text-xs text-[var(--bo-fg)]">
           {outputText || "No output recorded."}
@@ -185,7 +187,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Steps · Run {detail.history.runNumber}
           </p>
           <span className="text-xs text-[var(--bo-muted-2)]">
@@ -200,7 +202,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
           <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
             <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
               <thead className="bg-[var(--bo-panel-2)] text-left">
-                <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   <th scope="col" className="px-3 py-2">
                     Step
                   </th>
@@ -226,7 +228,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
                     </td>
                     <td className="px-3 py-2">
                       <span
-                        className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${getStepStatusBadgeClasses(step.status)}`}
+                        className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStepStatusBadgeClasses(step.status)}`}
                       >
                         {step.status}
                       </span>
@@ -245,7 +247,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Events · Run {detail.history.runNumber}
           </p>
           <span className="text-xs text-[var(--bo-muted-2)]">
@@ -290,7 +292,7 @@ export default function BackofficeWorkflowsOrganisationDetail() {
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">{label}</p>
+      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">{label}</p>
       <div className="mt-2 text-sm text-[var(--bo-fg)]">{value}</div>
     </div>
   );

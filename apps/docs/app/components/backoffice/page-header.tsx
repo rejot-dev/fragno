@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+
 import { BackofficeBreadcrumbs, type BreadcrumbItem } from "./breadcrumbs";
 
 export function BackofficePageHeader({
@@ -23,7 +24,7 @@ export function BackofficePageHeader({
           <BackofficeBreadcrumbs items={breadcrumbs} showSidebarTrigger={showSidebarTrigger} />
           <div className="space-y-2">
             {eyebrow ? (
-              <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[11px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 {eyebrow}
               </p>
             ) : null}

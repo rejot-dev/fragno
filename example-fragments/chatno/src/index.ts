@@ -1,15 +1,17 @@
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { computed } from "nanostores";
+import OpenAI from "openai";
+import { z } from "zod";
+
 import {
   defineFragment,
   instantiate,
   defineRoutes,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import OpenAI from "openai";
-import { z } from "zod";
+
 import { chatRouteFactory } from "./server/chatno-api";
-import { computed } from "nanostores";
 
 export interface ChatnoServerConfig {
   openaiApiKey: string;

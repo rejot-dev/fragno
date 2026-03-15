@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import type { CompiledQuery } from "kysely";
+
 import type { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
 import { executeMigration } from "./executor";
 

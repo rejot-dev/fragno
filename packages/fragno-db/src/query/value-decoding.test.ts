@@ -1,12 +1,13 @@
 import { assert, describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema, FragnoId } from "../schema/create";
-import { decodeResult } from "./value-decoding";
+
 import {
   SQLocalDriverConfig,
   NodePostgresDriverConfig,
   PGLiteDriverConfig,
   MySQL2DriverConfig,
 } from "../adapters/generic-sql/driver-config";
+import { column, idColumn, referenceColumn, schema, FragnoId } from "../schema/create";
+import { decodeResult } from "./value-decoding";
 
 describe("decodeResult", () => {
   const testSchema = schema("test", (s) => {

@@ -1,8 +1,10 @@
-import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type HookFn, type TypedUnitOfWork } from "@fragno-dev/db";
 import type { SelectResult, TableToUpdateValues } from "@fragno-dev/db/query";
 import { Resend } from "resend";
 import type { CreateEmailOptions, ErrorResponse, WebhookEventPayload } from "resend";
+
+import { defineFragment } from "@fragno-dev/core";
+import { withDatabase, type HookFn, type TypedUnitOfWork } from "@fragno-dev/db";
+
 import { resendSchema } from "./schema";
 
 export interface ResendFragmentConfig {

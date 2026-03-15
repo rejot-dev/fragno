@@ -1,10 +1,12 @@
-import { KyselyPGlite } from "kysely-pglite";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { SqlAdapter } from "./generic-sql-adapter";
-import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
-import { Cursor } from "../../query/cursor";
-import { PGLiteDriverConfig } from "./driver-config";
+
+import { KyselyPGlite } from "kysely-pglite";
+
 import { internalSchema } from "../../fragments/internal-fragment";
+import { Cursor } from "../../query/cursor";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
+import { PGLiteDriverConfig } from "./driver-config";
+import { SqlAdapter } from "./generic-sql-adapter";
 
 describe("SqlAdapter PGLite", () => {
   const testSchema = schema("test", (s) => {

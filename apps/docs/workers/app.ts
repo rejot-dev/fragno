@@ -3,17 +3,17 @@ import System from "typebox/system";
 
 import { CloudflareContext } from "../app/cloudflare/cloudflare-context";
 import { Auth } from "./auth.do";
+import { CloudflareWorkers } from "./cloudflare-wfp.do";
 import { Forms } from "./forms.do";
-import { GitHub } from "./github.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
+import { GitHub } from "./github.do";
 import { MailingList } from "./mailing-list.do";
 import { Pi } from "./pi.do";
 import { Resend } from "./resend.do";
-import { Upload } from "./upload.do";
-import { CloudflareWorkers } from "./cloudflare-wfp.do";
 import { SandboxRegistry } from "./sandbox-registry.do";
 import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
+import { Upload } from "./upload.do";
 
 // Export Durable Object classes
 export { MailingList };

@@ -1,23 +1,31 @@
 {
   "name": "@fragno-dev/create",
-  "description": "A library for creating Fragno fragments",
   "version": "0.1.7",
+  "private": false,
+  "description": "A library for creating Fragno fragments",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/create"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "scripts": {
     "test": "vitest run",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsgo --noEmit"
   },
-  "type": "module",
   "dependencies": {
     "zod": "^4.3.5"
   },
@@ -28,15 +36,7 @@
     "@vitest/coverage-istanbul": "^3.2.4",
     "vitest": "^3.2.4"
   },
-  "private": false,
   "peerDependencies": {
     "@typescript/native-preview": "catalog:"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/create"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  }
 }

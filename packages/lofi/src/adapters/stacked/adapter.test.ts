@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
 import { InMemoryLofiAdapter } from "../in-memory/adapter";
 import { StackedLofiAdapter } from "./adapter";
 

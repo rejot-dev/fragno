@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+
 import { BackofficePageHeader, FormContainer, WizardStepper } from "@/components/backoffice";
 
 const STATS = [
@@ -46,13 +47,13 @@ export default function BackofficeDashboard() {
           <>
             <Link
               to="/backoffice/settings"
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               Update workspace
             </Link>
             <button
               type="button"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               Export snapshot
             </button>
@@ -66,12 +67,12 @@ export default function BackofficeDashboard() {
             key={stat.label}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
           >
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               {stat.label}
             </p>
             <div className="mt-3 flex items-end justify-between">
               <p className="text-2xl font-semibold text-[var(--bo-fg)]">{stat.value}</p>
-              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                 {stat.delta}
               </span>
             </div>
@@ -84,7 +85,7 @@ export default function BackofficeDashboard() {
           <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                   Release ritual
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -96,7 +97,7 @@ export default function BackofficeDashboard() {
               </div>
               <button
                 type="button"
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 View checklist
               </button>
@@ -109,12 +110,12 @@ export default function BackofficeDashboard() {
           <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                   Activity
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Recent approvals</h3>
               </div>
-              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                 12 updates
               </span>
             </div>
@@ -143,7 +144,7 @@ export default function BackofficeDashboard() {
           >
             <div className="space-y-3">
               <label className="block space-y-2 text-sm">
-                <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <span className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Request type
                 </span>
                 <div className="grid gap-2">
@@ -165,18 +166,18 @@ export default function BackofficeDashboard() {
                 </div>
               </label>
               <label className="block space-y-2 text-sm">
-                <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <span className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Notes
                 </span>
                 <textarea
                   rows={4}
                   placeholder="Add the key context, owners, and deadlines."
-                  className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                 />
               </label>
               <button
                 type="button"
-                className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Send request
               </button>
@@ -184,7 +185,7 @@ export default function BackofficeDashboard() {
           </FormContainer>
 
           <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Signals
             </p>
             <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Team bandwidth</h3>
@@ -202,7 +203,7 @@ export default function BackofficeDashboard() {
                     <p className="text-sm font-semibold text-[var(--bo-fg)]">{item.label}</p>
                     <p className="text-xs text-[var(--bo-muted-2)]">{item.detail}</p>
                   </div>
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                     {item.status}
                   </span>
                 </div>

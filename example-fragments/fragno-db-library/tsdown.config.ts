@@ -1,5 +1,5 @@
-import { defineConfig } from "tsdown";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {

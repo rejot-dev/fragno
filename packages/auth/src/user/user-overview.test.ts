@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { authFragmentDefinition } from "..";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { instantiate } from "@fragno-dev/core";
-import { userOverviewRoutesFactory, type GetUsersParams } from "./user-overview";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { authFragmentDefinition } from "..";
 import { hashPassword } from "./password";
+import { userOverviewRoutesFactory, type GetUsersParams } from "./user-overview";
 
 const buildAuthTest = async () =>
   buildDatabaseFragmentsTest()

@@ -1,7 +1,9 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { defineRoute, defineRoutes } from "./route";
-import { defineFragment } from "./fragment-definition-builder";
+
 import { z } from "zod";
+
+import { defineFragment } from "./fragment-definition-builder";
+import { defineRoute, defineRoutes } from "./route";
 
 describe("defineRoute", () => {
   test("defineRoute no inputSchema", () => {

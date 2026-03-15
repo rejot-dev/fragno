@@ -1,10 +1,12 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins";
+import { tanstackStartCookies } from "better-auth/tanstack-start";
+
 import { db } from "@/db";
 import { stripeFragment } from "@/lib/stripe";
+
 import { getSubscriptionForUser } from "../subscriptions.repo";
 
 export const auth = betterAuth({

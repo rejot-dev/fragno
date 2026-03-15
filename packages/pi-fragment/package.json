@@ -1,18 +1,26 @@
 {
-  "description": "A Fragno fragment",
+  "name": "@fragno-dev/pi-fragment",
   "version": "0.0.1",
+  "description": "A Fragno fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "bin": {
+    "fragno-pi": "./bin/run.js"
+  },
   "files": [
     "dist",
     "bin"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -64,18 +72,11 @@
       "default": "./dist/browser/client/vanilla.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "cli": "tsx src/cli/mod.ts"
-  },
-  "type": "module",
-  "bin": {
-    "fragno-pi": "./bin/run.js"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -88,9 +89,9 @@
     "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/cli": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/workflows": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "@types/node": "^25.2.2",
     "@types/react": "^19.2.8",
     "drizzle-kit": "^0.31.7",
@@ -103,10 +104,10 @@
   "peerDependencies": {
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
-    "@typescript/native-preview": "catalog:",
     "vue": ">=3.0.0"
   },
   "peerDependenciesMeta": {
@@ -122,6 +123,5 @@
     "vue": {
       "optional": true
     }
-  },
-  "name": "@fragno-dev/pi-fragment"
+  }
 }

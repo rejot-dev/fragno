@@ -1,4 +1,7 @@
 import { test, expect, expectTypeOf } from "vitest";
+
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type {
   ExtractPathParams,
   ExtractPathParamNames,
@@ -9,7 +12,6 @@ import type {
   MaybeExtractPathParamsOrWiden,
   QueryParamsHint,
 } from "./path";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // Type-only tests using expectTypeOf from vitest
 test("ExtractPathParams type tests", () => {

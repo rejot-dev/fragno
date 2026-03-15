@@ -1,13 +1,15 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert, expectTypeOf } from "vitest";
+
 import { atom, computed, type ReadableAtom } from "nanostores";
+import { createSignal, createRoot } from "solid-js";
 import { z } from "zod";
-import { createClientBuilder } from "./client";
-import { useFragno, accessorToAtom, isAccessor } from "./solid";
-import { defineRoute } from "../api/route";
+
 import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoute } from "../api/route";
+import { createClientBuilder } from "./client";
 import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientUnknownApiError } from "./client-error";
-import { createSignal, createRoot } from "solid-js";
+import { useFragno, accessorToAtom, isAccessor } from "./solid";
 
 // Mock fetch globally
 global.fetch = vi.fn();

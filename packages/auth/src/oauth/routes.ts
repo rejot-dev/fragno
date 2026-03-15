@@ -1,10 +1,12 @@
-import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
+
+import { defineRoute, defineRoutes } from "@fragno-dev/core";
+
 import type { authFragmentDefinition } from "..";
 import { parseSessionSeedFromQuery } from "../session/session-seed";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
-import { normalizeOAuthConfig } from "./utils";
 import type { AnyOAuthProvider } from "./types";
+import { normalizeOAuthConfig } from "./utils";
 
 const parseScopes = (value: string | null): string[] | undefined => {
   if (!value) {

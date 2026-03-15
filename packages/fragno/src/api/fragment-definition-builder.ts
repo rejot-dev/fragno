@@ -1,8 +1,8 @@
 import type { RequestThisContext } from "./api";
 import type { BoundServices } from "./bind-services";
-import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestContextStorage } from "./request-context-storage";
 import type { AnyRouteOrFactory } from "./route";
+import type { FragnoPublicConfig } from "./shared-types";
 
 /**
  * Metadata for a service dependency

@@ -1,5 +1,6 @@
-import type { Route } from "./+types/cloudflare";
 import { getCloudflareWorkersDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/cloudflare";
 
 const forwardToCloudflare = async (
   request: Request,

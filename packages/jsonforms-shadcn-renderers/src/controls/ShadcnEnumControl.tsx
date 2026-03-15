@@ -1,9 +1,11 @@
 import type { ControlProps, OwnPropsOfEnum, RankedTester } from "@jsonforms/core";
 import { isEnumControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsEnumProps } from "@jsonforms/react";
+
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
-import { ShadcnSelect } from "../shadcn-controls/ShadcnSelect";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnSelect } from "../shadcn-controls/ShadcnSelect";
 
 export const ShadcnEnumControl = ({
   data,

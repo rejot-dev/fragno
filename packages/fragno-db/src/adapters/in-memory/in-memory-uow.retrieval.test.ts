@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+
+import type { CompiledJoin } from "../../query/orm/orm";
+import { UnitOfWork, type RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
 import {
   column,
   ExplicitRelationInit,
@@ -7,15 +10,13 @@ import {
   schema,
   type AnySchema,
 } from "../../schema/create";
-import { UnitOfWork, type RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
-import { createInMemoryStore } from "./store";
 import {
   createInMemoryUowCompiler,
   createInMemoryUowExecutor,
   InMemoryUowDecoder,
 } from "./in-memory-uow";
 import { resolveInMemoryAdapterOptions } from "./options";
-import type { CompiledJoin } from "../../query/orm/orm";
+import { createInMemoryStore } from "./store";
 
 const joinSchema = schema("join", (s) =>
   s

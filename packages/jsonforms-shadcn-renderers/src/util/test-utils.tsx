@@ -1,8 +1,9 @@
+import { useEffect } from "react";
+
 import type { JsonFormsCore, JsonSchema, TesterContext, UISchemaElement } from "@jsonforms/core";
 import { createAjv } from "@jsonforms/core";
 import type { JsonFormsReactProps } from "@jsonforms/react";
 import { useJsonForms } from "@jsonforms/react";
-import { useEffect } from "react";
 
 export const initCore = (
   schema: JsonSchema,

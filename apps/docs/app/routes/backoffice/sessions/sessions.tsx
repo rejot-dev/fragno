@@ -1,4 +1,5 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Form,
   Link,
@@ -11,9 +12,10 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+
 import type { PiSession, PiSessionStatus } from "@fragno-dev/pi-fragment";
-import type { Route } from "./+types/sessions";
+
+import { getAuthMe } from "@/fragno/auth-server";
 import {
   createPiAgentName,
   findPiModelOption,
@@ -21,6 +23,8 @@ import {
   resolvePiHarnesses,
   type PiHarnessConfig,
 } from "@/fragno/pi-shared";
+
+import type { Route } from "./+types/sessions";
 import {
   createPiSession,
   fetchPiConfig,
@@ -30,7 +34,6 @@ import {
 } from "./data";
 import type { PiLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
-import { getAuthMe } from "@/fragno/auth-server";
 
 type PiSessionsLoaderData = {
   configError: string | null;
@@ -400,7 +403,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
     actionData?.intent === "create-session" && actionData.ok === false ? actionData.message : null;
   const createSessionPanel = (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-      <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+      <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
         New session
       </p>
       <p className="mt-2 text-sm text-[var(--bo-muted)]">
@@ -503,7 +506,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           <button
             type="submit"
             disabled={creating}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
           >
             {creating ? "Creating…" : "Create session"}
           </button>
@@ -522,12 +525,12 @@ export default function BackofficeOrganisationPiSessionsLayout() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Sessions
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Session overview</h2>
           </div>
-          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {sessions.length} total
           </span>
         </div>
@@ -535,7 +538,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
         <Link to={`${basePath}?new=1`} className={newSessionLinkClass}>
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[var(--bo-fg)]">New session</p>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
               Create
             </span>
           </div>
@@ -583,7 +586,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                             {harnessLabel} · {modelLabel ?? model}
                           </p>
                         </div>
-                        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] uppercase tracking-[0.22em]">
+                        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
                           {session.status}
                         </span>
                       </div>
@@ -602,7 +605,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           <ScrollArea.Scrollbar
             orientation="vertical"
             keepMounted
-            className="flex w-2.5 select-none p-[2px]"
+            className="flex w-2.5 p-[2px] select-none"
           >
             <ScrollArea.Thumb className="w-full rounded-full bg-[rgba(var(--bo-grid),0.45)] transition-colors hover:bg-[rgba(var(--bo-grid),0.65)]" />
           </ScrollArea.Scrollbar>
@@ -631,7 +634,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           <ScrollArea.Scrollbar
             orientation="vertical"
             keepMounted
-            className="flex w-2.5 select-none p-[2px]"
+            className="flex w-2.5 p-[2px] select-none"
           >
             <ScrollArea.Thumb className="w-full rounded-full bg-[rgba(var(--bo-grid),0.45)] transition-colors hover:bg-[rgba(var(--bo-grid),0.65)]" />
           </ScrollArea.Scrollbar>

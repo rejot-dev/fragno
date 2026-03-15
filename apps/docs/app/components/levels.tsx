@@ -1,10 +1,12 @@
 "use client";
 
+import { ChevronUp, ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { Children, isValidElement, useState } from "react";
-import { useLevelContext } from "./levels-context";
-import { ChevronUp, ChevronDown } from "lucide-react";
+
 import { cn } from "@/lib/cn";
+
+import { useLevelContext } from "./levels-context";
 
 type LevelProps = {
   n: number;
@@ -101,7 +103,7 @@ export function Levels({ children }: LevelsProps) {
   return (
     <div className="group/levels relative my-4">
       {/* Level controls - shown on hover */}
-      <div className="absolute -left-12 top-0 flex flex-col gap-1 opacity-0 transition-opacity group-hover/levels:opacity-100">
+      <div className="absolute top-0 -left-12 flex flex-col gap-1 opacity-0 transition-opacity group-hover/levels:opacity-100">
         <button
           type="button"
           onClick={handleIncreaseDetail}

@@ -35,5 +35,6 @@ session.
 ## Pre-commit
 
 When you try to commit, `lefthook` will run. All errors should be fixed before committing. Note that
-when `lefthook` fails on formatting, the files will automatically be formatted by `prettier`, and
-can thus by re-committed immediately (no need to take action, besides `git add`ing the files again).
+when `lefthook` fails on formatting, the files will automatically be formatted by `oxfmt` (and
+Prettier for the repo's unsupported `*.astro`, `*.svelte`, and `*.sql` files), and can thus be
+re-committed immediately (no need to take action, besides `git add`ing the files again).

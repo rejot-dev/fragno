@@ -1,11 +1,12 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import type { HTTPMethod } from "./api";
 import type { ExtractPathParams } from "./internal/path";
-import type { AnyFragnoRouteConfig } from "./route";
+import { MutableRequestState } from "./mutable-request-state";
 import { RequestInputContext } from "./request-input-context";
 import { OutputContext, RequestOutputContext } from "./request-output-context";
-import { MutableRequestState } from "./mutable-request-state";
+import type { AnyFragnoRouteConfig } from "./route";
 
 export type FragnoMiddlewareCallback<
   TRoutes extends readonly AnyFragnoRouteConfig[],

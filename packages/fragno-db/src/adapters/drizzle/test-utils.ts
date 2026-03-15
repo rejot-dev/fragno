@@ -1,8 +1,9 @@
 import { mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
+
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { generateDrizzleSchema, type SupportedProvider } from "../../schema-output/drizzle";
 import type { Schema } from "../../schema/create";
-import { internalSchema } from "../../fragments/internal-fragment.schema";
 
 /**
  * Writes a Fragno schema to a temporary TypeScript file and dynamically imports it.

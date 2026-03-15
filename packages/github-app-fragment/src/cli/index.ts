@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
-import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { serveCommand } from "./commands/serve.js";
+import { cli, define } from "gunshi";
+import type { Args, Command } from "gunshi";
+
 import { installationsCommand, installationsSubCommands } from "./commands/installations.js";
-import { repositoriesCommand, repositoriesSubCommands } from "./commands/repositories.js";
 import { pullsCommand, pullsSubCommands } from "./commands/pulls.js";
+import { repositoriesCommand, repositoriesSubCommands } from "./commands/repositories.js";
+import { serveCommand } from "./commands/serve.js";
 import { webhooksCommand, webhooksSubCommands } from "./commands/webhooks.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

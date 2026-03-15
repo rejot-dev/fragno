@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLoaderData, useLocation } from "react-router";
-import type { Route } from "./+types/durable-hooks-singletons";
-import { BackofficePageHeader } from "@/components/backoffice";
+
 import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
+import { BackofficePageHeader } from "@/components/backoffice";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+
+import type { Route } from "./+types/durable-hooks-singletons";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
 
 export type DurableHooksSingletonOutletContext = {
@@ -130,7 +132,7 @@ export default function BackofficeDurableHooksSingletons() {
         actions={
           <Link
             to="/backoffice/internals/durable-hooks"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to scopes
           </Link>
@@ -184,7 +186,7 @@ export default function BackofficeDurableHooksSingletons() {
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Queue
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Auth durable hooks</h2>
@@ -192,7 +194,7 @@ export default function BackofficeDurableHooksSingletons() {
                 Namespace: {namespace ?? "Unavailable"}
               </p>
             </div>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
               {queueCount} shown
             </span>
           </div>
@@ -220,7 +222,7 @@ export default function BackofficeDurableHooksSingletons() {
                 <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
                   <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
                     <thead className="bg-[var(--bo-panel-2)] text-left">
-                      <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                      <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                         <th scope="col" className="px-3 py-2">
                           Hook
                         </th>
@@ -280,7 +282,7 @@ export default function BackofficeDurableHooksSingletons() {
                                 <p
                                   className={
                                     isSelected
-                                      ? "text-[var(--bo-accent-fg)]/80 text-xs"
+                                      ? "text-xs text-[var(--bo-accent-fg)]/80"
                                       : "text-xs text-[var(--bo-muted-2)]"
                                   }
                                 >
@@ -290,7 +292,7 @@ export default function BackofficeDurableHooksSingletons() {
                             </td>
                             <td className="px-3 py-2">
                               <span
-                                className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${getStatusBadgeClasses(hook.status)}`}
+                                className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStatusBadgeClasses(hook.status)}`}
                               >
                                 {hook.status}
                               </span>
@@ -309,8 +311,8 @@ export default function BackofficeDurableHooksSingletons() {
                               <span
                                 className={
                                   isSelected
-                                    ? "text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-                                    : "text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                                    ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+                                    : "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
                                 }
                               >
                                 View
@@ -330,7 +332,7 @@ export default function BackofficeDurableHooksSingletons() {
                     {currentCursor ? (
                       <Link
                         to={newestPageHref}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                       >
                         Newest
                       </Link>
@@ -338,7 +340,7 @@ export default function BackofficeDurableHooksSingletons() {
                     {hasNextPage && nextPageHref ? (
                       <Link
                         to={nextPageHref}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                       >
                         Next page
                       </Link>

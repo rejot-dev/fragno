@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 
 export default function BackofficeNotFound() {
@@ -12,7 +13,7 @@ export default function BackofficeNotFound() {
         actions={
           <Link
             to="/backoffice"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to dashboard
           </Link>

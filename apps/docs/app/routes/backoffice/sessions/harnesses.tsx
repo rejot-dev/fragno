@@ -1,5 +1,7 @@
 import { useOutletContext } from "react-router";
+
 import { resolvePiHarnesses } from "@/fragno/pi-shared";
+
 import type { PiLayoutContext } from "./shared";
 
 export default function BackofficeOrganisationPiHarnesses() {
@@ -31,7 +33,7 @@ export default function BackofficeOrganisationPiHarnesses() {
   return (
     <div className="space-y-4">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Harnesses
         </p>
         <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -51,12 +53,12 @@ export default function BackofficeOrganisationPiHarnesses() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                   {harness.id}
                 </p>
                 <h3 className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">{harness.label}</h3>
               </div>
-              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                 {harness.tools.length} tools
               </span>
             </div>
@@ -67,7 +69,7 @@ export default function BackofficeOrganisationPiHarnesses() {
 
             <div className="mt-4 space-y-2 text-xs text-[var(--bo-muted)]">
               <p>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Thinking level
                 </span>
                 <span className="ml-2 text-[var(--bo-fg)]">
@@ -75,7 +77,7 @@ export default function BackofficeOrganisationPiHarnesses() {
                 </span>
               </p>
               <p>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Steering mode
                 </span>
                 <span className="ml-2 text-[var(--bo-fg)]">
@@ -88,7 +90,7 @@ export default function BackofficeOrganisationPiHarnesses() {
               {harness.tools.map((tool) => (
                 <span
                   key={tool}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] uppercase tracking-[0.22em] text-[var(--bo-muted)]"
+                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase"
                 >
                   {tool}
                 </span>
@@ -96,10 +98,10 @@ export default function BackofficeOrganisationPiHarnesses() {
             </div>
 
             <div className="mt-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 System prompt
               </p>
-              <p className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+              <p className="mt-1 text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
                 {harness.systemPrompt}
               </p>
             </div>

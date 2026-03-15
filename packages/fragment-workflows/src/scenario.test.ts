@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
-import { createWorkflowsTestRuntime } from "./test";
+
 import {
   createScenarioSteps,
   defineScenario,
@@ -8,6 +7,8 @@ import {
   type WorkflowScenarioHookRow,
   type WorkflowScenarioStepRow,
 } from "./scenario";
+import { createWorkflowsTestRuntime } from "./test";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
 
 const SleepWorkflow = defineWorkflow(
   { name: "sleep-workflow" },

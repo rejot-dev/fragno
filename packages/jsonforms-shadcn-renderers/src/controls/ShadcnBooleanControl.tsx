@@ -1,6 +1,7 @@
 import type { ControlProps, RankedTester } from "@jsonforms/core";
 import { isBooleanControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
+
 import {
   Field,
   FieldLabel,
@@ -8,8 +9,9 @@ import {
   FieldError,
   FieldContent,
 } from "@/components/ui/field";
-import { ShadcnCheckbox } from "../shadcn-controls/ShadcnCheckbox";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnCheckbox } from "../shadcn-controls/ShadcnCheckbox";
 
 export const ShadcnBooleanControl = ({
   data,

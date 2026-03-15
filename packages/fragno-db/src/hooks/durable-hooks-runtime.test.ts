@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HookNotifier, HookProcessorConfig } from "./hooks";
+
 import { DurableHooksLogger } from "./durable-hooks-logger";
 import {
   getDurableHooksNotifierByNamespace,
@@ -8,6 +8,7 @@ import {
   getDurableHooksRuntimeByToken,
   registerDurableHooksRuntime,
 } from "./durable-hooks-runtime";
+import type { HookNotifier, HookProcessorConfig } from "./hooks";
 
 let namespaceCounter = 0;
 const defaultInternalFragment = {} as HookProcessorConfig["internalFragment"];

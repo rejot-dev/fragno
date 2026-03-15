@@ -1,10 +1,11 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
+import { piSchema } from "../schema";
 import type { PiSteeringMode } from "./constants";
 import { STEERING_MODES } from "./constants";
 import type { PiSession } from "./types";
-import { piSchema } from "../schema";
 
 const toId = (value: { valueOf: () => string } | string | null | undefined): string | null => {
   if (!value) {

@@ -1,3 +1,5 @@
+import { NonRetryableError } from "@fragno-dev/workflows";
+
 import {
   Agent,
   type AgentEvent,
@@ -6,7 +8,6 @@ import {
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { NonRetryableError } from "@fragno-dev/workflows";
 
 import { PiLogger } from "../../debug-log";
 import type {

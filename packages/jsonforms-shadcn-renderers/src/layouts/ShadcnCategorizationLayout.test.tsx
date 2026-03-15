@@ -1,14 +1,16 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+
 import type { Categorization, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
 import { JsonForms } from "@jsonforms/react";
+import { render, screen, cleanup } from "@testing-library/react";
+
+import { shadcnTextControlTester, ShadcnTextControlContext } from "../controls/ShadcnTextControl";
+import { createTesterContext } from "../util/test-utils";
 import {
   shadcnCategorizationLayoutTester,
   ShadcnCategorizationLayoutContext,
 } from "./ShadcnCategorizationLayout";
-import { shadcnTextControlTester, ShadcnTextControlContext } from "../controls/ShadcnTextControl";
-import { createTesterContext } from "../util/test-utils";
 
 const schema: JsonSchema = {
   type: "object",

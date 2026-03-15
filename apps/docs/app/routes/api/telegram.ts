@@ -1,5 +1,6 @@
-import type { Route } from "./+types/telegram";
 import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/telegram";
 
 const forwardToTelegram = async (
   request: Request,

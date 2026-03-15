@@ -1,14 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import {
   createScenarioSteps,
   defineScenario,
   runScenario,
   type WorkflowScenarioStepRow,
 } from "@fragno-dev/workflows/scenario";
+
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 
+import { piFragmentDefinition } from "./definition";
+import { defineAgent } from "./dsl";
+import { createPiFragment } from "./factory";
 import {
   createFailingStreamFn,
   createStreamFn,
@@ -16,9 +22,6 @@ import {
   createTestWorkflows,
   mockModel,
 } from "./test-utils";
-import { piFragmentDefinition } from "./definition";
-import { defineAgent } from "./dsl";
-import { createPiFragment } from "./factory";
 import {
   PI_TOOL_JOURNAL_VERSION,
   type PiAgentDefinition,

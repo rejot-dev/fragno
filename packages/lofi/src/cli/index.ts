@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
-import { cli } from "gunshi";
-import type { Args, Command } from "gunshi";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { cli } from "gunshi";
+import type { Args, Command } from "gunshi";
+
 import { clientCommand } from "./client.js";
-import { serveCommand } from "./server.js";
 import { scenarioCommand } from "./scenario.js";
+import { serveCommand } from "./server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(__dirname, "../../package.json"), "utf-8"));

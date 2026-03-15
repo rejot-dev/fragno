@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { column, idColumn, schema } from "../../schema/create";
 import { createInMemoryStore, ensureNamespaceStore } from "./store";
 

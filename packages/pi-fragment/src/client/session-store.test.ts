@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { atom } from "nanostores";
+
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
-import { createPiSessionStore } from "./session-store";
 import type { PiActiveSessionProtocolMessage, PiSessionDetail } from "../pi/types";
+import { createPiSessionStore } from "./session-store";
 
 const buildUserMessage = (text: string, timestamp = 1): AgentMessage => ({
   role: "user",

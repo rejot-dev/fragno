@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
-import { InMemoryLofiStore } from "./store";
+
 import { createInMemoryQueryEngine } from "./query";
+import { InMemoryLofiStore } from "./store";
 
 const createStore = (appSchema: ReturnType<typeof schema>) =>
   new InMemoryLofiStore({ endpointName: "app", schemas: [appSchema] });

@@ -1,9 +1,11 @@
-import { DurableObject } from "cloudflare:workers";
-import { migrate } from "@fragno-dev/db";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import { DurableObject } from "cloudflare:workers";
+
+import { migrate } from "@fragno-dev/db";
+
 import { createAuthServer, type AuthFragment } from "@/fragno/auth";
 import {
   loadDurableHookQueue,

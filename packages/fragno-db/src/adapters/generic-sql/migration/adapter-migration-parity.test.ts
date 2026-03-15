@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import {
   DummyDriver,
   MysqlAdapter,
@@ -8,14 +9,15 @@ import {
   SqliteAdapter,
   SqliteQueryCompiler,
 } from "kysely";
-import { SqlAdapter } from "../generic-sql-adapter";
+
+import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
 import type { Dialect } from "../../../sql-driver/sql-driver";
 import {
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
   SQLocalDriverConfig,
 } from "../driver-config";
-import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import { SqlAdapter } from "../generic-sql-adapter";
 
 const paritySchema = schema("parity", (s) => {
   return s

@@ -1,6 +1,7 @@
-import type Stripe from "stripe";
-import type { TxResult } from "@fragno-dev/db";
 import type { TableToColumnValues, TableToInsertValues } from "@fragno-dev/db/query";
+import type Stripe from "stripe";
+
+import type { TxResult } from "@fragno-dev/db";
 
 import type { stripeSchema } from "./database/schema";
 import type { SubscriptionResponse } from "./models/subscriptions";

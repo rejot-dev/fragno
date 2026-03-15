@@ -1,4 +1,5 @@
 import { Link, isRouteErrorResponse } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth-client";
 import { cn } from "@/lib/utils";
@@ -91,7 +92,7 @@ export function OrganisationHeader({
       actions={
         <Link
           to="/backoffice/organisations"
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
           All organisations
         </Link>
@@ -175,7 +176,7 @@ export function OrganisationErrorBoundary({
     <div className="space-y-4">
       <OrganisationHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}
         </p>
         <p className="mt-2 text-[var(--bo-fg)]">{message}</p>

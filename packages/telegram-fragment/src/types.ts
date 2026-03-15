@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import type { HookFn, HookHandlerTx } from "@fragno-dev/db";
 
 export const telegramChatTypeSchema = z.enum(["private", "group", "supergroup", "channel"]);

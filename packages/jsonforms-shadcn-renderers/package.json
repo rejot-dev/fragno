@@ -3,17 +3,27 @@
   "version": "0.0.2",
   "private": false,
   "keywords": [
-    "fragno",
-    "shadcn",
-    "renderer",
     "form",
     "forms",
+    "fragno",
     "json",
     "jsonforms",
     "jsonschema",
+    "layout",
+    "renderer",
     "schema",
-    "uischema",
-    "layout"
+    "shadcn",
+    "uischema"
+  ],
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/jsonforms-shadcn-renderers"
+  },
+  "files": [
+    "dist"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -25,9 +35,6 @@
       "default": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -38,10 +45,6 @@
   "dependencies": {
     "@jsonforms/core": "^3.7.0",
     "@jsonforms/react": "^3.7.0"
-  },
-  "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
@@ -56,11 +59,8 @@
     "react-dom": "^19.2.3",
     "vitest": "^3.2.4"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/jsonforms-shadcn-renderers"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  }
 }

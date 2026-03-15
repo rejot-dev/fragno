@@ -1,9 +1,13 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { stripeFragmentDefinition } from "../definition";
-import { instantiate } from "@fragno-dev/core";
-import type { StripeServiceCall } from "../types";
 
+import fs from "fs";
+import path from "path";
+
+import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { stripeFragmentDefinition } from "../definition";
+import type { StripeServiceCall } from "../types";
 import {
   customerSubscriptionUpdatedHandler,
   customerSubscriptionDeletedHandler,
@@ -11,10 +15,6 @@ import {
   eventToHandler,
   type SupportedStripeEvent,
 } from "../webhook/handlers";
-
-import path from "path";
-
-import fs from "fs";
 
 // Mock Stripe client
 const mockSubscriptionsRetrieve = vi.fn().mockResolvedValue({

@@ -1,16 +1,18 @@
 import { describe, test, expect } from "vitest";
-import { Kysely, SqliteDialect } from "kysely";
+
 import Database from "better-sqlite3";
-import { schema, column, idColumn, referenceColumn } from "../../../schema/create";
+import { Kysely, SqliteDialect } from "kysely";
+
 import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
-import { PostgreSQLQueryCompiler } from "./dialect/postgres";
-import { MySQLQueryCompiler } from "./dialect/mysql";
-import { SQLiteQueryCompiler } from "./dialect/sqlite";
+import { schema, column, idColumn, referenceColumn } from "../../../schema/create";
 import {
   BetterSQLite3DriverConfig,
   NodePostgresDriverConfig,
   MySQL2DriverConfig,
 } from "../driver-config";
+import { MySQLQueryCompiler } from "./dialect/mysql";
+import { PostgreSQLQueryCompiler } from "./dialect/postgres";
+import { SQLiteQueryCompiler } from "./dialect/sqlite";
 
 // Test schema
 const testSchema = schema("test", (s) => {

@@ -1,6 +1,8 @@
 import SQLite from "better-sqlite3";
-import { PrismaClient } from "@prisma/client";
 import { SqliteDialect } from "kysely";
+
+import { PrismaClient } from "@prisma/client";
+
 import { dbFile } from "./constants";
 
 export { dbFile } from "./constants";

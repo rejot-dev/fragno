@@ -1,6 +1,7 @@
 import { define } from "gunshi";
-import { baseArgs, createClientFromContext } from "../../utils/options.js";
+
 import { formatEventLine, formatLogLine, formatStepLine } from "../../utils/format.js";
+import { baseArgs, createClientFromContext } from "../../utils/options.js";
 
 export const instancesHistoryCommand = define({
   name: "history",

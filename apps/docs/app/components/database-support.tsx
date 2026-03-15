@@ -1,7 +1,7 @@
-import { cn } from "@/lib/cn";
-import { Kysely } from "@/components/logos/frameworks/kysely";
 import { Drizzle } from "@/components/logos/frameworks/drizzle";
+import { Kysely } from "@/components/logos/frameworks/kysely";
 import { Prisma } from "@/components/logos/frameworks/prisma";
+import { cn } from "@/lib/cn";
 
 export function DatabaseSupport({ className }: { className?: string }) {
   const orms = [

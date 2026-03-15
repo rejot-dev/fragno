@@ -1,8 +1,10 @@
 import { redirect } from "react-router";
-import type { Route } from "./+types/setup-callback";
+
 import { getGitHubWebhookRouterDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth-server";
+
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import type { Route } from "./+types/setup-callback";
 
 const CONNECTIONS_INDEX_PATH = "/backoffice/connections/github";
 const toStatePreview = (value: string) => (value ? `${value.slice(0, 8)}…` : "");

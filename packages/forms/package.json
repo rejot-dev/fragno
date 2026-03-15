@@ -1,18 +1,30 @@
 {
-  "description": "Form builder fragment",
   "name": "@fragno-dev/forms",
   "version": "0.1.0",
+  "private": false,
+  "description": "Form builder fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/forms"
+  },
   "files": [
     "dist"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -39,16 +51,11 @@
       "default": "./dist/browser/client/vanilla.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run"
   },
-  "type": "module",
-  "private": false,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
@@ -66,17 +73,10 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
+    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
-    "@typescript/native-preview": "catalog:",
     "vue": ">=3.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "packages/forms"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@fragno-example/astro",
-  "type": "module",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@fragno-dev/example-fragment": "workspace:*",
-    "astro": "^5.16.11",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "astro": "^5.16.11"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.6",

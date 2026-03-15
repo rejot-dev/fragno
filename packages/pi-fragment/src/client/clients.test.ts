@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 import { createPiFragmentClients } from "./clients";
-import { createPiFragmentClient as createVanillaClient } from "./vanilla";
 import { createPiFragmentClient as createReactClient } from "./react";
 import { createPiFragmentClient as createSolidClient } from "./solid";
 import { createPiFragmentClient as createSvelteClient } from "./svelte";
+import { createPiFragmentClient as createVanillaClient } from "./vanilla";
 import { createPiFragmentClient as createVueClient } from "./vue";
 
 const clientConfig: FragnoPublicClientConfig = {

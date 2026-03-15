@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
+
+import { getAuthMe } from "@/fragno/auth-server";
+
+import { fetchUploadConfig } from "./data";
+import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
 import {
   UploadErrorBoundary,
   UploadHeader,
   UploadWorkspaceTabs,
   type UploadConfigState,
 } from "./shared";
-import { fetchUploadConfig } from "./data";
-import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
-import { getAuthMe } from "@/fragno/auth-server";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const orgId = params.orgId;

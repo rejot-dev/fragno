@@ -1,7 +1,9 @@
-import type { Route } from "./+types/blog-index";
-import { Link } from "react-router";
-import { blogSource } from "@/lib/source";
 import { Calendar, User, ArrowRight } from "lucide-react";
+import { Link } from "react-router";
+
+import { blogSource } from "@/lib/source";
+
+import type { Route } from "./+types/blog-index";
 
 export function meta() {
   return [
@@ -33,8 +35,8 @@ export default function BlogPage({ loaderData }: Route.ComponentProps) {
       <div className="w-full max-w-6xl">
         <header className="relative mb-10 overflow-hidden rounded-3xl border border-black/5 bg-white/70 px-6 py-10 shadow-sm backdrop-blur sm:px-10 dark:border-white/10 dark:bg-slate-950/50">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="bg-linear-to-br absolute -left-12 -top-16 h-48 w-72 rounded-full from-blue-500/15 via-sky-400/10 to-transparent blur-3xl" />
-            <div className="bg-linear-to-br from-purple-500/14 absolute -bottom-24 -right-16 h-56 w-72 rounded-full via-fuchsia-400/10 to-transparent blur-3xl" />
+            <div className="absolute -top-16 -left-12 h-48 w-72 rounded-full bg-linear-to-br from-blue-500/15 via-sky-400/10 to-transparent blur-3xl" />
+            <div className="absolute -right-16 -bottom-24 h-56 w-72 rounded-full bg-linear-to-br from-purple-500/14 via-fuchsia-400/10 to-transparent blur-3xl" />
           </div>
 
           <p className="text-fd-muted-foreground text-sm font-medium">News & updates</p>
@@ -90,7 +92,7 @@ export default function BlogPage({ loaderData }: Route.ComponentProps) {
                         />
                       </div>
                     ) : (
-                      <div className="bg-linear-to-br relative aspect-[16/9] w-full overflow-hidden from-blue-500/10 via-transparent to-purple-500/10 dark:from-blue-500/15 dark:to-purple-500/15">
+                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-linear-to-br from-blue-500/10 via-transparent to-purple-500/10 dark:from-blue-500/15 dark:to-purple-500/15">
                         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.18),transparent_55%)]" />
                         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,rgba(168,85,247,0.14),transparent_55%)]" />
                       </div>

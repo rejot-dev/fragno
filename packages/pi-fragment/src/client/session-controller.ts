@@ -1,13 +1,14 @@
 import { computed, type ReadableAtom } from "nanostores";
 
+import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+
+import type { PiSessionDetail } from "../pi/types";
 import {
   createPiSessionStore,
   type CreatePiSessionStoreDependencies,
   type PiSessionStoreController,
   type PiSessionStoreState,
 } from "./session-store";
-import type { PiSessionDetail } from "../pi/types";
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
 export type PiSessionStoreHookArgs = {
   path: { sessionId: string };

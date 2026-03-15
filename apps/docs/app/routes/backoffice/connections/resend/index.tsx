@@ -1,10 +1,12 @@
 import { Link, redirect, useOutletContext } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
-import { formatTimestamp } from "./shared";
 import { getAuthMe } from "@/fragno/auth-server";
+import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/index";
+import { formatTimestamp } from "./shared";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
@@ -47,7 +49,7 @@ export default function BackofficeConnectionsResend() {
         actions={
           <Link
             to="/backoffice/connections"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to connections
           </Link>
@@ -67,21 +69,21 @@ export default function BackofficeConnectionsResend() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                     {organization.slug}
                   </p>
                   <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
                     {organization.name}
                   </h2>
                 </div>
-                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                   {activeOrganizationId === organization.id ? "Active" : "Idle"}
                 </span>
               </div>
 
               <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
                 <p className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Roles
                   </span>
                   <span className="font-semibold text-[var(--bo-fg)]">
@@ -89,7 +91,7 @@ export default function BackofficeConnectionsResend() {
                   </span>
                 </p>
                 <p className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Created
                   </span>
                   <span>{formatTimestamp(organization.createdAt)}</span>
@@ -99,7 +101,7 @@ export default function BackofficeConnectionsResend() {
               <div className="mt-4">
                 <Link
                   to={`/backoffice/connections/resend/${organization.id}`}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Resend
                 </Link>

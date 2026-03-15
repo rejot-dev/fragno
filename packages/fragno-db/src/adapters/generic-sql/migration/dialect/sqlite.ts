@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import { type ColumnDefinitionBuilder, type CompiledQuery, type RawBuilder, sql } from "kysely";
+
 import type {
   ColumnInfo,
   ColumnOperation,
@@ -9,7 +12,6 @@ import type {
 } from "../../../../migration-engine/shared";
 import type { NamingResolver } from "../../../../naming/sql-naming";
 import { SQLGenerator } from "../sql-generator";
-import { createHash } from "node:crypto";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CreateTableBuilderAny = any;

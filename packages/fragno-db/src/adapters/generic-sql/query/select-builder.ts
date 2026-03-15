@@ -1,6 +1,6 @@
-import type { AnyTable } from "../../../schema/create";
-import type { AnySelectClause } from "../../../query/simple-query-interface";
 import type { NamingResolver } from "../../../naming/sql-naming";
+import type { AnySelectClause } from "../../../query/simple-query-interface";
+import type { AnyTable } from "../../../schema/create";
 
 /**
  * Maps a select clause to SQL column names with optional aliases.

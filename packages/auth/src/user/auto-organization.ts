@@ -1,5 +1,5 @@
 import type { TypedUnitOfWork } from "@fragno-dev/db";
-import { authSchema } from "../schema";
+
 import type { AuthHooksMap } from "../hooks";
 import type {
   AutoCreateOrganizationConfig,
@@ -13,6 +13,7 @@ import {
   normalizeRoleNames,
   toExternalId,
 } from "../organization/utils";
+import { authSchema } from "../schema";
 
 export type AutoCreateOrganizationOptions = {
   autoCreateOrganization?: AutoCreateOrganizationConfig;

@@ -1,12 +1,15 @@
-import { PGlite } from "@electric-sql/pglite";
-import { KyselyPGlite } from "kysely-pglite";
-import { SqlAdapter } from "./generic-sql-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { Cursor } from "../../query/cursor";
-import { PGLiteDriverConfig } from "./driver-config";
-import type { CompiledQuery } from "../../sql-driver/sql-driver";
+
+import { KyselyPGlite } from "kysely-pglite";
+
+import { PGlite } from "@electric-sql/pglite";
+
 import { internalSchema } from "../../fragments/internal-fragment";
+import { Cursor } from "../../query/cursor";
+import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import type { CompiledQuery } from "../../sql-driver/sql-driver";
+import { PGLiteDriverConfig } from "./driver-config";
+import { SqlAdapter } from "./generic-sql-adapter";
 
 describe("SqlAdapter PGLite", () => {
   let pgliteDatabase: PGlite;

@@ -2,8 +2,8 @@ import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/
 
 import { piFragmentDefinition } from "../pi/definition";
 import { piRoutesFactory } from "../routes";
-import type { CreatePiSessionStoreDependencies } from "./session-store";
 import { createPiSessionControllerStore } from "./session-controller";
+import type { CreatePiSessionStoreDependencies } from "./session-store";
 
 export type PiFragmentClientConfig = FragnoPublicClientConfig & {
   debugActiveSession?: boolean;

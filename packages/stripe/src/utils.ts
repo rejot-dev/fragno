@@ -1,5 +1,6 @@
-import type Stripe from "stripe";
 import type { TableToInsertValues } from "@fragno-dev/db/query";
+import type Stripe from "stripe";
+
 import type { stripeSchema } from "./database/schema";
 
 export function toDate(s: number): Date;

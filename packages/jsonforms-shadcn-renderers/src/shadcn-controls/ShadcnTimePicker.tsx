@@ -1,7 +1,10 @@
-import type { CellProps, WithClassname } from "@jsonforms/core";
 import { memo, useMemo } from "react";
-import { cn } from "@/lib/utils";
+
+import type { CellProps, WithClassname } from "@jsonforms/core";
+
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
 import { formatTimeForSave, toTimeInputValue } from "../util/date-time";
 
 type ShadcnTimePickerProps = CellProps & WithClassname;

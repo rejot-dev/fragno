@@ -1,5 +1,3 @@
-import { Link } from "react-router";
-import type { ReactNode } from "react";
 import {
   Activity,
   Bot,
@@ -10,8 +8,11 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import type { ReactNode } from "react";
+import { Link } from "react-router";
+
 import { FragmentSubnav } from "@/components/fragment-subnav";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
   return [
@@ -153,8 +154,8 @@ export default function TelegramPage() {
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 top-[-120px] h-[420px] w-[420px] rounded-full bg-teal-500/20 blur-[140px] dark:bg-teal-400/20" />
-        <div className="absolute -right-32 top-20 h-[420px] w-[420px] rounded-full bg-sky-500/20 blur-[140px] dark:bg-sky-400/20" />
+        <div className="absolute top-[-120px] -left-32 h-[420px] w-[420px] rounded-full bg-teal-500/20 blur-[140px] dark:bg-teal-400/20" />
+        <div className="absolute top-20 -right-32 h-[420px] w-[420px] rounded-full bg-sky-500/20 blur-[140px] dark:bg-sky-400/20" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(14,116,144,0.12)_1px,transparent_0)] [background-size:28px_28px]" />
       </div>
 
@@ -163,7 +164,7 @@ export default function TelegramPage() {
 
         <section className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="space-y-6">
-            <p className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-white/70 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-teal-700 shadow-sm dark:border-teal-400/20 dark:bg-slate-950/70 dark:text-teal-200">
+            <p className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-white/70 px-4 py-1 text-xs font-semibold tracking-wide text-teal-700 uppercase shadow-sm dark:border-teal-400/20 dark:bg-slate-950/70 dark:text-teal-200">
               <Bot className="size-4" />
               Telegram Fragment
             </p>
@@ -189,7 +190,7 @@ export default function TelegramPage() {
               </Link>
             </div>
             <div className="max-w-md space-y-2 pt-2">
-              <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+              <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
                 Install
               </p>
               <FragnoCodeBlock
@@ -202,7 +203,7 @@ export default function TelegramPage() {
           </div>
 
           <div className="relative rounded-3xl border border-black/5 bg-white/80 p-6 shadow-xl shadow-sky-500/10 backdrop-blur dark:border-white/10 dark:bg-slate-950/70">
-            <div className="absolute -right-10 top-6 h-24 w-24 rounded-full bg-teal-500/20 blur-2xl" />
+            <div className="absolute top-6 -right-10 h-24 w-24 rounded-full bg-teal-500/20 blur-2xl" />
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-teal-400/40 text-teal-600 dark:text-teal-300">
                 <MessageSquare className="size-5" />
@@ -219,13 +220,13 @@ export default function TelegramPage() {
 
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border border-sky-200/70 bg-sky-50/80 px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-slate-100">
-                <div className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                <div className="text-xs font-semibold tracking-wide text-sky-700 uppercase dark:text-sky-300">
                   /ping
                 </div>
                 <div className="mt-1">Should we ship the release?</div>
               </div>
               <div className="ml-auto max-w-[80%] rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-sm">
-                <div className="text-xs font-semibold uppercase tracking-wide text-teal-300">
+                <div className="text-xs font-semibold tracking-wide text-teal-300 uppercase">
                   bot reply
                 </div>
                 <div className="mt-1">pong. Deployment green across all regions.</div>

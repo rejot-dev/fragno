@@ -1,5 +1,6 @@
-import { NonRetryableError } from "@fragno-dev/workflows";
 import { z } from "zod";
+
+import { NonRetryableError } from "@fragno-dev/workflows";
 
 import {
   PI_TOOL_JOURNAL_VERSION,

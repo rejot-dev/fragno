@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
-import { FormContainer, FormField } from "@/components/backoffice";
+
 import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
-import type { Route } from "./+types/configuration";
-import { formatTimestamp, type PiLayoutContext } from "./shared";
+import { FormContainer, FormField } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth-server";
 import type { PiConfigState } from "@/fragno/pi-shared";
+
+import type { Route } from "./+types/configuration";
+import { formatTimestamp, type PiLayoutContext } from "./shared";
 
 type PiConfigForm = {
   openaiKey: string;
@@ -125,7 +127,7 @@ export default function BackofficeOrganisationPiConfiguration() {
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Status
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Pi runtime</h2>
@@ -135,7 +137,7 @@ export default function BackofficeOrganisationPiConfiguration() {
               </p>
             </div>
             <span
-              className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${statusTone}`}
+              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
             >
               {statusLabel}
             </span>
@@ -175,7 +177,7 @@ export default function BackofficeOrganisationPiConfiguration() {
         </div>
 
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">Notes</p>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Notes</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Key management</h2>
           <p className="mt-2 text-sm text-[var(--bo-muted)]">
             API keys are stored per organisation and never displayed in full after save. Provide a
@@ -205,7 +207,7 @@ export default function BackofficeOrganisationPiConfiguration() {
                   setFormState((prev) => ({ ...prev, openaiKey: event.target.value }));
                 }}
                 placeholder="sk-..."
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
@@ -219,7 +221,7 @@ export default function BackofficeOrganisationPiConfiguration() {
                   setFormState((prev) => ({ ...prev, anthropicKey: event.target.value }));
                 }}
                 placeholder="sk-ant-..."
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
@@ -233,7 +235,7 @@ export default function BackofficeOrganisationPiConfiguration() {
                   setFormState((prev) => ({ ...prev, geminiKey: event.target.value }));
                 }}
                 placeholder="AIza..."
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
           </div>
@@ -244,7 +246,7 @@ export default function BackofficeOrganisationPiConfiguration() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save API keys"}
           </button>

@@ -7,9 +7,10 @@
  */
 
 import { describe, expect, test } from "vitest";
-import dedent from "dedent";
-import { name as pkgName } from "../package.json";
 
+import dedent from "dedent";
+
+import { name as pkgName } from "../package.json";
 import { transform } from "./transform";
 
 const macrosSpecifier = `${pkgName}/macros`;

@@ -1,17 +1,18 @@
-import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import type { TableToInsertValues } from "@fragno-dev/db/query";
+// NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
+//       For a complete list see:
+// https://github.com/standard-schema/standard-schema#what-schema-libraries-implement-the-spec
+import { z } from "zod";
+
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import {
   withDatabase,
   type FragnoPublicConfigWithDatabase,
   ExponentialBackoffRetryPolicy,
 } from "@fragno-dev/db";
-import type { TableToInsertValues } from "@fragno-dev/db/query";
-import { noteSchema } from "./schema";
 
-// NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
-//       For a complete list see:
-// https://github.com/standard-schema/standard-schema#what-schema-libraries-implement-the-spec
-import { z } from "zod";
+import { noteSchema } from "./schema";
 
 export interface ExampleConfig {
   // Add any server-side configuration here if needed

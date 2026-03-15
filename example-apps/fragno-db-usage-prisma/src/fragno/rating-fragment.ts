@@ -1,4 +1,5 @@
 import { createRatingFragment } from "@fragno-dev/fragno-db-library/upvote";
+
 import { adapter } from "./adapter";
 
 /**

@@ -10,6 +10,7 @@ import { traverse } from "@babel/core";
 import type { Binding, NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { Node } from "@babel/types";
+
 import { name as pkgName } from "../package.json";
 
 const macrosSpecifier = `${pkgName}/macros`;

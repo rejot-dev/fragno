@@ -1,6 +1,8 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { addRoute, type ValidPath } from "./api";
+
 import { z } from "zod";
+
+import { addRoute, type ValidPath } from "./api";
 
 describe("addRoute", () => {
   test("addRoute no inputSchema", () => {

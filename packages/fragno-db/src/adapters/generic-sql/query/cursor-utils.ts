@@ -1,6 +1,6 @@
-import type { AnyColumn } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import { decodeCursor, serializeCursorValues, type Cursor } from "../../../query/cursor";
+import type { AnyColumn } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 

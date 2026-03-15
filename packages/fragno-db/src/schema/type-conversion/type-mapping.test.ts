@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+
+import { sqliteStoragePrisma } from "../../adapters/generic-sql/sqlite-storage";
 import { column, referenceColumn } from "../create";
 import { createSQLTypeMapper } from "./create-sql-type-mapper";
-import { sqliteStoragePrisma } from "../../adapters/generic-sql/sqlite-storage";
 
 describe("SQLTypeMapper", () => {
   describe("error handling", () => {

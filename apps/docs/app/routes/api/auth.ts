@@ -1,5 +1,6 @@
-import type { Route } from "./+types/auth";
 import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
+
+import type { Route } from "./+types/auth";
 
 const forwardToAuth = async (request: Request, context: Route.LoaderArgs["context"]) => {
   const authDo = getAuthDurableObject(context);

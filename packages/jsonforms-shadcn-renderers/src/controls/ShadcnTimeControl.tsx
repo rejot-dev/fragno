@@ -1,9 +1,11 @@
 import type { ControlProps, RankedTester } from "@jsonforms/core";
 import { isTimeControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
+
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
-import { ShadcnTimePicker } from "../shadcn-controls/ShadcnTimePicker";
+
 import { useTouched } from "../hooks/useTouched";
+import { ShadcnTimePicker } from "../shadcn-controls/ShadcnTimePicker";
 
 export const ShadcnTimeControl = ({
   data,

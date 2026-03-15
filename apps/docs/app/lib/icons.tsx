@@ -1,7 +1,3 @@
-import { FragnoCircle as FragnoCircleIcon } from "@/components/logos/fragno-circle";
-import { Stripe as StripeIcon } from "@/components/logos/stripe";
-import { ShadCNUI } from "@/components/logos/shadcn-ui";
-
 import {
   Album,
   TableOfContents,
@@ -22,6 +18,10 @@ import {
   KeyRound,
   Send,
 } from "lucide-react";
+
+import { FragnoCircle as FragnoCircleIcon } from "@/components/logos/fragno-circle";
+import { ShadCNUI } from "@/components/logos/shadcn-ui";
+import { Stripe as StripeIcon } from "@/components/logos/stripe";
 
 /**
  * Icon map: Only import icons actually used in your docs to minimize bundle size.

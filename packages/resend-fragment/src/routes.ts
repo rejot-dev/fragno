@@ -1,7 +1,9 @@
-import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db/cursor";
-import { z } from "zod";
 import type { CreateEmailOptions } from "resend";
+import { z } from "zod";
+
+import { defineRoutes } from "@fragno-dev/core";
+
 import { resendFragmentDefinition, type ResendFragmentConfig } from "./definition";
 import { resendSchema } from "./schema";
 

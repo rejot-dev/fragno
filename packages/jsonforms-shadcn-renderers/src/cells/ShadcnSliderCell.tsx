@@ -1,6 +1,7 @@
 import type { CellProps, RankedTester } from "@jsonforms/core";
 import { isRangeControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsCellProps } from "@jsonforms/react";
+
 import { ShadcnSlider } from "../shadcn-controls/ShadcnSlider";
 
 export const ShadcnSliderCell = (props: CellProps) => {

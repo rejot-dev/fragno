@@ -1,7 +1,7 @@
-import type { AnyTable } from "../../schema/create";
-import { ReferenceSubquery } from "../../query/value-encoding";
-import type { InMemoryNamespaceStore, InMemoryTableStore } from "./store";
 import type { NamingResolver } from "../../naming/sql-naming";
+import { ReferenceSubquery } from "../../query/value-encoding";
+import type { AnyTable } from "../../schema/create";
+import type { InMemoryNamespaceStore, InMemoryTableStore } from "./store";
 
 const getTableStore = (
   namespaceStore: InMemoryNamespaceStore,

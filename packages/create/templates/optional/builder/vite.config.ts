@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/vite";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [unpluginFragno({ platform: "browser" })],

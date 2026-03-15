@@ -1,18 +1,20 @@
 import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from "vitest";
+
 import { DummyDriver, MysqlAdapter, PostgresAdapter, SqliteAdapter } from "kysely";
-import {
-  postProcessMigrationFilenames,
-  type GenerationInternalResult,
-  generateSchemaArtifacts,
-} from "./generation-engine";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
-import { column, idColumn, schema, type AnySchema } from "../schema/create";
-import { FragnoDatabase } from "../mod";
+
 import {
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
   SQLocalDriverConfig,
 } from "../adapters/generic-sql/driver-config";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import { FragnoDatabase } from "../mod";
+import { column, idColumn, schema, type AnySchema } from "../schema/create";
+import {
+  postProcessMigrationFilenames,
+  type GenerationInternalResult,
+  generateSchemaArtifacts,
+} from "./generation-engine";
 
 const buildFile = (
   overrides: Partial<GenerationInternalResult> &

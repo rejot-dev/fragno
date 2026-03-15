@@ -1,19 +1,26 @@
 {
   "name": "@fragno-dev/upload",
-  "description": "Fragno upload fragment",
   "version": "0.1.1",
+  "description": "Fragno upload fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "bin": {
+    "fragno-upload": "./bin/run.js"
+  },
   "files": [
     "dist",
     "bin"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -44,18 +51,11 @@
       "default": "./dist/browser/client/vanilla.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
-  },
-  "type": "module",
-  "bin": {
-    "fragno-upload": "./bin/run.js"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -65,20 +65,20 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
-    "@types/node": "^24",
     "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^24",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "tsdown": "^0.12.0",
-    "@fragno-dev/db": "workspace:*"
+    "tsdown": "^0.12.0"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
-    "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
     "vue": ">=3.0.0"
   }
 }

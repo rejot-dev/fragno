@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { toCfSandboxPath } from "./cf-sandbox-path";
 
 describe("CF Sandbox path builder", () => {

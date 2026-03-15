@@ -1,9 +1,9 @@
-import type { AnyTable } from "../schema/create";
-import { createSQLSerializer } from "./serialize/create-sql-serializer";
-import { FragnoId, FragnoReference } from "../schema/create";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
+import type { AnyTable } from "../schema/create";
+import { FragnoId, FragnoReference } from "../schema/create";
+import { createSQLSerializer } from "./serialize/create-sql-serializer";
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;

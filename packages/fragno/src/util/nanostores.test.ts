@@ -1,6 +1,8 @@
 import { describe, test, expect } from "vitest";
-import { isReadableAtom } from "./nanostores";
+
 import { atom, map } from "nanostores";
+
+import { isReadableAtom } from "./nanostores";
 
 describe("nanostores", () => {
   test("isReadableAtom should return true for a readable atom", () => {

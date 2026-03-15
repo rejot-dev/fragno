@@ -1,10 +1,12 @@
 import { Link, useLoaderData } from "react-router";
-import type { Route } from "./+types/github";
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
+
 import {
   GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
   getGitHubWebhookRouterDurableObject,
 } from "@/cloudflare/cloudflare-utils";
+import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
+
+import type { Route } from "./+types/github";
 
 type GitHubAdminConfigState = {
   configured: boolean;
@@ -128,7 +130,7 @@ export default function BackofficeInternalsGitHub() {
         actions={
           <Link
             to="/backoffice/internals"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to internals
           </Link>
@@ -203,7 +205,7 @@ export default function BackofficeInternalsGitHub() {
           <div className="space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Installation links
                 </p>
                 <p className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -211,7 +213,7 @@ export default function BackofficeInternalsGitHub() {
                 </p>
               </div>
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Pending webhooks
                 </p>
                 <p className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -219,7 +221,7 @@ export default function BackofficeInternalsGitHub() {
                 </p>
               </div>
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Active install states
                 </p>
                 <p className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -253,7 +255,7 @@ export default function BackofficeInternalsGitHub() {
                       </p>
                       <Link
                         to={`/backoffice/connections/github/${mapping.orgId}/configuration`}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                       >
                         Open org
                       </Link>

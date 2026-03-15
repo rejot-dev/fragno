@@ -1,4 +1,5 @@
 import type { OutboxEntry } from "@fragno-dev/db";
+
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import type { LofiAdapter, LofiMutation, LofiSubmitCommand } from "../types";
 

@@ -1,17 +1,19 @@
-import { defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
+
+import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 import { ExponentialBackoffRetryPolicy } from "@fragno-dev/db";
+
 import { telegramFragmentDefinition } from "./definition";
 import { telegramSchema } from "./schema";
+import { createTelegramApi } from "./telegram-api";
+import { DEFAULT_COMMAND_SCOPES, parseCommandBindings } from "./telegram-utils";
 import {
   telegramChatTypeSchema,
   telegramCommandBindingsSchema,
   telegramUpdateSchema,
 } from "./types";
 import type { TelegramCommandScope, TelegramHooksMap } from "./types";
-import { DEFAULT_COMMAND_SCOPES, parseCommandBindings } from "./telegram-utils";
-import { createTelegramApi } from "./telegram-api";
 
 const chatSummarySchema = z.object({
   id: z.string(),

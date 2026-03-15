@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+
 import type { AnySchema, AnyTable } from "../schema/create";
 
 export type NamespaceScope = "suffix" | "schema";

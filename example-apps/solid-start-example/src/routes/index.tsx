@@ -1,5 +1,7 @@
-import { Title } from "@solidjs/meta";
 import { createSignal, Show } from "solid-js";
+
+import { Title } from "@solidjs/meta";
+
 import { Chat } from "~/components/chat";
 import { Example } from "~/components/example";
 

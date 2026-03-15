@@ -7,12 +7,10 @@ pre-commit:
   jobs:
     - name: lint
       run: pnpm exec oxlint --fix {staged_files}
-    - name: prettier
+    - name: format
       run:
-        sh -c 'files=$(git diff --cached --name-only --diff-filter=ACMRT | while IFS= read -r f; do
-        [ -L "$f" ] && continue; printf "%s\n" "$f"; done); [ -z "$files" ] && exit 0; pnpm exec
-        prettier --ignore-unknown --check $files; code=$?; pnpm exec prettier --ignore-unknown
-        --write $files; exit $code'
+        sh -c 'node scripts/format-files.mjs --staged --check; code=$?; node
+        scripts/format-files.mjs --staged; exit $code'
     - name: "changeset status: validate frontmatter"
       run: pnpm exec changeset status
       glob: ".changeset/**"

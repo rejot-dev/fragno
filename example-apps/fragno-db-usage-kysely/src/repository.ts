@@ -1,6 +1,7 @@
-import type { BlogPostUpdate, NewBlogPost, NewUser, User, UserUpdate } from "./kysely-types";
-import { db } from "./database";
 import { sql } from "kysely";
+
+import { db } from "./database";
+import type { BlogPostUpdate, NewBlogPost, NewUser, User, UserUpdate } from "./kysely-types";
 
 // User repository methods
 export async function findUserById(id: number) {

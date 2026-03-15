@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { build } from "esbuild";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/esbuild";
+import { build } from "esbuild";
 
 build({
   entryPoints: [

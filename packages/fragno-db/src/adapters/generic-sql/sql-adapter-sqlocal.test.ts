@@ -1,8 +1,10 @@
-import { SQLocalKysely } from "sqlocal/kysely";
 import { beforeAll, describe, expect, it } from "vitest";
-import { SqlAdapter } from "./generic-sql-adapter";
+
+import { SQLocalKysely } from "sqlocal/kysely";
+
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { SQLocalDriverConfig } from "./driver-config";
+import { SqlAdapter } from "./generic-sql-adapter";
 
 describe("SqlAdapter SQLite", () => {
   const testSchema = schema("test", (s) => {

@@ -1,11 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { SqliteDialect } from "kysely";
+
 import Database from "better-sqlite3";
-import { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
-import { sql } from "../sql-driver/sql";
+import { SqliteDialect } from "kysely";
+
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
-import { schema, column, idColumn, referenceColumn } from "../schema/create";
 import { buildFindOptions } from "../query/orm/orm";
+import { schema, column, idColumn, referenceColumn } from "../schema/create";
+import { sql } from "../sql-driver/sql";
+import { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 import { checkConflicts } from "./conflict-checker";
 
 const testSchema = schema("test", (s) => {

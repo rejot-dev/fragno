@@ -1,10 +1,11 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import type { LofiMutation } from "../../types";
+
 import type { ReferenceTarget } from "../../indexeddb/types";
 import { normalizeValue } from "../../query/normalize";
-import { compareNormalizedValues } from "./value-comparison";
+import type { LofiMutation } from "../../types";
 import { SortedArrayIndex, type IndexKey } from "./sorted-array-index";
+import { compareNormalizedValues } from "./value-comparison";
 
 export type InMemoryLofiRow = {
   key: [string, string, string, string];

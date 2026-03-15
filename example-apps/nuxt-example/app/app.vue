@@ -88,6 +88,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+
 import { exampleFragment } from "@/utils/example-fragment";
 
 const refreshKey = ref(0);

@@ -1,3 +1,5 @@
+import { createId } from "@fragno-dev/db/id";
+import { relations } from "drizzle-orm";
 import {
   pgTable,
   varchar,
@@ -12,8 +14,6 @@ import {
   bigint,
   foreignKey,
 } from "drizzle-orm/pg-core";
-import { createId } from "@fragno-dev/db/id";
-import { relations } from "drizzle-orm";
 
 // ============================================================================
 // Fragment: (none)

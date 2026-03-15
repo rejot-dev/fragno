@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { decodeFileKey, encodeFileKey, encodeFileKeyPrefix, type FileKeyParts } from "./keys";
 
 describe("file key encoding", () => {

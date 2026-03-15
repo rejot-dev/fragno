@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router";
+
 import { FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
+import { cn } from "@/lib/utils";
+
 import type { OrganisationLayoutContext } from "./organisation-layout";
 import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organisation-shared";
-import { cn } from "@/lib/utils";
 
 const MEMBER_PAGE_SIZE = 25;
 
@@ -131,7 +133,7 @@ export default function BackofficeOrganisationMembers() {
             value={memberSearch}
             onChange={(event) => setMemberSearch(event.target.value)}
             placeholder="Search members"
-            className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2 sm:w-52"
+            className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none sm:w-52"
           />
         }
       >
@@ -161,7 +163,7 @@ export default function BackofficeOrganisationMembers() {
             <div className="overflow-hidden border border-[color:var(--bo-border)]">
               <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
                 <thead className="bg-[var(--bo-panel-2)] text-left">
-                  <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                  <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     <th scope="col" className="px-3 py-2">
                       User
                     </th>
@@ -211,7 +213,7 @@ export default function BackofficeOrganisationMembers() {
                 setMembersCursor(nextCursor);
               }}
               disabled={!membersHasNext || membersLoadingMore}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
               {membersLoadingMore ? "Loading..." : "Load more"}
             </button>
@@ -310,7 +312,7 @@ function OrganizationMemberRow({
         <div className="flex flex-col">
           <span className="font-mono text-xs text-[var(--bo-fg)]">{member.userId}</span>
           {isSelf ? (
-            <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               You
             </span>
           ) : null}
@@ -351,7 +353,7 @@ function OrganizationMemberRow({
                 type="button"
                 onClick={handleSave}
                 disabled={!rolesChanged || selectedRoles.length === 0 || saving}
-                className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
                 {saving ? "Saving" : "Save"}
               </button>
@@ -359,7 +361,7 @@ function OrganizationMemberRow({
                 type="button"
                 onClick={handleRemove}
                 disabled={removing}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
               >
                 {removing ? "Removing" : "Remove"}
               </button>

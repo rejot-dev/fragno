@@ -1,9 +1,12 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
+
+import type Stripe from "stripe";
+
+import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import { stripeFragmentDefinition } from "../definition";
 import { subscriptionsRoutesFactory } from "./subscriptions";
-import { instantiate } from "@fragno-dev/core";
-import type Stripe from "stripe";
 
 // Mock Stripe client methods
 const mockCustomersSearch = vi.fn();

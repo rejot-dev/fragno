@@ -67,12 +67,12 @@
     "@types/node": "^22.19.7",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
+    "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-istanbul": "^3.2.4",
     "dotenv": "^17.2.3",
     "jsdom": "^27.4.0",
     "tsx": "^4.21.0",
-    "@typescript/native-preview": "catalog:",
     "vite": "catalog:",
     "vitest": "^3.2.4",
     "web-vitals": "^5.1.0"

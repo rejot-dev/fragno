@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
-import { define } from "gunshi";
-import { importFragmentFiles } from "../../utils/find-fragno-databases";
+
 import { executeMigrations, type ExecuteMigrationResult } from "@fragno-dev/db/generation-engine";
+import { define } from "gunshi";
+
+import { importFragmentFiles } from "../../utils/find-fragno-databases";
 
 export const migrateCommand = define({
   name: "migrate",

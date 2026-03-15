@@ -1,17 +1,23 @@
 {
-  "description": "A Fragno fragment",
+  "name": "@fragno-dev/telegram-fragment",
   "version": "0.0.1",
+  "private": true,
+  "description": "A Fragno fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
   "files": [
     "dist"
   ],
-  "keywords": [
-    "fragno",
-    "typescript",
-    "react",
-    "vue",
-    "svelte",
-    "solidjs"
-  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -58,17 +64,12 @@
       "default": "./dist/browser/client/vanilla.js"
     }
   },
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
-  "type": "module",
-  "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
@@ -89,9 +90,8 @@
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
-    "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
     "vue": ">=3.0.0"
-  },
-  "name": "@fragno-dev/telegram-fragment"
+  }
 }

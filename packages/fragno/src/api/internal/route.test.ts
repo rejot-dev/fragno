@@ -1,4 +1,5 @@
 import { test, expect } from "vitest";
+
 import { getMountRoute } from "./route";
 
 test("getMountRoute - default mount route", () => {

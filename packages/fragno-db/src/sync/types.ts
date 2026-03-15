@@ -1,9 +1,10 @@
 import type { RequestThisContext } from "@fragno-dev/core";
+
+import type { OutboxEntry } from "../outbox/outbox";
 import type {
   ExecuteTxOptions,
   HandlerTxBuilder,
 } from "../query/unit-of-work/execute-unit-of-work";
-import type { OutboxEntry } from "../outbox/outbox";
 
 export type SubmitRequest = {
   baseVersionstamp?: string;

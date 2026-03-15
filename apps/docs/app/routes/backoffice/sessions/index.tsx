@@ -1,6 +1,8 @@
 import { redirect } from "react-router";
-import type { Route } from "./+types/index";
+
 import { getAuthMe } from "@/fragno/auth-server";
+
+import type { Route } from "./+types/index";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);

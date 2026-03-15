@@ -1,7 +1,12 @@
-import type { DatabaseServiceContext } from "@fragno-dev/db";
 import { createCursorFromRecord, type Cursor } from "@fragno-dev/db/cursor";
+
+import type { DatabaseServiceContext } from "@fragno-dev/db";
+
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
+import type { Role } from "../types";
+import { mapUserSummary } from "../user/summary";
+import { canDeleteOrganization, canManageOrganization, isGlobalAdmin } from "./permissions";
 import type { Organization, OrganizationConfig, OrganizationMember } from "./types";
 import {
   DEFAULT_CREATOR_ROLES,
@@ -9,9 +14,6 @@ import {
   normalizeRoleNames,
   toExternalId,
 } from "./utils";
-import { canDeleteOrganization, canManageOrganization, isGlobalAdmin } from "./permissions";
-import type { Role } from "../types";
-import { mapUserSummary } from "../user/summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 

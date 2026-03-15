@@ -1,9 +1,14 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { atom, type ReadableAtom, type Store, type StoreValue } from "nanostores";
-import { useStore } from "@nanostores/solid";
 import type { Accessor } from "solid-js";
 import { createEffect, onCleanup } from "solid-js";
+
+import { useStore } from "@nanostores/solid";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import type { NonGetHTTPMethod } from "../api/api";
+import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
+import { isReadableAtom } from "../util/nanostores";
+import type { InferOr } from "../util/types-util";
 import {
   isGetHook,
   isMutatorHook,
@@ -15,9 +20,6 @@ import {
   type FragnoStoreObjectData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
-import type { InferOr } from "../util/types-util";
-import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
-import { isReadableAtom } from "../util/nanostores";
 
 export type FragnoSolidHook<
   _TMethod extends "GET",

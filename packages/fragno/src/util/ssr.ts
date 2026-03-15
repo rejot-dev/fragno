@@ -1,4 +1,5 @@
 import { allTasks } from "nanostores";
+
 import type { FetcherStore } from "@nanostores/query";
 
 let stores: FetcherStore[] = [];

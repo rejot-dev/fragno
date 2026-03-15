@@ -1,13 +1,16 @@
 import { describe, test, expect, afterAll, assert, expectTypeOf } from "vitest";
+
+import type { FragnoId } from "@fragno-dev/db/schema";
+
+import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
 import {
   otpFragmentDefinition,
   authFragmentDefinition,
   authFragmentRoutes,
   otpFragmentRoutes,
 } from "./index";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core";
-import type { FragnoId } from "@fragno-dev/db/schema";
 
 describe("OTP Fragment", () => {
   describe("Integration with UnitOfWork", async () => {

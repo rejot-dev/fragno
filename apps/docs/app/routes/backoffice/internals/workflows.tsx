@@ -1,4 +1,5 @@
 import { Link, useNavigate, useOutletContext } from "react-router";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -28,7 +29,7 @@ export default function BackofficeWorkflowsLanding() {
         actions={
           <Link
             to="/backoffice/internals"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to internals
           </Link>
@@ -36,7 +37,7 @@ export default function BackofficeWorkflowsLanding() {
       />
 
       <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">Scopes</p>
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Scopes</p>
         {organizations.length === 0 ? (
           <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
             No organisations are linked to this account yet.
@@ -65,7 +66,7 @@ export default function BackofficeWorkflowsLanding() {
                   className="flex h-full cursor-pointer flex-col border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 transition-colors hover:border-[color:var(--bo-border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
                 >
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       {organization.slug}
                     </p>
                     <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -81,7 +82,7 @@ export default function BackofficeWorkflowsLanding() {
                     <Link
                       to={piPath}
                       onClick={(event) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Pi
                     </Link>

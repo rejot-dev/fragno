@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+
 import { SqliteDialect } from "kysely";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
-import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
+
 import type { DatabaseAdapter } from "../adapters/adapters";
+import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import type { AnySchema } from "../schema/create";
 type DatabaseAdapterConfig = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

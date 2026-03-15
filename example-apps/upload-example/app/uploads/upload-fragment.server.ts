@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { migrate } from "@fragno-dev/db";
 import {
   createFilesystemStorageAdapter,

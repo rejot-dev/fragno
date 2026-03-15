@@ -6,9 +6,11 @@ import {
   useOutletContext,
   type ActionFunctionArgs,
 } from "react-router";
-import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/components/backoffice";
+
 import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
+import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/components/backoffice";
 import { UPLOAD_R2_DEFAULT_BINDING_NAME, type UploadAdminSetConfigPayload } from "@/fragno/upload";
+
 import {
   UploadProviderTabs,
   formatTimestamp,
@@ -559,7 +561,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Status
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Upload storage</h2>
@@ -568,7 +570,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
               </p>
             </div>
             <span
-              className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${statusTone}`}
+              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
             >
               {statusLabel}
             </span>
@@ -676,7 +678,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
 
             {formState.provider === "r2-binding" ? (
               <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Hardcoded binding
                 </p>
                 <p className="mt-2">
@@ -701,7 +703,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, bucket: event.target.value }))
                       }
                       placeholder="acme-upload-bucket"
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                   <FormField label="Endpoint" hint="R2 S3 endpoint.">
@@ -713,7 +715,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, endpoint: event.target.value }))
                       }
                       placeholder="https://<account>.r2.cloudflarestorage.com"
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                 </div>
@@ -728,7 +730,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, accessKeyId: event.target.value }))
                       }
                       placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                   <FormField label="Secret access key" hint="Leave blank to keep current secret.">
@@ -740,7 +742,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, secretAccessKey: event.target.value }))
                       }
                       placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                 </div>
@@ -754,7 +756,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, region: event.target.value }))
                       }
                       placeholder="auto"
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                   <FormField label="Session token" hint="Optional.">
@@ -765,7 +767,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                         setFormState((prev) => ({ ...prev, sessionToken: event.target.value }))
                       }
                       placeholder="Optional session token"
-                      className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
                   </FormField>
                 </div>
@@ -798,12 +800,12 @@ export default function BackofficeOrganisationUploadConfiguration() {
                   setFormState((prev) => ({ ...prev, storageKeySuffix: event.target.value }))
                 }
                 placeholder="uploads"
-                className="focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
 
             <details className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-              <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+              <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                 Advanced limits and expiry
               </summary>
               <div className="space-y-3 border-t border-[color:var(--bo-border)] p-3">
@@ -912,7 +914,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+              className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
             >
               {saving ? "Saving…" : "Save configuration"}
             </button>

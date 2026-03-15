@@ -1,8 +1,10 @@
-import type { Stripe } from "stripe";
-import type { DatabaseRequestContext } from "@fragno-dev/db";
-import type { StripeFragmentConfig, StripeFragmentDeps, StripeFragmentServices } from "../types";
 import { FragnoApiError } from "@fragno-dev/core/api";
+import type { Stripe } from "stripe";
+
+import type { DatabaseRequestContext } from "@fragno-dev/db";
+
 import { stripeSchema } from "../database/schema";
+import type { StripeFragmentConfig, StripeFragmentDeps, StripeFragmentServices } from "../types";
 import { getId, stripeSubscriptionToInternalSubscription } from "../utils";
 
 export interface StripeEventHandler {

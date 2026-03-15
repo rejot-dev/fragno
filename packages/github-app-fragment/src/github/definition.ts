@@ -2,8 +2,8 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
 import { githubAppSchema } from "../schema";
-import type { GitHubAppFragmentConfig } from "./types";
 import { createGitHubApiClient } from "./api";
+import type { GitHubAppFragmentConfig } from "./types";
 import { createWebhookProcessor } from "./webhook-processing";
 
 export type GitHubAppFragmentDependencies = {

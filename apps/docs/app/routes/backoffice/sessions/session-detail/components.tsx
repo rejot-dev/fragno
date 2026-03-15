@@ -1,7 +1,9 @@
-import { useState, type ReactNode, type RefObject } from "react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
+import { useState, type ReactNode, type RefObject } from "react";
+
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+
 import { formatTimestamp } from "../shared";
 
 export type LiveToolExecution = {
@@ -70,7 +72,7 @@ export function SessionHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Session detail
         </p>
         <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
@@ -91,7 +93,7 @@ export function SessionHeader({
         <button
           type="button"
           onClick={onBack}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
           Back
         </button>
@@ -127,7 +129,7 @@ export function SessionDisplayOptions({
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:text-[var(--bo-fg)]"
+          className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:text-[var(--bo-fg)]"
         >
           Options {expanded ? "−" : "+"}
         </button>
@@ -226,7 +228,7 @@ export function SessionConversationPanel({
             ) : null}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar orientation="vertical" className="flex w-2.5 select-none p-[2px]">
+        <ScrollArea.Scrollbar orientation="vertical" className="flex w-2.5 p-[2px] select-none">
           <ScrollArea.Thumb className="w-full rounded-full bg-[rgba(var(--bo-grid),0.45)] transition-colors hover:bg-[rgba(var(--bo-grid),0.65)]" />
         </ScrollArea.Scrollbar>
         <ScrollArea.Corner className="bg-transparent" />
@@ -236,7 +238,7 @@ export function SessionConversationPanel({
             <button
               type="button"
               onClick={onJumpToLatest}
-              className="pointer-events-auto border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent)] shadow-[0_10px_24px_rgba(0,0,0,0.16)] transition-colors hover:border-[color:var(--bo-accent-strong)] hover:text-[var(--bo-accent-fg)]"
+              className="pointer-events-auto border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase shadow-[0_10px_24px_rgba(0,0,0,0.16)] transition-colors hover:border-[color:var(--bo-accent-strong)] hover:text-[var(--bo-accent-fg)]"
             >
               Jump to latest
             </button>
@@ -275,13 +277,13 @@ export function SessionComposer({
       className="space-y-3 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Send message
         </p>
         <button
           type="submit"
           disabled={disabled || busy || !draftMessage.trim()}
-          className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Sending…" : "Send"}
         </button>
@@ -302,7 +304,7 @@ export function SessionComposer({
         }}
         placeholder="Type a message for this session…"
         disabled={disabled || busy}
-        className="focus:ring-[color:var(--bo-accent)]/20 w-full resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2"
+        className="w-full resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
       />
       {disabledReason ? <p className="text-xs text-[var(--bo-muted)]">{disabledReason}</p> : null}
       {error ? <p className="text-xs text-red-500">{error}</p> : null}
@@ -324,7 +326,7 @@ function PendingAssistantCard({
       <div className="w-full max-w-prose border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold text-[var(--bo-fg)]">Assistant</p>
-          <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
             {statusText ?? "Waiting for response"}
           </span>
@@ -357,13 +359,13 @@ function PendingAssistantCard({
 export function SessionTracePanel({ traceEvents }: { traceEvents: AgentEvent[] }) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-      <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
         Trace events
       </p>
       {traceEvents.length === 0 ? (
         <p className="mt-2">No trace events captured.</p>
       ) : (
-        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+        <pre className="mt-2 max-h-64 overflow-auto text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
           {formatJson(traceEvents)}
         </pre>
       )}
@@ -419,7 +421,7 @@ function MessageCard({
             <time
               suppressHydrationWarning
               dateTime={message.timestamp ? new Date(message.timestamp).toISOString() : undefined}
-              className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]"
+              className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
             >
               {formatMessageTimestamp(message.timestamp)}
             </time>
@@ -453,14 +455,14 @@ function MessageCard({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-xs font-semibold text-[var(--bo-fg)]">Assistant</p>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 {message.provider} · {message.model}
               </p>
             </div>
             <time
               suppressHydrationWarning
               dateTime={message.timestamp ? new Date(message.timestamp).toISOString() : undefined}
-              className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]"
+              className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
             >
               {formatMessageTimestamp(message.timestamp)}
             </time>
@@ -506,7 +508,7 @@ function MessageCard({
 
           {showUsage ? (
             <div className="mt-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-[11px] text-[var(--bo-muted)]">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Usage
               </p>
               <p className="mt-1">
@@ -536,7 +538,7 @@ function MessageCard({
             <time
               suppressHydrationWarning
               dateTime={message.timestamp ? new Date(message.timestamp).toISOString() : undefined}
-              className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]"
+              className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
             >
               {formatMessageTimestamp(message.timestamp)}
             </time>
@@ -572,7 +574,7 @@ function ContentBlock({
     case "thinking":
       return (
         <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Thinking
           </p>
           <p className="mt-1 whitespace-pre-wrap text-[var(--bo-fg)]">{block.thinking}</p>
@@ -614,25 +616,25 @@ function ToolCallBlock({
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Tool call · {name}
         </p>
         {liveTool ? (
-          <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-accent)]">
+          <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent)] uppercase">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
             Running
           </span>
         ) : null}
       </div>
-      <pre className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+      <pre className="mt-1 text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
         {formatJson(argumentsValue)}
       </pre>
       {liveTool && liveTool.partialResult !== null ? (
         <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Live result
           </p>
-          <pre className="mt-1 whitespace-pre-wrap text-[11px] text-[var(--bo-fg)]">
+          <pre className="mt-1 text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
             {formatJson(liveTool.partialResult)}
           </pre>
         </div>
@@ -640,11 +642,11 @@ function ToolCallBlock({
       {completedToolResult ? (
         <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Result
             </p>
             {completedToolResult.isError ? (
-              <span className="text-[10px] uppercase tracking-[0.22em] text-red-500">Error</span>
+              <span className="text-[10px] tracking-[0.22em] text-red-500 uppercase">Error</span>
             ) : null}
           </div>
           <div className="mt-1 space-y-2 text-[11px] text-[var(--bo-fg)]">

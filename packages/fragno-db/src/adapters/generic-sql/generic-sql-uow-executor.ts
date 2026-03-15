@@ -1,17 +1,8 @@
-import type {
-  CompiledMutation,
-  MutationResult,
-  UOWExecutor,
-} from "../../query/unit-of-work/unit-of-work";
-import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
-import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
-import type { DriverConfig } from "./driver-config";
-import { ResultInterpreter } from "./result-interpreter";
-import { sql } from "../../sql-driver/sql";
-import { createId } from "../../id";
 import superjson from "superjson";
-import { createColdKysely } from "./migration/cold-kysely";
+
 import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment.schema";
+import { createId } from "../../id";
+import { type SqlNamingStrategy } from "../../naming/sql-naming";
 import {
   type OutboxConfig,
   type OutboxRefLookup,
@@ -22,7 +13,17 @@ import {
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
-import { type SqlNamingStrategy } from "../../naming/sql-naming";
+import type {
+  CompiledMutation,
+  MutationResult,
+  UOWExecutor,
+} from "../../query/unit-of-work/unit-of-work";
+import { sql } from "../../sql-driver/sql";
+import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
+import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
+import type { DriverConfig } from "./driver-config";
+import { createColdKysely } from "./migration/cold-kysely";
+import { ResultInterpreter } from "./result-interpreter";
 
 export interface ExecutorOptions {
   dryRun?: boolean;

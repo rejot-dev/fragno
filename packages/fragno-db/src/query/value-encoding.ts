@@ -1,3 +1,4 @@
+import type { NamingResolver } from "../naming/sql-naming";
 import type { AnyTable, AnyColumn } from "../schema/create";
 import { FragnoId, FragnoReference } from "../schema/create";
 import {
@@ -5,7 +6,6 @@ import {
   generateRuntimeDefault,
   type RuntimeDefaultContext,
 } from "./column-defaults";
-import type { NamingResolver } from "../naming/sql-naming";
 
 /**
  * Marker class for reference column values that need subquery resolution.

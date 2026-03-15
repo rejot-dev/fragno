@@ -1,4 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
+
+import type {
+  RawColumnValues,
+  TableToColumnValues,
+  TableToInsertValues,
+  TableToUpdateValues,
+} from "../query/simple-query-interface";
 import {
   column,
   FragnoId,
@@ -8,12 +15,6 @@ import {
   schema,
   SchemaBuilder,
 } from "./create";
-import type {
-  RawColumnValues,
-  TableToColumnValues,
-  TableToInsertValues,
-  TableToUpdateValues,
-} from "../query/simple-query-interface";
 
 describe("create", () => {
   it("should create a table with columns using callback pattern", () => {

@@ -1,7 +1,7 @@
-import type { AppLoadContext, EntryContext, HandleErrorFunction } from "react-router";
-import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
+import type { AppLoadContext, EntryContext, HandleErrorFunction } from "react-router";
+import { ServerRouter } from "react-router";
 
 export default async function handleRequest(
   request: Request,

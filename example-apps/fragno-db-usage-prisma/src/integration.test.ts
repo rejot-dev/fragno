@@ -1,8 +1,10 @@
 import { describe, expect, it, beforeAll, beforeEach, afterEach } from "vitest";
-import { cli } from "gunshi";
+
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
+
+import { cli } from "gunshi";
 
 describe("Fragno Database Prisma", () => {
   // Store original console.log

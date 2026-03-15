@@ -1,16 +1,8 @@
-import { defineFragment, instantiate } from "@fragno-dev/core";
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import { authSchema } from "./schema";
-import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
-import { createSessionServices, sessionRoutesFactory } from "./session/session";
-import { createActiveOrganizationServices } from "./organization/active-organization";
-import { createOrganizationInvitationServices } from "./organization/invitation-services";
-import { createOrganizationMemberServices } from "./organization/member-services";
-import { createOrganizationServices } from "./organization/organization-services";
-import { organizationRoutesFactory } from "./organization/routes";
-import { createOAuthServices } from "./oauth/oauth-services";
-import { oauthRoutesFactory } from "./oauth/routes";
+
 import {
   clearDefaultOrganizationId,
   createDefaultOrganizationPreferenceState,
@@ -31,7 +23,6 @@ import {
   type DefaultOrganizationResolution as AuthDefaultOrganizationResolution,
   type DefaultOrganizationResolutionStatus,
 } from "./client/default-organization";
-import { serializeSessionSeedForQuery } from "./session/session-seed";
 import type {
   AuthHooks,
   AuthHooksMap,
@@ -40,6 +31,14 @@ import type {
   SessionHookPayload,
   UserHookPayload,
 } from "./hooks";
+import { createOAuthServices } from "./oauth/oauth-services";
+import { oauthRoutesFactory } from "./oauth/routes";
+import type { AuthOAuthConfig } from "./oauth/types";
+import { createActiveOrganizationServices } from "./organization/active-organization";
+import { createOrganizationInvitationServices } from "./organization/invitation-services";
+import { createOrganizationMemberServices } from "./organization/member-services";
+import { createOrganizationServices } from "./organization/organization-services";
+import { organizationRoutesFactory } from "./organization/routes";
 import type {
   DefaultOrganizationRole,
   OrganizationConfig,
@@ -50,6 +49,11 @@ import type {
   OrganizationInvitationStatus,
 } from "./organization/types";
 import { toExternalId } from "./organization/utils";
+import { authSchema } from "./schema";
+import { createSessionServices, sessionRoutesFactory } from "./session/session";
+import { serializeSessionSeedForQuery } from "./session/session-seed";
+import type { Role } from "./types";
+import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -59,8 +63,6 @@ import {
   type SortOrder,
 } from "./user/user-overview";
 import type { CookieOptions } from "./utils/cookie";
-import type { Role } from "./types";
-import type { AuthOAuthConfig } from "./oauth/types";
 
 export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
   cookieOptions?: CookieOptions;

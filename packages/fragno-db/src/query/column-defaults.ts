@@ -1,5 +1,5 @@
-import type { AnyColumn } from "../schema/create";
 import { createId } from "../id";
+import type { AnyColumn } from "../schema/create";
 
 export type RuntimeDefaultContext = {
   now?: () => Date;

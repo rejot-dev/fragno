@@ -1,4 +1,5 @@
 import type { AnySchema, AnyTable } from "@fragno-dev/db/schema";
+
 import type {
   InMemoryLofiAdapterOptions,
   LofiAdapter,

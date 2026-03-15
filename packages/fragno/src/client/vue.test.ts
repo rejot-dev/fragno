@@ -1,14 +1,17 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert, expectTypeOf } from "vitest";
+
+import { atom, computed, type ReadableAtom } from "nanostores";
+import { nextTick, ref, watch, effectScope } from "vue";
+import { z } from "zod";
+
+import { waitFor } from "@testing-library/vue";
+
+import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoute } from "../api/route";
 import { type FragnoPublicClientConfig } from "./client";
 import { createClientBuilder } from "./client";
-import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment-definition-builder";
-import { z } from "zod";
-import { refToAtom, useFragno } from "./vue";
-import { waitFor } from "@testing-library/vue";
-import { nextTick, ref, watch, effectScope } from "vue";
 import { FragnoClientUnknownApiError } from "./client-error";
-import { atom, computed, type ReadableAtom } from "nanostores";
+import { refToAtom, useFragno } from "./vue";
 
 global.fetch = vi.fn();
 

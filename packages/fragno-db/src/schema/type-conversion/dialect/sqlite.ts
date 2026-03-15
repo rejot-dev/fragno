@@ -1,7 +1,7 @@
-import type { AnyColumn } from "../../create";
-import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
 import type { SQLiteStorageMode } from "../../../adapters/generic-sql/sqlite-storage";
 import { sqliteStorageDefault } from "../../../adapters/generic-sql/sqlite-storage";
+import type { AnyColumn } from "../../create";
+import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
 
 /**
  * SQLite-specific type mapper.

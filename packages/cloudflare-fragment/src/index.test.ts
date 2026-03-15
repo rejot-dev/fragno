@@ -1,10 +1,12 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+
 import { createCloudflareApiClient } from "./cloudflare-api";
 import { cloudflareDeployRequestSchema } from "./contracts";
-import { buildCloudflareAppTag, buildCloudflareDeploymentTag } from "./deployment-tag";
 import { cloudflareFragmentDefinition, type CloudflareFragmentConfig } from "./definition";
+import { buildCloudflareAppTag, buildCloudflareDeploymentTag } from "./deployment-tag";
 import { cloudflareRoutesFactory } from "./routes";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

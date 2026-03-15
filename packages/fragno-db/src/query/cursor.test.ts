@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { decodeCursor, createCursorFromRecord, serializeCursorValues, Cursor } from "./cursor";
-import { column, idColumn, schema } from "../schema/create";
+
 import {
   BetterSQLite3DriverConfig,
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
 } from "../adapters/generic-sql/driver-config";
+import { column, idColumn, schema } from "../schema/create";
+import { decodeCursor, createCursorFromRecord, serializeCursorValues, Cursor } from "./cursor";
 
 describe("Cursor utilities", () => {
   describe("Cursor class encode and decode", () => {

@@ -1,5 +1,5 @@
-/** @type {import('prettier').Config} */
-const prettierConfig = {
+/** @type {import("prettier").Config} */
+export default {
   singleQuote: false,
   semi: true,
   tabWidth: 2,
@@ -27,15 +27,6 @@ const prettierConfig = {
       },
     },
   ],
-};
-
-/** @type {import('prettier-plugin-sql').SqlBaseOptions} */
-const prettierPluginSqlConfig = {
   language: "sqlite",
   keywordCase: "upper",
-};
-
-export default {
-  ...prettierConfig,
-  ...prettierPluginSqlConfig,
 };

@@ -1,9 +1,11 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
+
 import type { ResendEmailInput } from "@fragno-dev/resend-fragment";
+
 import type { Route } from "./+types/outbox-detail";
-import { formatTimestamp } from "./shared";
 import { fetchResendEmailDetail } from "./data";
 import type { ResendOutboxOutletContext } from "./outbox";
+import { formatTimestamp } from "./shared";
 
 type ResendOutboxDetailLoaderData = {
   email: Awaited<ReturnType<typeof fetchResendEmailDetail>>["email"];
@@ -37,7 +39,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
   if (!emailId || error || !email) {
     return (
       <div className="space-y-3 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Email detail
         </p>
         <p>{error ?? "We could not find that email in the current outbox page."}</p>
@@ -47,7 +49,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
         </p>
         <Link
           to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
           Back to outbox
         </Link>
@@ -96,7 +98,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">Email</p>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Email</p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{subject}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">ID: {email.id}</p>
           {email.resendId ? (
@@ -105,7 +107,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
         </div>
         <Link
           to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
         >
           Back to outbox
         </Link>
@@ -113,7 +115,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
 
       <div className="grid gap-3 md:grid-cols-2">
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Recipients
           </p>
           <p className="mt-2 text-sm text-[var(--bo-fg)]">{recipients}</p>
@@ -132,10 +134,10 @@ export default function BackofficeOrganisationResendOutboxDetail() {
         </section>
 
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Status</p>
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Status</p>
           <div className="mt-2 flex items-center gap-2">
             <span
-              className={`border px-2 py-1 text-[10px] uppercase tracking-[0.22em] ${statusTone}`}
+              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
             >
               {email.status}
             </span>
@@ -145,7 +147,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
       </div>
 
       <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Timeline</p>
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Timeline</p>
         <div className="mt-2 space-y-2 text-xs text-[var(--bo-muted-2)]">
           <p>
             Created: <span className="text-[var(--bo-fg)]">{formatTimestamp(email.createdAt)}</span>
@@ -161,19 +163,19 @@ export default function BackofficeOrganisationResendOutboxDetail() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Text body
           </p>
-          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--bo-fg)]">
+          <pre className="mt-2 text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
             {textBody || "—"}
           </pre>
         </section>
 
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             HTML body
           </p>
-          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--bo-fg)]">
+          <pre className="mt-2 text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
             {htmlBody || "—"}
           </pre>
         </section>
@@ -181,25 +183,25 @@ export default function BackofficeOrganisationResendOutboxDetail() {
 
       {(payload.tags && payload.tags.length > 0) || payload.headers ? (
         <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Metadata
           </p>
           {payload.tags && payload.tags.length > 0 ? (
             <div className="mt-2 text-xs text-[var(--bo-muted-2)]">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Tags
               </p>
-              <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-[var(--bo-fg)]">
+              <pre className="mt-1 text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
                 {JSON.stringify(payload.tags, null, 2)}
               </pre>
             </div>
           ) : null}
           {payload.headers ? (
             <div className="mt-3 text-xs text-[var(--bo-muted-2)]">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Headers
               </p>
-              <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-[var(--bo-fg)]">
+              <pre className="mt-1 text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
                 {JSON.stringify(payload.headers, null, 2)}
               </pre>
             </div>
@@ -208,7 +210,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
       ) : null}
 
       <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">Errors</p>
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Errors</p>
         <p className="mt-2 text-sm text-[var(--bo-fg)]">{errorLabel}</p>
       </section>
     </div>

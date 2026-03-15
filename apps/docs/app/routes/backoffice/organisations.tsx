@@ -1,8 +1,10 @@
-import { Link, useOutletContext } from "react-router";
 import { useMemo, useState } from "react";
+import { Link, useOutletContext } from "react-router";
+
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+
 import {
   Notice,
   type ActionNotice,
@@ -140,7 +142,7 @@ export default function BackofficeOrganisations() {
           <div className="overflow-hidden border border-[color:var(--bo-border)]">
             <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
               <thead className="bg-[var(--bo-panel-2)] text-left">
-                <tr className="text-[11px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   <th scope="col" className="px-3 py-2">
                     Organisation
                   </th>
@@ -176,7 +178,7 @@ export default function BackofficeOrganisations() {
                             type="button"
                             onClick={() => handleInvitationAction(entry, "accept")}
                             disabled={respondingInvitation}
-                            className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                            className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                           >
                             {isWorking ? "Accepting..." : "Accept"}
                           </button>
@@ -184,7 +186,7 @@ export default function BackofficeOrganisations() {
                             type="button"
                             onClick={() => handleInvitationAction(entry, "reject")}
                             disabled={respondingInvitation}
-                            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                           >
                             {isWorking ? "Rejecting..." : "Reject"}
                           </button>
@@ -218,20 +220,20 @@ export default function BackofficeOrganisations() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--bo-muted-2)]">
+                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       {organization.slug}
                     </p>
                     <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
                       {organization.name}
                     </h2>
                   </div>
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted)]">
+                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
                     {preferenceState.badgeLabel}
                   </span>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
                   <p className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                    <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                       Roles
                     </span>
                     <span className="font-semibold text-[var(--bo-fg)]">
@@ -239,7 +241,7 @@ export default function BackofficeOrganisations() {
                     </span>
                   </p>
                   <p className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--bo-muted-2)]">
+                    <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                       Created
                     </span>
                     <span>{formatDate(organization.createdAt)}</span>
@@ -253,18 +255,18 @@ export default function BackofficeOrganisations() {
                         handleSetDefaultOrganization(organization.id, organization.name)
                       }
                       disabled={settingActiveOrganization}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       {settingActiveOrganization ? "Updating..." : preferenceState.actionLabel}
                     </button>
                   ) : (
-                    <span className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]">
+                    <span className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase">
                       {preferenceState.actionLabel}
                     </span>
                   )}
                   <Link
                     to={`/backoffice/organisations/${organization.id}`}
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)] transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                   >
                     Open
                   </Link>

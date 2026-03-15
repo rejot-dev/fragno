@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+
 import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 import {
   defineWorkflow,
@@ -10,8 +10,11 @@ import {
   type WorkflowsRegistry,
 } from "@fragno-dev/workflows";
 
+import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+
 import { PiLogger } from "../../debug-log";
 import { piSchema } from "../../schema";
+import type { PiSessionStatus } from "../constants";
 import { extractAssistantTextFromMessage, normalizeSteeringMode } from "../mappers";
 import type {
   PiActiveSessionState,
@@ -26,13 +29,12 @@ import type {
   PiToolSideEffectReducerRegistry,
   PiTurnSummary,
 } from "../types";
-import type { PiSessionStatus } from "../constants";
-import { runAgentTurn, type AgentLoopParams } from "./agent-runner";
 import {
   createPiActiveSessionState,
   createInitialPiAgentLoopState,
   ensurePiActiveSessionState,
 } from "./active-session";
+import { runAgentTurn, type AgentLoopParams } from "./agent-runner";
 import { createReplayContext, hydrateReplayCache, parsePersistedToolJournal } from "./tool-journal";
 
 export { createInitialPiAgentLoopState, ensurePiActiveSessionState };

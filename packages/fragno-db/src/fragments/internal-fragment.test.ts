@@ -1,20 +1,23 @@
+import { beforeAll, describe, expect, it } from "vitest";
+
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { beforeAll, describe, expect, it } from "vitest";
+
 import { instantiate } from "@fragno-dev/core";
+
+import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
+import { getRegistryForAdapterSync } from "../internal/adapter-registry";
+import { dbNow } from "../query/db-now";
+import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
+import type { FragnoId } from "../schema/create";
 import {
   internalFragmentDef,
   internalSchema,
   SETTINGS_NAMESPACE,
   getSchemaVersionFromDatabase,
 } from "./internal-fragment";
-import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
-import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
-import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
-import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
-import { dbNow } from "../query/db-now";
-import type { FragnoId } from "../schema/create";
-import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 
 type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
   databaseAdapter: SqlAdapter;

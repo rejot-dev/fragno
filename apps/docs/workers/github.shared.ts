@@ -1,4 +1,5 @@
 import type { GitHubAppFragmentConfig } from "@fragno-dev/github-app-fragment";
+
 import type { GitHubConfig } from "@/fragno/github";
 
 export type RuntimeGitHubConfig = GitHubConfig & {

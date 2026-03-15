@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import { Copy, Check } from "lucide-react";
+import { useState, useCallback } from "react";
 
 const LLM_PROMPT = `Add Fragno Forms to my application following docs on https://fragno.dev/docs/forms
 For examples on how to use client hooks see: https://fragno.dev/docs/forms/hooks

@@ -1,13 +1,16 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
+
 import type {
   ResendEmailDetail,
   ResendEmailRecord,
   ResendEmailSummary,
   ResendSendEmailInput,
 } from "@fragno-dev/resend-fragment";
-import type { ResendFragment } from "@/fragno/resend";
+
 import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
+import type { ResendFragment } from "@/fragno/resend";
+
 import type { ResendConfigState } from "./shared";
 
 const DEFAULT_PAGE_SIZE = 50;

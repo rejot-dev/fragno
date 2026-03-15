@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+
 import { parseSleepAfterInput } from "./sleep-after";
 
 describe("parseSleepAfterInput", () => {

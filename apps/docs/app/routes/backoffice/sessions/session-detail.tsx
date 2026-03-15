@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useOutletContext, useParams } from "react-router";
+
+import { createOrgPiClient } from "@/fragno/pi-client";
+import { findPiModelOption, parsePiAgentName } from "@/fragno/pi-shared";
+
 import type { Route } from "./+types/session-detail";
 import { fetchPiSessionDetail } from "./data";
-import type { PiSessionsOutletContext } from "./sessions";
-import { findPiModelOption, parsePiAgentName } from "@/fragno/pi-shared";
 import { useChatScroll } from "./session-detail/chat-scroll";
-import { createOrgPiClient } from "@/fragno/pi-client";
 import {
   SessionComposer,
   SessionConversationPanel,
@@ -13,6 +14,7 @@ import {
   SessionHeader,
   SessionTracePanel,
 } from "./session-detail/components";
+import type { PiSessionsOutletContext } from "./sessions";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId || !params.sessionId) {

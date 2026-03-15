@@ -1,8 +1,10 @@
-import { define } from "gunshi";
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
-import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+
+import { define } from "gunshi";
+
 import {
   baseArgs,
   createClientFromContext,

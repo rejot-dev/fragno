@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { StorageAdapter } from "./storage/types";
+
 import { resolveUploadFragmentConfig } from "./config";
+import type { StorageAdapter } from "./storage/types";
 
 const createAdapter = (overrides: Partial<StorageAdapter> = {}): StorageAdapter => ({
   name: "test",
