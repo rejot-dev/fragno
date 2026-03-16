@@ -139,6 +139,9 @@ importers:
       '@fragno-dev/jsonforms-shadcn-renderers':
         specifier: workspace:*
         version: link:../../packages/jsonforms-shadcn-renderers
+      '@fragno-dev/otp-fragment':
+        specifier: workspace:*
+        version: link:../../example-fragments/otp-fragment
       '@fragno-dev/pi-fragment':
         specifier: workspace:*
         version: link:../../packages/pi-fragment

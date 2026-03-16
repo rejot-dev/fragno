@@ -92,6 +92,10 @@
         "class_name": "Resend",
       },
       {
+        "name": "OTP",
+        "class_name": "Otp",
+      },
+      {
         "name": "UPLOAD",
         "class_name": "Upload",
       },
@@ -173,6 +177,10 @@
     {
       "tag": "v12",
       "new_sqlite_classes": ["Pi"],
+    },
+    {
+      "tag": "v13",
+      "new_sqlite_classes": ["Otp"],
     },
   ],
   "rules": [

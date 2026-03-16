@@ -8,6 +8,7 @@ import { Forms } from "./forms.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
 import { GitHub } from "./github.do";
 import { MailingList } from "./mailing-list.do";
+import { Otp } from "./otp.do";
 import { Pi } from "./pi.do";
 import { Resend } from "./resend.do";
 import { SandboxRegistry } from "./sandbox-registry.do";
@@ -28,6 +29,7 @@ export { SandboxRegistry };
 export { GitHub };
 export { GitHubWebhookRouter };
 export { Pi };
+export { Otp };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
