@@ -3,23 +3,26 @@ import type { DbNow, HookFn } from "@fragno-dev/db";
 import type { OtpType } from "./types";
 
 export type OtpTimestamp = Date | DbNow;
+export type OtpPayload = unknown;
 
 export interface OtpBasePayload {
   id: string;
-  userId: string;
+  externalId: string;
   type: OtpType;
   code: string;
   expiresAt: OtpTimestamp;
   createdAt: OtpTimestamp;
+  payload: OtpPayload | null;
 }
 
 export interface ResolvedOtpBasePayload {
   id: string;
-  userId: string;
+  externalId: string;
   type: OtpType;
   code: string;
   expiresAt: Date;
   createdAt: Date;
+  payload: OtpPayload | null;
 }
 
 export interface OtpIssuedHookPayload extends OtpBasePayload {}

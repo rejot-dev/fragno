@@ -81,12 +81,12 @@ describe("otp fragment", async () => {
 
   it("issues an OTP and invalidates earlier pending OTPs for the same user and type", async () => {
     const firstResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
-      body: { userId: "user-1", type: "email_verification" },
+      body: { externalId: "user-1", type: "email_verification" },
     });
     assert(firstResponse.type === "json");
 
     const secondResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
-      body: { userId: "user-1", type: "email_verification" },
+      body: { externalId: "user-1", type: "email_verification" },
     });
     assert(secondResponse.type === "json");
 
@@ -99,8 +99,8 @@ describe("otp fragment", async () => {
     expectOtpTimestamp(secondResponse.data.expiresAt);
 
     const otpRows = await fragments.otp.db.find("otp", (b) =>
-      b.whereIndex("idx_otp_user_type_createdAt", (eb) =>
-        eb.and(eb("userId", "=", "user-1"), eb("type", "=", "email_verification")),
+      b.whereIndex("idx_otp_externalId_type_createdAt", (eb) =>
+        eb.and(eb("externalId", "=", "user-1"), eb("type", "=", "email_verification")),
       ),
     );
 
@@ -110,14 +110,15 @@ describe("otp fragment", async () => {
   });
 
   it("confirms an OTP, returns database-time markers immediately, and resolves hook dates", async () => {
+    const payload = { event: "confirm-flow", traceId: "trace-1" };
     const issueResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
-      body: { userId: "user-2", type: "password_reset" },
+      body: { externalId: "user-2", type: "password_reset", payload },
     });
     assert(issueResponse.type === "json");
 
     const confirmResponse = await fragments.otp.callRoute("POST", "/otp/confirm", {
       body: {
-        userId: "user-2",
+        externalId: "user-2",
         type: "password_reset",
         code: issueResponse.data.code.toLowerCase(),
       },
@@ -132,8 +133,9 @@ describe("otp fragment", async () => {
     expect(onOtpIssued).toHaveBeenCalledTimes(1);
     expect(onOtpIssued).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-2",
+        externalId: "user-2",
         type: "password_reset",
+        payload,
         code: issueResponse.data.code,
         createdAt: expect.any(Date),
         expiresAt: expect.any(Date),
@@ -144,8 +146,9 @@ describe("otp fragment", async () => {
     expect(onOtpConfirmed).toHaveBeenCalledTimes(1);
     expect(onOtpConfirmed).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-2",
+        externalId: "user-2",
         type: "password_reset",
+        payload,
         code: issueResponse.data.code,
         createdAt: expect.any(Date),
         expiresAt: expect.any(Date),
@@ -178,14 +181,15 @@ describe("otp fragment", async () => {
       .build();
 
     try {
+      const payload = { event: "expire-flow", traceId: "trace-2" };
       const issueResponse = await expiringFragments.otp.callRoute("POST", "/otp/issue", {
-        body: { userId: "user-3", type: "passwordless_login" },
+        body: { externalId: "user-3", type: "passwordless_login", payload },
       });
       assert(issueResponse.type === "json");
 
       const confirmResponse = await expiringFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
-          userId: "user-3",
+          externalId: "user-3",
           type: "passwordless_login",
           code: issueResponse.data.code,
         },
@@ -200,7 +204,8 @@ describe("otp fragment", async () => {
       expect(onOtpExpired).toHaveBeenCalledWith(
         expect.objectContaining({
           id: issueResponse.data.id,
-          userId: "user-3",
+          externalId: "user-3",
+          payload,
           type: "passwordless_login",
           code: issueResponse.data.code,
           createdAt: expect.any(Date),
@@ -237,14 +242,14 @@ describe("otp fragment", async () => {
 
     try {
       const issueResponse = await lowercaseFragments.otp.callRoute("POST", "/otp/issue", {
-        body: { userId: "user-5", type: "email_verification" },
+        body: { externalId: "user-5", type: "email_verification" },
       });
       assert(issueResponse.type === "json");
       expect(issueResponse.data.code).toMatch(/^[abcdef123]{6}$/);
 
       const confirmResponse = await lowercaseFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
-          userId: "user-5",
+          externalId: "user-5",
           type: "email_verification",
           code: issueResponse.data.code,
         },
@@ -254,6 +259,59 @@ describe("otp fragment", async () => {
       expectOtpTimestamp(confirmResponse.data.confirmedAt);
     } finally {
       await lowercaseTest.cleanup();
+    }
+  });
+
+  it("requires exact case matching when confirming mixed-case OTPs", async () => {
+    const { test: mixedCaseTest, fragments: mixedCaseFragments } =
+      await buildDatabaseFragmentsTest()
+        .withTestAdapter({ type: "drizzle-pglite" })
+        .withFragment(
+          "otp",
+          instantiate(otpFragmentDefinition)
+            .withConfig({
+              alphabet: "AaBbCc",
+              codeLength: 1,
+            })
+            .withRoutes(otpRoutes),
+        )
+        .build();
+
+    try {
+      const issueResponse = await mixedCaseFragments.otp.callRoute("POST", "/otp/issue", {
+        body: { externalId: "user-7", type: "email_verification" },
+      });
+      assert(issueResponse.type === "json");
+      expect(issueResponse.data.code).toMatch(/^[AaBbCc]$/);
+
+      const mixedCaseCode = issueResponse.data.code;
+      const mismatchedCaseCode = mixedCaseCode === mixedCaseCode.toUpperCase()
+        ? mixedCaseCode.toLowerCase()
+        : mixedCaseCode.toUpperCase();
+
+      const mismatchedResponse = await mixedCaseFragments.otp.callRoute("POST", "/otp/confirm", {
+        body: {
+          externalId: "user-7",
+          type: "email_verification",
+          code: mismatchedCaseCode,
+        },
+      });
+      assert(mismatchedResponse.type === "error");
+      expect(mismatchedResponse.status).toBe(401);
+      expect(mismatchedResponse.error.code).toBe("OTP_INVALID");
+
+      const exactMatchResponse = await mixedCaseFragments.otp.callRoute("POST", "/otp/confirm", {
+        body: {
+          externalId: "user-7",
+          type: "email_verification",
+          code: mixedCaseCode,
+        },
+      });
+      assert(exactMatchResponse.type === "json");
+      expect(exactMatchResponse.data.confirmed).toBe(true);
+      expectOtpTimestamp(exactMatchResponse.data.confirmedAt);
+    } finally {
+      await mixedCaseTest.cleanup();
     }
   });
 
@@ -274,14 +332,15 @@ describe("otp fragment", async () => {
       .build();
 
     try {
+      const payload = { event: "persisted-expiry", traceId: "trace-3" };
       const issueResponse = await expiringFragments.otp.callRoute("POST", "/otp/issue", {
-        body: { userId: "user-6", type: "password_reset" },
+        body: { externalId: "user-6", type: "password_reset", payload },
       });
       assert(issueResponse.type === "json");
 
       const confirmResponse = await expiringFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
-          userId: "user-6",
+          externalId: "user-6",
           type: "password_reset",
           code: issueResponse.data.code,
         },
@@ -299,7 +358,7 @@ describe("otp fragment", async () => {
 
       const invalidateResponse = await expiringFragments.otp.callRoute("POST", "/otp/invalidate", {
         body: {
-          userId: "user-6",
+          externalId: "user-6",
           type: "password_reset",
         },
       });
@@ -311,7 +370,8 @@ describe("otp fragment", async () => {
       expect(onOtpExpired).toHaveBeenCalledWith(
         expect.objectContaining({
           id: issueResponse.data.id,
-          userId: "user-6",
+          externalId: "user-6",
+          payload,
           type: "password_reset",
           code: issueResponse.data.code,
           expiredAt: expect.any(Date),
@@ -331,19 +391,19 @@ describe("otp fragment", async () => {
 
   it("invalidates pending OTPs without confirming them", async () => {
     const issueResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
-      body: { userId: "user-4", type: "email_verification" },
+      body: { externalId: "user-4", type: "email_verification" },
     });
     assert(issueResponse.type === "json");
 
     const invalidateResponse = await fragments.otp.callRoute("POST", "/otp/invalidate", {
-      body: { userId: "user-4", type: "email_verification" },
+      body: { externalId: "user-4", type: "email_verification" },
     });
     assert(invalidateResponse.type === "json");
     expect(invalidateResponse.data).toEqual({ invalidatedCount: 1 });
 
     const confirmResponse = await fragments.otp.callRoute("POST", "/otp/confirm", {
       body: {
-        userId: "user-4",
+        externalId: "user-4",
         type: "email_verification",
         code: issueResponse.data.code,
       },
