@@ -46,6 +46,7 @@ export default function BackofficeWorkflowsLanding() {
           <section className="grid gap-3 md:grid-cols-3">
             {organizations.map(({ organization }) => {
               const piPath = `/backoffice/internals/workflows/${organization.id}/pi`;
+              const automationsPath = `/backoffice/internals/workflows/${organization.id}/automations`;
               const handleOrgClick = () => {
                 navigate(piPath);
               };
@@ -85,6 +86,13 @@ export default function BackofficeWorkflowsLanding() {
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Pi
+                    </Link>
+                    <Link
+                      to={automationsPath}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      Automations
                     </Link>
                   </div>
                 </div>

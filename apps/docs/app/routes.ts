@@ -158,6 +158,7 @@ export default [
     route("github/:orgId/*", "routes/api/github.ts"),
     route("upload/:orgId/*", "routes/api/upload.ts"),
     route("pi/:orgId/*", "routes/api/pi.ts"),
+    route("automations/:orgId/*", "routes/api/automations.ts"),
     route("workflows/:orgId/*", "routes/api/workflows.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),

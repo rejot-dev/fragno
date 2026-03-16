@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 import type { Auth } from "workers/auth.do";
+import type { Automations } from "workers/automations.do";
 import type { CloudflareWorkers } from "workers/cloudflare-wfp.do";
 import type { Forms } from "workers/forms.do";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
@@ -58,6 +59,19 @@ export function getAuthDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.AUTH.get(env.AUTH.idFromName(AUTH_SINGLETON_ID));
+}
+
+/**
+ * Helper to get the Automations Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getAutomationsDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Automations> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
 }
 
 /**

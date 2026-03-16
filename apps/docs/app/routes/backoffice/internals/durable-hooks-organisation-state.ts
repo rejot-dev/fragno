@@ -5,8 +5,8 @@ export type DurableHooksOrgFragment =
   | "resend"
   | "github"
   | "upload"
-  | "pi"
-  | "workflows";
+  | "automations"
+  | "pi";
 
 export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "cloudflare",
@@ -15,8 +15,8 @@ export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "resend",
   "github",
   "upload",
+  "automations",
   "pi",
-  "workflows",
 ] as const satisfies DurableHooksOrgFragment[];
 
 export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
@@ -27,7 +27,7 @@ export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
   github: "GitHub",
   upload: "Upload",
   pi: "Pi",
-  workflows: "Workflows",
+  automations: "Automations",
 };
 
 export const FRAGMENT_CONFIGURE_META: Record<
@@ -65,11 +65,19 @@ export const FRAGMENT_CONFIGURE_META: Record<
     path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
     label: "Configure Pi",
   },
-  workflows: {
-    path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
-    label: "Configure Workflows",
+  automations: {
+    path: (orgId) => `/backoffice/internals/durable-hooks/${orgId}`,
+    label: "Open Automations runtime",
   },
 };
+
+export const isDurableHookOrgFragment = (
+  value: string | null | undefined,
+): value is DurableHooksOrgFragment =>
+  Boolean(
+    value &&
+    DURABLE_HOOK_ORG_FRAGMENTS.includes(value as (typeof DURABLE_HOOK_ORG_FRAGMENTS)[number]),
+  );
 
 type ErrorLogger = (message?: unknown, ...optionalParams: unknown[]) => void;
 
