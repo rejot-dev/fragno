@@ -87,7 +87,7 @@
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^25.2.2",
     "tsdown": "^0.20.3",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

@@ -35,12 +35,12 @@
     "@types/react-dom": "^19.1.2",
     "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-basic-ssl": "^2.2.0",
-    "@vitest/coverage-istanbul": "^3.2.4",
+    "@vitest/coverage-istanbul": "^4.1.0",
     "drizzle-kit": "^0.31.5",
     "tailwindcss": "^4.1.4",
     "vite": "catalog:",
     "vite-env-only": "^3.0.3",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   }
 }

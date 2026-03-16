@@ -99,7 +99,7 @@
     "@types/babel__traverse": "^7.28.0",
     "@types/node": "^22.19.7",
     "@typescript/native-preview": "catalog:",
-    "@vitest/coverage-istanbul": "^3.2.4",
+    "@vitest/coverage-istanbul": "^4.1.0",
     "dedent": "^1.7.1",
     "eslint": "^9.39.2",
     "nodemon": "^3.1.11",
@@ -107,7 +107,7 @@
     "tsdown": "^0.12.9",
     "tsx": "^4.21.0",
     "vite": "catalog:",
-    "vitest": "^3.2.4",
+    "vitest": "catalog:",
     "webpack": "^5.104.1"
   },
   "peerDependencies": {

@@ -10,7 +10,7 @@ import { telegramSchema } from "./schema";
 import type { TelegramUpdate } from "./types";
 import { createTelegram, defineCommand } from "./types";
 
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 const webhookSecret = "secret-token";
 
@@ -102,7 +102,7 @@ describe("telegram-fragment", async () => {
     commandHandler.mockClear();
     sendOnCommand = false;
     editOnCommand = false;
-    vi.mocked(global.fetch).mockReset();
+    vi.mocked(globalThis.fetch).mockReset();
   });
 
   test("webhook validates secret", async () => {
@@ -280,7 +280,7 @@ describe("telegram-fragment", async () => {
       },
     };
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, result: sentMessage }),
     } as Response);
@@ -311,7 +311,7 @@ describe("telegram-fragment", async () => {
       edit_date: sentMessage.date + 10,
     };
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, result: editedMessage }),
     } as Response);
@@ -357,7 +357,7 @@ describe("telegram-fragment", async () => {
       },
     };
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, result: outgoingMessage }),
     } as Response);
@@ -401,7 +401,7 @@ describe("telegram-fragment", async () => {
       edit_date: outgoingMessage.date + 5,
     };
 
-    vi.mocked(global.fetch)
+    vi.mocked(globalThis.fetch)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ ok: true, result: outgoingMessage }),

@@ -13,11 +13,15 @@ const sendMock = vi.fn();
 const verifyMock = vi.fn();
 
 vi.mock("resend", () => {
+  class MockResend {
+    emails = { send: sendMock };
+    webhooks = { verify: verifyMock };
+  }
+
   return {
-    Resend: vi.fn().mockImplementation(() => ({
-      emails: { send: sendMock },
-      webhooks: { verify: verifyMock },
-    })),
+    Resend: vi.fn(function MockResendConstructor() {
+      return new MockResend();
+    }),
   };
 });
 
