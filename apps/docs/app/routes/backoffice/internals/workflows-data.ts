@@ -3,7 +3,7 @@ import type { RouterContextProvider } from "react-router";
 
 import type { createWorkflowsFragment, InstanceStatus } from "@fragno-dev/workflows";
 
-import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getAutomationsDurableObject, getPiDurableObject } from "@/cloudflare/cloudflare-utils";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -19,7 +19,7 @@ type WorkflowRouteResponse<T> =
   | { type: "json"; status: number; data: T }
   | WorkflowRouteErrorResponse;
 
-export const WORKFLOW_ORG_FRAGMENTS = ["pi"] as const;
+export const WORKFLOW_ORG_FRAGMENTS = ["pi", "automations"] as const;
 export type WorkflowOrgFragment = (typeof WORKFLOW_ORG_FRAGMENTS)[number];
 export type WorkflowInstanceStatus = InstanceStatus["status"];
 
@@ -33,6 +33,10 @@ export const WORKFLOW_FRAGMENT_META: Record<
   pi: {
     label: "Pi",
     configurePath: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
+  },
+  automations: {
+    label: "Automations",
+    configurePath: (orgId) => `/backoffice/internals/durable-hooks/${orgId}`,
   },
 };
 
@@ -188,14 +192,19 @@ const createWorkflowsRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  _fragment: WorkflowOrgFragment,
+  fragment: WorkflowOrgFragment,
 ): WorkflowsRouteCaller => {
-  const piDo = getPiDurableObject(context, orgId);
+  const doInstance =
+    fragment === "automations"
+      ? getAutomationsDurableObject(context, orgId)
+      : getPiDurableObject(context, orgId);
+  const mountRoute = fragment === "automations" ? "/api/automations" : "/api/workflows";
+
   return createRouteCaller<WorkflowsFragment>({
     baseUrl: request.url,
-    mountRoute: "/api/workflows",
+    mountRoute,
     baseHeaders: request.headers,
-    fetch: piDo.fetch.bind(piDo),
+    fetch: doInstance.fetch.bind(doInstance),
   }) as unknown as WorkflowsRouteCaller;
 };
 

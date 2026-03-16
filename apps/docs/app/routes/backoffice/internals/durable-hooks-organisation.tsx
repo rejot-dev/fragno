@@ -3,6 +3,7 @@ import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 
 import {
   getCloudflareWorkersDurableObject,
+  getAutomationsDurableObject,
   getGitHubDurableObject,
   getOtpDurableObject,
   getPiDurableObject,
@@ -21,6 +22,7 @@ import {
   FRAGMENT_CONFIGURE_META,
   FRAGMENT_LABELS,
   getDurableHooksLoaderErrorMessage,
+  isDurableHookOrgFragment,
   type DurableHooksOrgFragment,
 } from "./durable-hooks-organisation-state";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
@@ -47,7 +49,10 @@ const parsePageSize = (value: string | null) => {
 };
 
 const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null => {
-  if (value && DURABLE_HOOK_ORG_FRAGMENTS.includes(value as DurableHooksOrgFragment)) {
+  if (value === "workflows") {
+    return "automations";
+  }
+  if (value && isDurableHookOrgFragment(value)) {
     return value as DurableHooksOrgFragment;
   }
   return null;
@@ -116,8 +121,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
             cursor,
             pageSize,
           })) as DurableHookQueueResponse;
+        case "automations":
+          return (await getAutomationsDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
         case "pi":
-        case "workflows":
           return (await getPiDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,

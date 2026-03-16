@@ -123,6 +123,10 @@
         "name": "PI",
         "class_name": "Pi",
       },
+      {
+        "name": "AUTOMATIONS",
+        "class_name": "Automations",
+      },
     ],
   },
   /**
@@ -181,6 +185,10 @@
     {
       "tag": "v13",
       "new_sqlite_classes": ["Otp"],
+    },
+    {
+      "tag": "v14",
+      "new_sqlite_classes": ["Automations"],
     },
   ],
   "rules": [

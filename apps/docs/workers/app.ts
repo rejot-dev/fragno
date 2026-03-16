@@ -3,6 +3,7 @@ import System from "typebox/system";
 
 import { CloudflareContext } from "../app/cloudflare/cloudflare-context";
 import { Auth } from "./auth.do";
+import { Automations } from "./automations.do";
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
 import { Forms } from "./forms.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
@@ -20,6 +21,7 @@ import { Upload } from "./upload.do";
 export { MailingList };
 export { Forms };
 export { Auth };
+export { Automations };
 export { Telegram };
 export { Resend };
 export { Upload };
