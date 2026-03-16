@@ -19,6 +19,7 @@ import {
 } from "@/fragno/telegram";
 
 type StoredTelegramConfig = TelegramConfig & {
+  orgId?: string;
   webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -42,6 +43,7 @@ type ConfigResponse = {
 };
 
 const CONFIG_KEY = "telegram-config";
+const ORG_ID_STORAGE_KEY = "telegram-org-id";
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -205,6 +207,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   #fragmentConfig: TelegramFragmentConfig | null = null;
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
   #migrated = false;
+  #orgId: string | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
@@ -215,6 +218,58 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   async #loadConfig() {
     const config = await this.#state.storage.get<StoredTelegramConfig>(CONFIG_KEY);
     return config ?? null;
+  }
+
+  async #loadOrgId() {
+    if (this.#orgId) {
+      return this.#orgId;
+    }
+
+    const storedOrgId = await this.#state.storage.get<string>(ORG_ID_STORAGE_KEY);
+    if (typeof storedOrgId === "string" && storedOrgId.trim()) {
+      this.#orgId = storedOrgId.trim();
+      return this.#orgId;
+    }
+
+    const existingConfig = await this.#loadConfig();
+    const legacyOrgId = existingConfig?.orgId?.trim();
+    if (!legacyOrgId) {
+      return null;
+    }
+
+    this.#orgId = legacyOrgId;
+    await this.#state.storage.put(ORG_ID_STORAGE_KEY, legacyOrgId);
+    return legacyOrgId;
+  }
+
+  async #rememberOrgId(orgId: string) {
+    const normalizedOrgId = orgId.trim();
+    if (!normalizedOrgId) {
+      return null;
+    }
+
+    const existingOrgId = this.#orgId ?? (await this.#loadOrgId());
+    if (existingOrgId && existingOrgId !== normalizedOrgId) {
+      throw new Error(
+        `Telegram Durable Object is already bound to organisation "${existingOrgId}".`,
+      );
+    }
+
+    if (!existingOrgId) {
+      this.#orgId = normalizedOrgId;
+      await this.#state.storage.put(ORG_ID_STORAGE_KEY, normalizedOrgId);
+    }
+
+    return normalizedOrgId;
+  }
+
+  async #syncOrgIdFromRequest(request: Request) {
+    const orgId = new URL(request.url).searchParams.get("orgId")?.trim();
+    if (!orgId) {
+      return null;
+    }
+
+    return await this.#rememberOrgId(orgId);
   }
 
   #extractFragmentConfig(config: StoredTelegramConfig): TelegramFragmentConfig {
@@ -241,6 +296,16 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       return null;
     }
 
+    const orgId = await this.#loadOrgId();
+    const legacyOrgId = stored.orgId?.trim();
+    if (orgId && legacyOrgId && legacyOrgId !== orgId) {
+      throw new Error(`Telegram Durable Object is already bound to organisation "${orgId}".`);
+    }
+
+    if (!orgId) {
+      throw new Error("Missing organisation id.");
+    }
+
     const config = this.#extractFragmentConfig(stored);
 
     if (
@@ -248,7 +313,10 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       !this.#fragmentConfig ||
       !this.#configsEqual(this.#fragmentConfig, config)
     ) {
-      this.#fragment = createTelegramServer(config, this.#state);
+      this.#fragment = createTelegramServer(config, this.#state, {
+        env: this.#env,
+        orgId,
+      });
       this.#fragmentConfig = config;
       this.#migrated = false;
       this.#dispatcher = null;
@@ -293,6 +361,11 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       throw new Error(parsed.message);
     }
 
+    const normalizedOrgId = await this.#rememberOrgId(orgId);
+    if (!normalizedOrgId) {
+      throw new Error("Missing organisation id.");
+    }
+
     const now = new Date().toISOString();
     const existing = await this.#loadConfig();
     const stored: StoredTelegramConfig = {
@@ -301,10 +374,6 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-
-    if (!orgId) {
-      throw new Error("Missing organisation id.");
-    }
 
     await this.#state.storage.put(CONFIG_KEY, stored);
 
@@ -315,8 +384,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       throw new Error("Failed to migrate Telegram schema.");
     }
 
-    const webhookUrl = resolveWebhookUrl(origin, orgId, stored.webhookBaseUrl);
-    const webhookResult = await setTelegramWebhook(stored, webhookUrl, orgId);
+    const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
+    const webhookResult = await setTelegramWebhook(stored, webhookUrl, normalizedOrgId);
 
     return { ...buildConfigResponse(stored), webhook: webhookResult };
   }
@@ -338,6 +407,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async fetch(request: Request): Promise<Response> {
+    await this.#syncOrgIdFromRequest(request);
+
     const fragment = await this.#ensureFragment();
     if (!fragment) {
       return jsonResponse(

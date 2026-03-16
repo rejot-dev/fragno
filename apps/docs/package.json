@@ -31,6 +31,7 @@
     "@fragno-dev/fragment-mailing-list": "workspace:*",
     "@fragno-dev/github-app-fragment": "workspace:*",
     "@fragno-dev/jsonforms-shadcn-renderers": "workspace:*",
+    "@fragno-dev/otp-fragment": "workspace:*",
     "@fragno-dev/pi-fragment": "workspace:*",
     "@fragno-dev/resend-fragment": "workspace:*",
     "@fragno-dev/telegram-fragment": "workspace:*",

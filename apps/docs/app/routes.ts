@@ -153,6 +153,7 @@ export default [
     route("cloudflare/:orgId/*", "routes/api/cloudflare.ts"),
     route("resend/:orgId/*", "routes/api/resend.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
+    route("otp/:orgId/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgId/*", "routes/api/github.ts"),
     route("upload/:orgId/*", "routes/api/upload.ts"),

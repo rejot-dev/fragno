@@ -5,6 +5,7 @@ import type { Forms } from "workers/forms.do";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { MailingList } from "workers/mailing-list.do";
+import type { Otp } from "workers/otp.do";
 import type { Pi } from "workers/pi.do";
 import type { Resend } from "workers/resend.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
@@ -70,6 +71,19 @@ export function getTelegramDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
+}
+
+/**
+ * Helper to get the OTP Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getOtpDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Otp> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.OTP.get(env.OTP.idFromName(orgId));
 }
 
 /**

@@ -4,6 +4,7 @@ import { Link, Outlet, useLoaderData, useLocation } from "react-router";
 import {
   getCloudflareWorkersDurableObject,
   getGitHubDurableObject,
+  getOtpDurableObject,
   getPiDurableObject,
   getResendDurableObject,
   getTelegramDurableObject,
@@ -92,6 +93,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           })) as DurableHookQueueResponse;
         case "telegram":
           return (await getTelegramDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+          })) as DurableHookQueueResponse;
+        case "otp":
+          return (await getOtpDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
           })) as DurableHookQueueResponse;
