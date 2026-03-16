@@ -13,14 +13,15 @@ const dbNowSchema = z.object({
 const otpTimestampSchema = z.union([z.date(), dbNowSchema]);
 
 export const otpIssueInputSchema = z.object({
-  userId: z.string().min(1),
+  externalId: z.string().min(1),
   type: otpTypeSchema,
+  payload: z.unknown().optional(),
   durationMinutes: z.coerce.number().positive().optional(),
 });
 
 export const otpIssueOutputSchema = z.object({
   id: z.string(),
-  userId: z.string(),
+  externalId: z.string(),
   type: otpTypeSchema,
   code: z.string(),
   expiresAt: otpTimestampSchema,
@@ -28,7 +29,7 @@ export const otpIssueOutputSchema = z.object({
 });
 
 export const otpConfirmInputSchema = z.object({
-  userId: z.string().min(1),
+  externalId: z.string().min(1),
   type: otpTypeSchema,
   code: z.string().min(1),
 });
@@ -39,7 +40,7 @@ export const otpConfirmOutputSchema = z.object({
 });
 
 export const otpInvalidateInputSchema = z.object({
-  userId: z.string().min(1),
+  externalId: z.string().min(1),
   type: otpTypeSchema,
 });
 
@@ -63,10 +64,12 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
         inputSchema: otpIssueInputSchema,
         outputSchema: otpIssueOutputSchema,
         handler: async function ({ input }, { json }) {
-          const { userId, type, durationMinutes } = await input.valid();
+          const { externalId, type, payload, durationMinutes } = await input.valid();
 
           const [issuedOtp] = await this.handlerTx()
-            .withServiceCalls(() => [services.otp.issueOtp(userId, type, durationMinutes)] as const)
+            .withServiceCalls(() => [
+              services.otp.issueOtp(externalId, type, durationMinutes, payload),
+            ] as const)
             .execute();
 
           return json(issuedOtp);
@@ -79,10 +82,10 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
         outputSchema: otpConfirmOutputSchema,
         errorCodes: ["OTP_INVALID", "OTP_EXPIRED"] as const,
         handler: async function ({ input }, { json, error }) {
-          const { userId, type, code } = await input.valid();
+          const { externalId, type, code } = await input.valid();
 
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.otp.confirmOtp(userId, code, type)] as const)
+            .withServiceCalls(() => [services.otp.confirmOtp(externalId, code, type)] as const)
             .execute();
 
           if (!result.confirmed) {
@@ -105,10 +108,10 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
         inputSchema: otpInvalidateInputSchema,
         outputSchema: otpInvalidateOutputSchema,
         handler: async function ({ input }, { json }) {
-          const { userId, type } = await input.valid();
+          const { externalId, type } = await input.valid();
 
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.otp.invalidateOtps(userId, type)] as const)
+            .withServiceCalls(() => [services.otp.invalidateOtps(externalId, type)] as const)
             .execute();
 
           return json(result);
