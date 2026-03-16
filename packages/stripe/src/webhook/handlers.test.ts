@@ -74,12 +74,16 @@ function getEventJson(eventName: string, variant?: string): ShallowStripeEvent {
 
 // Mock the Stripe module
 vi.mock("stripe", () => {
+  class MockStripe {
+    subscriptions = {
+      retrieve: mockSubscriptionsRetrieve,
+    };
+  }
+
   return {
-    default: vi.fn().mockImplementation(() => ({
-      subscriptions: {
-        retrieve: mockSubscriptionsRetrieve,
-      },
-    })),
+    default: vi.fn(function MockStripeConstructor() {
+      return new MockStripe();
+    }),
   };
 });
 

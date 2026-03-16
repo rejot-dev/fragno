@@ -169,8 +169,8 @@ type BuildHarnessOptions = NonNullable<Parameters<typeof buildHarness>[1]>;
 type WorkflowsServiceWrapper = NonNullable<BuildHarnessOptions["wrapWorkflowsService"]>;
 
 const wrapWorkflowsServiceWithSpies = (
-  restoreInstanceStateSpy: ReturnType<typeof vi.fn>,
-  getInstanceStatusSpy?: ReturnType<typeof vi.fn>,
+  restoreInstanceStateSpy: (...args: unknown[]) => void,
+  getInstanceStatusSpy?: (...args: unknown[]) => void,
 ): WorkflowsServiceWrapper => {
   const wrapper: WorkflowsServiceWrapper = (service) =>
     new Proxy(service, {

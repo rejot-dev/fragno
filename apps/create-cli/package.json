@@ -36,7 +36,8 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/node": "^22.19.7"
+    "@types/node": "^22.19.7",
+    "vitest": "catalog:"
   },
   "engines": {
     "node": ">=22"

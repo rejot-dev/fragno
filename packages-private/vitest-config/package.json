@@ -17,13 +17,13 @@
     "report": "nyc report -t coverage/merged --report-dir coverage/report --reporter=html --exclude-after-remap false && echo -e '\nopen ./coverage/report/index.html'"
   },
   "dependencies": {
-    "@vitest/coverage-istanbul": "^3.2.4"
+    "@vitest/coverage-istanbul": "^4.1.0"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
     "@typescript/native-preview": "catalog:",
-    "@vitest/ui": "^3.2.4",
+    "@vitest/ui": "^4.1.0",
     "glob": "^11.1.0",
     "nyc": "^17.1.0"
   }

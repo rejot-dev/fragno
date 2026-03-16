@@ -35,9 +35,9 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/express": "^5.0.6",
     "@types/node": "^22.19.7",
-    "@vitest/coverage-istanbul": "^3.2.4",
+    "@vitest/coverage-istanbul": "^4.1.0",
     "express": "^5.2.1",
-    "vitest": "^3.2.4",
+    "vitest": "catalog:",
     "zod": "^4.3.5"
   },
   "engines": {

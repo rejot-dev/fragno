@@ -21,26 +21,33 @@ const mockResolveEntityFromRequest = vi.fn();
 
 // Mock the Stripe module
 vi.mock("stripe", () => {
+  class MockStripe {
+    customers = {
+      search: mockCustomersSearch,
+      create: mockCustomersCreate,
+    };
+
+    checkout = {
+      sessions: {
+        create: mockCheckoutSessionsCreate,
+      },
+    };
+
+    subscriptions = {
+      retrieve: mockSubscriptionsRetrieve,
+    };
+
+    billingPortal = {
+      sessions: {
+        create: mockBillingPortalSessionsCreate,
+      },
+    };
+  }
+
   return {
-    default: vi.fn().mockImplementation(() => ({
-      customers: {
-        search: mockCustomersSearch,
-        create: mockCustomersCreate,
-      },
-      checkout: {
-        sessions: {
-          create: mockCheckoutSessionsCreate,
-        },
-      },
-      subscriptions: {
-        retrieve: mockSubscriptionsRetrieve,
-      },
-      billingPortal: {
-        sessions: {
-          create: mockBillingPortalSessionsCreate,
-        },
-      },
-    })),
+    default: vi.fn(function MockStripeConstructor() {
+      return new MockStripe();
+    }),
   };
 });
 

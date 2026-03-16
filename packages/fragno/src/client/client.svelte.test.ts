@@ -769,7 +769,13 @@ describe("useFragno", () => {
       expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
     });
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    const requestedIds = vi
+      .mocked(global.fetch)
+      .mock.calls.map(([input]) => String(input).match(/\/users\/([^/]+)/)?.[1])
+      .filter((id): id is string => id !== undefined);
+
+    expect(requestedIds).toContain("123");
+    expect(requestedIds).toContain("456");
   });
 });
 

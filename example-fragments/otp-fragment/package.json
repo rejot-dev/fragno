@@ -29,6 +29,6 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "kysely": "^0.28.10",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   }
 }
