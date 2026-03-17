@@ -151,6 +151,9 @@ importers:
       '@fragno-dev/telegram-fragment':
         specifier: workspace:*
         version: link:../../packages/telegram-fragment
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../../packages/fragno-test
       '@fragno-dev/upload':
         specifier: workspace:*
         version: link:../../packages/fragment-upload

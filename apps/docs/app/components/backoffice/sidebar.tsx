@@ -21,6 +21,7 @@ type NavItem = {
 function createNavItems(): NavItem[] {
   return [
     { label: "Dashboard", to: "/backoffice", end: true },
+    { label: "Automations", to: "/backoffice/automations" },
     { label: "Sessions", to: "/backoffice/sessions" },
     {
       label: "Connections",

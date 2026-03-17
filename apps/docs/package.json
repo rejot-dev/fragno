@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm run generate:og && react-router build",
+    "build": "react-router build",
     "cloudflare:debug-worker": "tsx scripts/upload-debug-dispatch-worker.ts",
     "generate:og": "tsx scripts/generate-og-images.tsx",
     "deploy": "pnpm run build && wrangler deploy",
@@ -84,6 +84,7 @@
     "@cloudflare/vite-plugin": "^1.28.0",
     "@cloudflare/vitest-pool-workers": "^0.13.0",
     "@cloudflare/workers-types": "^4.20260301.1",
+    "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^7.12.0",
     "@resvg/resvg-js": "^2.6.2",

@@ -42,6 +42,17 @@ export default [
         "routes/backoffice/connections/github/setup-callback.tsx",
       ),
       route("connections/upload", "routes/backoffice/connections/upload/index.tsx"),
+      route("automations", "routes/backoffice/automations/index.tsx"),
+      route(
+        "automations/:orgId/claims/complete",
+        "routes/backoffice/automations/claims-complete.tsx",
+      ),
+      route("automations/:orgId", "routes/backoffice/automations/organisation-layout.tsx", [
+        index("routes/backoffice/automations/organisation-index.tsx"),
+        route("scripts", "routes/backoffice/automations/scripts.tsx"),
+        route("triggers", "routes/backoffice/automations/triggers.tsx"),
+        route("identity", "routes/backoffice/automations/identity.tsx"),
+      ]),
       route("environments", "routes/backoffice/environments/index.tsx"),
       route("environments/workers", "routes/backoffice/environments/workers.tsx"),
       route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),

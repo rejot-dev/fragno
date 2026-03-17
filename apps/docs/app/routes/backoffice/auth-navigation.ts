@@ -16,18 +16,22 @@ export function sanitizeBackofficeReturnTo(value: string | null | undefined): st
     return null;
   }
 
-  let cleanedPath: string;
+  let cleanedUrl: URL;
   try {
-    cleanedPath = new URL(trimmed, "http://localhost").pathname;
+    cleanedUrl = new URL(trimmed, "http://localhost");
   } catch {
     return null;
   }
 
-  if (!isBackofficePath(cleanedPath)) {
+  if (!isBackofficePath(cleanedUrl.pathname)) {
     return null;
   }
 
-  return cleanedPath === BACKOFFICE_LOGIN_PATH ? BACKOFFICE_HOME_PATH : cleanedPath;
+  if (cleanedUrl.pathname === BACKOFFICE_LOGIN_PATH) {
+    return BACKOFFICE_HOME_PATH;
+  }
+
+  return `${cleanedUrl.pathname}${cleanedUrl.search}`;
 }
 
 export function buildBackofficeLoginPath(returnTo?: string | null): string {

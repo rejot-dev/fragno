@@ -1,8 +1,7 @@
-/// <reference types="@cloudflare/vitest-pool-workers/types" />
-import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import AjvModule from "ajv";
+import { env } from "cloudflare:workers";
 
 import { validateToolArguments } from "@mariozechner/pi-ai";
 

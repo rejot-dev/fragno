@@ -9,9 +9,9 @@ import {
 } from "./auth-navigation";
 
 describe("sanitizeBackofficeReturnTo", () => {
-  test("trims values and strips query strings and hashes for backoffice paths", () => {
+  test("trims values, preserves query strings, and strips hashes for backoffice paths", () => {
     expect(sanitizeBackofficeReturnTo(" /backoffice/settings?tab=members#security ")).toBe(
-      "/backoffice/settings",
+      "/backoffice/settings?tab=members",
     );
   });
 
@@ -32,7 +32,7 @@ describe("sanitizeBackofficeReturnTo", () => {
 describe("backoffice auth navigation helpers", () => {
   test("builds login paths with a cleaned backoffice returnTo only", () => {
     expect(buildBackofficeLoginPath("/backoffice/settings?tab=members#security")).toBe(
-      "/backoffice/login?returnTo=%2Fbackoffice%2Fsettings",
+      "/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
     );
     expect(buildBackofficeLoginPath("/backoffice/login?x=1")).toBe(BACKOFFICE_LOGIN_PATH);
   });
@@ -42,7 +42,7 @@ describe("backoffice auth navigation helpers", () => {
       readBackofficeReturnTo(
         "http://localhost/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
       ),
-    ).toBe("/backoffice/settings");
+    ).toBe("/backoffice/settings?tab=members");
     expect(
       readBackofficeReturnTo("http://localhost/backoffice/login?returnTo=%2Fbackoffice-login"),
     ).toBe(BACKOFFICE_HOME_PATH);

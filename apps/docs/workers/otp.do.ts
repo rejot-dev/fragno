@@ -5,6 +5,7 @@ import {
 import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
+import type { ResolvedOtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import {
   loadDurableHookQueue,
@@ -12,13 +13,15 @@ import {
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import {
-  DEFAULT_TELEGRAM_LINK_EXPIRY_MINUTES,
-  OTP_LINK_TYPE,
+  DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
+  IDENTITY_LINK_TYPE,
+  buildIdentityClaimCompletedAutomationEvent,
+  buildIdentityClaimCompletionUrl,
   createOtpServer,
+  identityClaimConfirmationPayloadSchema,
+  identityClaimPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
-
-const START_TOKEN_PREFIX = "otp-start:telegram-link:";
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -28,39 +31,37 @@ const jsonResponse = (payload: unknown, status = 200) =>
     },
   });
 
-type StoredTelegramLinkStartToken = {
-  userId: string;
-  code: string;
-};
-
-export type IssueTelegramLinkOtpInput = {
-  userId: string;
+export type IssueIdentityClaimInput = {
+  orgId: string;
+  linkSource: string;
+  externalActorId: string;
   expiresInMinutes?: number;
+  publicBaseUrl: string;
 };
 
-export type IssueTelegramLinkOtpResult = {
+export type IssueIdentityClaimResult = {
   ok: true;
-  userId: string;
-  startToken: string;
+  externalId: string;
+  code: string;
+  url: string;
+  type: typeof IDENTITY_LINK_TYPE;
 };
 
-export type ConsumeTelegramLinkOtpInput = {
-  startToken: string;
+export type ConfirmIdentityClaimInput = {
+  externalId: string;
+  code: string;
+  subjectUserId: string;
 };
 
-export type ConsumeTelegramLinkOtpResult =
+export type ConfirmIdentityClaimResult =
   | {
       ok: true;
-      userId: string;
+      externalId: string;
     }
   | {
       ok: false;
-      error: "INVALID_START_TOKEN" | "OTP_INVALID" | "OTP_EXPIRED";
+      error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED";
     };
-
-const startTokenKey = (startToken: string) => `${START_TOKEN_PREFIX}${startToken}`;
-
-const createStartToken = () => `tglnk_${crypto.randomUUID().replace(/-/g, "")}`;
 
 const emptyQueue = {
   configured: true,
@@ -84,9 +85,55 @@ export class Otp extends DurableObject<CloudflareEnv> {
     this.#state = state;
   }
 
+  async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload) {
+    if (payload.type !== IDENTITY_LINK_TYPE) {
+      return;
+    }
+
+    const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
+    if (!claimResult.success) {
+      console.warn("Ignoring confirmed identity claim OTP with invalid payload", {
+        otpId: payload.id,
+        type: payload.type,
+        issues: claimResult.error.issues,
+      });
+      return;
+    }
+
+    const confirmationResult = identityClaimConfirmationPayloadSchema.safeParse(
+      payload.confirmationPayload,
+    );
+    if (!confirmationResult.success) {
+      console.warn("Ignoring confirmed identity claim OTP with invalid confirmation payload", {
+        otpId: payload.id,
+        type: payload.type,
+        issues: confirmationResult.error.issues,
+      });
+      return;
+    }
+
+    const claim = claimResult.data;
+    const confirmation = confirmationResult.data;
+
+    const automationsDo = this.#env.AUTOMATIONS.get(this.#env.AUTOMATIONS.idFromName(claim.orgId));
+
+    await automationsDo.ingestEvent(
+      buildIdentityClaimCompletedAutomationEvent({
+        orgId: claim.orgId,
+        userId: confirmation.subjectUserId,
+        otp: payload,
+        claim,
+      }),
+    );
+  }
+
   async #ensureFragment() {
     if (!this.#fragment) {
-      this.#fragment = createOtpServer(this.#state);
+      this.#fragment = createOtpServer(this.#state, {
+        hooks: {
+          onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
+        },
+      });
       this.#migrated = false;
       this.#dispatcher = null;
     }
@@ -113,80 +160,100 @@ export class Otp extends DurableObject<CloudflareEnv> {
     return this.#fragment;
   }
 
-  async issueTelegramLinkOtp(
-    input: IssueTelegramLinkOtpInput,
-  ): Promise<IssueTelegramLinkOtpResult> {
-    const userId = input.userId.trim();
-    if (!userId) {
-      throw new Error("User id is required.");
+  async #notifyDispatcher() {
+    if (!this.#dispatcher?.notify) {
+      return;
+    }
+
+    await this.#dispatcher.notify({
+      source: "request",
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
+  }
+
+  async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
+    const orgId = input.orgId.trim();
+    const linkSource = input.linkSource.trim();
+    const externalActorId = input.externalActorId.trim();
+    const publicBaseUrl = input.publicBaseUrl.trim();
+
+    if (!orgId || !linkSource || !externalActorId || !publicBaseUrl) {
+      throw new Error("orgId, linkSource, externalActorId, and publicBaseUrl are required.");
     }
 
     const fragment = await this.#ensureFragment();
     const expiresInMinutes =
       typeof input.expiresInMinutes === "number" && Number.isFinite(input.expiresInMinutes)
         ? Math.max(1, Math.floor(input.expiresInMinutes))
-        : DEFAULT_TELEGRAM_LINK_EXPIRY_MINUTES;
+        : DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
 
     const issued = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.otp.issueOtp(userId, OTP_LINK_TYPE, expiresInMinutes)] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    const startToken = createStartToken();
-    const startRecord: StoredTelegramLinkStartToken = {
-      userId: issued.userId,
-      code: issued.code,
-    };
-
-    await this.#state.storage.put(startTokenKey(startToken), startRecord);
-
-    return {
-      ok: true,
-      userId: issued.userId,
-      startToken,
-    };
-  }
-
-  async consumeTelegramLinkOtp(
-    input: ConsumeTelegramLinkOtpInput,
-  ): Promise<ConsumeTelegramLinkOtpResult> {
-    const startToken = input.startToken.trim();
-    if (!startToken) {
-      return { ok: false, error: "INVALID_START_TOKEN" };
-    }
-
-    const fragment = await this.#ensureFragment();
-    const key = startTokenKey(startToken);
-    const startRecord = await this.#state.storage.get<StoredTelegramLinkStartToken>(key);
-    if (!startRecord) {
-      return { ok: false, error: "INVALID_START_TOKEN" };
-    }
-
-    const confirmation = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
           () =>
             [
-              fragment.services.otp.confirmOtp(startRecord.userId, startRecord.code, OTP_LINK_TYPE),
+              fragment.services.otp.issueOtp(
+                externalActorId,
+                IDENTITY_LINK_TYPE,
+                expiresInMinutes,
+                {
+                  orgId,
+                  linkSource,
+                  externalActorId,
+                },
+              ),
             ] as const,
         )
         .transform(({ serviceResult: [result] }) => result)
         .execute();
     });
-    if (!confirmation.confirmed) {
-      await this.#state.storage.delete(key);
-      return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
-    }
 
-    await this.#state.storage.delete(key);
+    await this.#notifyDispatcher();
 
     return {
       ok: true,
-      userId: startRecord.userId,
+      externalId: issued.externalId,
+      code: issued.code,
+      url: buildIdentityClaimCompletionUrl(publicBaseUrl, orgId, issued.externalId, issued.code),
+      type: IDENTITY_LINK_TYPE,
+    };
+  }
+
+  async confirmIdentityClaim(
+    input: ConfirmIdentityClaimInput,
+  ): Promise<ConfirmIdentityClaimResult> {
+    const externalId = input.externalId.trim();
+    const code = input.code.trim();
+    const subjectUserId = input.subjectUserId.trim();
+
+    if (!externalId || !code || !subjectUserId) {
+      return { ok: false, error: "INVALID_INPUT" };
+    }
+
+    const fragment = await this.#ensureFragment();
+    const confirmation = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.otp.confirmOtp(externalId, code, IDENTITY_LINK_TYPE, {
+                subjectUserId,
+              }),
+            ] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    if (!confirmation.confirmed) {
+      return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
+    }
+
+    await this.#notifyDispatcher();
+
+    return {
+      ok: true,
+      externalId,
     };
   }
 
