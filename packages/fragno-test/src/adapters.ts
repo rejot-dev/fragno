@@ -1,28 +1,13 @@
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
-import { InMemoryAdapter, type InMemoryAdapterOptions } from "@fragno-dev/db/adapters/in-memory";
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import type { InMemoryAdapterOptions } from "@fragno-dev/db/adapters/in-memory";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/sql";
-import { PGLiteDriverConfig, SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import { drizzle } from "drizzle-orm/pglite";
-// Test database adapter helpers and reset logic for fragment suites.
-import { Kysely } from "kysely";
-import { KyselyPGlite } from "kysely-pglite";
-import { SQLocalKysely } from "sqlocal/kysely";
-
-import { internalFragmentDef } from "@fragno-dev/db";
-
-import { PGlite } from "@electric-sql/pglite";
+import type { drizzle } from "drizzle-orm/pglite";
+import type { Kysely } from "kysely";
 
 import type { BaseTestContext } from ".";
-import { createCommonTestContextMethods } from ".";
-import { ModelCheckerAdapter } from "./model-checker-adapter";
 
-// Adapter configuration types
 export interface KyselySqliteAdapter {
   type: "kysely-sqlite";
   uowConfig?: UnitOfWorkConfig;
@@ -58,19 +43,16 @@ export type SupportedAdapter =
   | InMemoryAdapterConfig
   | ModelCheckerAdapterConfig;
 
-// Schema configuration for multi-schema adapters
 export interface SchemaConfig {
   schema: AnySchema;
   namespace: string | null;
   migrateToVersion?: number;
 }
 
-// Internal test context extends BaseTestContext with getOrm (not exposed publicly)
 interface InternalTestContext extends BaseTestContext {
   getOrm: <TSchema extends AnySchema>(namespace: string | null) => SimpleQueryInterface<TSchema>;
 }
 
-// Conditional return types based on adapter (adapter-specific properties only)
 export type AdapterContext<T extends SupportedAdapter> = T extends
   | KyselySqliteAdapter
   | KyselyPgliteAdapter
@@ -85,462 +67,38 @@ export type AdapterContext<T extends SupportedAdapter> = T extends
       ? {}
       : never;
 
-// Factory function return type
-interface AdapterFactoryResult<T extends SupportedAdapter> {
+export interface AdapterFactoryResult<T extends SupportedAdapter> {
   testContext: InternalTestContext & AdapterContext<T>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: DatabaseAdapter<any>;
 }
 
-const runInternalFragmentMigrations = async (
-  adapter: SqlAdapter,
-): Promise<SchemaConfig | undefined> => {
-  const dependencies = internalFragmentDef.dependencies;
-  if (!dependencies) {
-    return undefined;
-  }
-
-  const databaseDeps = dependencies({
-    config: {},
-    options: { databaseAdapter: adapter, databaseNamespace: null },
-  });
-  if (databaseDeps?.schema) {
-    const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
-    await migrations.executeWithDriver(adapter.driver, 0);
-    return { schema: databaseDeps.schema, namespace: databaseDeps.namespace };
-  }
-  return undefined;
-};
-
-const resolveSchemaName = (
-  adapter: DatabaseAdapter<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
-  namespace: string | null,
-): string | null => {
-  if (adapter.namingStrategy.namespaceScope !== "schema") {
-    return null;
-  }
-  if (!namespace || namespace.length === 0) {
-    return null;
-  }
-  return adapter.namingStrategy.namespaceToSchema(namespace);
-};
-
-/**
- * Create Kysely + SQLite adapter using SQLocalKysely (always in-memory)
- * Supports multiple schemas with separate namespaces
- */
-export async function createKyselySqliteAdapter(
-  config: KyselySqliteAdapter,
-  schemas: SchemaConfig[],
-): Promise<AdapterFactoryResult<KyselySqliteAdapter>> {
-  let internalSchemaConfig: SchemaConfig | undefined;
-
-  // Helper to create a new database instance and run migrations for all schemas
-  const createDatabase = async () => {
-    // Create SQLocalKysely instance (always in-memory for tests)
-    const { dialect } = new SQLocalKysely(":memory:");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const kysely = new Kysely<any>({
-      dialect,
-    });
-
-    // Create SqlAdapter
-    const adapter = new SqlAdapter({
-      dialect,
-      driverConfig: new SQLocalDriverConfig(),
-      uowConfig: config.uowConfig,
-    });
-    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
-
-    // Run migrations for all schemas in order
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
-
-    for (const { schema, namespace, migrateToVersion } of schemas) {
-      // Run migrations
-      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
-      if (migrateToVersion !== undefined) {
-        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
-      } else {
-        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
-      }
-
-      // Create ORM instance and store in map
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
-    }
-
-    return { kysely, adapter, ormMap };
-  };
-
-  // Create initial database
-  let { kysely, adapter, ormMap } = await createDatabase();
-
-  // Reset database function - truncates all tables (only supported for in-memory databases)
-  const resetDatabase = async () => {
-    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
-
-    // For SQLite, truncate all tables by deleting rows
-    for (const { schema, namespace } of schemasToTruncate) {
-      for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-        await kysely.deleteFrom(physicalTableName).execute();
-      }
-    }
-  };
-
-  // Cleanup function - closes connections (no files to delete for in-memory)
-  const cleanup = async () => {
-    await kysely.destroy();
-  };
-
-  const commonMethods = createCommonTestContextMethods(ormMap);
-
-  return {
-    testContext: {
-      get kysely() {
-        return kysely;
-      },
-      get adapter() {
-        return adapter;
-      },
-      ...commonMethods,
-      resetDatabase,
-      cleanup,
-    },
-    get adapter() {
-      return adapter;
-    },
-  };
-}
-
-/**
- * Create Kysely + PGLite adapter using kysely-pglite
- * Supports multiple schemas with separate namespaces
- */
-export async function createKyselyPgliteAdapter(
-  config: KyselyPgliteAdapter,
-  schemas: SchemaConfig[],
-): Promise<AdapterFactoryResult<KyselyPgliteAdapter>> {
-  const databasePath = config.databasePath;
-  let internalSchemaConfig: SchemaConfig | undefined;
-
-  // Helper to create a new database instance and run migrations for all schemas
-  const createDatabase = async () => {
-    // Create KyselyPGlite instance
-    const kyselyPglite = await KyselyPGlite.create(databasePath);
-
-    // Create Kysely instance with PGlite dialect
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const kysely = new Kysely<any>({
-      dialect: kyselyPglite.dialect,
-    });
-
-    // Create SqlAdapter
-    const adapter = new SqlAdapter({
-      dialect: kyselyPglite.dialect,
-      driverConfig: new PGLiteDriverConfig(),
-      uowConfig: config.uowConfig,
-    });
-    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
-
-    // Run migrations for all schemas in order
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
-
-    for (const { schema, namespace, migrateToVersion } of schemas) {
-      // Run migrations
-      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
-      if (migrateToVersion !== undefined) {
-        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
-      } else {
-        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
-      }
-
-      // Create ORM instance and store in map
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
-    }
-
-    return { kysely, adapter, kyselyPglite, ormMap };
-  };
-
-  // Create initial database
-  const { kysely, adapter, kyselyPglite, ormMap } = await createDatabase();
-
-  // Reset database function - truncates all tables (only supported for in-memory databases)
-  const resetDatabase = async () => {
-    if (databasePath && databasePath !== ":memory:") {
-      throw new Error("resetDatabase is only supported for in-memory databases");
-    }
-
-    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
-
-    // Truncate all tables
-    for (const { schema, namespace } of schemasToTruncate) {
-      for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-        const schemaName = resolveSchemaName(adapter, namespace);
-        const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
-        await scopedKysely.deleteFrom(physicalTableName).execute();
-      }
-    }
-  };
-
-  // Cleanup function - closes connections and deletes database directory
-  const cleanup = async () => {
-    await kysely.destroy();
-
-    try {
-      await kyselyPglite.client.close();
-    } catch {
-      // Ignore if already closed
-    }
-
-    // Delete the database directory if it exists and is a file path
-    if (databasePath && databasePath !== ":memory:" && existsSync(databasePath)) {
-      await rm(databasePath, { recursive: true, force: true });
-    }
-  };
-
-  const commonMethods = createCommonTestContextMethods(ormMap);
-
-  return {
-    testContext: {
-      get kysely() {
-        return kysely;
-      },
-      get adapter() {
-        return adapter;
-      },
-      ...commonMethods,
-      resetDatabase,
-      cleanup,
-    },
-    get adapter() {
-      return adapter;
-    },
-  };
-}
-
-/**
- * Create Drizzle + PGLite adapter using drizzle-orm/pglite
- * Supports multiple schemas with separate namespaces
- */
-export async function createDrizzlePgliteAdapter(
-  config: DrizzlePgliteAdapter,
-  schemas: SchemaConfig[],
-): Promise<AdapterFactoryResult<DrizzlePgliteAdapter>> {
-  const databasePath = config.databasePath;
-  let internalSchemaConfig: SchemaConfig | undefined;
-
-  // Helper to create a new database instance and run migrations for all schemas
-  const createDatabase = async () => {
-    const pglite = new PGlite(databasePath);
-
-    const { dialect } = new KyselyPGlite(pglite);
-
-    const adapter = new SqlAdapter({
-      dialect,
-      driverConfig: new PGLiteDriverConfig(),
-      uowConfig: config.uowConfig,
-    });
-
-    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
-
-    // Run migrations for all schemas
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
-
-    for (const { schema, namespace, migrateToVersion } of schemas) {
-      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
-      if (migrateToVersion !== undefined) {
-        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
-      } else {
-        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
-      }
-
-      // Create ORM instance and store in map
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
-    }
-
-    // Create Drizzle instance for backward compatibility (if needed)
-    const db = drizzle(pglite) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-    return { drizzle: db, adapter, pglite, ormMap };
-  };
-
-  // Create initial database
-  const { drizzle: drizzleDb, adapter, ormMap } = await createDatabase();
-
-  // Reset database function - truncates all tables (only supported for in-memory databases)
-  const resetDatabase = async () => {
-    if (databasePath && databasePath !== ":memory:") {
-      throw new Error("resetDatabase is only supported for in-memory databases");
-    }
-
-    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
-
-    const useTruncate = adapter.adapterMetadata?.databaseType === "postgresql";
-
-    // Truncate all tables by deleting rows
-    for (const { schema, namespace } of schemasToTruncate) {
-      const tableNames = Object.keys(schema.tables);
-      if (useTruncate) {
-        const qualifiedTables = tableNames.map((tableName) => {
-          const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-          const schemaName = resolveSchemaName(adapter, namespace);
-          return schemaName ? `"${schemaName}"."${physicalTableName}"` : `"${physicalTableName}"`;
-        });
-        if (qualifiedTables.length > 0) {
-          await drizzleDb.execute(`TRUNCATE ${qualifiedTables.join(", ")} CASCADE`);
-        }
-        continue;
-      }
-
-      for (const tableName of tableNames.slice().reverse()) {
-        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-        const schemaName = resolveSchemaName(adapter, namespace);
-        const qualifiedTable = schemaName
-          ? `"${schemaName}"."${physicalTableName}"`
-          : `"${physicalTableName}"`;
-        await drizzleDb.execute(`DELETE FROM ${qualifiedTable}`);
-      }
-    }
-  };
-
-  // Cleanup function - closes connections and deletes database directory
-  const cleanup = async () => {
-    // Close the adapter (which will handle closing the underlying database connection)
-    await adapter.close();
-
-    // Delete the database directory if it exists and is a file path
-    if (databasePath && databasePath !== ":memory:" && existsSync(databasePath)) {
-      await rm(databasePath, { recursive: true, force: true });
-    }
-  };
-
-  const commonMethods = createCommonTestContextMethods(ormMap);
-
-  return {
-    testContext: {
-      get drizzle() {
-        return drizzleDb;
-      },
-      get adapter() {
-        return adapter;
-      },
-      ...commonMethods,
-      resetDatabase,
-      cleanup,
-    },
-    get adapter() {
-      return adapter;
-    },
-  };
-}
-
-/**
- * Create InMemory adapter (no migrations required).
- */
-export async function createInMemoryAdapter(
-  config: InMemoryAdapterConfig,
-  schemas: SchemaConfig[],
-): Promise<AdapterFactoryResult<InMemoryAdapterConfig>> {
-  const adapter = new InMemoryAdapter(config.options);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
-  for (const { schema, namespace } of schemas) {
-    const orm = adapter.createQueryEngine(schema, namespace);
-    ormMap.set(namespace, orm);
-  }
-
-  const resetDatabase = async () => {
-    await adapter.reset();
-  };
-
-  const cleanup = async () => {
-    await adapter.close();
-  };
-
-  const commonMethods = createCommonTestContextMethods(ormMap);
-
-  return {
-    testContext: {
-      get adapter() {
-        return adapter;
-      },
-      ...commonMethods,
-      resetDatabase,
-      cleanup,
-    },
-    get adapter() {
-      return adapter;
-    },
-  };
-}
-
-/**
- * Create ModelChecker adapter (wraps the in-memory adapter).
- */
-export async function createModelCheckerAdapter(
-  config: ModelCheckerAdapterConfig,
-  schemas: SchemaConfig[],
-): Promise<AdapterFactoryResult<ModelCheckerAdapterConfig>> {
-  const baseAdapter = new InMemoryAdapter(config.options);
-  const adapter = new ModelCheckerAdapter(baseAdapter);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
-  for (const { schema, namespace } of schemas) {
-    const orm = adapter.createQueryEngine(schema, namespace);
-    ormMap.set(namespace, orm);
-  }
-
-  const resetDatabase = async () => {
-    await baseAdapter.reset();
-  };
-
-  const cleanup = async () => {
-    await adapter.close();
-  };
-
-  const commonMethods = createCommonTestContextMethods(ormMap);
-
-  return {
-    testContext: {
-      get adapter() {
-        return adapter;
-      },
-      ...commonMethods,
-      resetDatabase,
-      cleanup,
-    },
-    get adapter() {
-      return adapter;
-    },
-  };
-}
-
-/**
- * Create adapter based on configuration
- * Supports multiple schemas with separate namespaces
- */
 export async function createAdapter<T extends SupportedAdapter>(
   adapterConfig: T,
   schemas: SchemaConfig[],
 ): Promise<AdapterFactoryResult<T>> {
   if (adapterConfig.type === "kysely-sqlite") {
+    const { createKyselySqliteAdapter } = await import("./test-adapters/kysely-sqlite");
     return createKyselySqliteAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
-  } else if (adapterConfig.type === "kysely-pglite") {
+  }
+
+  if (adapterConfig.type === "kysely-pglite") {
+    const { createKyselyPgliteAdapter } = await import("./test-adapters/kysely-pglite");
     return createKyselyPgliteAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
-  } else if (adapterConfig.type === "drizzle-pglite") {
+  }
+
+  if (adapterConfig.type === "drizzle-pglite") {
+    const { createDrizzlePgliteAdapter } = await import("./test-adapters/drizzle-pglite");
     return createDrizzlePgliteAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
-  } else if (adapterConfig.type === "in-memory") {
+  }
+
+  if (adapterConfig.type === "in-memory") {
+    const { createInMemoryAdapter } = await import("./test-adapters/in-memory");
     return createInMemoryAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
-  } else if (adapterConfig.type === "model-checker") {
+  }
+
+  if (adapterConfig.type === "model-checker") {
+    const { createModelCheckerAdapter } = await import("./test-adapters/model-checker");
     return createModelCheckerAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
   }
 
