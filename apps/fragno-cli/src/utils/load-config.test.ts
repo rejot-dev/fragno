@@ -17,6 +17,14 @@ describe("stripJsonComments", () => {
     expect(stripJsonComments(input)).toBe(expected);
   });
 
+  it("does not strip double slashes in strings", () => {
+    const input = `{
+  "key": "https://example.com/foo",
+  "another": "value"
+}`;
+    expect(stripJsonComments(input)).toBe(input);
+  });
+
   it("should strip multiple single-line comments", () => {
     const input = `{
   // First comment
@@ -31,6 +39,18 @@ describe("stripJsonComments", () => {
   "key2": "value2"
 }`;
     expect(stripJsonComments(input)).toBe(expected);
+  });
+
+  it("does not strip multi line comments chars in strings", () => {
+    const input = `{
+      "compilerOptions": {
+        "paths": {
+          "~/*": ["./src/*"]
+        }
+      },
+      "include": ["**/*.ts", "**/*.tsx"],
+    }`;
+    expect(stripJsonComments(input)).toBe(input);
   });
 
   it("should strip multi-line comments", () => {
