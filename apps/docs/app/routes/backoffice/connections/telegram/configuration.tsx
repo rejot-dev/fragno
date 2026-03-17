@@ -1,9 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { getOtpDurableObject, getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
 
 import type { Route } from "./+types/configuration";
 import {
@@ -42,18 +41,11 @@ type TelegramConfigForm = {
   webhookBaseUrl: string;
 };
 
-type TelegramLinkIssue = {
-  startToken: string;
-  startCommand: string;
-  deepLink: string | null;
-};
-
 type TelegramConfigActionData = {
   ok: boolean;
-  intent: "save-config" | "issue-link";
+  intent: "save-config";
   message: string;
   configState?: TelegramConfigState;
-  linkIssue?: TelegramLinkIssue;
 };
 
 type TelegramConfigValidationResult =
@@ -89,7 +81,10 @@ const normalizeTelegramConfigInput = (
   const webhookBaseUrl = input.webhookBaseUrl.trim();
 
   if (!botToken || !webhookSecretToken) {
-    return { ok: false, message: "Bot token and webhook secret token are required." };
+    return {
+      ok: false,
+      message: "Bot token and webhook secret token are required.",
+    };
   }
 
   const apiBaseUrlError = validateOptionalUrl(apiBaseUrl, "API base URL");
@@ -124,54 +119,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     const value = formData.get(key);
     return typeof value === "string" ? value : "";
   };
-  const intent = getValue("intent") === "issue-link" ? "issue-link" : "save-config";
-
-  if (intent === "issue-link") {
-    const me = await getAuthMe(request, context);
-    if (!me?.user) {
-      throw new Response("Unauthorized", { status: 401 });
-    }
-
-    try {
-      const telegramDo = getTelegramDurableObject(context, params.orgId);
-      const configState = await telegramDo.getAdminConfig();
-      if (!configState.configured) {
-        return {
-          ok: false,
-          intent,
-          message: "Configure Telegram before generating a link.",
-        } satisfies TelegramConfigActionData;
-      }
-
-      const otpDo = getOtpDurableObject(context, params.orgId);
-      const issued = await otpDo.issueTelegramLinkOtp({
-        userId: me.user.id,
-      });
-
-      const botUsername = configState.config?.botUsername?.replace(/^@/, "") ?? null;
-      const startCommand = `/start ${issued.startToken}`;
-      const deepLink = botUsername
-        ? `https://t.me/${encodeURIComponent(botUsername)}?start=${encodeURIComponent(issued.startToken)}`
-        : null;
-
-      return {
-        ok: true,
-        intent,
-        message: "Telegram link generated.",
-        linkIssue: {
-          startToken: issued.startToken,
-          startCommand,
-          deepLink,
-        },
-      } satisfies TelegramConfigActionData;
-    } catch (error) {
-      return {
-        ok: false,
-        intent,
-        message: error instanceof Error ? error.message : "Unable to generate a Telegram link.",
-      } satisfies TelegramConfigActionData;
-    }
-  }
+  const intent = "save-config" as const;
 
   const payload = {
     botToken: getValue("botToken"),
@@ -226,9 +174,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
   const [currentStep, setCurrentStep] = useState(0);
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
-  const submittedIntent = navigation.formData?.get("intent");
-  const saving = navigation.state === "submitting" && submittedIntent !== "issue-link";
-  const generatingLink = navigation.state === "submitting" && submittedIntent === "issue-link";
+  const saving = navigation.state === "submitting";
   const [localError, setLocalError] = useState<string | null>(null);
   const [formState, setFormState] = useState<TelegramConfigForm>({
     botToken: "",
@@ -289,10 +235,6 @@ export default function BackofficeOrganisationTelegramConfiguration() {
     !localError && actionData?.intent === "save-config" && actionData.ok
       ? actionData.message
       : null;
-  const linkError =
-    actionData?.intent === "issue-link" && !actionData.ok ? actionData.message : null;
-  const linkIssue =
-    actionData?.intent === "issue-link" && actionData.ok ? (actionData.linkIssue ?? null) : null;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     setLocalError(null);
@@ -401,7 +343,10 @@ export default function BackofficeOrganisationTelegramConfiguration() {
           <button
             type="button"
             onClick={() =>
-              setFormState((prev) => ({ ...prev, webhookSecretToken: generateSecretToken() }))
+              setFormState((prev) => ({
+                ...prev,
+                webhookSecretToken: generateSecretToken(),
+              }))
             }
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
@@ -539,65 +484,22 @@ export default function BackofficeOrganisationTelegramConfiguration() {
       </FormContainer>
 
       <FormContainer
-        title="Link your Telegram account"
-        eyebrow="Account linking"
-        description="Generate a short-lived /start link for your currently signed-in backoffice user."
+        title="Account linking"
+        eyebrow="Automations"
+        description="Telegram linking now runs through the generic automations flow."
       >
-        <div className="space-y-4">
-          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-            <p>
-              Use this when you want to connect your Telegram chatter identity to your backoffice
-              user for this organisation.
-            </p>
-            <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-              Generating a new link invalidates any earlier unused link for your account.
-            </p>
-          </div>
-
-          <Form method="post" className="space-y-3">
-            <input type="hidden" name="intent" value="issue-link" />
-            <button
-              type="submit"
-              disabled={!configState?.configured || generatingLink}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {generatingLink ? "Generating…" : "Generate Telegram link"}
-            </button>
-          </Form>
-
-          {linkError ? <p className="text-xs text-red-500">{linkError}</p> : null}
-
-          {linkIssue ? (
-            <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-              <div>
-                <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  Start command
-                </p>
-                <p className="mt-2 font-mono break-all text-[var(--bo-fg)]">
-                  {linkIssue.startCommand}
-                </p>
-              </div>
-
-              {linkIssue.deepLink ? (
-                <div>
-                  <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Deep link
-                  </p>
-                  <a
-                    href={linkIssue.deepLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-fg)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)]"
-                  >
-                    Open Telegram
-                  </a>
-                  <p className="mt-2 text-xs break-all text-[var(--bo-muted-2)]">
-                    {linkIssue.deepLink}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+          <p>
+            After configuring the bot, users should message it directly. Inbound Telegram messages
+            are forwarded into the automations fragment as canonical <code>message.received</code>{" "}
+            events.
+          </p>
+          <p>
+            The docs app now ships with built-in automation bindings and hardcoded bash scripts for
+            the Telegram claim-linking flow:
+            <code> /start </code> issues a claim link and OTP confirmation finalizes the identity
+            binding.
+          </p>
         </div>
       </FormContainer>
     </div>

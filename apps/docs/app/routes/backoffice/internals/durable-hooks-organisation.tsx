@@ -125,6 +125,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           return (await getAutomationsDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
+            fragment: "automation",
           })) as DurableHookQueueResponse;
         case "pi":
           return (await getPiDurableObject(context, params.orgId).getHookQueue({

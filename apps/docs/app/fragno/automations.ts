@@ -9,8 +9,11 @@ import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
+
 export type AutomationsRuntime = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
+  automationFragment: ReturnType<typeof createAutomationFragment>;
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
@@ -26,7 +29,13 @@ export const createAutomationsAdapter = (state: DurableObjectState) =>
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
 
-export const createAutomationsRuntime = (state: DurableObjectState) => {
+export const createAutomationsRuntime = (
+  state: DurableObjectState,
+  config: Pick<
+    AutomationFragmentConfig,
+    "sourceAdapters" | "createIdentityClaim" | "builtinScripts" | "builtinBindings"
+  > = {},
+) => {
   const databaseAdapter = createAutomationsAdapter(state);
   const workflowsFragment = createWorkflowsFragment(
     {
@@ -38,20 +47,37 @@ export const createAutomationsRuntime = (state: DurableObjectState) => {
       mountRoute: "/api/automations",
     },
   );
+  const automationFragment = createAutomationFragment(
+    {
+      sourceAdapters: config.sourceAdapters,
+      createIdentityClaim: config.createIdentityClaim,
+      builtinScripts: config.builtinScripts,
+      builtinBindings: config.builtinBindings,
+    },
+    {
+      databaseAdapter,
+      mountRoute: "/api/automations/bindings",
+    },
+    {
+      workflows: workflowsFragment.services,
+    },
+  );
 
   return {
     workflowsFragment,
+    automationFragment,
     dispatcher: null,
   } satisfies AutomationsRuntime;
 };
 
 export const createAutomationsDispatcher = (
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>,
+  automationFragment: ReturnType<typeof createAutomationFragment>,
   state: DurableObjectState,
   env: CloudflareEnv,
 ): DurableHooksDispatcherDurableObjectHandler | null => {
   try {
-    const dispatcherFactory = createDurableHooksProcessor([workflowsFragment], {
+    const dispatcherFactory = createDurableHooksProcessor([workflowsFragment, automationFragment], {
       onProcessError: (error) => {
         console.error("Automations durable hook processor error", error);
       },

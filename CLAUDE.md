@@ -51,7 +51,7 @@ Examples:
 - TSDown for building packages
 - Vitest
 - Lefthook for pre-commit hooks
-- Prettier
+- oxfmt
 - oxlint
 - Changesets
 

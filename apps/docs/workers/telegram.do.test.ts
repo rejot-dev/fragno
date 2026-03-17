@@ -116,7 +116,11 @@ describe("Telegram Durable Object", () => {
         botUsername: VALID_PAYLOAD.botUsername,
       }),
       state,
-      expect.objectContaining({ orgId: "acme" }),
+      expect.objectContaining({
+        hooks: expect.objectContaining({
+          onMessageReceived: expect.any(Function),
+        }),
+      }),
     );
   });
 
@@ -166,7 +170,11 @@ describe("Telegram Durable Object", () => {
     expect(createTelegramServerMock).toHaveBeenCalledWith(
       expect.any(Object),
       state,
-      expect.objectContaining({ orgId: "acme" }),
+      expect.objectContaining({
+        hooks: expect.objectContaining({
+          onMessageReceived: expect.any(Function),
+        }),
+      }),
     );
   });
 });

@@ -494,9 +494,10 @@ export async function processHooks<THooks extends HooksMap>(
         DurableHooksLogger.error("Hook failed", {
           namespace,
           fields: {
-            eventId: event.id,
+            eventId: event.id.toJSON(),
             hookName: event.hookName,
             error: errorMessage,
+            idempotencyKey: event.idempotencyKey,
           },
         });
         return {
