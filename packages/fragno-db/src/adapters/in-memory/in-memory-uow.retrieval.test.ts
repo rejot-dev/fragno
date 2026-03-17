@@ -218,4 +218,38 @@ describe("in-memory uow retrieval", () => {
       label: "Right Shared",
     });
   });
+
+  it("applies page size after filtering primary-index lookups", async () => {
+    const { createUow } = createHarness();
+
+    const createData = createUow();
+    createData.create("users", {
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+    });
+    createData.create("users", {
+      id: "user-2",
+      name: "Grace",
+      email: "grace@example.com",
+    });
+    await createData.executeMutations();
+
+    const query = createUow();
+    query.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-2")));
+
+    const [[user]] = (await query.executeRetrieve()) as Array<
+      [
+        {
+          id: { externalId: string };
+          name: string;
+        } | null,
+      ]
+    >;
+
+    expect(user).toMatchObject({
+      id: expect.objectContaining({ externalId: "user-2" }),
+      name: "Grace",
+    });
+  });
 });

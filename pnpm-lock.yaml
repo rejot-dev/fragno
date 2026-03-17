@@ -151,9 +151,6 @@ importers:
       '@fragno-dev/telegram-fragment':
         specifier: workspace:*
         version: link:../../packages/telegram-fragment
-      '@fragno-dev/test':
-        specifier: workspace:*
-        version: link:../../packages/fragno-test
       '@fragno-dev/upload':
         specifier: workspace:*
         version: link:../../packages/fragment-upload
@@ -296,6 +293,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260301.1
         version: 4.20260313.1
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../../packages/fragno-test
       '@fragno-private/vitest-config':
         specifier: workspace:*
         version: link:../../packages-private/vitest-config

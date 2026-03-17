@@ -675,7 +675,9 @@ const findRows = (
 
   const scanOptions = {
     direction,
-    limit,
+    // Apply result limits after where/join filtering. Passing the limit into the
+    // raw index scan can drop matching rows that appear later in the index.
+    limit: undefined as number | undefined,
     start: undefined as readonly unknown[] | undefined,
     startInclusive: true,
     end: undefined as readonly unknown[] | undefined,
