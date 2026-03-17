@@ -10,6 +10,7 @@ import type {
   OtpFragmentConfig,
   OtpInvalidateResult,
   OtpIssueResult,
+  OtpPayload,
 } from "./definition";
 import type {
   OtpConfirmedHookPayload,
@@ -69,6 +70,7 @@ export type {
   OtpFragmentConfig,
   OtpInvalidateResult,
   OtpIssueResult,
+  OtpPayload,
   OtpHooks,
   OtpHooksMap,
   OtpIssuedHookPayload,

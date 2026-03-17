@@ -5,7 +5,6 @@ import { withDatabase } from "@fragno-dev/db";
 import type {
   OtpConfirmedHookPayload,
   OtpExpiredHookPayload,
-  OtpPayload,
   OtpHooks,
   OtpHooksMap,
   OtpIssuedHookPayload,
@@ -25,6 +24,8 @@ import type { OtpErrorCode, OtpType } from "./types";
 
 const DEFAULT_EXPIRY_MINUTES = 15;
 
+export type OtpPayload = Record<string, unknown>;
+
 export interface OtpIssueResult extends OtpIssuedHookPayload {}
 
 export interface OtpConfirmResult {
@@ -42,9 +43,14 @@ export interface IOtpService {
     externalId: string,
     type: OtpType,
     durationMinutes?: number,
-    payload?: OtpPayload | null,
+    payload?: OtpPayload,
   ): TxResult<OtpIssueResult>;
-  confirmOtp(externalId: string, code: string, type: OtpType): TxResult<OtpConfirmResult>;
+  confirmOtp(
+    externalId: string,
+    code: string,
+    type: OtpType,
+    confirmationPayload?: OtpPayload,
+  ): TxResult<OtpConfirmResult>;
   invalidateOtps(externalId: string, type: OtpType): TxResult<OtpInvalidateResult>;
 }
 
@@ -93,6 +99,7 @@ const resolveConfirmedHookPayload = (
 ): ResolvedOtpConfirmedHookPayload => ({
   ...resolveIssuedHookPayload(payload, hookCreatedAt),
   confirmedAt: resolveHookTimestamp(payload.confirmedAt, hookCreatedAt),
+  confirmationPayload: payload.confirmationPayload,
 });
 
 const resolveExpiredHookPayload = (
@@ -103,6 +110,14 @@ const resolveExpiredHookPayload = (
   expiredAt: resolveHookTimestamp(payload.expiredAt, hookCreatedAt),
 });
 
+const normalizeOtpPayload = (value: unknown): OtpPayload | undefined => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value as OtpPayload;
+};
+
 const buildIssuedPayload = (input: {
   id: string;
   externalId: string;
@@ -110,7 +125,7 @@ const buildIssuedPayload = (input: {
   code: string;
   expiresAt: OtpTimestamp;
   createdAt: OtpTimestamp;
-  payload: OtpPayload | null;
+  payload?: OtpPayload;
 }): OtpIssuedHookPayload => ({
   id: input.id,
   externalId: input.externalId,
@@ -132,9 +147,11 @@ const buildExpiredPayload = (
 const buildConfirmedPayload = (
   issued: OtpIssuedHookPayload,
   confirmedAt: OtpTimestamp,
+  confirmationPayload?: OtpPayload,
 ): OtpConfirmedHookPayload => ({
   ...issued,
   confirmedAt,
+  confirmationPayload,
 });
 
 export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
@@ -189,7 +206,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
             code: otp.code,
             expiresAt: otp.expiresAt,
             createdAt: otp.createdAt,
-            payload: otp.payload,
+            payload: normalizeOtpPayload(otp.payload),
           });
           const payload = buildExpiredPayload(issuedPayload, expiredAt);
 
@@ -260,7 +277,8 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               code,
               status: "pending",
               expiresAt,
-              payload: inputPayload,
+              payload: inputPayload ?? null,
+              confirmationPayload: null,
               confirmedAt: null,
               expiredAt: null,
               invalidatedAt: null,
@@ -274,7 +292,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               code,
               expiresAt,
               createdAt,
-              payload: inputPayload,
+              payload: inputPayload ?? undefined,
             });
 
             uow.triggerHook("onOtpIssued", issuedPayload);
@@ -284,14 +302,19 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
           })
           .build();
       },
-      confirmOtp: function (externalId: string, code: string, type: OtpType) {
+      confirmOtp: function (
+        externalId: string,
+        code: string,
+        type: OtpType,
+        confirmationPayload: OtpPayload | null = null,
+      ) {
         const normalizedCode = normalizeOtpCode(code, config);
 
         return this.serviceTx(otpSchema)
           .retrieve((uow) =>
             uow
               .findFirst("otp", (b) =>
-              b.whereIndex("idx_otp_externalId_type_status_code_expiresAt", (eb) =>
+                b.whereIndex("idx_otp_externalId_type_status_code_expiresAt", (eb) =>
                   eb.and(
                     eb("externalId", "=", externalId),
                     eb("type", "=", type),
@@ -329,7 +352,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
                 code: expiredOtp.code,
                 expiresAt: expiredOtp.expiresAt,
                 createdAt: expiredOtp.createdAt,
-                payload: expiredOtp.payload,
+                payload: normalizeOtpPayload(expiredOtp.payload),
               });
               const payload = buildExpiredPayload(issuedPayload, expiredAt);
 
@@ -365,14 +388,19 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               code: otp.code,
               expiresAt: otp.expiresAt,
               createdAt: otp.createdAt,
-              payload: otp.payload,
+              payload: normalizeOtpPayload(otp.payload),
             });
-            const payload = buildConfirmedPayload(issuedPayload, confirmedAt);
+            const payload = buildConfirmedPayload(
+              issuedPayload,
+              confirmedAt,
+              confirmationPayload ?? undefined,
+            );
 
             uow.update("otp", otp.id, (b) =>
               b
                 .set({
                   status: "confirmed",
+                  confirmationPayload: confirmationPayload ?? null,
                   confirmedAt,
                 })
                 .check(),

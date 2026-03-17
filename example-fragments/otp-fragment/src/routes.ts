@@ -15,7 +15,7 @@ const otpTimestampSchema = z.union([z.date(), dbNowSchema]);
 export const otpIssueInputSchema = z.object({
   externalId: z.string().min(1),
   type: otpTypeSchema,
-  payload: z.unknown().optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
   durationMinutes: z.coerce.number().positive().optional(),
 });
 
@@ -32,6 +32,7 @@ export const otpConfirmInputSchema = z.object({
   externalId: z.string().min(1),
   type: otpTypeSchema,
   code: z.string().min(1),
+  confirmationPayload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const otpConfirmOutputSchema = z.object({
@@ -67,9 +68,9 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
           const { externalId, type, payload, durationMinutes } = await input.valid();
 
           const [issuedOtp] = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.otp.issueOtp(externalId, type, durationMinutes, payload),
-            ] as const)
+            .withServiceCalls(
+              () => [services.otp.issueOtp(externalId, type, durationMinutes, payload)] as const,
+            )
             .execute();
 
           return json(issuedOtp);
@@ -82,10 +83,15 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
         outputSchema: otpConfirmOutputSchema,
         errorCodes: ["OTP_INVALID", "OTP_EXPIRED"] as const,
         handler: async function ({ input }, { json, error }) {
-          const { externalId, type, code } = await input.valid();
+          const { externalId, type, code, confirmationPayload } = await input.valid();
 
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.otp.confirmOtp(externalId, code, type)] as const)
+            .withServiceCalls(
+              () =>
+                [
+                  services.otp.confirmOtp(externalId, code, type, confirmationPayload ?? null),
+                ] as const,
+            )
             .execute();
 
           if (!result.confirmed) {

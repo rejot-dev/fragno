@@ -10,6 +10,7 @@ export const otpSchema = schema("otp", (s) => {
       .addColumn("status", column("string"))
       .addColumn("expiresAt", column("timestamp"))
       .addColumn("payload", column("json").nullable())
+      .addColumn("confirmationPayload", column("json").nullable())
       .addColumn("confirmedAt", column("timestamp").nullable())
       .addColumn("expiredAt", column("timestamp").nullable())
       .addColumn("invalidatedAt", column("timestamp").nullable())
