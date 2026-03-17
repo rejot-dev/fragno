@@ -109,8 +109,12 @@ describe("otp fragment", async () => {
     expect(otpRows.filter((otp) => otp.status === "invalidated")).toHaveLength(1);
   });
 
-  it("confirms an OTP, returns database-time markers immediately, and resolves hook dates", async () => {
+  it("confirms an OTP, persists confirmation payload, and resolves hook dates", async () => {
     const payload = { event: "confirm-flow", traceId: "trace-1" };
+    const confirmationPayload = {
+      subjectUserId: "user_auth_1",
+      returnTo: "/backoffice",
+    };
     const issueResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
       body: { externalId: "user-2", type: "password_reset", payload },
     });
@@ -121,6 +125,7 @@ describe("otp fragment", async () => {
         externalId: "user-2",
         type: "password_reset",
         code: issueResponse.data.code.toLowerCase(),
+        confirmationPayload,
       },
     });
     assert(confirmResponse.type === "json");
@@ -149,6 +154,7 @@ describe("otp fragment", async () => {
         externalId: "user-2",
         type: "password_reset",
         payload,
+        confirmationPayload,
         code: issueResponse.data.code,
         createdAt: expect.any(Date),
         expiresAt: expect.any(Date),
@@ -161,6 +167,7 @@ describe("otp fragment", async () => {
       b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
     );
     expect(storedOtp?.status).toBe("confirmed");
+    expect(storedOtp?.confirmationPayload).toEqual(confirmationPayload);
     expect(storedOtp?.confirmedAt).toBeInstanceOf(Date);
   });
 
@@ -285,9 +292,10 @@ describe("otp fragment", async () => {
       expect(issueResponse.data.code).toMatch(/^[AaBbCc]$/);
 
       const mixedCaseCode = issueResponse.data.code;
-      const mismatchedCaseCode = mixedCaseCode === mixedCaseCode.toUpperCase()
-        ? mixedCaseCode.toLowerCase()
-        : mixedCaseCode.toUpperCase();
+      const mismatchedCaseCode =
+        mixedCaseCode === mixedCaseCode.toUpperCase()
+          ? mixedCaseCode.toLowerCase()
+          : mixedCaseCode.toUpperCase();
 
       const mismatchedResponse = await mixedCaseFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
