@@ -11,9 +11,12 @@ import { resendRoutesFactory, type ResendSendEmailInput } from "./routes";
 
 const sendMock = vi.fn();
 const verifyMock = vi.fn();
+const domainsListMock = vi.fn();
+const domainsGetMock = vi.fn();
 
 vi.mock("resend", () => {
   class MockResend {
+    domains = { list: domainsListMock, get: domainsGetMock };
     emails = { send: sendMock };
     webhooks = { verify: verifyMock };
   }
@@ -51,6 +54,8 @@ describe("resend-fragment", async () => {
     await testContext.resetDatabase();
     sendMock.mockReset();
     verifyMock.mockReset();
+    domainsListMock.mockReset();
+    domainsGetMock.mockReset();
     onEmailStatusUpdated.mockReset();
     config.defaultFrom = "Acme <hello@example.com>";
     config.webhookSecret = "whsec_test";
@@ -60,8 +65,124 @@ describe("resend-fragment", async () => {
     await testContext.cleanup();
   });
 
+  test("lists configured domains", async () => {
+    domainsListMock.mockResolvedValue({
+      data: {
+        object: "list",
+        has_more: false,
+        data: [
+          {
+            id: "domain_123",
+            name: "example.com",
+            status: "verified",
+            created_at: "2026-03-18T10:00:00.000Z",
+            region: "us-east-1",
+            capabilities: {
+              sending: "enabled",
+              receiving: "disabled",
+            },
+          },
+        ],
+      },
+      error: null,
+      headers: null,
+    });
+
+    const response = await fragment.callRoute("GET", "/domains");
+
+    expect(domainsListMock).toHaveBeenCalledWith({ limit: 100 });
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      return;
+    }
+
+    expect(response.data).toEqual({
+      domains: [
+        {
+          id: "domain_123",
+          name: "example.com",
+          status: "verified",
+          createdAt: "2026-03-18T10:00:00.000Z",
+          region: "us-east-1",
+          capabilities: {
+            sending: "enabled",
+            receiving: "disabled",
+          },
+        },
+      ],
+      hasMore: false,
+    });
+  });
+
+  test("fetches configured domain detail", async () => {
+    domainsGetMock.mockResolvedValue({
+      data: {
+        object: "domain",
+        id: "domain_123",
+        name: "example.com",
+        status: "verified",
+        created_at: "2026-03-18T10:00:00.000Z",
+        region: "us-east-1",
+        capabilities: {
+          sending: "enabled",
+          receiving: "enabled",
+        },
+        records: [
+          {
+            record: "Receiving",
+            name: "inbound",
+            value: "inbound-smtp.us-east-1.amazonaws.com",
+            type: "MX",
+            ttl: "Auto",
+            status: "verified",
+            priority: 10,
+          },
+        ],
+      },
+      error: null,
+      headers: null,
+    });
+
+    const response = await fragment.callRoute("GET", "/domains/:domainId", {
+      pathParams: { domainId: "domain_123" },
+    });
+
+    expect(domainsGetMock).toHaveBeenCalledWith("domain_123");
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      return;
+    }
+
+    expect(response.data).toEqual({
+      id: "domain_123",
+      name: "example.com",
+      status: "verified",
+      createdAt: "2026-03-18T10:00:00.000Z",
+      region: "us-east-1",
+      capabilities: {
+        sending: "enabled",
+        receiving: "enabled",
+      },
+      records: [
+        {
+          record: "Receiving",
+          name: "inbound",
+          value: "inbound-smtp.us-east-1.amazonaws.com",
+          type: "MX",
+          ttl: "Auto",
+          status: "verified",
+          priority: 10,
+        },
+      ],
+    });
+  });
+
   test("queues email and sends via durable hook", async () => {
-    sendMock.mockResolvedValue({ data: { id: "re_123" }, error: null, headers: null });
+    sendMock.mockResolvedValue({
+      data: { id: "re_123" },
+      error: null,
+      headers: null,
+    });
 
     const response = await fragment.callRoute("POST", "/emails", {
       body: {
@@ -105,7 +226,11 @@ describe("resend-fragment", async () => {
   });
 
   test("schedules emails via durable hooks processAt", async () => {
-    sendMock.mockResolvedValue({ data: { id: "re_sched" }, error: null, headers: null });
+    sendMock.mockResolvedValue({
+      data: { id: "re_sched" },
+      error: null,
+      headers: null,
+    });
 
     const response = await fragment.callRoute("POST", "/emails", {
       body: {
@@ -146,7 +271,11 @@ describe("resend-fragment", async () => {
   test("marks failed when Resend responds with error", async () => {
     sendMock.mockResolvedValue({
       data: null,
-      error: { message: "Invalid from", name: "invalid_from_address", statusCode: 400 },
+      error: {
+        message: "Invalid from",
+        name: "invalid_from_address",
+        statusCode: 400,
+      },
       headers: null,
     });
 

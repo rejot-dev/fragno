@@ -40,7 +40,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = `/backoffice/connections/resend/${params.orgId}`;
   if (currentPath === basePath) {
-    const target = configState?.configured ? "send" : "configuration";
+    const target = configState?.configured ? "domains" : "configuration";
     return redirect(`${basePath}/${target}`);
   }
 
@@ -53,8 +53,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const orgId = data?.orgId ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const orgId = loaderData?.orgId ?? "organisation";
   return [{ title: `Resend Setup · ${orgId}` }];
 }
 
@@ -85,7 +85,9 @@ export default function BackofficeOrganisationResendLayout({
   let activeTab: ResendTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
-  if (pathSegments.includes("outbox")) {
+  if (pathSegments.includes("domains")) {
+    activeTab = "domains";
+  } else if (pathSegments.includes("outbox")) {
     activeTab = "outbox";
   } else if (pathSegments.includes("send")) {
     activeTab = "send";

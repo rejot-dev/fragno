@@ -1,6 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
+import type { ResendDomain } from "@fragno-dev/resend-fragment";
+
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
@@ -37,7 +39,7 @@ export type ResendLayoutContext = {
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
 
-export type ResendTab = "outbox" | "send" | "configuration";
+export type ResendTab = "domains" | "outbox" | "send" | "configuration";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -49,6 +51,24 @@ export const formatTimestamp = (value?: string | Date | null) => {
     timeStyle: "short",
   }).format(date);
 };
+
+export const getResendDomainStatusTone = (status: ResendDomain["status"]) => {
+  switch (status) {
+    case "verified":
+      return "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]";
+    case "failed":
+    case "temporary_failure":
+      return "border-red-500/40 bg-red-500/10 text-red-300";
+    default:
+      return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
+  }
+};
+
+export const formatResendDomainStatus = (status: ResendDomain["status"]) =>
+  status.replace(/_/g, " ");
+
+export const formatResendCapability = (value: ResendDomain["capabilities"]["sending"]) =>
+  value === "enabled" ? "Enabled" : "Disabled";
 
 export function ResendHeader({
   orgId,
@@ -67,7 +87,7 @@ export function ResendHeader({
       ]}
       eyebrow="Integrations"
       title={`Resend for ${organisationName ?? orgId}`}
-      description="Connect Resend to send emails, register webhooks, and monitor delivery status."
+      description="Connect Resend to send emails, inspect domains, register webhooks, and monitor delivery status."
       actions={
         <Link
           to="/backoffice/connections/resend"
@@ -101,6 +121,12 @@ export function ResendTabs({
       id: "outbox" as const,
       label: "Outbox",
       to: `${basePath}/outbox`,
+      disabled: !isConfigured,
+    },
+    {
+      id: "domains" as const,
+      label: "Domains",
+      to: `${basePath}/domains`,
       disabled: !isConfigured,
     },
     {

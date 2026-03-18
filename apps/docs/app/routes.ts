@@ -61,6 +61,10 @@ export default [
         "routes/backoffice/connections/resend/organisation-layout.tsx",
         [
           route("configuration", "routes/backoffice/connections/resend/configuration.tsx"),
+          route("domains", "routes/backoffice/connections/resend/domains.tsx", [
+            index("routes/backoffice/connections/resend/domains-index.tsx"),
+            route(":domainId", "routes/backoffice/connections/resend/domain-detail.tsx"),
+          ]),
           route("send", "routes/backoffice/connections/resend/send.tsx"),
           route("outbox", "routes/backoffice/connections/resend/outbox.tsx", [
             index("routes/backoffice/connections/resend/outbox-index.tsx"),

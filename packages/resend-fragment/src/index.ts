@@ -8,10 +8,14 @@ import { resendFragmentDefinition } from "./definition";
 import type { ResendFragmentConfig } from "./definition";
 import { resendRoutesFactory } from "./routes";
 import type {
+  ResendDomain,
+  ResendDomainDetail,
+  ResendDomainRecord,
   ResendEmailInput,
   ResendEmailDetail,
   ResendEmailRecord,
   ResendEmailSummary,
+  ResendListDomainsOutput,
   ResendListEmailsOutput,
   ResendSendEmailInput,
 } from "./routes";
@@ -33,6 +37,8 @@ export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConf
   const builder = createClientBuilder(resendFragmentDefinition, fragnoConfig, routes);
 
   return {
+    useDomains: builder.createHook("/domains"),
+    useDomain: builder.createHook("/domains/:domainId"),
     useEmails: builder.createHook("/emails"),
     useEmail: builder.createHook("/emails/:emailId"),
     useSendEmail: builder.createMutator("POST", "/emails"),
@@ -44,10 +50,14 @@ export { resendRoutesFactory } from "./routes";
 export { resendSchema } from "./schema";
 export type { ResendFragmentConfig } from "./definition";
 export type {
+  ResendDomain,
+  ResendDomainDetail,
+  ResendDomainRecord,
   ResendEmailInput,
   ResendEmailDetail,
   ResendEmailRecord,
   ResendEmailSummary,
+  ResendListDomainsOutput,
   ResendListEmailsOutput,
   ResendSendEmailInput,
 };
