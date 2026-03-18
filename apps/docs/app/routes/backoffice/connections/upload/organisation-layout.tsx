@@ -3,6 +3,7 @@ import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } 
 
 import { getAuthMe } from "@/fragno/auth-server";
 
+import { throwOrganisationNotFound } from "../../route-errors";
 import { fetchUploadConfig } from "./data";
 import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
 import {
@@ -26,7 +27,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const organisation =
     me.organizations.find((entry) => entry.organization.id === orgId)?.organization ?? null;
   if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
+    throwOrganisationNotFound(orgId);
   }
 
   const { configState, configError } = await fetchUploadConfig(context, orgId);

@@ -21,7 +21,7 @@ import {
 } from "@/fragno/telegram";
 
 type StoredTelegramConfig = TelegramConfig & {
-  orgId?: string;
+  orgId: string;
   webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -45,7 +45,6 @@ type ConfigResponse = {
 };
 
 const CONFIG_KEY = "telegram-config";
-const ORG_ID_STORAGE_KEY = "telegram-org-id";
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -225,7 +224,6 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   #fragmentConfig: TelegramFragmentConfig | null = null;
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
   #migrated = false;
-  #orgId: string | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
@@ -238,56 +236,29 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     return config ?? null;
   }
 
-  async #loadOrgId() {
-    if (this.#orgId) {
-      return this.#orgId;
-    }
-
-    const storedOrgId = await this.#state.storage.get<string>(ORG_ID_STORAGE_KEY);
-    if (typeof storedOrgId === "string" && storedOrgId.trim()) {
-      this.#orgId = storedOrgId.trim();
-      return this.#orgId;
-    }
-
-    const existingConfig = await this.#loadConfig();
-    const legacyOrgId = existingConfig?.orgId?.trim();
-    if (!legacyOrgId) {
+  #getStoredOrgId(config: StoredTelegramConfig | null) {
+    if (!config || typeof config.orgId !== "string") {
       return null;
     }
 
-    this.#orgId = legacyOrgId;
-    await this.#state.storage.put(ORG_ID_STORAGE_KEY, legacyOrgId);
-    return legacyOrgId;
+    const storedOrgId = config.orgId.trim();
+    return storedOrgId ? storedOrgId : null;
   }
 
-  async #rememberOrgId(orgId: string) {
-    const normalizedOrgId = orgId.trim();
-    if (!normalizedOrgId) {
-      return null;
+  #assertRequestOrgIdMatchesConfig(request: Request, config: StoredTelegramConfig) {
+    const storedOrgId = this.#getStoredOrgId(config);
+    if (!storedOrgId) {
+      return;
     }
 
-    const existingOrgId = this.#orgId ?? (await this.#loadOrgId());
-    if (existingOrgId && existingOrgId !== normalizedOrgId) {
-      throw new Error(
-        `Telegram Durable Object is already bound to organisation "${existingOrgId}".`,
-      );
+    const requestOrgId = new URL(request.url).searchParams.get("orgId")?.trim();
+    if (!requestOrgId) {
+      return;
     }
 
-    if (!existingOrgId) {
-      this.#orgId = normalizedOrgId;
-      await this.#state.storage.put(ORG_ID_STORAGE_KEY, normalizedOrgId);
+    if (requestOrgId !== storedOrgId) {
+      throw new Error(`Telegram Durable Object is already bound to organisation "${storedOrgId}".`);
     }
-
-    return normalizedOrgId;
-  }
-
-  async #syncOrgIdFromRequest(request: Request) {
-    const orgId = new URL(request.url).searchParams.get("orgId")?.trim();
-    if (!orgId) {
-      return null;
-    }
-
-    return await this.#rememberOrgId(orgId);
   }
 
   #extractFragmentConfig(config: StoredTelegramConfig): TelegramFragmentConfig {
@@ -309,7 +280,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async #handleMessageReceived(payload: TelegramMessageHookPayload) {
-    const orgId = await this.#loadOrgId();
+    const config = await this.#loadConfig();
+    const orgId = this.#getStoredOrgId(config);
     if (!orgId) {
       console.warn("Ignoring Telegram message because automations routing is unavailable", {
         orgId,
@@ -321,7 +293,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
 
     const automationsDo = this.#env.AUTOMATIONS.get(this.#env.AUTOMATIONS.idFromName(orgId));
 
-    await automationsDo.ingestEvent(buildTelegramAutomationEvent(orgId, payload));
+    await automationsDo.triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
   }
 
   async #ensureFragment() {
@@ -330,14 +302,9 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       return null;
     }
 
-    const orgId = await this.#loadOrgId();
-    const legacyOrgId = stored.orgId?.trim();
-    if (orgId && legacyOrgId && legacyOrgId !== orgId) {
-      throw new Error(`Telegram Durable Object is already bound to organisation "${orgId}".`);
-    }
-
+    const orgId = this.#getStoredOrgId(stored);
     if (!orgId) {
-      throw new Error("Missing organisation id.");
+      return null;
     }
 
     const config = this.#extractFragmentConfig(stored);
@@ -422,21 +389,30 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     return buildConfigResponse(config);
   }
 
-  async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
+  async setAdminConfig(payload: unknown, origin: string): Promise<ConfigResponse> {
     const parsed = await parseConfigInput(payload);
     if (!parsed.ok) {
       throw new Error(parsed.message);
     }
 
-    const normalizedOrgId = await this.#rememberOrgId(orgId);
+    const record = payload as Record<string, unknown>;
+    const normalizedOrgId = typeof record.orgId === "string" ? record.orgId.trim() : "";
     if (!normalizedOrgId) {
       throw new Error("Missing organisation id.");
     }
 
-    const now = new Date().toISOString();
     const existing = await this.#loadConfig();
+    const existingOrgId = this.#getStoredOrgId(existing);
+    if (existingOrgId && existingOrgId !== normalizedOrgId) {
+      throw new Error(
+        `Telegram Durable Object is already bound to organisation "${existingOrgId}".`,
+      );
+    }
+
+    const now = new Date().toISOString();
     const stored: StoredTelegramConfig = {
       ...parsed.data,
+      orgId: normalizedOrgId,
       webhookBaseUrl: parsed.data.webhookBaseUrl ?? existing?.webhookBaseUrl,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -474,7 +450,10 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.#syncOrgIdFromRequest(request);
+    const config = await this.#loadConfig();
+    if (config) {
+      this.#assertRequestOrgIdMatchesConfig(request, config);
+    }
 
     const fragment = await this.#ensureFragment();
     if (!fragment) {

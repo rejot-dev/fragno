@@ -39,7 +39,12 @@ export const automationFragmentSchema = schema("automations", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_trigger_binding_event", ["eventType"])
-        .createIndex("idx_trigger_binding_source_event", ["source", "eventType"]);
+        .createIndex("idx_trigger_binding_source_event_created_at_id", [
+          "source",
+          "eventType",
+          "createdAt",
+          "id",
+        ]);
     })
     .addTable("identity_binding", (t) => {
       return t

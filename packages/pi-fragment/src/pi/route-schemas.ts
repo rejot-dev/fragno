@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { AgentEvent } from "@mariozechner/pi-agent-core";
+
 import { SESSION_STATUSES, STEERING_MODES } from "./constants";
 import type { PiActiveSessionProtocolMessage } from "./types";
 
@@ -43,12 +45,13 @@ const ToolCallSchema = z.object({
   thoughtSignature: z.string().optional(),
 });
 
-const ContentSchema = z.union([
-  TextContentSchema,
-  ThinkingContentSchema,
-  ImageContentSchema,
-  ToolCallSchema,
-]);
+// Per-role content unions matching the actual AgentMessage types from @mariozechner/pi-ai:
+// - UserMessage.content:      string | (TextContent | ImageContent)[]
+// - AssistantMessage.content: (TextContent | ThinkingContent | ToolCall)[]
+// - ToolResultMessage.content:(TextContent | ImageContent)[]
+const UserContentSchema = z.union([TextContentSchema, ImageContentSchema]);
+const AssistantContentSchema = z.union([TextContentSchema, ThinkingContentSchema, ToolCallSchema]);
+const ToolResultContentSchema = z.union([TextContentSchema, ImageContentSchema]);
 
 const UsageSchema = z.object({
   input: z.number(),
@@ -68,17 +71,17 @@ const UsageSchema = z.object({
 const MessageSchema = z.union([
   z.object({
     role: z.literal("user"),
-    content: z.union([z.string(), z.array(ContentSchema)]),
+    content: z.union([z.string(), z.array(UserContentSchema)]),
     timestamp: z.number(),
   }),
   z.object({
     role: z.literal("assistant"),
-    content: z.array(ContentSchema),
+    content: z.array(AssistantContentSchema),
     api: z.string(),
     provider: z.string(),
     model: z.string(),
     usage: UsageSchema,
-    stopReason: z.string(),
+    stopReason: z.enum(["stop", "length", "toolUse", "error", "aborted"]),
     errorMessage: z.string().optional(),
     timestamp: z.number(),
   }),
@@ -86,17 +89,16 @@ const MessageSchema = z.union([
     role: z.literal("toolResult"),
     toolCallId: z.string(),
     toolName: z.string(),
-    content: z.array(ContentSchema),
+    content: z.array(ToolResultContentSchema),
     details: z.unknown().optional(),
     isError: z.boolean(),
     timestamp: z.number(),
   }),
 ]);
 
-const TraceSchema = z.object({
-  type: z.string(),
-  timestamp: z.number().optional(),
-});
+// AgentEvent is a discriminated union that recursively contains AgentMessage[],
+// making a full structural Zod schema impractical.
+const TraceSchema: z.ZodType<AgentEvent> = z.custom<AgentEvent>();
 
 const EventSchema = z.object({
   id: z.string(),

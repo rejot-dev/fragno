@@ -1,70 +1,42 @@
-import { Bash, InMemoryFs } from "just-bash";
+import { InMemoryFs } from "just-bash";
+
+import { createBashHost } from "@/fragno/bash-host";
+import type { PiBashRuntime } from "@/fragno/pi-bash-runtime";
 
 import {
-  createAutomationCommands,
-  type AutomationCommandHandlers,
-  type BashAutomationCommandResult,
-  type EventEmitArgs,
-  type EventReplyArgs,
-  type IdentityBindActorArgs,
-  type IdentityCreateClaimArgs,
-  type IdentityLookupBindingArgs,
-} from "../command-spec";
-import {
-  getSourceAdapter,
-  type AnyAutomationSourceAdapter,
-  type AutomationBashEnvironment,
-  type AutomationEvent,
-  type AutomationSourceAdapterRegistry,
+  createStorageBackedAutomationsBashRuntime,
+  type AutomationIdentityBindingRecord,
+  type AutomationIdentityStorageContext,
+  type AutomationsBashRuntime,
+} from "../automations-bash-runtime";
+import type {
+  AutomationCloudflareEnv,
+  AutomationCommandContext,
+  AutomationTriggerBinding,
+  BashAutomationCommandResult,
+} from "../commands/types";
+import type {
+  AnyAutomationSourceAdapter,
+  AutomationBashEnvironment,
+  AutomationEvent,
+  AutomationSourceAdapterRegistry,
 } from "../contracts";
+import {
+  createEventBashRuntime,
+  type AutomationEmitEventResult,
+  type EventBashRuntime,
+} from "../event-bash-runtime";
+import {
+  createOtpBashRuntime,
+  type AutomationIdentityClaimRecord,
+  type OtpBashRuntime,
+} from "../otp-bash-runtime";
 
-type AutomationBashServices = {
-  sourceAdapters?: Partial<AutomationSourceAdapterRegistry>;
-};
+const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
-type AutomationTriggerBinding = {
-  source: string;
-  eventType: string;
-  scriptId: string;
-};
-
-const buildCanonicalBashEnv = ({
-  event,
-  binding,
-  idempotencyKey,
-}: {
-  event: AutomationEvent;
-  binding: AutomationTriggerBinding;
-  idempotencyKey: string;
-}): AutomationBashEnvironment => ({
-  AUTOMATION_EVENT_ID: event.id,
-  AUTOMATION_ORG_ID: event.orgId,
-  AUTOMATION_SOURCE: event.source,
-  AUTOMATION_EVENT_TYPE: event.eventType,
-  AUTOMATION_OCCURRED_AT: event.occurredAt,
-  AUTOMATION_ACTOR_TYPE: event.actor?.type,
-  AUTOMATION_EXTERNAL_ACTOR_ID: event.actor?.externalId,
-  AUTOMATION_SUBJECT_USER_ID: event.subject?.userId,
-  AUTOMATION_SCRIPT_ID: binding.scriptId,
-  AUTOMATION_IDEMPOTENCY_KEY: idempotencyKey,
-});
-
-const toExecEnv = (bashEnv: AutomationBashEnvironment): Record<string, string> => {
-  return Object.fromEntries(
-    Object.entries(bashEnv).filter((entry): entry is [string, string] => {
-      return typeof entry[1] === "string";
-    }),
-  );
-};
-
-const writeContextFiles = async ({ fs, event }: { fs: InMemoryFs; event: AutomationEvent }) => {
-  await fs.mkdir("/context", { recursive: true });
-  await Promise.all([
-    fs.writeFile("/context/event.json", JSON.stringify(event)),
-    fs.writeFile("/context/payload.json", JSON.stringify(event.payload ?? {})),
-    fs.writeFile("/context/actor.json", JSON.stringify(event.actor ?? null)),
-    fs.writeFile("/context/subject.json", JSON.stringify(event.subject ?? null)),
-  ]);
+export type AutomationPiBashContext = {
+  runtime: PiBashRuntime;
+  bashEnv: AutomationBashEnvironment;
 };
 
 export type BashAutomationRunResult = {
@@ -76,162 +48,170 @@ export type BashAutomationRunResult = {
   commandCalls: BashAutomationCommandResult[];
 };
 
-export type AutomationIdentityBindingRecord = {
-  id?: unknown;
-  source: string;
-  externalActorId: string;
-  userId: string;
-  status: string;
-  linkedAt?: unknown;
-  createdAt?: unknown;
-  updatedAt?: unknown;
+export type AutomationBashRuntime = AutomationsBashRuntime & OtpBashRuntime & EventBashRuntime;
+
+export type AutomationBashCommandContext = AutomationCommandContext & {
+  runtime: AutomationBashRuntime;
 };
 
-export type AutomationIdentityClaimRecord = {
-  url: string;
-  externalId: string;
-  code: string;
-  type?: string;
-  expiresAt?: string;
+export type AutomationBashHostContext = {
+  automation: AutomationBashCommandContext;
+  automations: {
+    runtime: AutomationsBashRuntime;
+  };
+  otp: {
+    runtime: OtpBashRuntime;
+  };
+  pi?: {
+    runtime: PiBashRuntime;
+  };
 };
 
-export type AutomationEmitEventResult = {
-  accepted: boolean;
-  eventId: string;
-  orgId?: string;
-  source: string;
-  eventType: string;
+export type {
+  AutomationEmitEventResult,
+  AutomationIdentityBindingRecord,
+  AutomationIdentityClaimRecord,
 };
 
-export type AutomationBashRuntime = {
-  lookupBinding: (
-    input: IdentityLookupBindingArgs,
-  ) => Promise<AutomationIdentityBindingRecord | null>;
-  bindActor: (input: IdentityBindActorArgs) => Promise<AutomationIdentityBindingRecord>;
-  createClaim: (input: IdentityCreateClaimArgs) => Promise<AutomationIdentityClaimRecord>;
-  emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
+export const createAutomationBashRuntime = ({
+  hookContext,
+  env,
+  event,
+  sourceAdapters,
+  sourceAdapter,
+}: {
+  hookContext: AutomationIdentityStorageContext;
+  env?: CloudflareEnv;
+  event: AutomationEvent;
+  sourceAdapters: Partial<AutomationSourceAdapterRegistry>;
+  sourceAdapter: AnyAutomationSourceAdapter | undefined;
+}): AutomationBashRuntime => {
+  const orgId = normalizeOrgId(event.orgId);
+
+  return {
+    ...createStorageBackedAutomationsBashRuntime({ hookContext }),
+    ...(env && orgId
+      ? createOtpBashRuntime({
+          env,
+          orgId,
+        })
+      : {
+          createClaim: async () => {
+            if (!env) {
+              throw new Error("otp.identity.create-claim is not configured");
+            }
+
+            throw new Error("otp.identity.create-claim requires an organisation id");
+          },
+        }),
+    ...createEventBashRuntime({
+      env,
+      event: {
+        ...event,
+        orgId,
+      },
+      sourceAdapters,
+      sourceAdapter,
+    }),
+  };
 };
 
-type AutomationBashCommandContext = {
+export const createAutomationBashCommandContext = ({
+  event,
+  binding,
+  idempotencyKey,
+  runtime,
+  sourceAdapter,
+  cloudflareEnv,
+  pi,
+}: {
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
   runtime: AutomationBashRuntime;
-  services: AutomationBashServices;
-  sourceAdapter?: AnyAutomationSourceAdapter;
-  bashEnv?: AutomationBashEnvironment;
+  sourceAdapter: AnyAutomationSourceAdapter | undefined;
+  cloudflareEnv: AutomationCloudflareEnv;
+  pi?: AutomationPiBashContext;
+}): AutomationBashHostContext => {
+  const normalizedEvent: AutomationEvent = {
+    ...event,
+    orgId: normalizeOrgId(event.orgId),
+  };
+
+  const bashEnv: AutomationBashEnvironment = {
+    AUTOMATION_EVENT_ID: normalizedEvent.id,
+    AUTOMATION_ORG_ID: normalizedEvent.orgId,
+    AUTOMATION_SOURCE: normalizedEvent.source,
+    AUTOMATION_EVENT_TYPE: normalizedEvent.eventType,
+    AUTOMATION_OCCURRED_AT: normalizedEvent.occurredAt,
+    AUTOMATION_ACTOR_TYPE: normalizedEvent.actor?.type,
+    AUTOMATION_EXTERNAL_ACTOR_ID: normalizedEvent.actor?.externalId,
+    AUTOMATION_SUBJECT_USER_ID: normalizedEvent.subject?.userId,
+    AUTOMATION_SCRIPT_ID: binding.scriptId,
+    AUTOMATION_IDEMPOTENCY_KEY: idempotencyKey,
+    ...sourceAdapter?.toBashEnv(normalizedEvent),
+    ...pi?.bashEnv,
+  };
+
+  return {
+    automation: {
+      event: normalizedEvent,
+      orgId: normalizedEvent.orgId,
+      binding,
+      idempotencyKey,
+      bashEnv,
+      cloudflareEnv,
+      runtime,
+    },
+    automations: {
+      runtime,
+    },
+    otp: {
+      runtime,
+    },
+    ...(pi
+      ? {
+          pi: {
+            runtime: pi.runtime,
+          },
+        }
+      : {}),
+  };
 };
 
-const automationCommandHandlers: AutomationCommandHandlers<AutomationBashCommandContext> = {
-  "identity.create-claim": async (command, context) => {
-    return {
-      data: await context.runtime.createClaim(command.args),
-    };
-  },
-  "identity.lookup-binding": async (command, context) => {
-    const binding = await context.runtime.lookupBinding(command.args);
-    if (!binding || binding.status !== "linked") {
-      return {
-        exitCode: 1,
-      };
-    }
+export const executeBashAutomation = async ({
+  script,
+  context,
+}: {
+  script: string;
+  context: AutomationBashHostContext;
+}): Promise<BashAutomationRunResult> => {
+  const fs = new InMemoryFs();
+  await fs.mkdir("/context", { recursive: true });
+  await Promise.all([
+    fs.writeFile("/context/event.json", JSON.stringify(context.automation.event)),
+    fs.writeFile("/context/payload.json", JSON.stringify(context.automation.event.payload ?? {})),
+    fs.writeFile("/context/actor.json", JSON.stringify(context.automation.event.actor ?? null)),
+    fs.writeFile("/context/subject.json", JSON.stringify(context.automation.event.subject ?? null)),
+  ]);
 
-    return {
-      data: binding,
-    };
-  },
-  "identity.bind-actor": async (command, context) => {
-    return {
-      data: await context.runtime.bindActor(command.args),
-    };
-  },
-  "event.reply": async (command, context) => {
-    const args = command.args as EventReplyArgs;
-    const replySource = args.source ?? context.event.source;
-    const sourceAdapter =
-      replySource === context.event.source
-        ? (context.sourceAdapter ?? getSourceAdapter(context.services.sourceAdapters, replySource))
-        : getSourceAdapter(context.services.sourceAdapters, replySource);
-    const externalActorId = args.externalActorId ?? context.event.actor?.externalId;
+  const { bash, commandCallsResult } = createBashHost({
+    fs,
+    env: Object.fromEntries(
+      Object.entries(context.automation.bashEnv).filter((entry): entry is [string, string] => {
+        return typeof entry[1] === "string";
+      }),
+    ),
+    context,
+  });
+  const result = await bash.exec(script);
 
-    if (typeof args.text !== "string" || args.text.length === 0) {
-      throw new Error("event.reply requires a non-empty --text value");
-    }
-
-    if (!sourceAdapter?.reply) {
-      throw new Error(`No reply handler is registered for source: ${replySource}`);
-    }
-
-    if (!externalActorId) {
-      throw new Error("Cannot call event.reply because no external actor id is available");
-    }
-
-    await sourceAdapter.reply({
-      event: context.event,
-      externalActorId,
-      text: args.text,
-    });
-
-    return {
-      data: { ok: true },
-    };
-  },
-  "event.emit": async (command, context) => {
-    return {
-      data: await context.runtime.emitEvent(command.args),
-    };
-  },
+  return {
+    eventId: context.automation.event.id,
+    scriptId: context.automation.binding.scriptId,
+    exitCode: result.exitCode ?? 0,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    commandCalls: commandCallsResult,
+  };
 };
-
-export const createBashAutomationEngine = (services: AutomationBashServices) => ({
-  execute: async ({
-    event,
-    binding,
-    idempotencyKey,
-    runtime,
-    sourceAdapter,
-    script,
-  }: {
-    event: AutomationEvent;
-    binding: AutomationTriggerBinding;
-    idempotencyKey: string;
-    runtime: AutomationBashRuntime;
-    sourceAdapter?: AnyAutomationSourceAdapter;
-    script?: string;
-  }): Promise<BashAutomationRunResult> => {
-    const activeSourceAdapter =
-      sourceAdapter ?? getSourceAdapter(services.sourceAdapters, event.source);
-    const commandCallsResult: BashAutomationCommandResult[] = [];
-    const bashEnv: AutomationBashEnvironment = {
-      ...buildCanonicalBashEnv({ event, binding, idempotencyKey }),
-      ...activeSourceAdapter?.toBashEnv(event),
-    };
-    const customCommands = createAutomationCommands(
-      automationCommandHandlers,
-      {
-        event,
-        binding,
-        idempotencyKey,
-        runtime,
-        services,
-        sourceAdapter: activeSourceAdapter,
-        bashEnv,
-      },
-      commandCallsResult,
-    );
-
-    const fs = new InMemoryFs();
-    await writeContextFiles({ fs, event });
-    const bash = new Bash({ fs, customCommands, env: toExecEnv(bashEnv) });
-    const result = await bash.exec(script ?? "");
-
-    return {
-      eventId: event.id,
-      scriptId: binding.scriptId,
-      exitCode: result.exitCode ?? 0,
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-      commandCalls: commandCallsResult,
-    };
-  },
-});

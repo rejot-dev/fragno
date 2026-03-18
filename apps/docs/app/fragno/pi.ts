@@ -3,7 +3,7 @@ import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
-import { Bash, InMemoryFs } from "just-bash";
+import { InMemoryFs } from "just-bash";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import {
@@ -18,6 +18,13 @@ import { createWorkflowsFragment, type WorkflowLiveStateStore } from "@fragno-de
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 
+import {
+  createRouteBackedAutomationsBashRuntime,
+  type AutomationsBashRuntime,
+} from "./automation/automations-bash-runtime";
+import { createOtpBashRuntime, type OtpBashRuntime } from "./automation/otp-bash-runtime";
+import { createBashHost } from "./bash-host";
+import { createPiRouteBashRuntime, type PiBashRuntime } from "./pi-bash-runtime";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
@@ -26,7 +33,6 @@ import {
   createPiAgentName,
   resolvePiHarnesses,
   type PiHarnessConfig,
-  type PiModelProvider,
   type StoredPiConfig,
 } from "./pi-shared";
 
@@ -36,14 +42,30 @@ export type PiRuntimeFragments = {
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
-export function createPiAdapter(state: DurableObjectState) {
+export type PiBashCommandContext = {
+  pi: {
+    runtime: PiBashRuntime;
+  };
+  automations: {
+    runtime: AutomationsBashRuntime;
+  };
+  otp: {
+    runtime: OtpBashRuntime;
+  };
+};
+
+function createPiAdapter(state: DurableObjectState) {
   return new SqlAdapter({
     dialect: new DurableObjectDialect({ ctx: state }),
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
 }
 
-const createBashTool = (fs: InMemoryFs, sessionId: string): AgentTool => ({
+const createBashTool = (
+  fs: InMemoryFs,
+  sessionId: string,
+  bashCommandContext: PiBashCommandContext,
+): AgentTool => ({
   name: "bash",
   label: "Bash",
   description: "Execute bash commands in an isolated in-memory filesystem.",
@@ -62,7 +84,11 @@ const createBashTool = (fs: InMemoryFs, sessionId: string): AgentTool => ({
       preview: scriptPreview,
     });
 
-    const bash = new Bash({ fs });
+    const { bash, commandCallsResult } = createBashHost({
+      fs,
+      sessionId,
+      context: bashCommandContext,
+    });
     let result: Awaited<ReturnType<typeof bash.exec>>;
     try {
       result = await bash.exec(script, cwd ? { cwd } : {});
@@ -95,6 +121,7 @@ const createBashTool = (fs: InMemoryFs, sessionId: string): AgentTool => ({
         stdout,
         stderr,
         exitCode,
+        commandCalls: commandCallsResult,
       },
     };
   },
@@ -110,12 +137,15 @@ const getSessionFs = (cache: Map<string, InMemoryFs>, sessionId: string) => {
   return fs;
 };
 
-export const createPiToolRegistry = (
+const createPiToolRegistry = (
   sessionFileSystems: Map<string, InMemoryFs>,
+  options: {
+    bashCommandContext: PiBashCommandContext;
+  },
 ): PiToolRegistry => ({
   bash: ({ session }) => {
     const fs = getSessionFs(sessionFileSystems, session.id);
-    return createBashTool(fs, session.id);
+    return createBashTool(fs, session.id, options.bashCommandContext);
   },
 });
 
@@ -191,11 +221,32 @@ const registerHarnessAgents = (
 export const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
 
-export const isValidPiModelOption = (
-  provider: PiModelProvider,
-  model: string,
-): model is (typeof PI_MODEL_CATALOG)[number]["name"] =>
-  PI_MODEL_CATALOG.some((option) => option.provider === provider && option.name === model);
+export const createPiBashCommandContext = ({
+  env,
+  orgId,
+}: {
+  env: CloudflareEnv;
+  orgId: string;
+}): PiBashCommandContext => ({
+  pi: {
+    runtime: createPiRouteBashRuntime({
+      env,
+      orgId,
+    }),
+  },
+  automations: {
+    runtime: createRouteBackedAutomationsBashRuntime({
+      env,
+      orgId,
+    }),
+  },
+  otp: {
+    runtime: createOtpBashRuntime({
+      env,
+      orgId,
+    }),
+  },
+});
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
@@ -203,9 +254,12 @@ export const createPiRuntime = (options: {
   env: CloudflareEnv;
   sessionFileSystems: Map<string, InMemoryFs>;
   liveStateStore: WorkflowLiveStateStore;
+  bashCommandContext: PiBashCommandContext;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
-  const tools = createPiToolRegistry(options.sessionFileSystems);
+  const tools = createPiToolRegistry(options.sessionFileSystems, {
+    bashCommandContext: options.bashCommandContext,
+  });
   const pi = buildPiRuntime(options.config, tools);
 
   const workflowsFragment = createWorkflowsFragment(
@@ -243,3 +297,5 @@ export const createPiRuntime = (options: {
     dispatcher,
   };
 };
+
+export { createPiRouteBashRuntime } from "./pi-bash-runtime";

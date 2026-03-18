@@ -10,7 +10,12 @@ import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
-import { createPiRuntime, isValidPiToolId, type PiRuntimeFragments } from "@/fragno/pi";
+import {
+  createPiBashCommandContext,
+  createPiRuntime,
+  isValidPiToolId,
+  type PiRuntimeFragments,
+} from "@/fragno/pi";
 import {
   resolvePiHarnesses,
   type PiConfigState,
@@ -33,6 +38,20 @@ const jsonResponse = (payload: unknown, status = 200) =>
     },
   });
 
+const buildOrgIdMismatchMessage = (expectedOrgId: string, orgId: string) =>
+  `Pi Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`;
+
+const buildOrgIdMismatchResponse = (expectedOrgId: string, orgId: string) =>
+  jsonResponse(
+    {
+      message: buildOrgIdMismatchMessage(expectedOrgId, orgId),
+      code: "ORG_ID_MISMATCH",
+      expectedOrgId,
+      orgId,
+    },
+    409,
+  );
+
 const maskSecret = (value?: string) => {
   if (!value) {
     return null;
@@ -47,11 +66,12 @@ const isConfigured = (config: StoredPiConfig | null) => {
   if (!config) {
     return false;
   }
+  const hasOrgId = typeof config.orgId === "string" && config.orgId.trim().length > 0;
   const hasKeys = Boolean(
     config.apiKeys.openai || config.apiKeys.anthropic || config.apiKeys.gemini,
   );
   const hasHarnesses = resolvePiHarnesses(config.harnesses).length > 0;
-  return hasKeys && hasHarnesses;
+  return hasOrgId && hasKeys && hasHarnesses;
 };
 
 const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
@@ -62,6 +82,7 @@ const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
   return {
     configured: isConfigured(config),
     config: {
+      orgId: typeof config.orgId === "string" ? config.orgId : "",
       apiKeys: {
         openai: maskSecret(config.apiKeys.openai),
         anthropic: maskSecret(config.apiKeys.anthropic),
@@ -166,9 +187,37 @@ export class Pi extends DurableObject<CloudflareEnv> {
     return config ?? null;
   }
 
+  #getStoredOrgId(config: StoredPiConfig | null) {
+    if (!config || typeof config.orgId !== "string") {
+      return null;
+    }
+
+    const storedOrgId = config.orgId.trim();
+    return storedOrgId ? storedOrgId : null;
+  }
+
+  #assertRequestOrgIdMatchesConfig(request: Request, config: StoredPiConfig): Response | null {
+    const expectedOrgId = this.#getStoredOrgId(config);
+    if (!expectedOrgId) {
+      return null;
+    }
+
+    const requestOrgId = new URL(request.url).searchParams.get("orgId")?.trim();
+    if (!requestOrgId) {
+      return null;
+    }
+
+    if (requestOrgId !== expectedOrgId) {
+      return buildOrgIdMismatchResponse(expectedOrgId, requestOrgId);
+    }
+
+    return null;
+  }
+
   #fingerprintConfig(config: StoredPiConfig) {
     try {
       return JSON.stringify({
+        orgId: config.orgId,
         apiKeys: config.apiKeys,
         harnesses: resolvePiHarnesses(config.harnesses),
       });
@@ -180,12 +229,21 @@ export class Pi extends DurableObject<CloudflareEnv> {
   async #buildRuntime(config: StoredPiConfig) {
     this.#liveWorkflowStates.clear();
 
+    const orgId = config.orgId.trim();
+    if (!orgId) {
+      throw new Error("Pi runtime requires an organisation id.");
+    }
+
     const runtime = createPiRuntime({
       config,
       state: this.#state,
       env: this.#env,
       sessionFileSystems: this.#sessionFileSystems,
       liveStateStore: this.#liveWorkflowStates,
+      bashCommandContext: createPiBashCommandContext({
+        env: this.#env,
+        orgId,
+      }),
     });
 
     await migrate(runtime.workflowsFragment);
@@ -230,7 +288,16 @@ export class Pi extends DurableObject<CloudflareEnv> {
     }
 
     const record = payload as Record<string, unknown>;
+    const normalizedOrgId = typeof record.orgId === "string" ? record.orgId.trim() : "";
+    if (!normalizedOrgId) {
+      throw new Error("Pi configuration requires an organisation id.");
+    }
+
     const existing = await this.#loadConfig();
+    const existingOrgId = this.#getStoredOrgId(existing);
+    if (existingOrgId && existingOrgId !== normalizedOrgId) {
+      throw new Error(buildOrgIdMismatchMessage(existingOrgId, normalizedOrgId));
+    }
 
     const apiKeysInput = record.apiKeys as Record<string, unknown> | undefined;
     const harnessesInput = record.harnesses;
@@ -243,6 +310,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
 
     const now = new Date().toISOString();
     const stored: StoredPiConfig = {
+      orgId: normalizedOrgId,
       apiKeys: {
         openai: openaiInput || existing?.apiKeys.openai,
         anthropic: anthropicInput || existing?.apiKeys.anthropic,
@@ -309,9 +377,15 @@ export class Pi extends DurableObject<CloudflareEnv> {
       );
     }
 
+    const orgIdMismatchResponse = this.#assertRequestOrgIdMatchesConfig(request, config);
+    if (orgIdMismatchResponse) {
+      return orgIdMismatchResponse;
+    }
+
     await this.#ensureRuntime(config);
 
     const requestStartedAt = Date.now();
+
     const url = new URL(request.url);
     const path = url.pathname;
     const targetFragmentId = path.startsWith("/api/workflows") ? "workflows" : "pi";

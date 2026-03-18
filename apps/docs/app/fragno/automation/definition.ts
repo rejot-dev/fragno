@@ -2,16 +2,20 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { InstanceStatus, WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import { createAutomationBashRuntime } from "./bash-runtime";
 import type { AutomationBuiltinScript, AutomationBuiltinTriggerBinding } from "./builtins";
 import {
-  type AutomationCreateIdentityClaimInput,
-  type AutomationCreateIdentityClaimResult,
   type AutomationEvent,
   type AutomationSourceAdapterRegistry,
   getSourceAdapter,
 } from "./contracts";
-import { createBashAutomationEngine } from "./engine/bash";
+import {
+  createAutomationBashCommandContext,
+  createAutomationBashRuntime,
+  executeBashAutomation,
+  type AutomationPiBashContext,
+} from "./engine/bash";
+
+export type { AutomationPiBashContext } from "./engine/bash";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -39,10 +43,12 @@ export type AutomationWorkflowsService = Pick<
 };
 
 export interface AutomationFragmentConfig {
+  env?: CloudflareEnv;
   sourceAdapters?: Partial<AutomationSourceAdapterRegistry>;
-  createIdentityClaim?: (
-    input: AutomationCreateIdentityClaimInput,
-  ) => Promise<AutomationCreateIdentityClaimResult>;
+  createPiAutomationContext?: (input: {
+    event: AutomationEvent;
+    idempotencyKey: string;
+  }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   builtinScripts?: AutomationBuiltinScript[];
   builtinBindings?: AutomationBuiltinTriggerBinding[];
 }
@@ -111,9 +117,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
   .extend(withDatabase(automationFragmentSchema))
   .usesOptionalService<"workflows", AutomationWorkflowsService>("workflows")
   .provideHooks(({ defineHook, config }) => {
-    const bashEngine = createBashAutomationEngine({
-      sourceAdapters: config.sourceAdapters,
-    });
+    const sourceAdapters = config.sourceAdapters ?? {};
 
     return {
       internalIngestEvent: defineHook(async function (payload) {
@@ -125,50 +129,20 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 .retrieve(({ forSchema }) =>
                   forSchema(automationFragmentSchema).find("trigger_binding", (b) =>
                     b
-                      .whereIndex("idx_trigger_binding_source_event", (eb) =>
+                      .whereIndex("idx_trigger_binding_source_event_created_at_id", (eb) =>
                         eb.and(
                           eb("source", "=", payload.source),
                           eb("eventType", "=", payload.eventType),
                         ),
                       )
+                      .orderByIndex("idx_trigger_binding_source_event_created_at_id", "asc")
                       .join((j) => j.triggerBindingScript()),
                   ),
                 )
                 .transformRetrieve(([records]) => records)
                 .execute();
 
-        const sourceAdapter = getSourceAdapter(config.sourceAdapters, payload.source);
-
-        if (builtinBindings.length > 0) {
-          await Promise.all(
-            builtinBindings.map(async (binding) => {
-              if (binding.engine !== "bash") {
-                throw new Error(`Unsupported automation engine: ${binding.engine}`);
-              }
-
-              await bashEngine.execute({
-                event: { ...payload, orgId: payload.orgId },
-                binding: {
-                  source: binding.source,
-                  eventType: binding.eventType,
-                  scriptId: binding.scriptId,
-                },
-                runtime: createAutomationBashRuntime({
-                  hookContext: this,
-                  event: payload,
-                  createIdentityClaim: config.createIdentityClaim,
-                  buildIngestResult,
-                }),
-                sourceAdapter,
-                idempotencyKey: this.idempotencyKey,
-                script: binding.script,
-              });
-            }),
-          );
-          return;
-        }
-
-        if (storedBindings.length === 0) {
+        if (builtinBindings.length === 0 && storedBindings.length === 0) {
           console.warn("No automation binding configured for event", {
             eventId: payload.id,
             source: payload.source,
@@ -178,39 +152,95 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           return;
         }
 
-        await Promise.all(
-          storedBindings
-            .filter((binding) => binding.enabled)
-            .map(async (binding) => {
-              if (!binding.triggerBindingScript || !binding.triggerBindingScript.enabled) {
-                return;
-              }
+        const sourceAdapter = getSourceAdapter(sourceAdapters, payload.source);
+        const runtime = createAutomationBashRuntime({
+          hookContext: this,
+          env: config.env,
+          event: payload,
+          sourceAdapters,
+          sourceAdapter,
+        });
+        const pi = await config.createPiAutomationContext?.({
+          event: payload,
+          idempotencyKey: this.idempotencyKey,
+        });
+        if (builtinBindings.length > 0) {
+          for (const binding of builtinBindings) {
+            if (binding.engine !== "bash") {
+              throw new Error(`Unsupported automation engine: ${binding.engine}`);
+            }
 
-              if (binding.triggerBindingScript.engine !== "bash") {
-                throw new Error(
-                  `Unsupported automation engine: ${binding.triggerBindingScript.engine}`,
-                );
-              }
-
-              await bashEngine.execute({
-                event: { ...payload, orgId: payload.orgId },
+            const result = await executeBashAutomation({
+              script: binding.script,
+              context: createAutomationBashCommandContext({
+                event: payload,
                 binding: {
                   source: binding.source,
                   eventType: binding.eventType,
-                  scriptId: binding.triggerBindingScript.id.externalId,
+                  scriptId: binding.scriptId,
                 },
-                runtime: createAutomationBashRuntime({
-                  hookContext: this,
-                  event: payload,
-                  createIdentityClaim: config.createIdentityClaim,
-                  buildIngestResult,
-                }),
-                sourceAdapter,
                 idempotencyKey: this.idempotencyKey,
-                script: binding.triggerBindingScript.script,
-              });
+                runtime,
+                sourceAdapter,
+                cloudflareEnv: {},
+                pi,
+              }),
+            });
+
+            if (result.exitCode !== 0) {
+              throw new Error(
+                [
+                  `Automation bash script ${binding.scriptId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
+                  result.stderr.trim() || result.stdout.trim(),
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              );
+            }
+          }
+
+          return;
+        }
+
+        for (const binding of storedBindings) {
+          if (!binding.enabled || !binding.triggerBindingScript?.enabled) {
+            continue;
+          }
+
+          if (binding.triggerBindingScript.engine !== "bash") {
+            throw new Error(
+              `Unsupported automation engine: ${binding.triggerBindingScript.engine}`,
+            );
+          }
+
+          const result = await executeBashAutomation({
+            script: binding.triggerBindingScript.script,
+            context: createAutomationBashCommandContext({
+              event: payload,
+              binding: {
+                source: binding.source,
+                eventType: binding.eventType,
+                scriptId: binding.triggerBindingScript.id.externalId,
+              },
+              idempotencyKey: this.idempotencyKey,
+              runtime,
+              sourceAdapter,
+              cloudflareEnv: {},
+              pi,
             }),
-        );
+          });
+
+          if (result.exitCode !== 0) {
+            throw new Error(
+              [
+                `Automation bash script ${binding.triggerBindingScript.id.externalId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
+                result.stderr.trim() || result.stdout.trim(),
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+          }
+        }
       }),
     };
   })

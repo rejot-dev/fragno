@@ -23,7 +23,7 @@ const jsonResponse = (payload: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-export const createAutomationsAdapter = (state: DurableObjectState) =>
+const createAutomationsAdapter = (state: DurableObjectState) =>
   new SqlAdapter({
     dialect: new DurableObjectDialect({ ctx: state }),
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
@@ -33,7 +33,7 @@ export const createAutomationsRuntime = (
   state: DurableObjectState,
   config: Pick<
     AutomationFragmentConfig,
-    "sourceAdapters" | "createIdentityClaim" | "builtinScripts" | "builtinBindings"
+    "env" | "sourceAdapters" | "createPiAutomationContext" | "builtinScripts" | "builtinBindings"
   > = {},
 ) => {
   const databaseAdapter = createAutomationsAdapter(state);
@@ -49,8 +49,9 @@ export const createAutomationsRuntime = (
   );
   const automationFragment = createAutomationFragment(
     {
+      env: config.env,
       sourceAdapters: config.sourceAdapters,
-      createIdentityClaim: config.createIdentityClaim,
+      createPiAutomationContext: config.createPiAutomationContext,
       builtinScripts: config.builtinScripts,
       builtinBindings: config.builtinBindings,
     },

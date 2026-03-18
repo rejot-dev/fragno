@@ -15,6 +15,7 @@ import {
   automationFragmentDefinition,
   type AutomationFragmentConfig,
   type AutomationIngestResult,
+  type AutomationPiBashContext,
   type AutomationWorkflowsService,
 } from "./definition";
 import { automationFragmentRoutes } from "./routes";
@@ -38,12 +39,13 @@ export function createAutomationFragment(
 
 export { automationFragmentDefinition } from "./definition";
 export { automationFragmentSchema } from "./schema";
-export type { AutomationFragmentConfig };
+export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
   builtinAutomationBindings,
   builtinAutomationScripts,
   telegramClaimLinkingCompleteScript,
   telegramClaimLinkingStartScript,
+  telegramCreatePiSessionScript,
 } from "./builtins";
 export type { AutomationBuiltinScript, AutomationBuiltinTriggerBinding } from "./builtins";
 export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./contracts";
@@ -61,3 +63,28 @@ export type {
   AutomationSourceAdapter,
   AutomationSourceAdapterRegistry,
 } from "./contracts";
+export {
+  bindAutomationIdentityActor,
+  createAutomationsBashRuntime,
+  createRouteBackedAutomationsBashRuntime,
+  createStorageBackedAutomationsBashRuntime,
+  lookupAutomationIdentityBinding,
+} from "./automations-bash-runtime";
+export { createEventBashRuntime } from "./event-bash-runtime";
+export { createOtpBashRuntime } from "./otp-bash-runtime";
+export {
+  createAutomationBashCommandContext,
+  createAutomationBashRuntime,
+  executeBashAutomation,
+} from "./engine/bash";
+export type {
+  AutomationBashCommandContext,
+  AutomationBashHostContext,
+  AutomationBashRuntime,
+  AutomationEmitEventResult,
+  AutomationIdentityBindingRecord,
+  AutomationIdentityClaimRecord,
+} from "./engine/bash";
+export type { AutomationsBashRuntime } from "./automations-bash-runtime";
+export type { AutomationReplyResult, EventBashRuntime } from "./event-bash-runtime";
+export type { OtpBashRuntime } from "./otp-bash-runtime";

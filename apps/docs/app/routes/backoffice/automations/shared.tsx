@@ -4,6 +4,8 @@ import { Link, isRouteErrorResponse } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth-client";
 
+import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
+
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
 
 export type AutomationScriptItem = {
@@ -174,12 +176,11 @@ export function AutomationErrorBoundary({
   if (isRouteErrorResponse(error)) {
     statusCode = error.status;
     statusText = error.statusText || "Error";
-    message = typeof error.data === "string" ? error.data : message;
-  } else if (error instanceof Error) {
-    message = error.message;
   }
 
-  if (statusCode === 404 && params.orgId) {
+  message = getRouteErrorMessage(error, message);
+
+  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
     message = `Organisation '${params.orgId}' could not be found.`;
   }
 

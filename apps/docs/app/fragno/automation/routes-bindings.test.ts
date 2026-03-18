@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { AutomationWorkflowsService } from "./definition";
-import { createAutomationFragment } from "./index";
+import { bindAutomationIdentityActor, createAutomationFragment } from "./index";
 
 const createAutomation = () => {
   const services = {
@@ -191,6 +191,105 @@ describe("automation routes /bindings", () => {
     }
   });
 
+  test("binds an identity actor and reuses the same record on rebind", async () => {
+    const firstBindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
+      body: {
+        source: "telegram",
+        externalActorId: "chat-bind-1",
+        userId: "user-1",
+      },
+    });
+
+    expect(firstBindResponse.type).toBe("json");
+    if (firstBindResponse.type !== "json") {
+      throw new Error("Expected first bind response");
+    }
+
+    const secondBindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
+      body: {
+        source: "telegram",
+        externalActorId: "chat-bind-1",
+        userId: "user-2",
+      },
+    });
+
+    expect(secondBindResponse.type).toBe("json");
+    if (secondBindResponse.type !== "json") {
+      throw new Error("Expected second bind response");
+    }
+
+    expect(readRecordId(secondBindResponse.data.id)).toBe(readRecordId(firstBindResponse.data.id));
+    expect(secondBindResponse.data).toMatchObject({
+      source: "telegram",
+      externalActorId: "chat-bind-1",
+      userId: "user-2",
+      status: "linked",
+    });
+
+    const identityBindingsResponse = await fragment.callRoute("GET", "/identity-bindings");
+
+    expect(identityBindingsResponse.type).toBe("json");
+    if (identityBindingsResponse.type === "json") {
+      expect(identityBindingsResponse.data).toHaveLength(1);
+      expect(readRecordId(identityBindingsResponse.data[0]?.id)).toBe(
+        readRecordId(firstBindResponse.data.id),
+      );
+      expect(identityBindingsResponse.data[0]).toMatchObject({
+        source: "telegram",
+        externalActorId: "chat-bind-1",
+        userId: "user-2",
+        status: "linked",
+      });
+    }
+  });
+
+  test("retries duplicate insert errors from concurrent identity binds", async () => {
+    const binding = {
+      id: "binding-concurrent-1",
+      source: "telegram",
+      externalActorId: "chat-concurrent-1",
+      userId: "user-b",
+      status: "linked",
+      linkedAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    };
+
+    const execute = vi
+      .fn<() => Promise<typeof binding>>()
+      .mockRejectedValueOnce({
+        name: "UniqueConstraintError",
+        message: "Unique constraint violation for key [telegram, chat-concurrent-1].",
+      })
+      .mockResolvedValueOnce(binding);
+
+    const txBuilder = {
+      retrieve: vi.fn(() => txBuilder),
+      mutate: vi.fn(() => txBuilder),
+      transform: vi.fn(() => txBuilder),
+      execute,
+    };
+    const handlerTx = vi.fn(() => txBuilder);
+
+    const result = await bindAutomationIdentityActor(
+      {
+        handlerTx,
+      } as never,
+      {
+        source: "telegram",
+        externalActorId: "chat-concurrent-1",
+        userId: "user-b",
+      },
+    );
+
+    expect(result).toBe(binding);
+    expect(handlerTx).toHaveBeenCalledTimes(2);
+    expect(txBuilder.retrieve).toHaveBeenCalledTimes(2);
+    expect(txBuilder.mutate).toHaveBeenCalledTimes(2);
+    expect(txBuilder.transform).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   test("revokes an existing identity binding", async () => {
     const linkingScript = await fragment.callRoute("POST", "/scripts", {
       body: {
@@ -198,7 +297,7 @@ describe("automation routes /bindings", () => {
         name: "Identity Bind Script",
         engine: "bash",
         script:
-          'identity.bind-actor --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --user-id "$AUTOMATION_SUBJECT_USER_ID" >/dev/null',
+          'automations.identity.bind-actor --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --user-id "$AUTOMATION_SUBJECT_USER_ID" >/dev/null',
         version: 1,
         enabled: true,
       },
@@ -278,6 +377,49 @@ describe("automation routes /bindings", () => {
       expect(updatedIdentityBindingsResponse.data[0]).toMatchObject({
         status: "revoked",
       });
+    }
+  });
+
+  test("lookup does not return revoked identity bindings", async () => {
+    const bindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
+      body: {
+        source: "telegram",
+        externalActorId: "chat-revoked-lookup",
+        userId: "user-revoked",
+      },
+    });
+
+    expect(bindResponse.type).toBe("json");
+    if (bindResponse.type !== "json") {
+      throw new Error("Expected bind response");
+    }
+
+    const bindingId = readRecordId(bindResponse.data.id);
+
+    const revokeResponse = await fragment.callRoute(
+      "POST",
+      "/identity-bindings/:bindingId/revoke",
+      {
+        pathParams: { bindingId },
+      },
+    );
+
+    expect(revokeResponse.type).toBe("json");
+    if (revokeResponse.type !== "json") {
+      throw new Error("Expected revoke response");
+    }
+
+    const lookupResponse = await fragment.callRoute("GET", "/identity-bindings/lookup", {
+      query: {
+        source: "telegram",
+        externalActorId: "chat-revoked-lookup",
+      },
+    });
+
+    expect(lookupResponse.type).toBe("error");
+    if (lookupResponse.type === "error") {
+      expect(lookupResponse.status).toBe(404);
+      expect(lookupResponse.error.code).toBe("IDENTITY_BINDING_NOT_FOUND");
     }
   });
 

@@ -1,16 +1,9 @@
-export type AutomationCommandFormat = "text" | "json";
-
-export type AutomationCommandOutputOptions = {
-  format: AutomationCommandFormat;
-  print?: string;
-};
-
-export type AutomationCommandExecutionResult<TData = unknown> = {
-  data?: TData;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-};
+import type {
+  AutomationCommandExecutionResult,
+  AutomationCommandOptionSpec,
+  AutomationCommandOutputOptions,
+  AutomationCommandSpec,
+} from "./types";
 
 export type ParsedCliTokens = {
   options: Map<string, string | boolean | string[]>;
@@ -229,7 +222,7 @@ export const normalizeExecutionResult = (
 };
 
 export const formatCommandStdout = (
-  outputOptions: AutomationCommandOutputOptions,
+  outputOptions: { format?: "text" | "json"; print?: string },
   result: AutomationCommandExecutionResult,
 ) => {
   if (typeof result.stdout === "string") {
@@ -253,4 +246,74 @@ export const formatCommandStdout = (
   }
 
   return "";
+};
+
+const formatCommandOptionLine = (option: AutomationCommandOptionSpec) => {
+  const name = `--${option.name}`;
+  const value = option.valueRequired ? ` <${option.valueName ?? "value"}>` : "";
+  const required = option.required ? "" : " [optional]";
+  return `${name}${value} ${required}`.trimEnd();
+};
+
+export const hasHelpOption = (parsed: ParsedCliTokens) => parsed.options.has("help");
+
+export const describeCommandOption = (option: AutomationCommandOptionSpec) => {
+  const optionLine = formatCommandOptionLine(option);
+  const description = option.required ? `${option.description} (required)` : option.description;
+
+  return `${optionLine.padEnd(36)}${description}`;
+};
+
+export const buildCommandHelp = (spec: AutomationCommandSpec) => {
+  const outputLines: string[] = [];
+
+  outputLines.push(`${spec.name}`);
+  outputLines.push("");
+  outputLines.push(spec.help.summary);
+  outputLines.push("");
+  outputLines.push(`Usage: ${spec.name} [options]`);
+  outputLines.push("");
+  outputLines.push("Options:");
+
+  for (const option of spec.help.options) {
+    outputLines.push(`  ${describeCommandOption(option)}`);
+  }
+
+  outputLines.push(
+    `  ${describeCommandOption({
+      name: "help",
+      description: "Show this help text",
+      valueRequired: false,
+      valueName: "",
+    })}`,
+  );
+
+  outputLines.push(
+    `  ${describeCommandOption({
+      name: "print",
+      description: "Extract a nested JSON field (kebab-case path) from command result",
+      valueRequired: true,
+      valueName: "selector",
+      required: false,
+    })}`,
+  );
+
+  outputLines.push(
+    `  ${describeCommandOption({
+      name: "format",
+      description: "Output format: text (default) or json",
+      valueRequired: true,
+      valueName: "format",
+    })}`,
+  );
+
+  if (spec.help.examples && spec.help.examples.length > 0) {
+    outputLines.push("");
+    outputLines.push("Examples:");
+    for (const example of spec.help.examples) {
+      outputLines.push(`  ${example}`);
+    }
+  }
+
+  return `${outputLines.join("\n")}\n`;
 };

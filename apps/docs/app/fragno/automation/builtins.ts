@@ -26,7 +26,7 @@ export const telegramClaimLinkingStartScript = `if [ "\${AUTOMATION_TELEGRAM_TEX
 fi
 
 linked_user="$(
-  identity.lookup-binding \
+  automations.identity.lookup-binding \
     --source "$AUTOMATION_SOURCE" \
     --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" \
     --print user-id || true
@@ -37,12 +37,20 @@ if [ -n "$linked_user" ]; then
   exit 0
 fi
 
-claim_url="$(
-  identity.create-claim \
+if ! claim_url="$(
+  otp.identity.create-claim \
     --source "$AUTOMATION_SOURCE" \
     --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" \
     --print url
-)"
+)"; then
+  echo "Failed to create Telegram identity claim URL" >&2
+  exit 1
+fi
+
+if [ -z "$claim_url" ]; then
+  echo "otp.identity.create-claim did not return a URL" >&2
+  exit 1
+fi
 
 event.reply --text "Open this link to finish linking your Telegram account: $claim_url"
 `;
@@ -72,7 +80,7 @@ if [ -z "$AUTOMATION_SUBJECT_USER_ID" ]; then
   exit 1
 fi
 
-if identity.bind-actor \
+if automations.identity.bind-actor \
   --source "$link_source" \
   --external-actor-id "$external_actor_id" \
   --user-id "$AUTOMATION_SUBJECT_USER_ID" \
@@ -82,6 +90,33 @@ if identity.bind-actor \
 fi
 
 reply_linking_status "We couldn't link your Telegram chat. Please try again."
+exit 1
+`;
+
+export const telegramCreatePiSessionScript = `if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" != "/pi" ]; then
+  exit 0
+fi
+
+if [ -z "\${AUTOMATION_PI_DEFAULT_AGENT:-}" ]; then
+  event.reply --text "Pi session creation is not configured for this organisation."
+  exit 0
+fi
+
+session_name="Telegram \${AUTOMATION_TELEGRAM_CHAT_ID:-session}"
+
+if session_id="$(
+  pi.session.create \
+    --agent "$AUTOMATION_PI_DEFAULT_AGENT" \
+    --name "$session_name" \
+    --tag telegram \
+    --tag auto-session \
+    --print id
+)"; then
+  event.reply --text "Created Pi session: $session_id"
+  exit 0
+fi
+
+event.reply --text "Failed to create a Pi session."
 exit 1
 `;
 
@@ -102,6 +137,14 @@ export const builtinAutomationScripts: AutomationBuiltinScript[] = [
     version: 1,
     enabled: true,
   },
+  {
+    key: "builtin.telegram-pi-session.start",
+    name: "Temporary Telegram Pi session bootstrap",
+    engine: "bash",
+    script: telegramCreatePiSessionScript,
+    version: 1,
+    enabled: true,
+  },
 ];
 
 export const builtinAutomationBindings: AutomationBuiltinTriggerBinding[] = [
@@ -116,6 +159,13 @@ export const builtinAutomationBindings: AutomationBuiltinTriggerBinding[] = [
     source: AUTOMATION_SOURCES.otp,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
     scriptKey: "builtin.telegram-claim-linking.complete",
+    scriptVersion: 1,
+    enabled: true,
+  },
+  {
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    scriptKey: "builtin.telegram-pi-session.start",
     scriptVersion: 1,
     enabled: true,
   },
