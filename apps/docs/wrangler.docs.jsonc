@@ -1,0 +1,160 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fragno-dev-docs-docs",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "main": "./workers/docs.ts",
+  "observability": {
+    "enabled": true,
+  },
+  "preview_urls": true,
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./sandbox.Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 4,
+    },
+  ],
+  "vars": {
+    "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
+  },
+  "r2_buckets": [
+    {
+      "binding": "UPLOAD_BUCKET",
+      "bucket_name": "fragno-dev-docs-upload",
+    },
+  ],
+  "dispatch_namespaces": [
+    {
+      "binding": "DISPATCHER",
+      "namespace": "staging",
+      "remote": true,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAILING_LIST",
+        "class_name": "MailingList",
+      },
+      {
+        "name": "FORMS",
+        "class_name": "Forms",
+      },
+      {
+        "name": "AUTH",
+        "class_name": "Auth",
+      },
+      {
+        "name": "TELEGRAM",
+        "class_name": "Telegram",
+      },
+      {
+        "name": "RESEND",
+        "class_name": "Resend",
+      },
+      {
+        "name": "OTP",
+        "class_name": "Otp",
+      },
+      {
+        "name": "UPLOAD",
+        "class_name": "Upload",
+      },
+      {
+        "name": "CLOUDFLARE_WORKERS",
+        "class_name": "CloudflareWorkers",
+      },
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox",
+      },
+      {
+        "name": "SANDBOX_REGISTRY",
+        "class_name": "SandboxRegistry",
+      },
+      {
+        "name": "GITHUB",
+        "class_name": "GitHub",
+      },
+      {
+        "name": "GITHUB_WEBHOOK_ROUTER",
+        "class_name": "GitHubWebhookRouter",
+      },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+      },
+      {
+        "name": "AUTOMATIONS",
+        "class_name": "Automations",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MailingList"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["Forms"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["Auth"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["Telegram"],
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["Resend"],
+    },
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["Sandbox"],
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["SandboxRegistry"],
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": ["GitHub"],
+    },
+    {
+      "tag": "v9",
+      "new_sqlite_classes": ["GitHubWebhookRouter"],
+    },
+    {
+      "tag": "v10",
+      "new_sqlite_classes": ["Upload"],
+    },
+    {
+      "tag": "v11",
+      "new_sqlite_classes": ["CloudflareWorkers"],
+    },
+    {
+      "tag": "v12",
+      "new_sqlite_classes": ["Pi"],
+    },
+    {
+      "tag": "v13",
+      "new_sqlite_classes": ["Otp"],
+    },
+    {
+      "tag": "v14",
+      "new_sqlite_classes": ["Automations"],
+    },
+  ],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.sql"],
+      "fallthrough": true,
+    },
+  ],
+}

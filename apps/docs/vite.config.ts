@@ -1,11 +1,8 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import path from "path";
 
 import { reactRouter } from "@react-router/dev/vite";
 import mdx from "fumadocs-mdx/vite";
 import { defineConfig } from "vite";
-import type { Plugin } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -34,12 +31,31 @@ const fumadocsDeps = [
   "@marsidev/react-turnstile",
 ];
 
-// Warm the Cloudflare worker entry so the Durable Object graph is transformed
-// during dev-server boot instead of on the first SSR request.
-const workerWarmupFiles = ["./workers/app.ts"];
+function getDocsBuildTarget(value = process.env.FRAGNO_DOCS_TARGET) {
+  if (value === undefined) {
+    return "all";
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === "all" || normalizedValue === "docs" || normalizedValue === "backoffice") {
+    return normalizedValue;
+  }
+
+  throw new Error(
+    `Invalid FRAGNO_DOCS_TARGET value: ${value}. Expected one of: all, docs, backoffice.`,
+  );
+}
+
+const buildTarget = getDocsBuildTarget();
+const workerConfigPath =
+  buildTarget === "backoffice" ? "./wrangler.backoffice.jsonc" : "./wrangler.docs.jsonc";
+const workerWarmupFiles =
+  buildTarget === "backoffice" ? ["./workers/backoffice.ts"] : ["./workers/docs.ts"];
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
+
   return {
     resolve: {
       tsconfigPaths: true,
@@ -53,7 +69,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       mdx(MdxConfig),
-      cloudflare({ viteEnvironment: { name: "ssr" } }),
+      cloudflare({ configPath: workerConfigPath, viteEnvironment: { name: "ssr" } }),
       tailwindcss(),
       reactRouter(),
       devtoolsJson(),
@@ -73,19 +89,8 @@ export default defineConfig(({ mode }) => {
         : {}),
       noExternal: ["@mariozechner/pi-ai"],
     },
-    environments: isDev
-      ? {
-          ssr: {
-            dev: {
-              preTransformRequests: true,
-            },
-          },
-        }
-      : undefined,
     server: {
       allowedHosts: ["local-wilco.recivo.email"],
-      // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale
-      // Vite dep hashes across restarts, which can split React between old/new chunks.
       headers: isDev
         ? {
             "Cache-Control": "no-store",
@@ -99,40 +104,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-
-// oxlint-disable-next-line no-unused-vars
-function environmentInfoPlugin(): Plugin {
-  return {
-    name: "environment-info",
-    configResolved(config) {
-      const envInfo: Record<string, unknown> = {
-        root: config.root,
-        mode: config.mode,
-        command: config.command,
-        environments: {},
-      };
-
-      // Collect environment information
-      for (const [name, env] of Object.entries(config.environments)) {
-        (envInfo.environments as Record<string, unknown>)[name] = {
-          resolve: {
-            conditions: env.resolve.conditions,
-            externalConditions: env.resolve.externalConditions,
-            mainFields: env.resolve.mainFields,
-          },
-          build: {
-            outDir: env.build.outDir,
-            sourcemap: env.build.sourcemap,
-            minify: env.build.minify,
-            target: env.build.target,
-          },
-          consumer: env.consumer,
-        };
-      }
-
-      const outputPath = join(config.root, "vite-environments.json");
-      writeFileSync(outputPath, JSON.stringify(envInfo, null, 2), "utf-8");
-      console.log(`\nEnvironment info written to: ${outputPath}\n`);
-    },
-  };
-}

@@ -13,9 +13,9 @@ export default mergeConfig(baseConfig, {
     cloudflareTest({
       // CI is not logged into Wrangler. Disable remote bindings so Vitest
       // doesn't try to open a remote proxy session for the dispatch
-      // namespace configured with `remote: true` in wrangler.jsonc.
+      // namespace configured with `remote: true` in wrangler.docs.jsonc.
       remoteBindings: false,
-      wrangler: { configPath: "./wrangler.jsonc" },
+      wrangler: { configPath: "./wrangler.docs.jsonc" },
     }),
   ],
   resolve: {

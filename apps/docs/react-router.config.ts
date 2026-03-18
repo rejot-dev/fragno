@@ -1,7 +1,28 @@
 import type { Config } from "@react-router/dev/config";
 
+function getDocsBuildDirectory(value = process.env.FRAGNO_DOCS_TARGET) {
+  if (value === undefined) {
+    return "build/app";
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === "all") {
+    return "build/app";
+  }
+
+  if (normalizedValue === "docs" || normalizedValue === "backoffice") {
+    return `build/${normalizedValue}`;
+  }
+
+  throw new Error(
+    `Invalid FRAGNO_DOCS_TARGET value: ${value}. Expected one of: all, docs, backoffice.`,
+  );
+}
+
 export default {
   ssr: true,
+  buildDirectory: getDocsBuildDirectory(),
   future: {
     v8_viteEnvironmentApi: true,
     v8_middleware: true,

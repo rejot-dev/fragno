@@ -1,0 +1,108 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fragno-dev-docs-backoffice",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "main": "./workers/backoffice.ts",
+  "observability": {
+    "enabled": true,
+  },
+  "preview_urls": true,
+  "vars": {
+    "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
+  },
+  "r2_buckets": [
+    {
+      "binding": "UPLOAD_BUCKET",
+      "bucket_name": "fragno-dev-docs-upload",
+    },
+  ],
+  "dispatch_namespaces": [
+    {
+      "binding": "DISPATCHER",
+      "namespace": "staging",
+      "remote": true,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAILING_LIST",
+        "class_name": "MailingList",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "FORMS",
+        "class_name": "Forms",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "AUTH",
+        "class_name": "Auth",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "TELEGRAM",
+        "class_name": "Telegram",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "RESEND",
+        "class_name": "Resend",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "OTP",
+        "class_name": "Otp",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "UPLOAD",
+        "class_name": "Upload",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "CLOUDFLARE_WORKERS",
+        "class_name": "CloudflareWorkers",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "SANDBOX_REGISTRY",
+        "class_name": "SandboxRegistry",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "GITHUB",
+        "class_name": "GitHub",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "GITHUB_WEBHOOK_ROUTER",
+        "class_name": "GitHubWebhookRouter",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+        "script_name": "fragno-dev-docs-docs",
+      },
+      {
+        "name": "AUTOMATIONS",
+        "class_name": "Automations",
+        "script_name": "fragno-dev-docs-docs",
+      },
+    ],
+  },
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.sql"],
+      "fallthrough": true,
+    },
+  ],
+}
