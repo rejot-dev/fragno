@@ -293,6 +293,13 @@ const toStatusLabel = (status: UploadQueueStatus) => {
   return "Failed";
 };
 
+export const shouldAutoStartUploads = (input: {
+  uploadingFiles: boolean;
+  defaultProvider: string | null | undefined;
+  nextQueuedUploadPrefix: string | null;
+}) =>
+  !input.uploadingFiles && Boolean(input.defaultProvider) && input.nextQueuedUploadPrefix !== null;
+
 const toProgressPercent = (item: UploadQueueItem) => {
   if (item.totalBytes <= 0) {
     return item.status === "completed" ? 100 : 0;
@@ -935,11 +942,20 @@ export default function BackofficeOrganisationUploadFiles() {
   }, [selectedNodeKind, selectedPrefix, selectedFileKey, selectedFileProvider]);
 
   useEffect(() => {
-    if (uploadingFiles || !defaultProvider || !nextQueuedUploadPrefix) {
+    const nextUploadTargetPrefix = nextQueuedUploadPrefix;
+
+    if (
+      !shouldAutoStartUploads({
+        uploadingFiles,
+        defaultProvider,
+        nextQueuedUploadPrefix: nextUploadTargetPrefix,
+      }) ||
+      nextUploadTargetPrefix === null
+    ) {
       return;
     }
 
-    void startUploads(nextQueuedUploadPrefix, { includeFailed: false });
+    void startUploads(nextUploadTargetPrefix, { includeFailed: false });
   }, [defaultProvider, nextQueuedUploadPrefix, startUploads, uploadingFiles]);
 
   if (configError) {

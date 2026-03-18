@@ -2,6 +2,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
 import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
+import { isUploadDirectoryMarker } from "@/files/contributors/upload-markers";
 import type { UploadProvider } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 
@@ -203,7 +204,10 @@ export async function createUploadSession(
       };
     }
 
-    return { session: null, error: `Failed to create upload (${response.status}).` };
+    return {
+      session: null,
+      error: `Failed to create upload (${response.status}).`,
+    };
   } catch (error) {
     return {
       session: null,
@@ -240,7 +244,10 @@ export async function fetchUploadSessionStatus(
       };
     }
 
-    return { session: null, error: `Failed to fetch upload (${response.status}).` };
+    return {
+      session: null,
+      error: `Failed to fetch upload (${response.status}).`,
+    };
   } catch (error) {
     return {
       session: null,
@@ -320,7 +327,10 @@ export async function completeUploadSession(
       };
     }
 
-    return { file: null, error: `Failed to complete upload (${response.status}).` };
+    return {
+      file: null,
+      error: `Failed to complete upload (${response.status}).`,
+    };
   } catch (error) {
     return {
       file: null,
@@ -368,7 +378,9 @@ export async function fetchUploadFiles(
     const response = await callRoute("GET", "/files", { query });
     if (response.type === "json" && isSuccessStatus(response.status)) {
       return {
-        files: (response.data.files ?? []) as UploadFileRecord[],
+        files: ((response.data.files ?? []) as UploadFileRecord[]).filter(
+          (file) => !isUploadDirectoryMarker(file),
+        ),
         cursor: response.data.cursor,
         hasNextPage: response.data.hasNextPage ?? false,
         filesError: null,
@@ -424,7 +436,10 @@ export async function fetchUploadFile(
     });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { file: response.data as UploadFileRecord, error: null };
+      const file = response.data as UploadFileRecord;
+      return isUploadDirectoryMarker(file)
+        ? { file: null, error: "File not found." }
+        : { file, error: null };
     }
 
     if (response.type === "error") {
@@ -481,7 +496,10 @@ export async function fetchUploadDownloadUrl(
       };
     }
 
-    return { result: null, error: `Failed to get download URL (${response.status}).` };
+    return {
+      result: null,
+      error: `Failed to get download URL (${response.status}).`,
+    };
   } catch (error) {
     return {
       result: null,

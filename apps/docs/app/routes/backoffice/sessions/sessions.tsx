@@ -352,9 +352,15 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const creating = navigation.state === "submitting" && activeIntent === "create-session";
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
   const [selectedHarnessId, setSelectedHarnessId] = useState(harnesses[0]?.id ?? "");
-  const [selectedModelOption, setSelectedModelOption] = useState(
-    PI_MODEL_CATALOG[0] ? `${PI_MODEL_CATALOG[0].provider}::${PI_MODEL_CATALOG[0].name}` : "",
-  );
+  const availableModelOptions = useMemo(() => {
+    const apiKeys = configState?.config?.apiKeys;
+    return PI_MODEL_CATALOG.filter((option) => Boolean(apiKeys?.[option.provider]));
+  }, [
+    configState?.config?.apiKeys?.gemini,
+    configState?.config?.apiKeys?.anthropic,
+    configState?.config?.apiKeys?.openai,
+  ]);
+  const [selectedModelOption, setSelectedModelOption] = useState("");
   const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">(
     harnesses[0]?.steeringMode ?? "one-at-a-time",
   );
@@ -368,6 +374,21 @@ export default function BackofficeOrganisationPiSessionsLayout() {
       setSelectedHarnessId(harnesses[0].id);
     }
   }, [harnesses, selectedHarnessId]);
+
+  useEffect(() => {
+    const nextModel =
+      selectedModelOption &&
+      availableModelOptions.some(
+        (option) => `${option.provider}::${option.name}` === selectedModelOption,
+      )
+        ? selectedModelOption
+        : availableModelOptions[0]
+          ? `${availableModelOptions[0].provider}::${availableModelOptions[0].name}`
+          : "";
+    if (nextModel !== selectedModelOption) {
+      setSelectedModelOption(nextModel);
+    }
+  }, [availableModelOptions, selectedModelOption]);
 
   useEffect(() => {
     const harness = harnesses.find((entry) => entry.id === selectedHarnessId);
@@ -441,22 +462,39 @@ export default function BackofficeOrganisationPiSessionsLayout() {
 
           <div className="space-y-2">
             <label className="text-xs font-semibold text-[var(--bo-fg)]">Model</label>
-            <select
-              name="modelOption"
-              required
-              value={selectedModelOption}
-              onChange={(event) => setSelectedModelOption(event.target.value)}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
+            <input type="hidden" name="modelOption" value={selectedModelOption} required />
+            <div
+              role="radiogroup"
+              aria-label="Model selection"
+              className="flex flex-wrap gap-2 rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
             >
-              {PI_MODEL_CATALOG.map((option) => (
-                <option
-                  key={`${option.provider}-${option.name}`}
-                  value={`${option.provider}::${option.name}`}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              {availableModelOptions.length === 0 ? (
+                <p className="text-xs text-[var(--bo-muted)]">
+                  Configure an API key to enable model selection.
+                </p>
+              ) : (
+                availableModelOptions.map((option) => {
+                  const value = `${option.provider}::${option.name}`;
+                  const isSelected = selectedModelOption === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => setSelectedModelOption(value)}
+                      className={`border px-2 py-1 text-[10px] font-semibold tracking-[0.22em] uppercase ${
+                        isSelected
+                          ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                          : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-accent)] hover:text-[var(--bo-fg)]"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -505,7 +543,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
 
           <button
             type="submit"
-            disabled={creating}
+            disabled={creating || availableModelOptions.length === 0}
             className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
           >
             {creating ? "Creating…" : "Create session"}

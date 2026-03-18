@@ -1,10 +1,10 @@
 import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { DurableObject } from "cloudflare:workers";
-import { InMemoryFs } from "just-bash";
 
 import { migrate } from "@fragno-dev/db";
 import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
 
+import type { MasterFileSystem } from "@/files";
 import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
@@ -15,6 +15,7 @@ import {
   createPiRuntime,
   isValidPiToolId,
   type PiRuntimeFragments,
+  type PiSessionFileSystemContext,
 } from "@/fragno/pi";
 import {
   resolvePiHarnesses,
@@ -167,7 +168,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
   private initPromise: Promise<void>;
   #configFingerprint: string | null = null;
-  #sessionFileSystems = new Map<string, InMemoryFs>();
+  #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
   #liveWorkflowStates = createWorkflowLiveStateStore();
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -234,11 +235,32 @@ export class Pi extends DurableObject<CloudflareEnv> {
       throw new Error("Pi runtime requires an organisation id.");
     }
 
+    const uploadBinding = this.#env.UPLOAD;
+    const uploadDo = uploadBinding?.get(uploadBinding.idFromName(orgId));
+    const sessionFileSystemContext: PiSessionFileSystemContext = uploadDo
+      ? {
+          orgId,
+          uploadRuntime: {
+            baseUrl: "https://pi.internal",
+            uploadConfig: await uploadDo.getAdminConfig(),
+            fetch: uploadDo.fetch.bind(uploadDo),
+          },
+        }
+      : {
+          orgId,
+          uploadRuntime: {
+            baseUrl: "https://pi.internal",
+            uploadConfig: null,
+            fetch: async () => new Response("Upload binding not configured.", { status: 404 }),
+          },
+        };
+
     const runtime = createPiRuntime({
       config,
       state: this.#state,
       env: this.#env,
       sessionFileSystems: this.#sessionFileSystems,
+      sessionFileSystemContext,
       liveStateStore: this.#liveWorkflowStates,
       bashCommandContext: createPiBashCommandContext({
         env: this.#env,

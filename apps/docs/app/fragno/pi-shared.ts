@@ -77,9 +77,9 @@ export type PiToolId = (typeof PI_TOOL_IDS)[number];
 export const DEFAULT_PI_HARNESS: PiHarnessConfig = {
   id: "default",
   label: "Default",
-  description: "Built-in harness with bash access and an in-memory filesystem.",
+  description: "Built-in harness with bash access and the combined session filesystem.",
   systemPrompt:
-    "You are a helpful assistant. You can use the bash tool to run commands in an isolated, in-memory filesystem. The filesystem is private to this session and is discarded when the session ends.",
+    "You are a helpful assistant. You can use the bash tool to run commands in the combined session filesystem. Use /system for read-only guidance and /workspace for starter files layered under persistent organisation overrides when Upload is configured. If Upload is unavailable, /workspace remains readable but is read-only.",
   tools: ["bash"],
 };
 

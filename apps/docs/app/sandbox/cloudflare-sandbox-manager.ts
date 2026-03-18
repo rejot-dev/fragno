@@ -1,7 +1,14 @@
-import type { SandboxOptions as CloudflareSdkSandboxOptions } from "@cloudflare/sandbox";
+import type {
+  Sandbox as CloudflareSdkSandbox,
+  SandboxOptions as CloudflareSdkSandboxOptions,
+} from "@cloudflare/sandbox";
 
 import type {
   ExecuteSandboxCommandOptions,
+  MkdirOptions,
+  MountBucketOptions,
+  WriteFileOptions,
+  FileExistsResult,
   SandboxCommandFailure,
   SandboxCommandResult,
   SandboxHandle,
@@ -22,10 +29,11 @@ type CloudflareExecResult = {
   stderr: string;
   exitCode: number | null;
 };
-type CloudflareSandboxHandle = {
-  exec(command: string, options?: CloudflareExecOptions): Promise<CloudflareExecResult>;
-  destroy(): Promise<void>;
-};
+
+type CloudflareSandboxHandle = Pick<
+  CloudflareSdkSandbox,
+  "exec" | "destroy" | "mountBucket" | "mkdir" | "writeFile" | "exists"
+>;
 
 type SandboxRegistryClient = {
   getInstances(): Promise<SandboxInstanceSummary[]>;
@@ -333,6 +341,26 @@ class CloudflareSandboxHandleProxy implements SandboxHandle {
     } catch (error) {
       return classifyThrownError(error);
     }
+  }
+
+  async mountBucket(
+    bucket: string,
+    mountPoint: string,
+    options: MountBucketOptions,
+  ): Promise<void> {
+    await this.#sandbox.mountBucket(bucket, mountPoint, options);
+  }
+
+  async mkdir(path: string, options?: MkdirOptions): Promise<void> {
+    await this.#sandbox.mkdir(path, options);
+  }
+
+  async writeFile(path: string, content: string, options?: WriteFileOptions): Promise<void> {
+    await this.#sandbox.writeFile(path, content, options);
+  }
+
+  async exists(path: string): Promise<FileExistsResult> {
+    return this.#sandbox.exists(path);
   }
 }
 
