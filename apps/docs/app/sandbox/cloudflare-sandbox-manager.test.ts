@@ -46,6 +46,10 @@ function createSandboxMock() {
   return {
     exec: vi.fn(),
     destroy: vi.fn().mockResolvedValue(undefined),
+    mountBucket: vi.fn().mockResolvedValue(undefined),
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    exists: vi.fn().mockResolvedValue({ exists: false }),
   };
 }
 
@@ -309,5 +313,42 @@ describe("createCloudflareSandboxManager", () => {
     }
     expect(result.reason).toBe("internal_error");
     expect(result.message).toBe("Unknown sandbox execution error.");
+  });
+
+  test("proxies mountBucket to the Cloudflare sandbox handle", async () => {
+    const registry = createRegistryMock({
+      getInstance: vi.fn().mockResolvedValue(makeInstance("cf-mount", "running")),
+    });
+    const sandbox = createSandboxMock();
+    const { manager } = createManager(registry, sandbox);
+
+    const handle = await manager.getHandle("cf-mount");
+    await handle!.mountBucket("uploads", "/uploads", {
+      endpoint: "https://example.r2.cloudflarestorage.com",
+    });
+
+    expect(sandbox.mountBucket).toHaveBeenCalledWith("uploads", "/uploads", {
+      endpoint: "https://example.r2.cloudflarestorage.com",
+    });
+  });
+
+  test("proxies filesystem operations to the Cloudflare sandbox handle", async () => {
+    const registry = createRegistryMock({
+      getInstance: vi.fn().mockResolvedValue(makeInstance("cf-fs", "running")),
+    });
+    const sandbox = createSandboxMock();
+    const { manager } = createManager(registry, sandbox);
+
+    const handle = await manager.getHandle("cf-fs");
+    await handle!.mkdir("/workspace", { recursive: true });
+    await handle!.writeFile("/workspace/test.txt", "hello", { encoding: "utf-8" });
+    const exists = await handle!.exists("/workspace/test.txt");
+
+    expect(sandbox.mkdir).toHaveBeenCalledWith("/workspace", { recursive: true });
+    expect(sandbox.writeFile).toHaveBeenCalledWith("/workspace/test.txt", "hello", {
+      encoding: "utf-8",
+    });
+    expect(sandbox.exists).toHaveBeenCalledWith("/workspace/test.txt");
+    expect(exists).toEqual({ exists: false });
   });
 });

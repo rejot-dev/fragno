@@ -113,6 +113,11 @@ export default [
           route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
         ]),
       ]),
+      route("files", "routes/backoffice/files/index.tsx"),
+      route("files/:orgId/download", "routes/backoffice/files/download.ts"),
+      route("files/:orgId", "routes/backoffice/files/organisation-layout.tsx", [
+        index("routes/backoffice/files/explorer.tsx"),
+      ]),
       route("internals", "routes/backoffice/internals/index.tsx"),
       route("internals/github", "routes/backoffice/internals/github.tsx"),
       route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),

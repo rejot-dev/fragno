@@ -23,6 +23,7 @@ function createNavItems(): NavItem[] {
     { label: "Dashboard", to: "/backoffice", end: true },
     { label: "Automations", to: "/backoffice/automations" },
     { label: "Sessions", to: "/backoffice/sessions" },
+    { label: "Files", to: "/backoffice/files" },
     {
       label: "Connections",
       to: "/backoffice/connections",

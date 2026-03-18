@@ -1,7 +1,14 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
+import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
+import {
+  createMasterFileSystem,
+  prepareSandboxFileSystem,
+  resolveUploadMountConfig,
+  type ResolveUploadMount,
+} from "@/files";
 import { getAuthMe } from "@/fragno/auth-server";
 import type {
   SandboxCommandResult,
@@ -233,10 +240,58 @@ export async function action({ request, context }: Route.ActionArgs) {
       startupTimeoutMs: toPositiveIntegerOrUndefined(values.startupTimeoutMs),
     };
 
+    let instance: SandboxInstanceSummary | null = null;
+
     try {
-      const instance = await manager.startInstance(options);
+      instance = await manager.startInstance(options);
+      const handle = await manager.getHandle(instance.id);
+      if (!handle) {
+        throw new Error(`Sandbox "${instance.id}" started but handle was unavailable.`);
+      }
+
+      const uploadDo = getUploadDurableObject(context, organizationId);
+      const uploadConfig = await uploadDo.getAdminConfig();
+
+      const resolveUploadMount: ResolveUploadMount = async (root) => {
+        if (!root.uploadProvider) {
+          return null;
+        }
+
+        return resolveUploadMountConfig(uploadConfig, {
+          provider: root.uploadProvider,
+        });
+      };
+
+      const fileSystem = await createMasterFileSystem({
+        orgId: organizationId,
+        origin: new URL(request.url).origin,
+        backend: "sandbox",
+        uploadConfig,
+        request,
+        routerContext: context,
+      });
+
+      await prepareSandboxFileSystem({
+        orgId: organizationId,
+        backend: "sandbox",
+        fileSystem,
+        handle,
+        resolveUploadMount,
+      });
+
       return redirect(toCfSandboxPath({ view: "detail", sandboxId: instance.id }));
     } catch (error) {
+      if (instance?.id) {
+        try {
+          await manager.killInstance(instance.id);
+        } catch (cleanupError) {
+          console.error("Failed to cleanup partially bootstrapped sandbox", {
+            sandboxId: instance.id,
+            message: toErrorMessage(cleanupError),
+          });
+        }
+      }
+
       return {
         intent: "start",
         ok: false,

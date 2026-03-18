@@ -3,7 +3,6 @@ import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
-import { InMemoryFs } from "just-bash";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import {
@@ -17,6 +16,9 @@ import { createWorkflowsFragment, type WorkflowLiveStateStore } from "@fragno-de
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
+
+import { createMasterFileSystem, type FilesContext, type MasterFileSystem } from "@/files";
+import type { UploadAdminConfigResponse } from "@/fragno/upload";
 
 import {
   createRouteBackedAutomationsBashRuntime,
@@ -54,6 +56,15 @@ export type PiBashCommandContext = {
   };
 };
 
+export type PiSessionUploadRuntime = NonNullable<FilesContext["uploadRuntime"]> & {
+  uploadConfig: UploadAdminConfigResponse | null;
+};
+
+export type PiSessionFileSystemContext = {
+  orgId: string;
+  uploadRuntime: PiSessionUploadRuntime;
+};
+
 function createPiAdapter(state: DurableObjectState) {
   return new SqlAdapter({
     dialect: new DurableObjectDialect({ ctx: state }),
@@ -62,13 +73,13 @@ function createPiAdapter(state: DurableObjectState) {
 }
 
 const createBashTool = (
-  fs: InMemoryFs,
+  fs: MasterFileSystem,
   sessionId: string,
-  bashCommandContext: PiBashCommandContext,
+  bashCommandContext?: PiBashCommandContext,
 ): AgentTool => ({
   name: "bash",
   label: "Bash",
-  description: "Execute bash commands in an isolated in-memory filesystem.",
+  description: "Execute bash commands in the combined Pi session filesystem.",
   parameters: bashParametersSchema,
   execute: async (_toolCallId, params, signal) => {
     const { script, cwd } = params as { script: string; cwd?: string };
@@ -87,11 +98,11 @@ const createBashTool = (
     const { bash, commandCallsResult } = createBashHost({
       fs,
       sessionId,
-      context: bashCommandContext,
+      context: bashCommandContext ?? ({} as PiBashCommandContext),
     });
     let result: Awaited<ReturnType<typeof bash.exec>>;
     try {
-      result = await bash.exec(script, cwd ? { cwd } : {});
+      result = await bash.exec(script, cwd ? { cwd } : { cwd: "/" });
     } catch (error) {
       console.warn("Pi bash tool error", {
         sessionId,
@@ -127,25 +138,42 @@ const createBashTool = (
   },
 });
 
-const getSessionFs = (cache: Map<string, InMemoryFs>, sessionId: string) => {
+const getSessionFs = async (
+  cache: Map<string, Promise<MasterFileSystem>>,
+  sessionId: string,
+  context: PiSessionFileSystemContext,
+) => {
   const existing = cache.get(sessionId);
   if (existing) {
     return existing;
   }
-  const fs = new InMemoryFs();
-  cache.set(sessionId, fs);
-  return fs;
+
+  const pendingFileSystem = createMasterFileSystem({
+    orgId: context.orgId,
+    origin: context.uploadRuntime.baseUrl,
+    backend: "pi",
+    uploadConfig: context.uploadRuntime.uploadConfig,
+    uploadRuntime: context.uploadRuntime,
+  });
+
+  cache.set(sessionId, pendingFileSystem);
+
+  try {
+    return await pendingFileSystem;
+  } catch (error) {
+    cache.delete(sessionId);
+    throw error;
+  }
 };
 
-const createPiToolRegistry = (
-  sessionFileSystems: Map<string, InMemoryFs>,
-  options: {
-    bashCommandContext: PiBashCommandContext;
-  },
+export const createPiToolRegistry = (
+  sessionFileSystems: Map<string, Promise<MasterFileSystem>>,
+  sessionFileSystemContext: PiSessionFileSystemContext,
+  bashCommandContext?: PiBashCommandContext,
 ): PiToolRegistry => ({
-  bash: ({ session }) => {
-    const fs = getSessionFs(sessionFileSystems, session.id);
-    return createBashTool(fs, session.id, options.bashCommandContext);
+  bash: async ({ session }) => {
+    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
+    return createBashTool(fileSystem, session.id, bashCommandContext);
   },
 });
 
@@ -252,14 +280,17 @@ export const createPiRuntime = (options: {
   config: StoredPiConfig;
   state: DurableObjectState;
   env: CloudflareEnv;
-  sessionFileSystems: Map<string, InMemoryFs>;
+  sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+  sessionFileSystemContext: PiSessionFileSystemContext;
   liveStateStore: WorkflowLiveStateStore;
   bashCommandContext: PiBashCommandContext;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
-  const tools = createPiToolRegistry(options.sessionFileSystems, {
-    bashCommandContext: options.bashCommandContext,
-  });
+  const tools = createPiToolRegistry(
+    options.sessionFileSystems,
+    options.sessionFileSystemContext,
+    options.bashCommandContext,
+  );
   const pi = buildPiRuntime(options.config, tools);
 
   const workflowsFragment = createWorkflowsFragment(
