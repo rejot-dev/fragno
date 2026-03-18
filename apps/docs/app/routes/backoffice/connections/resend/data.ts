@@ -2,6 +2,8 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
 import type {
+  ResendDomain,
+  ResendDomainDetail,
   ResendEmailDetail,
   ResendEmailRecord,
   ResendEmailSummary,
@@ -33,6 +35,17 @@ const createResendRouteCaller = (
 type ResendConfigResult = {
   configState: ResendConfigState | null;
   configError: string | null;
+};
+
+type ResendDomainsResult = {
+  domains: ResendDomain[];
+  hasMore: boolean;
+  domainsError: string | null;
+};
+
+type ResendDomainDetailResult = {
+  domain: ResendDomainDetail | null;
+  error: string | null;
 };
 
 type ResendOutboxResult = {
@@ -68,6 +81,85 @@ export async function fetchResendConfig(
   }
 }
 
+export async function fetchResendDomains(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): Promise<ResendDomainsResult> {
+  try {
+    const callRoute = createResendRouteCaller(request, context, orgId);
+    const response = await callRoute("GET", "/domains");
+
+    if (response.type === "json") {
+      return {
+        domains: response.data.domains ?? [],
+        hasMore: response.data.hasMore ?? false,
+        domainsError: null,
+      };
+    }
+
+    if (response.type === "error") {
+      if (response.error.code === "NOT_CONFIGURED") {
+        return {
+          domains: [],
+          hasMore: false,
+          domainsError: null,
+        };
+      }
+
+      return {
+        domains: [],
+        hasMore: false,
+        domainsError: response.error.message,
+      };
+    }
+
+    return {
+      domains: [],
+      hasMore: false,
+      domainsError: `Failed to fetch domains (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      domains: [],
+      hasMore: false,
+      domainsError: error instanceof Error ? error.message : "Failed to load domains.",
+    };
+  }
+}
+
+export async function fetchResendDomainDetail(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  domainId: string,
+): Promise<ResendDomainDetailResult> {
+  try {
+    const callRoute = createResendRouteCaller(request, context, orgId);
+    const response = await callRoute("GET", "/domains/:domainId", {
+      pathParams: { domainId },
+    });
+
+    if (response.type === "json") {
+      return { domain: response.data as ResendDomainDetail, error: null };
+    }
+
+    if (response.type === "error") {
+      return { domain: null, error: response.error.message };
+    }
+
+    return {
+      domain: null,
+      error: `Failed to fetch domain (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      domain: null,
+      error: error instanceof Error ? error.message : "Failed to load domain.",
+    };
+  }
+}
+
 export async function sendResendEmail(
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -86,7 +178,10 @@ export async function sendResendEmail(
       return { record: null, error: response.error.message };
     }
 
-    return { record: null, error: `Failed to send email (${response.status}).` };
+    return {
+      record: null,
+      error: `Failed to send email (${response.status}).`,
+    };
   } catch (error) {
     return {
       record: null,
@@ -115,7 +210,10 @@ export async function fetchResendEmailDetail(
       return { email: null, error: response.error.message };
     }
 
-    return { email: null, error: `Failed to fetch email (${response.status}).` };
+    return {
+      email: null,
+      error: `Failed to fetch email (${response.status}).`,
+    };
   } catch (error) {
     return {
       email: null,
@@ -128,7 +226,12 @@ export async function fetchResendOutbox(
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  options: { order?: "asc" | "desc"; pageSize?: number; cursor?: string; status?: string } = {},
+  options: {
+    order?: "asc" | "desc";
+    pageSize?: number;
+    cursor?: string;
+    status?: string;
+  } = {},
 ): Promise<ResendOutboxResult> {
   try {
     const callRoute = createResendRouteCaller(request, context, orgId);

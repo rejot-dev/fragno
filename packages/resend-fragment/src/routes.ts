@@ -1,5 +1,5 @@
 import { decodeCursor } from "@fragno-dev/db/cursor";
-import type { CreateEmailOptions } from "resend";
+import type { CreateEmailOptions, Domain, DomainRecords } from "resend";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -106,12 +106,59 @@ export const resendListEmailsOutputSchema = z.object({
   hasNextPage: z.boolean(),
 });
 
+const resendDomainCapabilityStatusSchema = z.enum(["enabled", "disabled"]);
+const resendDomainStatusSchema = z.enum([
+  "pending",
+  "verified",
+  "failed",
+  "temporary_failure",
+  "not_started",
+]);
+const resendDomainRegionSchema = z.enum(["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"]);
+
+export const resendDomainSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: resendDomainStatusSchema,
+  createdAt: z.string(),
+  region: resendDomainRegionSchema,
+  capabilities: z.object({
+    sending: resendDomainCapabilityStatusSchema,
+    receiving: resendDomainCapabilityStatusSchema,
+  }),
+});
+
+const resendDomainRecordSchema = z.object({
+  record: z.enum(["SPF", "DKIM", "Receiving"]),
+  name: z.string(),
+  value: z.string(),
+  type: z.enum(["MX", "TXT", "CNAME"]),
+  ttl: z.string(),
+  status: resendDomainStatusSchema,
+  routingPolicy: z.string().optional(),
+  priority: z.number().optional(),
+  proxyStatus: z.enum(["enable", "disable"]).optional(),
+});
+
+export const resendListDomainsOutputSchema = z.object({
+  domains: z.array(resendDomainSchema),
+  hasMore: z.boolean(),
+});
+
+export const resendDomainDetailSchema = resendDomainSchema.extend({
+  records: z.array(resendDomainRecordSchema),
+});
+
 export type ResendEmailInput = z.infer<typeof resendEmailSchema>;
 export type ResendSendEmailInput = z.infer<typeof resendSendEmailInputSchema>;
 export type ResendEmailRecord = z.infer<typeof resendEmailRecordSchema>;
 export type ResendEmailSummary = z.infer<typeof resendEmailSummarySchema>;
 export type ResendEmailDetail = z.infer<typeof resendEmailDetailSchema>;
 export type ResendListEmailsOutput = z.infer<typeof resendListEmailsOutputSchema>;
+export type ResendDomain = z.infer<typeof resendDomainSchema>;
+export type ResendDomainRecord = z.infer<typeof resendDomainRecordSchema>;
+export type ResendDomainDetail = z.infer<typeof resendDomainDetailSchema>;
+export type ResendListDomainsOutput = z.infer<typeof resendListDomainsOutputSchema>;
 
 const toArray = (value?: string | string[]) => {
   if (!value) {
@@ -327,9 +374,133 @@ const buildEmailDetail = (email: {
   };
 };
 
+const buildDomainSummary = (domain: Domain): ResendDomain => ({
+  id: domain.id,
+  name: domain.name,
+  status: domain.status,
+  createdAt: domain.created_at,
+  region: domain.region,
+  capabilities: {
+    sending: domain.capabilities.sending,
+    receiving: domain.capabilities.receiving,
+  },
+});
+
+const buildDomainRecord = (record: DomainRecords): ResendDomainRecord => ({
+  record: record.record,
+  name: record.name,
+  value: record.value,
+  type: record.type,
+  ttl: record.ttl,
+  status: record.status,
+  routingPolicy: "routing_policy" in record ? record.routing_policy : undefined,
+  priority: "priority" in record ? record.priority : undefined,
+  proxyStatus: "proxy_status" in record ? record.proxy_status : undefined,
+});
+
+const buildDomainDetail = (domain: Domain & { records: DomainRecords[] }): ResendDomainDetail => ({
+  ...buildDomainSummary(domain),
+  records: domain.records.map((record) => buildDomainRecord(record)),
+});
+
 export const resendRoutesFactory = defineRoutes(resendFragmentDefinition).create(
   ({ defineRoute, config, deps }) => {
     return [
+      defineRoute({
+        method: "GET",
+        path: "/domains",
+        outputSchema: resendListDomainsOutputSchema,
+        errorCodes: ["RESEND_API_ERROR"] as const,
+        handler: async function (_input, { json, error }) {
+          try {
+            const response = await deps.resend.domains.list({ limit: 100 });
+
+            if (response.error) {
+              return error(
+                {
+                  message: response.error.message,
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            if (!response.data) {
+              return error(
+                {
+                  message: "Resend returned no domain data.",
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            return json({
+              domains: response.data.data.map((domain) => buildDomainSummary(domain)),
+              hasMore: response.data.has_more,
+            });
+          } catch (err) {
+            return error(
+              {
+                message: formatErrorMessage(err),
+                code: "RESEND_API_ERROR",
+              },
+              502,
+            );
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/domains/:domainId",
+        outputSchema: resendDomainDetailSchema,
+        errorCodes: ["DOMAIN_NOT_FOUND", "RESEND_API_ERROR"] as const,
+        handler: async function ({ pathParams }, { json, error }) {
+          try {
+            const response = await deps.resend.domains.get(pathParams.domainId);
+
+            if (response.error) {
+              if (response.error.name === "not_found") {
+                return error(
+                  {
+                    message: "Domain not found.",
+                    code: "DOMAIN_NOT_FOUND",
+                  },
+                  404,
+                );
+              }
+
+              return error(
+                {
+                  message: response.error.message,
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            if (!response.data) {
+              return error(
+                {
+                  message: "Resend returned no domain detail.",
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            return json(buildDomainDetail(response.data));
+          } catch (err) {
+            return error(
+              {
+                message: formatErrorMessage(err),
+                code: "RESEND_API_ERROR",
+              },
+              502,
+            );
+          }
+        },
+      }),
       defineRoute({
         method: "GET",
         path: "/emails",
@@ -483,7 +654,10 @@ export const resendRoutesFactory = defineRoutes(resendFragmentDefinition).create
         handler: async function ({ headers, rawBody }, { json, error }) {
           if (!config.webhookSecret) {
             return error(
-              { message: "Missing webhook secret in config", code: "WEBHOOK_ERROR" },
+              {
+                message: "Missing webhook secret in config",
+                code: "WEBHOOK_ERROR",
+              },
               400,
             );
           }
@@ -494,14 +668,20 @@ export const resendRoutesFactory = defineRoutes(resendFragmentDefinition).create
 
           if (!id || !timestamp || !signature) {
             return error(
-              { message: "Missing webhook signature headers", code: "MISSING_SIGNATURE" },
+              {
+                message: "Missing webhook signature headers",
+                code: "MISSING_SIGNATURE",
+              },
               400,
             );
           }
 
           if (!rawBody) {
             return error(
-              { message: "Missing request body for webhook verification", code: "WEBHOOK_ERROR" },
+              {
+                message: "Missing request body for webhook verification",
+                code: "WEBHOOK_ERROR",
+              },
               400,
             );
           }
