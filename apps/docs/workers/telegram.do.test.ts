@@ -43,9 +43,9 @@ vi.mock("@/fragno/durable-hooks", () => ({
 import { Telegram } from "./telegram.do";
 
 const CONFIG_KEY = "telegram-config";
-const ORG_ID_STORAGE_KEY = "telegram-org-id";
 
 const VALID_PAYLOAD = {
+  orgId: "acme",
   botToken: "123456:telegram-bot-token",
   webhookSecretToken: "telegram-webhook-secret",
   botUsername: "fragno_bot",
@@ -106,9 +106,9 @@ describe("Telegram Durable Object", () => {
     const { state, store } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "acme", "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
-    expect(store.get(ORG_ID_STORAGE_KEY)).toBe("acme");
+    expect(store.get(CONFIG_KEY)).toMatchObject({ orgId: "acme" });
     expect(createTelegramServerMock).toHaveBeenCalledWith(
       expect.objectContaining({
         botToken: VALID_PAYLOAD.botToken,
@@ -128,10 +128,10 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "acme", "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
     await expect(
-      telegram.setAdminConfig(VALID_PAYLOAD, "other-org", "https://example.com"),
+      telegram.setAdminConfig({ ...VALID_PAYLOAD, orgId: "other-org" }, "https://example.com"),
     ).rejects.toThrowError('Telegram Durable Object is already bound to organisation "acme".');
   });
 
@@ -139,21 +139,22 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "acme", "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
     await expect(
       telegram.fetch(new Request("https://example.com/api/telegram/webhook?orgId=other-org")),
     ).rejects.toThrowError('Telegram Durable Object is already bound to organisation "acme".');
   });
 
-  test("migrates legacy config orgId into the durable object's org binding", async () => {
+  test("treats stored config without an org id as not configured", async () => {
     const createdAt = "2026-03-16T00:00:00.000Z";
-    const { state, store } = createState([
+    const { state } = createState([
       [
         CONFIG_KEY,
         {
-          ...VALID_PAYLOAD,
-          orgId: "acme",
+          botToken: VALID_PAYLOAD.botToken,
+          webhookSecretToken: VALID_PAYLOAD.webhookSecretToken,
+          botUsername: VALID_PAYLOAD.botUsername,
           createdAt,
           updatedAt: createdAt,
         },
@@ -165,16 +166,9 @@ describe("Telegram Durable Object", () => {
       new Request("https://example.com/api/telegram/webhook?orgId=acme"),
     );
 
-    expect(response.status).toBe(200);
-    expect(store.get(ORG_ID_STORAGE_KEY)).toBe("acme");
-    expect(createTelegramServerMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      state,
-      expect.objectContaining({
-        hooks: expect.objectContaining({
-          onMessageReceived: expect.any(Function),
-        }),
-      }),
-    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "NOT_CONFIGURED",
+    });
   });
 });

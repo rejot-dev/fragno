@@ -10,6 +10,7 @@ import {
   OrganisationTabs,
   type OrganisationTab,
 } from "./organisation-shared";
+import { throwOrganisationNotFound } from "./route-errors";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -27,7 +28,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const entry = me.organizations.find((item) => item.organization.id === params.orgId) ?? null;
   if (!entry) {
-    throw new Response("Not Found", { status: 404 });
+    throwOrganisationNotFound(params.orgId);
   }
 
   return {

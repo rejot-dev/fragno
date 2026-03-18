@@ -117,7 +117,7 @@ export class Otp extends DurableObject<CloudflareEnv> {
 
     const automationsDo = this.#env.AUTOMATIONS.get(this.#env.AUTOMATIONS.idFromName(claim.orgId));
 
-    await automationsDo.ingestEvent(
+    await automationsDo.triggerIngestEvent(
       buildIdentityClaimCompletedAutomationEvent({
         orgId: claim.orgId,
         userId: confirmation.subjectUserId,

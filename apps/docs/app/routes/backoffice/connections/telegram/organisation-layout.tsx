@@ -4,6 +4,7 @@ import { Outlet } from "react-router";
 import { getAuthMe } from "@/fragno/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { throwOrganisationNotFound } from "../../route-errors";
 import type { Route } from "./+types/organisation-layout";
 import { fetchTelegramConfig } from "./data";
 import {
@@ -31,7 +32,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const organisation =
     me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
   if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
+    throwOrganisationNotFound(params.orgId);
   }
 
   const { configState, configError } = await fetchTelegramConfig(context, params.orgId);

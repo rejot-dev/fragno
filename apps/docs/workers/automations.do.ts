@@ -15,9 +15,35 @@ import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import { createPiRouteBashRuntime } from "@/fragno/pi";
+import {
+  PI_MODEL_CATALOG,
+  createPiAgentName,
+  resolvePiHarnesses,
+  type PiConfigState,
+} from "@/fragno/pi-shared";
 import { createTelegramSourceAdapter } from "@/fragno/telegram";
 
-const AUTOMATIONS_PUBLIC_BASE_URL_KEY = "automations-public-base-url";
+const resolveDefaultPiAgent = (configState: PiConfigState) => {
+  if (!configState.configured || !configState.config) {
+    return undefined;
+  }
+
+  const harness = resolvePiHarnesses(configState.config.harnesses)[0];
+  const model = PI_MODEL_CATALOG.find((option) => {
+    return Boolean(configState.config?.apiKeys?.[option.provider]);
+  });
+
+  if (!harness || !model) {
+    return undefined;
+  }
+
+  return createPiAgentName({
+    harnessId: harness.id,
+    provider: model.provider,
+    model: model.name,
+  });
+};
 
 export class Automations extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
@@ -32,12 +58,13 @@ export class Automations extends DurableObject<CloudflareEnv> {
     this.#state = state;
     this.initPromise = this.#state.blockConcurrencyWhile(async () => {
       this.#runtime = createAutomationsRuntime(state, {
+        env: this.#env,
         sourceAdapters: {
           telegram: createTelegramSourceAdapter({
             reply: this.#replyToTelegram.bind(this),
           }),
         },
-        createIdentityClaim: this.#createIdentityClaim.bind(this),
+        createPiAutomationContext: this.#createPiAutomationContext.bind(this),
         builtinScripts: builtinAutomationScripts,
         builtinBindings: builtinAutomationBindings,
       });
@@ -67,31 +94,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
     });
   }
 
-  async #resolveConfiguredPublicBaseUrl() {
-    const envBaseUrl = this.#env.DOCS_PUBLIC_BASE_URL?.trim();
-    if (envBaseUrl) {
-      return envBaseUrl;
-    }
-
-    const stored = await this.#state.storage.get<string>(AUTOMATIONS_PUBLIC_BASE_URL_KEY);
-    const remembered = stored?.trim();
-    if (remembered) {
-      return remembered;
-    }
-
-    return null;
-  }
-
-  async #rememberPublicBaseUrl(request: Request) {
-    const origin = new URL(request.url).origin.trim();
-    if (!origin) {
-      return null;
-    }
-
-    await this.#state.storage.put(AUTOMATIONS_PUBLIC_BASE_URL_KEY, origin);
-    return origin;
-  }
-
   async #replyToTelegram(input: { event: AutomationEvent; externalActorId: string; text: string }) {
     const orgId = input.event.orgId?.trim();
     if (!orgId) {
@@ -105,42 +107,31 @@ export class Automations extends DurableObject<CloudflareEnv> {
     });
   }
 
-  async #createIdentityClaim(input: {
-    orgId?: string;
-    source: string;
-    externalActorId: string;
-    ttlMinutes?: number;
-  }) {
-    const normalizedOrgId = input.orgId?.trim();
-    if (!normalizedOrgId) {
-      throw new Error("identity.create-claim requires an organisation id");
+  async #createPiAutomationContext(input: { event: AutomationEvent; idempotencyKey: string }) {
+    const orgId = input.event.orgId?.trim();
+    if (!orgId) {
+      return undefined;
     }
 
-    const publicBaseUrl = await this.#resolveConfiguredPublicBaseUrl();
-    if (!publicBaseUrl) {
-      throw new Error(
-        "No public base URL is configured for automations. Set DOCS_PUBLIC_BASE_URL or call the app over HTTP before issuing claims.",
-      );
+    const piDo = this.#env.PI.get(this.#env.PI.idFromName(orgId));
+    const configState = await piDo.getAdminConfig();
+    const defaultAgent = resolveDefaultPiAgent(configState);
+    if (!defaultAgent) {
+      return undefined;
     }
-
-    const otpDo = this.#env.OTP.get(this.#env.OTP.idFromName(normalizedOrgId));
-    const issued = await otpDo.issueIdentityClaim({
-      orgId: normalizedOrgId,
-      linkSource: input.source,
-      externalActorId: input.externalActorId,
-      expiresInMinutes: input.ttlMinutes,
-      publicBaseUrl,
-    });
 
     return {
-      url: issued.url,
-      externalId: issued.externalId,
-      code: issued.code,
-      type: issued.type,
+      runtime: createPiRouteBashRuntime({
+        env: this.#env,
+        orgId,
+      }),
+      bashEnv: {
+        AUTOMATION_PI_DEFAULT_AGENT: defaultAgent,
+      },
     };
   }
 
-  async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
+  async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     await this.#ensureRuntime();
 
     if (!this.#runtime?.automationFragment) {
@@ -153,6 +144,10 @@ export class Automations extends DurableObject<CloudflareEnv> {
 
     await this.#notifyDispatcher();
     return result;
+  }
+
+  async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
+    return await this.triggerIngestEvent(event);
   }
 
   async alarm() {
@@ -191,8 +186,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
     if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
       return buildNotConfiguredResponse();
     }
-
-    await this.#rememberPublicBaseUrl(request);
 
     const url = new URL(request.url);
     const targetFragment = url.pathname.startsWith(this.automationRoutePrefix)

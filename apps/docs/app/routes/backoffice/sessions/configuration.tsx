@@ -65,7 +65,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const piDo = getPiDurableObject(context, params.orgId);
 
   try {
-    const configState = await piDo.setAdminConfig({ apiKeys });
+    const configState = await piDo.setAdminConfig({ orgId: params.orgId, apiKeys });
     return {
       ok: true,
       message: "Pi API keys saved.",

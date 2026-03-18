@@ -4,6 +4,7 @@ import { getAuthMe } from "@/fragno/auth-server";
 import { builtinAutomationBindings, builtinAutomationScripts } from "@/fragno/automation/builtins";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
 import {
   fetchAutomationIdentityBindings,
@@ -184,7 +185,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const organisation =
     me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
   if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
+    throwOrganisationNotFound(params.orgId);
   }
 
   const [scriptsResult, bindingsResult, identityResult] = await Promise.all([

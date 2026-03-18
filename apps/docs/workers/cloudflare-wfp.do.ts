@@ -17,7 +17,11 @@ import {
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 
-const ORG_ID_STORAGE_KEY = "cloudflare-workers-org-id";
+type StoredCloudflareWorkersConfig = {
+  orgId: string;
+};
+
+const CONFIG_KEY = "cloudflare-workers-config";
 // Keep this in sync with `dispatch_namespaces[].namespace` in wrangler.jsonc.
 const CLOUDFLARE_WFP_NAMESPACE = "staging";
 // Keep this in sync with `compatibility_date` in wrangler.jsonc.
@@ -146,7 +150,6 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
   #fragmentConfig: CloudflareFragmentConfig | null = null;
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
   #migrated = false;
-  #orgId: string | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
@@ -154,56 +157,45 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
     this.#state = state;
   }
 
-  async #loadOrgId() {
-    if (this.#orgId) {
-      return this.#orgId;
-    }
-
-    const storedOrgId = await this.#state.storage.get<string>(ORG_ID_STORAGE_KEY);
-    if (typeof storedOrgId === "string" && storedOrgId.trim()) {
-      this.#orgId = storedOrgId.trim();
-      return this.#orgId;
-    }
-
-    return null;
+  async #loadConfig() {
+    const config = await this.#state.storage.get<StoredCloudflareWorkersConfig>(CONFIG_KEY);
+    return config ?? null;
   }
 
-  async #rememberOrgId(orgId: string) {
-    const normalizedOrgId = orgId.trim();
-    if (!normalizedOrgId) {
+  #getStoredOrgId(config: StoredCloudflareWorkersConfig | null) {
+    if (!config || typeof config.orgId !== "string") {
       return null;
     }
 
-    const existingOrgId = this.#orgId ?? (await this.#loadOrgId());
-    if (existingOrgId && existingOrgId !== normalizedOrgId) {
-      throw new Error(
-        `Cloudflare Workers Durable Object is already bound to organisation "${existingOrgId}".`,
-      );
-    }
-
-    if (!existingOrgId) {
-      this.#orgId = normalizedOrgId;
-      await this.#state.storage.put(ORG_ID_STORAGE_KEY, normalizedOrgId);
-    }
-
-    return normalizedOrgId;
+    const storedOrgId = config.orgId.trim();
+    return storedOrgId ? storedOrgId : null;
   }
 
   async #resolveOrgId(request?: Request, orgIdHint?: string) {
-    if (orgIdHint?.trim()) {
-      return await this.#rememberOrgId(orgIdHint);
+    const config = await this.#loadConfig();
+    const storedOrgId = this.#getStoredOrgId(config);
+
+    const requestedOrgId =
+      orgIdHint?.trim() ||
+      new URL(request?.url ?? "https://workers.do").searchParams.get("orgId")?.trim() ||
+      null;
+
+    if (storedOrgId && requestedOrgId && storedOrgId !== requestedOrgId) {
+      throw new Error(
+        `Cloudflare Workers Durable Object is already bound to organisation "${storedOrgId}".`,
+      );
     }
 
-    if (!request) {
-      return await this.#loadOrgId();
+    if (storedOrgId) {
+      return storedOrgId;
     }
 
-    const orgIdFromQuery = new URL(request.url).searchParams.get("orgId");
-    if (orgIdFromQuery?.trim()) {
-      return await this.#rememberOrgId(orgIdFromQuery);
+    if (!requestedOrgId) {
+      return null;
     }
 
-    return await this.#loadOrgId();
+    await this.#state.storage.put(CONFIG_KEY, { orgId: requestedOrgId });
+    return requestedOrgId;
   }
 
   async #ensureFragment(request?: Request, orgIdHint?: string) {

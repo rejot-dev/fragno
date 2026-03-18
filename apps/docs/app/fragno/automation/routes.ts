@@ -2,10 +2,25 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
+import {
+  bindAutomationIdentityActor,
+  lookupAutomationIdentityBinding,
+} from "./automations-bash-runtime";
 import { automationFragmentDefinition } from "./definition";
 import { automationFragmentSchema } from "./schema";
 
 const automationScriptEngines = ["bash"] as const;
+
+const identityBindingOutputSchema = z.object({
+  id: z.unknown().optional(),
+  source: z.string(),
+  externalActorId: z.string(),
+  userId: z.string(),
+  status: z.string(),
+  linkedAt: z.unknown().optional(),
+  createdAt: z.unknown().optional(),
+  updatedAt: z.unknown().optional(),
+});
 
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute }) => {
@@ -89,6 +104,67 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         },
       }),
       defineRoute({
+        method: "GET",
+        path: "/identity-bindings/lookup",
+        outputSchema: identityBindingOutputSchema,
+        handler: async function ({ query }, { json, error }) {
+          const source = query.get("source")?.trim();
+          const externalActorId = query.get("externalActorId")?.trim();
+
+          if (!source) {
+            return error(
+              {
+                message: "Missing source query parameter.",
+                code: "SOURCE_REQUIRED",
+              },
+              400,
+            );
+          }
+
+          if (!externalActorId) {
+            return error(
+              {
+                message: "Missing externalActorId query parameter.",
+                code: "EXTERNAL_ACTOR_ID_REQUIRED",
+              },
+              400,
+            );
+          }
+
+          const binding = await lookupAutomationIdentityBinding(this, {
+            source,
+            externalActorId,
+          });
+
+          if (!binding) {
+            return error(
+              {
+                message: `Identity binding not found for ${source}:${externalActorId}.`,
+                code: "IDENTITY_BINDING_NOT_FOUND",
+              },
+              404,
+            );
+          }
+
+          return json(binding);
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/identity-bindings/bind",
+        inputSchema: z.object({
+          source: z.string().trim().min(1),
+          externalActorId: z.string().trim().min(1),
+          userId: z.string().trim().min(1),
+        }),
+        outputSchema: identityBindingOutputSchema,
+        handler: async function ({ input }, { json }) {
+          const payload = await input.valid();
+          const binding = await bindAutomationIdentityActor(this, payload);
+          return json(binding);
+        },
+      }),
+      defineRoute({
         method: "POST",
         path: "/identity-bindings/:bindingId/revoke",
         outputSchema: z.object({ ok: z.literal(true), id: z.string() }),
@@ -156,7 +232,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
                   s.whereIndex("primary", (eb) => eb("id", "=", payload.scriptId)),
                 )
                 .findFirst("trigger_binding", (b) =>
-                  b.whereIndex("idx_trigger_binding_source_event", (eb) =>
+                  b.whereIndex("idx_trigger_binding_source_event_created_at_id", (eb) =>
                     eb.and(
                       eb("source", "=", payload.source),
                       eb("eventType", "=", payload.eventType),

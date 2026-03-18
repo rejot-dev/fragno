@@ -2,18 +2,71 @@ import { describe, expect, it } from "vitest";
 
 import { Bash, InMemoryFs } from "just-bash";
 
+import { createBashHost } from "../../bash-host";
 import { createTelegramSourceAdapter } from "../../telegram";
+import { createAutomationCommands } from "../commands/bash-adapter";
 import {
-  createAutomationCommands,
-  type AutomationCommandHandlers,
-  type BashAutomationCommandResult,
-} from "../command-spec";
-import type { AutomationEvent } from "../contracts";
-import { createBashAutomationEngine, type AutomationBashRuntime } from "./bash";
+  AUTOMATIONS_COMMAND_SPEC_LIST,
+  EVENT_COMMAND_SPEC_LIST,
+  OTP_COMMAND_SPEC_LIST,
+} from "../commands/registry";
+import type {
+  AutomationCommandContext,
+  AutomationsCommandHandlers,
+  BashAutomationCommandResult,
+  EventCommandHandlers,
+  OtpCommandHandlers,
+} from "../commands/types";
+import { getSourceAdapter, type AutomationEvent } from "../contracts";
+import {
+  createAutomationBashCommandContext,
+  createAutomationBashRuntime,
+  executeBashAutomation,
+  type AutomationBashRuntime,
+} from "./bash";
 
 type TestContext = {
   invocation: string[];
-};
+} & AutomationCommandContext;
+
+type TestAutomationCommandHandlers = AutomationsCommandHandlers<TestContext> &
+  OtpCommandHandlers<TestContext> &
+  EventCommandHandlers<TestContext>;
+
+const TEST_COMMAND_SPEC_LIST = [
+  ...AUTOMATIONS_COMMAND_SPEC_LIST,
+  ...OTP_COMMAND_SPEC_LIST,
+  ...EVENT_COMMAND_SPEC_LIST,
+] as const;
+
+const createTestCommandContext = (overrides: Partial<TestContext> = {}): TestContext => ({
+  invocation: [],
+  event: {
+    id: "test-event",
+    source: "telegram",
+    eventType: "message.received",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: {},
+  },
+  binding: {
+    source: "telegram",
+    eventType: "message.received",
+    scriptId: "script-ctx",
+  },
+  orgId: "org-ctx",
+  idempotencyKey: "idempotency-ctx",
+  bashEnv: {
+    AUTOMATION_EVENT_ID: "test-event",
+    AUTOMATION_ORG_ID: "org-ctx",
+    AUTOMATION_SOURCE: "telegram",
+    AUTOMATION_EVENT_TYPE: "message.received",
+    AUTOMATION_OCCURRED_AT: "2026-01-01T00:00:00.000Z",
+    AUTOMATION_SCRIPT_ID: "script-ctx",
+    AUTOMATION_IDEMPOTENCY_KEY: "idempotency-ctx",
+  },
+  cloudflareEnv: {},
+  ...overrides,
+});
 
 const runtime: AutomationBashRuntime = {
   lookupBinding: async () => null,
@@ -28,6 +81,9 @@ const runtime: AutomationBashRuntime = {
     externalId: input.externalActorId,
     code: "123456",
   }),
+  reply: async () => ({
+    ok: true,
+  }),
   emitEvent: async (input) => ({
     accepted: true,
     eventId: "emitted-1",
@@ -40,10 +96,10 @@ const runtime: AutomationBashRuntime = {
 describe("bash command runner", () => {
   it("runs cli-style automation commands through just-bash", async () => {
     const commandCallsResult: BashAutomationCommandResult[] = [];
-    const context: TestContext = { invocation: [] };
+    const context = createTestCommandContext();
 
-    const handlers: AutomationCommandHandlers<TestContext> = {
-      "identity.create-claim": async (command) => {
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async (command) => {
         context.invocation.push("create");
         return {
           data: {
@@ -53,7 +109,7 @@ describe("bash command runner", () => {
           },
         };
       },
-      "identity.lookup-binding": async (command) => {
+      "automations.identity.lookup-binding": async (command) => {
         context.invocation.push("lookup");
         if (command.args.externalActorId === "missing") {
           return { exitCode: 1 };
@@ -64,7 +120,7 @@ describe("bash command runner", () => {
           },
         };
       },
-      "identity.bind-actor": async (command) => {
+      "automations.identity.bind-actor": async (command) => {
         context.invocation.push("bind");
         return {
           data: {
@@ -97,14 +153,19 @@ describe("bash command runner", () => {
     const fs = new InMemoryFs();
     const bash = new Bash({
       fs,
-      customCommands: createAutomationCommands(handlers, context, commandCallsResult),
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
     });
 
     const result = await bash.exec(
-      'claim_url="$(identity.create-claim --source telegram --external-actor-id actor_1 --print url)"\n' +
-        'linked_user="$(identity.lookup-binding --source telegram --external-actor-id actor_1 --print user-id)"\n' +
-        'missing_user="$(identity.lookup-binding --source telegram --external-actor-id missing --print user-id || true)"\n' +
-        'identity.bind-actor --source telegram --external-actor-id actor_1 --user-id "$linked_user" --format json\n' +
+      'claim_url="$(otp.identity.create-claim --source telegram --external-actor-id actor_1 --print url)"\n' +
+        'linked_user="$(automations.identity.lookup-binding --source telegram --external-actor-id actor_1 --print user-id)"\n' +
+        'missing_user="$(automations.identity.lookup-binding --source telegram --external-actor-id missing --print user-id || true)"\n' +
+        'automations.identity.bind-actor --source telegram --external-actor-id actor_1 --user-id "$linked_user" --format json\n' +
         'event.reply --source telegram --external-actor-id actor_2 --text "done"\n' +
         "event.emit --event-type identity.binding.completed --source otp --format json\n" +
         'echo "$claim_url|$linked_user|$missing_user"',
@@ -124,22 +185,22 @@ describe("bash command runner", () => {
     ]);
     expect(commandCallsResult).toEqual([
       {
-        command: "identity.create-claim",
+        command: "otp.identity.create-claim",
         output: "https://example.com/actor_1",
         exitCode: 0,
       },
       {
-        command: "identity.lookup-binding",
+        command: "automations.identity.lookup-binding",
         output: "user-for-actor_1",
         exitCode: 0,
       },
       {
-        command: "identity.lookup-binding",
+        command: "automations.identity.lookup-binding",
         output: "",
         exitCode: 1,
       },
       {
-        command: "identity.bind-actor",
+        command: "automations.identity.bind-actor",
         output: '{"userId":"user-for-actor_1","externalActorId":"actor_1"}',
         exitCode: 0,
       },
@@ -156,17 +217,458 @@ describe("bash command runner", () => {
     ]);
   });
 
-  it("can reply through an overridden source adapter", async () => {
-    const replyCalls: Array<{ externalActorId: string; text: string }> = [];
-    const engine = createBashAutomationEngine({
-      sourceAdapters: {
-        telegram: createTelegramSourceAdapter({
-          reply: async ({ externalActorId, text }) => {
-            replyCalls.push({ externalActorId, text });
+  it("shows command-line help for automation commands", async () => {
+    const commandCallsResult: BashAutomationCommandResult[] = [];
+    const context = createTestCommandContext();
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async () => {
+        return {
+          data: {
+            url: "https://example.com/help",
+            externalId: "external-id",
+            code: "help",
           },
-        }),
+        };
+      },
+      "automations.identity.lookup-binding": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+        },
+      }),
+      "automations.identity.bind-actor": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+          externalActorId: "external-id",
+          status: "linked",
+        },
+      }),
+      "event.reply": async () => ({
+        data: {
+          ok: true,
+        },
+      }),
+      "event.emit": async () => ({
+        data: {
+          accepted: true,
+          eventId: "help-event",
+          source: "telegram",
+          eventType: "help-event",
+        },
+      }),
+    };
+
+    const bash = new Bash({
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
+    });
+
+    const result = await bash.exec("otp.identity.create-claim --help");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("otp.identity.create-claim");
+    expect(result.stdout).toContain("--source");
+    expect(result.stdout).toContain("Usage:");
+    expect(result.stdout).toContain("--help");
+    expect(result.stdout).toContain("--print <selector>");
+    expect(result.stdout).toContain("--format <format>");
+    expect(context.invocation).toEqual([]);
+    expect(commandCallsResult).toEqual([
+      {
+        command: "otp.identity.create-claim",
+        output: expect.any(String),
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("shows command-line help for all built-in automation commands", async () => {
+    const commandCallsResult: BashAutomationCommandResult[] = [];
+    const context = createTestCommandContext();
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async () => ({
+        data: { url: "https://example.com", externalId: "external-id", code: "123456" },
+      }),
+      "automations.identity.lookup-binding": async () => ({
+        data: { userId: "help-user", source: "telegram" },
+      }),
+      "automations.identity.bind-actor": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+          externalActorId: "external-id",
+          status: "linked",
+        },
+      }),
+      "event.reply": async () => ({ data: { ok: true } }),
+      "event.emit": async () => ({
+        data: {
+          accepted: true,
+          eventId: "help-event",
+          source: "telegram",
+          eventType: "help-event",
+        },
+      }),
+    };
+
+    const bash = new Bash({
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
+    });
+
+    const helpResults = [
+      await bash.exec("otp.identity.create-claim --help"),
+      await bash.exec("automations.identity.lookup-binding --help"),
+      await bash.exec("automations.identity.bind-actor --help"),
+      await bash.exec("event.reply --help"),
+      await bash.exec("event.emit --help"),
+    ];
+
+    expect(helpResults.every((result) => result.exitCode === 0)).toBe(true);
+    for (const result of helpResults) {
+      expect(result.stdout).toContain("Usage:");
+      expect(result.stdout).toContain("--help");
+      expect(result.stdout).toContain("--print <selector>");
+      expect(result.stdout).toContain("--format <format>");
+    }
+    expect(context.invocation).toEqual([]);
+    expect(commandCallsResult).toEqual([
+      {
+        command: "otp.identity.create-claim",
+        output: expect.stringContaining("otp.identity.create-claim"),
+        exitCode: 0,
+      },
+      {
+        command: "automations.identity.lookup-binding",
+        output: expect.stringContaining("automations.identity.lookup-binding"),
+        exitCode: 0,
+      },
+      {
+        command: "automations.identity.bind-actor",
+        output: expect.stringContaining("automations.identity.bind-actor"),
+        exitCode: 0,
+      },
+      {
+        command: "event.reply",
+        output: expect.stringContaining("event.reply"),
+        exitCode: 0,
+      },
+      {
+        command: "event.emit",
+        output: expect.stringContaining("event.emit"),
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("returns a parse error when required command args are missing", async () => {
+    const commandCallsResult: BashAutomationCommandResult[] = [];
+    const context = createTestCommandContext();
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async () => {
+        return {
+          data: {
+            url: "https://example.com/claims",
+            externalId: "should-not-call",
+            code: "000000",
+          },
+        };
+      },
+      "automations.identity.lookup-binding": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+        },
+      }),
+      "automations.identity.bind-actor": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+          externalActorId: "external-id",
+          status: "linked",
+        },
+      }),
+      "event.reply": async () => ({
+        data: {
+          ok: true,
+        },
+      }),
+      "event.emit": async () => ({
+        data: {
+          accepted: true,
+          eventId: "help-event",
+          source: "telegram",
+          eventType: "help-event",
+        },
+      }),
+    };
+
+    const bash = new Bash({
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
+    });
+
+    const result = await bash.exec("otp.identity.create-claim --external-actor-id actor_1");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Missing required option --source");
+    expect(context.invocation).toEqual([]);
+    expect(commandCallsResult).toEqual([
+      {
+        command: "otp.identity.create-claim",
+        output: "",
+        exitCode: 1,
+      },
+    ]);
+  });
+
+  it("returns a parse error when ttl-minutes is not a positive integer", async () => {
+    const commandCallsResult: BashAutomationCommandResult[] = [];
+    const context = createTestCommandContext();
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async () => {
+        return {
+          data: {
+            url: "https://example.com/claims",
+            externalId: "should-not-call",
+            code: "000000",
+          },
+        };
+      },
+      "automations.identity.lookup-binding": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+        },
+      }),
+      "automations.identity.bind-actor": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+          externalActorId: "external-id",
+          status: "linked",
+        },
+      }),
+      "event.reply": async () => ({
+        data: {
+          ok: true,
+        },
+      }),
+      "event.emit": async () => ({
+        data: {
+          accepted: true,
+          eventId: "help-event",
+          source: "telegram",
+          eventType: "help-event",
+        },
+      }),
+    };
+
+    const bash = new Bash({
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
+    });
+
+    const result = await bash.exec(
+      "otp.identity.create-claim --source telegram --external-actor-id actor_1 --ttl-minutes 0",
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--ttl-minutes must be a positive integer");
+    expect(context.invocation).toEqual([]);
+    expect(commandCallsResult).toEqual([
+      {
+        command: "otp.identity.create-claim",
+        output: "",
+        exitCode: 1,
+      },
+    ]);
+  });
+
+  it("omits pi.session commands from automation bash hosts", async () => {
+    const context = createTestCommandContext();
+    const { bash, commandCallsResult } = createBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        automation: {
+          ...context,
+          runtime: {
+            reply: async () => ({ ok: true as const }),
+            emitEvent: runtime.emitEvent,
+          },
+        },
+        automations: {
+          runtime: {
+            lookupBinding: runtime.lookupBinding,
+            bindActor: runtime.bindActor,
+          },
+        },
+        otp: {
+          runtime: {
+            createClaim: runtime.createClaim,
+          },
+        },
       },
     });
+
+    const result = await bash.exec("pi.session.get --session-id session-1");
+
+    expect(result.exitCode).toBe(127);
+    expect(result.stderr).toContain("bash: pi.session.get: command not found");
+    expect(commandCallsResult).toEqual([]);
+  });
+
+  it("passes shared automation command context through handler execution", async () => {
+    const commandCallsResult: BashAutomationCommandResult[] = [];
+    const context = createTestCommandContext({
+      idempotencyKey: "idem-shared",
+      orgId: "org-shared",
+      event: {
+        id: "event-shared",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        orgId: "org-shared",
+        payload: {
+          subject: "context-test",
+        },
+      },
+      binding: {
+        source: "telegram",
+        eventType: "message.received",
+        scriptId: "script-shared",
+      },
+      bashEnv: {
+        AUTOMATION_EVENT_ID: "event-shared",
+        AUTOMATION_ORG_ID: "org-shared",
+        AUTOMATION_SOURCE: "telegram",
+        AUTOMATION_EVENT_TYPE: "message.received",
+        AUTOMATION_OCCURRED_AT: "2026-01-01T00:00:00.000Z",
+        AUTOMATION_SCRIPT_ID: "script-shared",
+        AUTOMATION_IDEMPOTENCY_KEY: "idem-shared",
+      },
+      cloudflareEnv: {
+        CF_TEST_NAMESPACE: "cf-value",
+      },
+    });
+
+    let observedContext: {
+      eventId: string;
+      orgId?: string;
+      idempotencyKey: string;
+      binding: string;
+      scriptId: string;
+      bashEventId: string | undefined;
+      cfEnvValue: string | undefined;
+    } | null = null;
+
+    const handlers: TestAutomationCommandHandlers = {
+      "otp.identity.create-claim": async (_, commandContext) => {
+        observedContext = {
+          eventId: commandContext.event.id,
+          orgId: commandContext.orgId,
+          idempotencyKey: commandContext.idempotencyKey,
+          binding: commandContext.binding.source,
+          scriptId: commandContext.binding.scriptId,
+          bashEventId: commandContext.bashEnv.AUTOMATION_EVENT_ID,
+          cfEnvValue: commandContext.cloudflareEnv.CF_TEST_NAMESPACE,
+        };
+
+        return {
+          data: {
+            url: `https://example.com/${commandContext.binding.source}`,
+            externalId: "external-id",
+            code: "123456",
+          },
+        };
+      },
+      "automations.identity.lookup-binding": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+        },
+      }),
+      "automations.identity.bind-actor": async () => ({
+        data: {
+          userId: "help-user",
+          source: "telegram",
+          externalActorId: "external-id",
+          status: "linked",
+        },
+      }),
+      "event.reply": async () => ({
+        data: {
+          ok: true,
+        },
+      }),
+      "event.emit": async () => ({
+        data: {
+          accepted: true,
+          eventId: "event-ctx",
+          source: "telegram",
+          eventType: "message.received",
+        },
+      }),
+    };
+
+    const bash = new Bash({
+      customCommands: createAutomationCommands(
+        TEST_COMMAND_SPEC_LIST,
+        handlers,
+        context,
+        commandCallsResult,
+      ),
+    });
+
+    const result = await bash.exec(
+      "otp.identity.create-claim --source telegram --external-actor-id external-id",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(observedContext).toEqual({
+      eventId: "event-shared",
+      orgId: "org-shared",
+      idempotencyKey: "idem-shared",
+      binding: "telegram",
+      scriptId: "script-shared",
+      bashEventId: "event-shared",
+      cfEnvValue: "cf-value",
+    });
+    expect(commandCallsResult).toEqual([
+      {
+        command: "otp.identity.create-claim",
+        output: "",
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("can reply through an overridden source adapter", async () => {
+    const replyCalls: Array<{ externalActorId: string; text: string }> = [];
+    const sourceAdapters = {
+      telegram: createTelegramSourceAdapter({
+        reply: async ({ externalActorId, text }) => {
+          replyCalls.push({ externalActorId, text });
+        },
+      }),
+    };
 
     const event: AutomationEvent = {
       id: "event-otp-1",
@@ -184,16 +686,30 @@ describe("bash command runner", () => {
       },
     };
 
-    const result = await engine.execute({
-      event,
-      binding: {
-        source: "otp",
-        eventType: "identity.claim.completed",
-        scriptId: "script-otp-1",
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
       },
-      idempotencyKey: "idempotency-otp-1",
-      runtime,
+      event,
+      sourceAdapters,
+      sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
+    });
+    const result = await executeBashAutomation({
       script: 'event.reply --source telegram --external-actor-id chat-1 --text "linked"',
+      context: createAutomationBashCommandContext({
+        event,
+        binding: {
+          source: "otp",
+          eventType: "identity.claim.completed",
+          scriptId: "script-otp-1",
+        },
+        idempotencyKey: "idempotency-otp-1",
+        runtime: automationRuntime,
+        sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
+        cloudflareEnv: {},
+      }),
     });
 
     expect(result.exitCode).toBe(0);
@@ -206,11 +722,9 @@ describe("bash command runner", () => {
   });
 
   it("projects canonical env vars and context files for automation runs", async () => {
-    const engine = createBashAutomationEngine({
-      sourceAdapters: {
-        telegram: createTelegramSourceAdapter(),
-      },
-    });
+    const sourceAdapters = {
+      telegram: createTelegramSourceAdapter(),
+    };
 
     const event: AutomationEvent = {
       id: "event-123",
@@ -233,15 +747,17 @@ describe("bash command runner", () => {
       },
     };
 
-    const result = await engine.execute({
-      event,
-      binding: {
-        source: "telegram",
-        eventType: "message.received",
-        scriptId: "script-1",
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
       },
-      idempotencyKey: "idempotency-1",
-      runtime,
+      event,
+      sourceAdapters,
+      sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
+    });
+    const result = await executeBashAutomation({
       script: [
         'printf "env=%s\\n" "$AUTOMATION_EVENT_ID|$AUTOMATION_ORG_ID|$AUTOMATION_SOURCE|$AUTOMATION_EVENT_TYPE|$AUTOMATION_OCCURRED_AT|$AUTOMATION_ACTOR_TYPE|$AUTOMATION_EXTERNAL_ACTOR_ID|$AUTOMATION_SUBJECT_USER_ID|$AUTOMATION_SCRIPT_ID|$AUTOMATION_IDEMPOTENCY_KEY|$AUTOMATION_TELEGRAM_CHAT_ID|$AUTOMATION_TELEGRAM_TEXT"',
         'printf "event=%s\\n" "$(cat /context/event.json)"',
@@ -249,6 +765,18 @@ describe("bash command runner", () => {
         'printf "actor=%s\\n" "$(cat /context/actor.json)"',
         'printf "subject=%s\\n" "$(cat /context/subject.json)"',
       ].join("\n"),
+      context: createAutomationBashCommandContext({
+        event,
+        binding: {
+          source: "telegram",
+          eventType: "message.received",
+          scriptId: "script-1",
+        },
+        idempotencyKey: "idempotency-1",
+        runtime: automationRuntime,
+        sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
+        cloudflareEnv: {},
+      }),
     });
 
     expect(result.exitCode).toBe(0);

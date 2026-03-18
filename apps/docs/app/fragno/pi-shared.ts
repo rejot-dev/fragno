@@ -21,6 +21,7 @@ export type PiHarnessConfig = {
 };
 
 export type StoredPiConfig = {
+  orgId: string;
   apiKeys: {
     openai?: string;
     anthropic?: string;
@@ -34,6 +35,7 @@ export type StoredPiConfig = {
 export type PiConfigState = {
   configured: boolean;
   config?: {
+    orgId: string;
     apiKeys: {
       openai?: string | null;
       anthropic?: string | null;

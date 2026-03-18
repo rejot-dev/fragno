@@ -142,7 +142,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const telegramDo = getTelegramDurableObject(context, params.orgId);
 
   try {
-    const configState = await telegramDo.setAdminConfig(validation.payload, params.orgId, origin);
+    const configState = await telegramDo.setAdminConfig(
+      { ...validation.payload, orgId: params.orgId },
+      origin,
+    );
     const webhook = configState.webhook;
     if (webhook && !webhook.ok) {
       return {

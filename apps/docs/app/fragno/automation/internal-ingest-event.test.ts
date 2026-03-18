@@ -5,17 +5,39 @@ import { z } from "zod";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import type { PiBashRuntime } from "../pi-bash-runtime";
 import { builtinAutomationBindings, builtinAutomationScripts } from "./builtins";
 import type { AutomationEvent, AutomationSourceAdapterRegistry } from "./contracts";
-import { automationFragmentDefinition } from "./definition";
+import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
 import { automationFragmentRoutes } from "./routes";
 import { automationFragmentSchema } from "./schema";
 
 const replyCalls: string[] = [];
-const createIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
+const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
   url: `https://example.com/claims/${externalActorId}`,
   externalId: externalActorId,
   code: "123456",
+  type: "otp",
+}));
+const automationEnv = {
+  DOCS_PUBLIC_BASE_URL: "https://example.com",
+  OTP: {
+    idFromName: vi.fn((orgId: string) => `otp:${orgId}`),
+    get: vi.fn(() => ({
+      issueIdentityClaim: issueIdentityClaimMock,
+    })),
+  },
+} as unknown as CloudflareEnv;
+const createPiSessionMock = vi.fn(async ({ agent }: { agent: string }) => ({
+  id: `session-for-${agent}`,
+  name: null,
+  status: "waiting" as const,
+  agent,
+  steeringMode: "one-at-a-time" as const,
+  metadata: null,
+  tags: [],
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 }));
 const sourceAdapter = {
   source: "telegram",
@@ -38,8 +60,13 @@ const sourceAdapter = {
 
 const buildAutomationTestContext = async (
   config: {
+    env?: CloudflareEnv;
     builtinScripts?: typeof builtinAutomationScripts;
     builtinBindings?: typeof builtinAutomationBindings;
+    createPiAutomationContext?: (input: {
+      event: AutomationEvent;
+      idempotencyKey: string;
+    }) => AutomationPiBashContext | undefined;
   } = {},
 ) => {
   return await buildDatabaseFragmentsTest()
@@ -48,10 +75,11 @@ const buildAutomationTestContext = async (
       "automation",
       instantiate(automationFragmentDefinition)
         .withConfig({
+          env: config.env ?? automationEnv,
           sourceAdapters: {
             telegram: sourceAdapter,
           },
-          createIdentityClaim: createIdentityClaimMock,
+          createPiAutomationContext: config.createPiAutomationContext,
           builtinScripts: config.builtinScripts,
           builtinBindings: config.builtinBindings,
         })
@@ -176,10 +204,15 @@ describe("automation internalIngestEvent", () => {
     return result;
   };
 
+  const waitForDistinctBindingTimestamp = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  };
+
   beforeEach(async () => {
     replyCalls.length = 0;
     vi.clearAllMocks();
-    createIdentityClaimMock.mockClear();
+    issueIdentityClaimMock.mockClear();
+    createPiSessionMock.mockClear();
     await testContext.resetDatabase();
   });
 
@@ -285,15 +318,70 @@ describe("automation internalIngestEvent", () => {
     expect(replyCalls.sort()).toEqual(["from-first", "from-second"]);
   });
 
+  test("executes stored bindings sequentially in deterministic creation order", async () => {
+    const firstScriptId = await createScript({
+      key: "sequential-first-script",
+      script: ["sleep 0.05", 'event.reply --text "from-first"'].join("\n"),
+    });
+    const secondScriptId = await createScript({
+      key: "sequential-second-script",
+      script: 'event.reply --text "from-second"',
+    });
+
+    await createBinding({ scriptId: firstScriptId, enabled: true });
+    await waitForDistinctBindingTimestamp();
+    await insertBindingDirectly({ scriptId: secondScriptId, enabled: true });
+
+    const result = await ingestEvent();
+
+    expectAccepted(result);
+    expect(replyCalls).toEqual(["from-first", "from-second"]);
+  });
+
+  test("stops executing later stored bindings after an earlier failure", async () => {
+    const failingScriptId = await createScript({
+      key: "stored-failing-script",
+      script: ["sleep 0.05", 'echo "boom" >&2', "exit 9"].join("\n"),
+    });
+    const skippedScriptId = await createScript({
+      key: "stored-skipped-script",
+      script: 'event.reply --text "should-not-run"',
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await createBinding({ scriptId: failingScriptId, enabled: true });
+      await waitForDistinctBindingTimestamp();
+      await insertBindingDirectly({ scriptId: skippedScriptId, enabled: true });
+
+      const result = await ingestEvent();
+
+      expectAccepted(result);
+      expect(replyCalls).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[fragno-db] Hook failed",
+        expect.objectContaining({
+          namespace: "automations",
+          hookName: "internalIngestEvent",
+          error: expect.stringContaining(
+            `Automation bash script ${failingScriptId} failed for event event-123 with exit code 9.`,
+          ),
+        }),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   test("supports the generic linking slice from inbound event to durable identity binding", async () => {
     const telegramScriptId = await createScript({
       key: "telegram-linking",
       script: [
-        'linked_user="$(identity.lookup-binding --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print user-id || true)"',
+        'linked_user="$(automations.identity.lookup-binding --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print user-id || true)"',
         'if [ -n "$linked_user" ]; then',
         '  event.reply --text "already-linked:$linked_user"',
         "else",
-        '  claim_url="$(identity.create-claim --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print url)"',
+        '  claim_url="$(otp.identity.create-claim --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print url)"',
         '  event.reply --text "claim:$claim_url"',
         "fi",
       ].join("\n"),
@@ -303,7 +391,7 @@ describe("automation internalIngestEvent", () => {
       script: [
         'link_source="$(jq -r ".linkSource" /context/payload.json)"',
         'external_actor_id="$(jq -r ".externalActorId" /context/payload.json)"',
-        'identity.bind-actor --source "$link_source" --external-actor-id "$external_actor_id" --user-id "$AUTOMATION_SUBJECT_USER_ID" >/dev/null',
+        'automations.identity.bind-actor --source "$link_source" --external-actor-id "$external_actor_id" --user-id "$AUTOMATION_SUBJECT_USER_ID" >/dev/null',
       ].join("\n"),
     });
 
@@ -332,11 +420,12 @@ describe("automation internalIngestEvent", () => {
       source,
       eventType,
     });
-    expect(createIdentityClaimMock).toHaveBeenCalledWith(
+    expect(issueIdentityClaimMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: "org-1",
-        source: "telegram",
+        linkSource: "telegram",
         externalActorId: "chat-1",
+        publicBaseUrl: "https://example.com",
       }),
     );
     expect(replyCalls).toEqual(["claim:https://example.com/claims/chat-1"]);
@@ -381,7 +470,7 @@ describe("automation internalIngestEvent", () => {
       source,
       eventType,
     });
-    expect(createIdentityClaimMock).toHaveBeenCalledTimes(1);
+    expect(issueIdentityClaimMock).toHaveBeenCalledTimes(1);
     expect(replyCalls).toEqual([
       "claim:https://example.com/claims/chat-1",
       "already-linked:user-1",
@@ -392,11 +481,11 @@ describe("automation internalIngestEvent", () => {
     const telegramScriptId = await createScript({
       key: "telegram-linking-after-revoke",
       script: [
-        'linked_user="$(identity.lookup-binding --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print user-id || true)"',
+        'linked_user="$(automations.identity.lookup-binding --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print user-id || true)"',
         'if [ -n "$linked_user" ]; then',
         '  event.reply --text "already-linked:$linked_user"',
         "else",
-        '  claim_url="$(identity.create-claim --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print url)"',
+        '  claim_url="$(otp.identity.create-claim --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --print url)"',
         '  event.reply --text "claim:$claim_url"',
         "fi",
       ].join("\n"),
@@ -434,15 +523,146 @@ describe("automation internalIngestEvent", () => {
       source,
       eventType,
     });
-    expect(createIdentityClaimMock).toHaveBeenCalledTimes(1);
-    expect(createIdentityClaimMock).toHaveBeenCalledWith(
+    expect(issueIdentityClaimMock).toHaveBeenCalledTimes(1);
+    expect(issueIdentityClaimMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: "org-1",
-        source: "telegram",
+        linkSource: "telegram",
         externalActorId: "chat-1",
+        publicBaseUrl: "https://example.com",
       }),
     );
     expect(replyCalls).toEqual(["claim:https://example.com/claims/chat-1"]);
+  });
+
+  test("built-in telegram /pi message creates a Pi session when Pi automation context is available", async () => {
+    const createPiAutomationContext = vi.fn(() => ({
+      runtime: {
+        createSession: createPiSessionMock,
+        getSession: vi.fn(async () => {
+          throw new Error("unused in test");
+        }),
+        listSessions: vi.fn(async () => {
+          throw new Error("unused in test");
+        }),
+      } satisfies PiBashRuntime,
+      bashEnv: {
+        AUTOMATION_PI_DEFAULT_AGENT: "default::openai::gpt-5-mini",
+      },
+    }));
+
+    const builtInContext = await buildAutomationTestContext({
+      builtinScripts: builtinAutomationScripts,
+      builtinBindings: builtinAutomationBindings,
+      createPiAutomationContext,
+    });
+
+    try {
+      const builtInFragment = builtInContext.fragments.automation;
+
+      const result = await builtInFragment.fragment.callServices(() =>
+        builtInFragment.services.ingestEvent({
+          id: "built-in-telegram-pi-1",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+          payload: {
+            text: "/pi",
+            chatId: "chat-1",
+          },
+          actor: {
+            type: "external",
+            externalId: "chat-1",
+          },
+        }),
+      );
+
+      await drainDurableHooks(builtInFragment.fragment);
+
+      expect(result).toEqual({
+        accepted: true,
+        eventId: "built-in-telegram-pi-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+      });
+      expect(createPiAutomationContext).toHaveBeenCalledWith({
+        event: expect.objectContaining({
+          id: "built-in-telegram-pi-1",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+        }),
+        idempotencyKey: expect.any(String),
+      });
+      expect(createPiSessionMock).toHaveBeenCalledWith({
+        agent: "default::openai::gpt-5-mini",
+        name: "Telegram chat-1",
+        tags: ["telegram", "auto-session"],
+      });
+      expect(replyCalls).toEqual(["Created Pi session: session-for-default::openai::gpt-5-mini"]);
+    } finally {
+      await builtInContext.test.cleanup();
+    }
+  });
+
+  test("built-in telegram claim linking start fails loudly when identity claim issuance is not configured", async () => {
+    const builtInContext = await buildAutomationTestContext({
+      env: {
+        OTP: automationEnv.OTP,
+      } as unknown as CloudflareEnv,
+      builtinScripts: builtinAutomationScripts,
+      builtinBindings: builtinAutomationBindings,
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const builtInFragment = builtInContext.fragments.automation;
+
+      const result = await builtInFragment.fragment.callServices(() =>
+        builtInFragment.services.ingestEvent({
+          id: "built-in-telegram-missing-base-url-1",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+          payload: {
+            text: "/start",
+            chatId: "chat-1",
+          },
+          actor: {
+            type: "external",
+            externalId: "chat-1",
+          },
+        }),
+      );
+
+      expect(result).toEqual({
+        accepted: true,
+        eventId: "built-in-telegram-missing-base-url-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+      });
+      await drainDurableHooks(builtInFragment.fragment);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[fragno-db] Hook failed",
+        expect.objectContaining({
+          namespace: "automations",
+          hookName: "internalIngestEvent",
+          error: expect.stringContaining(
+            "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.",
+          ),
+        }),
+      );
+      expect(issueIdentityClaimMock).not.toHaveBeenCalled();
+      expect(replyCalls).toEqual([]);
+    } finally {
+      errorSpy.mockRestore();
+      await builtInContext.test.cleanup();
+    }
   });
 
   test("built-in telegram claim linking completion replies with a failure message when linking fails", async () => {
@@ -629,11 +849,12 @@ describe("automation internalIngestEvent", () => {
         source: "telegram",
         eventType: "message.received",
       });
-      expect(createIdentityClaimMock).toHaveBeenCalledWith(
+      expect(issueIdentityClaimMock).toHaveBeenCalledWith(
         expect.objectContaining({
           orgId: "org-1",
-          source: "telegram",
+          linkSource: "telegram",
           externalActorId: "chat-1",
+          publicBaseUrl: "https://example.com",
         }),
       );
       expect(replyCalls).toEqual([
@@ -683,7 +904,7 @@ describe("automation internalIngestEvent", () => {
         source: "telegram",
         eventType: "message.received",
       });
-      expect(createIdentityClaimMock).toHaveBeenCalledTimes(1);
+      expect(issueIdentityClaimMock).toHaveBeenCalledTimes(1);
       expect(replyCalls).toEqual([
         "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
         "Your Telegram chat is now linked.",

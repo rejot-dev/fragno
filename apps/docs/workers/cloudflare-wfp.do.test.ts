@@ -44,7 +44,7 @@ vi.mock("@/fragno/durable-hooks", () => ({
 
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
 
-const ORG_ID_STORAGE_KEY = "cloudflare-workers-org-id";
+const CONFIG_KEY = "cloudflare-workers-config";
 const EMPTY_QUEUE = {
   configured: false,
   hooksEnabled: false,
@@ -82,7 +82,7 @@ describe("CloudflareWorkers Durable Object", () => {
     await expect(workers.getHookQueue({ orgId: "  acme  " })).resolves.toEqual(EMPTY_QUEUE);
 
     expect(state.storage.put).toHaveBeenCalledTimes(1);
-    expect(state.storage.put).toHaveBeenCalledWith(ORG_ID_STORAGE_KEY, "acme");
+    expect(state.storage.put).toHaveBeenCalledWith(CONFIG_KEY, { orgId: "acme" });
 
     await expect(workers.getHookQueue({ orgId: "other-org" })).rejects.toThrowError(
       'Cloudflare Workers Durable Object is already bound to organisation "acme".',
@@ -92,24 +92,24 @@ describe("CloudflareWorkers Durable Object", () => {
   });
 
   test("accepts the same stored org id without rewriting storage", async () => {
-    const state = createState({ [ORG_ID_STORAGE_KEY]: "acme" });
+    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
     await expect(workers.getHookQueue({ orgId: " acme " })).resolves.toEqual(EMPTY_QUEUE);
 
-    expect(state.storage.get).toHaveBeenCalledWith(ORG_ID_STORAGE_KEY);
+    expect(state.storage.get).toHaveBeenCalledWith(CONFIG_KEY);
     expect(state.storage.put).not.toHaveBeenCalled();
   });
 
   test("rejects a different org id when one is already stored", async () => {
-    const state = createState({ [ORG_ID_STORAGE_KEY]: "acme" });
+    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
     await expect(workers.getHookQueue({ orgId: "other-org" })).rejects.toThrowError(
       'Cloudflare Workers Durable Object is already bound to organisation "acme".',
     );
 
-    expect(state.storage.get).toHaveBeenCalledWith(ORG_ID_STORAGE_KEY);
+    expect(state.storage.get).toHaveBeenCalledWith(CONFIG_KEY);
     expect(state.storage.put).not.toHaveBeenCalled();
   });
 });
