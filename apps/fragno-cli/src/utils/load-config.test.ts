@@ -10,8 +10,9 @@ describe("stripJsonComments", () => {
   // This is a comment
   "key": "value"
 }`;
-    const expected = ["{", "  ", '  "key": "value"', "}"].join("\n");
-    expect(stripJsonComments(input)).toBe(expected);
+    const result = stripJsonComments(input);
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ key: "value" });
   });
 
   it("does not strip double slashes in strings", () => {
@@ -29,10 +30,9 @@ describe("stripJsonComments", () => {
   // Second comment
   "key2": "value2"
 }`;
-    const expected = ["{", "  ", '  "key1": "value1", ', "  ", '  "key2": "value2"', "}"].join(
-      "\n",
-    );
-    expect(stripJsonComments(input)).toBe(expected);
+    const result = stripJsonComments(input);
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ key1: "value1", key2: "value2" });
   });
 
   it("does not strip multi line comments chars in strings", () => {
@@ -53,8 +53,9 @@ describe("stripJsonComments", () => {
      multi-line comment */
   "key": "value"
 }`;
-    const expected = ["{", "  ", '  "key": "value"', "}"].join("\n");
-    expect(stripJsonComments(input)).toBe(expected);
+    const result = stripJsonComments(input);
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ key: "value" });
   });
 
   it("should strip multiple multi-line comments", () => {
@@ -65,8 +66,9 @@ describe("stripJsonComments", () => {
      spanning lines */
   "key2": "value2"
 }`;
-    const expected = ["{", "  ", '  "key1": "value1",', "  ", '  "key2": "value2"', "}"].join("\n");
-    expect(stripJsonComments(input)).toBe(expected);
+    const result = stripJsonComments(input);
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ key1: "value1", key2: "value2" });
   });
 
   it("should strip both single-line and multi-line comments", () => {
@@ -77,10 +79,9 @@ describe("stripJsonComments", () => {
      comment */
   "key2": "value2" // Another single line
 }`;
-    const expected = ["{", "  ", '  "key1": "value1",', "  ", '  "key2": "value2" ', "}"].join(
-      "\n",
-    );
-    expect(stripJsonComments(input)).toBe(expected);
+    const result = stripJsonComments(input);
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({ key1: "value1", key2: "value2" });
   });
 
   it("should handle strings with comment-like content", () => {
@@ -88,12 +89,12 @@ describe("stripJsonComments", () => {
   "url": "https://example.com",
   "comment": "This // is not a comment"
 }`;
-    // Note: This is a known limitation - the simple regex approach
-    // will strip what looks like comments even inside strings
-    // For tsconfig.json files this is typically fine since URLs/strings
-    // with comment syntax are rare
     const result = stripJsonComments(input);
-    expect(result).toContain('"url": "https:');
+    expect(() => JSON.parse(result)).not.toThrow();
+    expect(JSON.parse(result)).toEqual({
+      url: "https://example.com",
+      comment: "This // is not a comment",
+    });
   });
 
   it("should handle empty input", () => {
