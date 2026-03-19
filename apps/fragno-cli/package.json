@@ -35,6 +35,7 @@
     "@fragno-dev/node": "workspace:*",
     "c12": "^3.3.3",
     "gunshi": "^0.26.3",
+    "jsonc-parser": "^3.3.1",
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0"
   },

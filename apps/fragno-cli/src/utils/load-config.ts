@@ -3,6 +3,7 @@ import { readFile, access } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 
 import { loadConfig as c12LoadConfig } from "c12";
+import { stripComments } from "jsonc-parser";
 
 /**
  * Checks if a file exists using async API.
@@ -38,13 +39,7 @@ async function findTsconfig(startPath: string): Promise<string | null> {
  * Strips comments from JSONC (JSON with Comments) content.
  */
 export function stripJsonComments(jsonc: string): string {
-  // Remove single-line comments (// ...)
-  let result = jsonc.replace(/\/\/[^\n]*/g, "");
-
-  // Remove multi-line comments (/* ... */)
-  result = result.replace(/\/\*[\s\S]*?\*\//g, "");
-
-  return result;
+  return stripComments(jsonc);
 }
 
 /**
