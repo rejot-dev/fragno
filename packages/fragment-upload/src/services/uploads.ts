@@ -62,6 +62,7 @@ export type CreateUploadResult = {
 };
 
 type UploadRow = TableToColumnValues<typeof uploadSchema.tables.upload>;
+type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
 
 const DEFAULT_VISIBILITY: FileVisibility = "private";
 
@@ -69,6 +70,7 @@ type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
   onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
   onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
+  cleanupStorageObject: (payload: FileHookPayload) => void | Promise<void>;
   onUploadTimeout: (payload: UploadTimeoutPayload) => void | Promise<void>;
 };
 
@@ -276,6 +278,29 @@ const buildUploadHookPayload = (upload: UploadRow, sizeBytes?: bigint): FileHook
   };
 };
 
+const buildFileHookPayload = (file: FileRow): FileHookPayload => ({
+  provider: file.provider,
+  fileKey: file.key,
+  objectKey: file.objectKey,
+  uploaderId: file.uploaderId ?? null,
+  sizeBytes: toSafeNumber(file.sizeBytes),
+  contentType: file.contentType,
+});
+
+const ensureReplacementUsesDistinctObjectKey = (
+  file: Pick<FileRow, "objectKey">,
+  nextObjectKey: string,
+) => {
+  if (file.objectKey === nextObjectKey) {
+    throw new Error("STORAGE_ERROR");
+  }
+};
+
+const shouldCleanupSupersededObject = (
+  file: Pick<FileRow, "status" | "objectKey">,
+  nextObjectKey: string,
+) => file.status !== "deleted" && file.objectKey !== nextObjectKey;
+
 export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
   const storage = config.storage;
 
@@ -292,23 +317,13 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
-          uow
-            .findFirst("file", (b) =>
-              b.whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
-              ),
-            )
-            .find("upload", (b) =>
-              b.whereIndex("idx_upload_provider_key", (eb) =>
-                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
-              ),
+          uow.find("upload", (b) =>
+            b.whereIndex("idx_upload_provider_key", (eb) =>
+              eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
             ),
+          ),
         )
-        .transformRetrieve(([file, uploads]) => {
-          if (file) {
-            throw new Error("FILE_ALREADY_EXISTS");
-          }
-
+        .transformRetrieve(([uploads]) => {
           const activeUpload = pickActiveUpload(uploads as UploadRow[], now);
           if (
             activeUpload &&
@@ -338,23 +353,13 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
-          uow
-            .findFirst("file", (b) =>
-              b.whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
-              ),
-            )
-            .find("upload", (b) =>
-              b.whereIndex("idx_upload_provider_key", (eb) =>
-                eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
-              ),
+          uow.find("upload", (b) =>
+            b.whereIndex("idx_upload_provider_key", (eb) =>
+              eb.and(eb("provider", "=", normalized.provider), eb("key", "=", resolved.fileKey)),
             ),
+          ),
         )
-        .mutate(({ uow, retrieveResult: [existingFile, uploads] }) => {
-          if (existingFile) {
-            throw new Error("FILE_ALREADY_EXISTS");
-          }
-
+        .mutate(({ uow, retrieveResult: [uploads] }) => {
           const activeUpload = pickActiveUpload(uploads as UploadRow[], now);
           if (activeUpload) {
             if (
@@ -463,7 +468,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
         )
         .mutate(({ uow, retrieveResult: [existingFile] }) => {
           if (existingFile) {
-            throw new Error("FILE_ALREADY_EXISTS");
+            ensureReplacementUsesDistinctObjectKey(existingFile, storageInit.storageKey);
           }
 
           const finalSizeBytes = input.completedSizeBytes;
@@ -517,7 +522,49 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             errorMessage: null,
           };
 
-          const fileId = uow.create("file", fileRecord);
+          const persistedFile = existingFile
+            ? (() => {
+                uow.update("file", existingFile.id, (b) =>
+                  b
+                    .set({
+                      key: fileRecord.key,
+                      provider: fileRecord.provider,
+                      uploaderId: fileRecord.uploaderId,
+                      filename: fileRecord.filename,
+                      sizeBytes: fileRecord.sizeBytes,
+                      contentType: fileRecord.contentType,
+                      checksum: fileRecord.checksum,
+                      visibility: fileRecord.visibility,
+                      tags: fileRecord.tags,
+                      metadata: fileRecord.metadata,
+                      status: fileRecord.status,
+                      objectKey: fileRecord.objectKey,
+                      createdAt: fileRecord.createdAt,
+                      updatedAt: fileRecord.updatedAt,
+                      completedAt: fileRecord.completedAt,
+                      deletedAt: fileRecord.deletedAt,
+                      errorCode: fileRecord.errorCode,
+                      errorMessage: fileRecord.errorMessage,
+                    })
+                    .check(),
+                );
+
+                if (shouldCleanupSupersededObject(existingFile, fileRecord.objectKey)) {
+                  uow.triggerHook("cleanupStorageObject", buildFileHookPayload(existingFile));
+                }
+
+                return {
+                  id: existingFile.id,
+                  ...fileRecord,
+                };
+              })()
+            : (() => {
+                const fileId = uow.create("file", fileRecord);
+                return {
+                  id: fileId,
+                  ...fileRecord,
+                };
+              })();
 
           const uploadRow = {
             id: uploadId,
@@ -552,10 +599,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
 
           return {
             upload: uploadRow,
-            file: {
-              id: fileId,
-              ...fileRecord,
-            },
+            file: persistedFile,
           };
         })
         .build();
@@ -790,8 +834,19 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
       const now = new Date();
 
       return this.serviceTx(uploadSchema)
-        .mutate(({ uow }) => {
+        .retrieve((uow) =>
+          uow.findFirst("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
+            ),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [existingFile] }) => {
           ensureActiveUpload(upload, now);
+
+          if (existingFile) {
+            ensureReplacementUsesDistinctObjectKey(existingFile, upload.objectKey);
+          }
 
           const finalSizeBytes = options?.sizeBytes ?? upload.expectedSizeBytes;
 
@@ -814,7 +869,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
               .check(),
           );
 
-          const createdFile = {
+          const completedFile = {
             key: upload.key,
             provider: upload.provider,
             uploaderId: upload.uploaderId ?? null,
@@ -835,16 +890,55 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             errorMessage: null,
           };
 
-          const fileId = uow.create("file", createdFile);
+          const persistedFile = existingFile
+            ? (() => {
+                uow.update("file", existingFile.id, (b) =>
+                  b
+                    .set({
+                      key: completedFile.key,
+                      provider: completedFile.provider,
+                      uploaderId: completedFile.uploaderId,
+                      filename: completedFile.filename,
+                      sizeBytes: completedFile.sizeBytes,
+                      contentType: completedFile.contentType,
+                      checksum: completedFile.checksum,
+                      visibility: completedFile.visibility,
+                      tags: completedFile.tags,
+                      metadata: completedFile.metadata,
+                      status: completedFile.status,
+                      objectKey: completedFile.objectKey,
+                      createdAt: completedFile.createdAt,
+                      updatedAt: completedFile.updatedAt,
+                      completedAt: completedFile.completedAt,
+                      deletedAt: completedFile.deletedAt,
+                      errorCode: completedFile.errorCode,
+                      errorMessage: completedFile.errorMessage,
+                    })
+                    .check(),
+                );
+
+                if (shouldCleanupSupersededObject(existingFile, completedFile.objectKey)) {
+                  uow.triggerHook("cleanupStorageObject", buildFileHookPayload(existingFile));
+                }
+
+                return {
+                  id: existingFile.id,
+                  ...completedFile,
+                };
+              })()
+            : (() => {
+                const fileId = uow.create("file", completedFile);
+                return {
+                  id: fileId,
+                  ...completedFile,
+                };
+              })();
 
           uow.triggerHook("onFileReady", buildUploadHookPayload(upload, finalSizeBytes));
 
           return {
             upload: updatedUpload,
-            file: {
-              id: fileId,
-              ...createdFile,
-            },
+            file: persistedFile,
           };
         })
         .build();

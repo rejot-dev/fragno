@@ -1,4 +1,5 @@
 import { assertFileKey } from "../file-key";
+import { appendStorageObjectKeyVersionSegment } from "./object-key";
 import type { StorageAdapter } from "./types";
 
 const BYTES_IN_MIB = 1024 * 1024;
@@ -377,8 +378,12 @@ export function createR2BindingStorageAdapter(
       multipartPartSizeBytes,
     },
     resolveStorageKey,
-    initUpload: async ({ provider, fileKey, sizeBytes, metadata }) => {
-      const storageKey = resolveStorageKey({ provider, fileKey });
+    initUpload: async ({ provider, fileKey, sizeBytes, metadata, objectKeyVersionSegment }) => {
+      const storageKey = appendStorageObjectKeyVersionSegment(
+        resolveStorageKey({ provider, fileKey }),
+        objectKeyVersionSegment,
+        maxStorageKeyLengthBytes,
+      );
 
       if (maxUploadBytes !== undefined && sizeBytes > BigInt(maxUploadBytes)) {
         throw new Error("Upload exceeds maximum upload size");

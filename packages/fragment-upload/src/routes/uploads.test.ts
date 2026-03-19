@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import type { AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
@@ -21,6 +22,7 @@ describe("upload routes", () => {
 
   type UploadFragmentCaller = {
     callRoute: (...args: unknown[]) => Promise<unknown>;
+    callRouteRaw: (...args: unknown[]) => Promise<Response>;
   };
 
   type JsonResponse<T extends Record<string, unknown> = Record<string, unknown>> = {
@@ -36,8 +38,12 @@ describe("upload routes", () => {
 
   const asObject = (
     value: unknown,
-  ): value is { type?: unknown; status?: unknown; error?: unknown; data?: unknown } =>
-    typeof value === "object" && value !== null;
+  ): value is {
+    type?: unknown;
+    status?: unknown;
+    error?: unknown;
+    data?: unknown;
+  } => typeof value === "object" && value !== null;
 
   const asJsonResponse = <T extends Record<string, unknown>>(value: unknown): JsonResponse<T> => {
     assert(asObject(value));
@@ -62,6 +68,7 @@ describe("upload routes", () => {
 
     const build = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
+      .withDbRoundtripGuard({ maxRoundtrips: 2 })
       .withFragment(
         "upload",
         instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
@@ -220,7 +227,10 @@ describe("upload routes", () => {
   });
 
   it("PUT /uploads/:uploadId/content streams proxy uploads and records bytes", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+    const createResponse = asJsonResponse<{
+      uploadId: string;
+      fileKey: string;
+    }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
           provider,
@@ -242,7 +252,11 @@ describe("upload routes", () => {
       },
     });
 
-    const uploadResponse = asJsonResponse<{ fileKey: string; status: string; sizeBytes: number }>(
+    const uploadResponse = asJsonResponse<{
+      fileKey: string;
+      status: string;
+      sizeBytes: number;
+    }>(
       await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
         pathParams: { uploadId },
         body: stream,
@@ -254,7 +268,10 @@ describe("upload routes", () => {
     expect(uploadResponse.data.status).toBe("ready");
     expect(uploadResponse.data.sizeBytes).toBe(5);
 
-    const statusResponse = asJsonResponse<{ status: string; bytesUploaded: number }>(
+    const statusResponse = asJsonResponse<{
+      status: string;
+      bytesUploaded: number;
+    }>(
       await fragment.callRoute("GET", "/uploads/:uploadId", {
         pathParams: { uploadId },
       }),
@@ -265,6 +282,77 @@ describe("upload routes", () => {
     expect(statusResponse.data.bytesUploaded).toBe(5);
   });
 
+  it("POST /uploads supports overwriting an existing file on the same path", async () => {
+    const firstUpload = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          provider,
+          keyParts: ["users", 1, "overwrite"],
+          filename: "first.txt",
+          sizeBytes: 5,
+          contentType: "text/plain",
+        },
+      }),
+    );
+
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("first"));
+        controller.close();
+      },
+    });
+
+    asJsonResponse(
+      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: firstUpload.data.uploadId },
+        body: firstStream,
+      }),
+    );
+
+    const secondUpload = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          provider,
+          fileKey: firstUpload.data.fileKey,
+          filename: "second.txt",
+          sizeBytes: 6,
+          contentType: "text/plain",
+        },
+      }),
+    );
+
+    const secondStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("second"));
+        controller.close();
+      },
+    });
+
+    const secondResponse = asJsonResponse<{ status: string; filename: string }>(
+      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: secondUpload.data.uploadId },
+        body: secondStream,
+      }),
+    );
+
+    expect(secondResponse.data.status).toBe("ready");
+    expect(secondResponse.data.filename).toBe("second.txt");
+
+    const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: firstUpload.data.fileKey },
+    });
+    expect(beforeDrain.status).toBe(200);
+    expect(await beforeDrain.text()).toBe("second");
+
+    await drainDurableHooks(fragment as unknown as AnyFragnoInstantiatedFragment);
+
+    const afterDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: firstUpload.data.fileKey },
+    });
+    expect(afterDrain.status).toBe(200);
+    expect(await afterDrain.text()).toBe("second");
+  });
+
   it("marks uploads as failed when proxy streaming errors", async () => {
     const originalWriteStream = storage.writeStream;
     storage.writeStream = async () => {
@@ -272,7 +360,10 @@ describe("upload routes", () => {
     };
 
     try {
-      const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      const createResponse = asJsonResponse<{
+        uploadId: string;
+        fileKey: string;
+      }>(
         await fragment.callRoute("POST", "/uploads", {
           body: {
             provider,
@@ -305,7 +396,10 @@ describe("upload routes", () => {
       expect(uploadResponse.status).toBe(502);
       expect(uploadResponse.error.code).toBe("STORAGE_ERROR");
 
-      const statusResponse = asJsonResponse<{ status: string; errorCode: string }>(
+      const statusResponse = asJsonResponse<{
+        status: string;
+        errorCode: string;
+      }>(
         await fragment.callRoute("GET", "/uploads/:uploadId", {
           pathParams: { uploadId },
         }),
@@ -345,7 +439,10 @@ describe("upload routes", () => {
     assert(createResponse.type === "json");
     const { uploadId } = createResponse.data;
 
-    const progressResponse = asJsonResponse<{ bytesUploaded: number; partsUploaded: number }>(
+    const progressResponse = asJsonResponse<{
+      bytesUploaded: number;
+      partsUploaded: number;
+    }>(
       await fragment.callRoute("POST", "/uploads/:uploadId/progress", {
         pathParams: { uploadId },
         body: { bytesUploaded: 2, partsUploaded: 1 },
@@ -387,7 +484,10 @@ describe("upload routes", () => {
   });
 
   it("POST /uploads/:uploadId/abort does not create a file", async () => {
-    const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+    const createResponse = asJsonResponse<{
+      uploadId: string;
+      fileKey: string;
+    }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
           provider,
@@ -437,7 +537,10 @@ describe("upload routes", () => {
       throw new Error("write failed");
     };
 
-    const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+    const createResponse = asJsonResponse<{
+      uploadId: string;
+      fileKey: string;
+    }>(
       await fragment.callRoute("POST", "/uploads", {
         body: {
           provider,
@@ -594,8 +697,12 @@ describe("upload route provider mismatch guards", () => {
 
   const asObject = (
     value: unknown,
-  ): value is { type?: unknown; status?: unknown; error?: unknown; data?: unknown } =>
-    typeof value === "object" && value !== null;
+  ): value is {
+    type?: unknown;
+    status?: unknown;
+    error?: unknown;
+    data?: unknown;
+  } => typeof value === "object" && value !== null;
 
   const asJsonResponse = <T extends Record<string, unknown>>(value: unknown): JsonResponse<T> => {
     assert(asObject(value));
@@ -623,6 +730,7 @@ describe("upload route provider mismatch guards", () => {
   beforeAll(async () => {
     const build = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
+      .withDbRoundtripGuard({ maxRoundtrips: 2 })
       .withFragment(
         "upload",
         instantiate(uploadFragmentDefinition)

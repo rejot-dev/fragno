@@ -29,7 +29,9 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("deletedAt", column("timestamp").nullable())
         .addColumn("errorCode", column("string").nullable())
         .addColumn("errorMessage", column("string").nullable())
-        .createIndex("idx_file_provider_key", ["provider", "key"], { unique: true })
+        .createIndex("idx_file_provider_key", ["provider", "key"], {
+          unique: true,
+        })
         .createIndex("idx_file_provider_key_status", ["provider", "key", "status"])
         .createIndex("idx_file_provider_key_uploaderId", ["provider", "key", "uploaderId"])
         .createIndex("idx_file_provider_key_status_uploaderId", [

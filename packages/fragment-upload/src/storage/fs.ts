@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import { assertFileKey } from "../file-key";
+import { appendStorageObjectKeyVersionSegment } from "./object-key";
 import type { StorageAdapter } from "./types";
 
 const DEFAULT_MAX_STORAGE_KEY_LENGTH_BYTES = 1024;
@@ -110,8 +111,12 @@ export function createFilesystemStorageAdapter(
       uploadExpiresInSeconds,
     },
     resolveStorageKey,
-    initUpload: async ({ provider, fileKey }) => {
-      const storageKey = resolveStorageKey({ provider, fileKey });
+    initUpload: async ({ provider, fileKey, objectKeyVersionSegment }) => {
+      const storageKey = appendStorageObjectKeyVersionSegment(
+        resolveStorageKey({ provider, fileKey }),
+        objectKeyVersionSegment,
+        maxStorageKeyLengthBytes,
+      );
       await fs.mkdir(rootDir, { recursive: true });
 
       return {

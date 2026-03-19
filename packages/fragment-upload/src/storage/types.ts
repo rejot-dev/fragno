@@ -39,7 +39,8 @@ export interface StorageAdapter {
   // Build or validate storage key for this adapter (apply storageKeyPrefix)
   resolveStorageKey(input: { provider: string; fileKey: FileKey }): string;
 
-  // Create an upload session and decide strategy
+  // Create an upload session and decide strategy. Every upload should receive a fresh
+  // versioned physical object key, with the version expressed as a trailing path segment.
   initUpload(input: {
     provider: string;
     fileKey: FileKey;
@@ -47,6 +48,7 @@ export interface StorageAdapter {
     contentType: string;
     checksum?: UploadChecksum | null;
     metadata?: Record<string, unknown> | null;
+    objectKeyVersionSegment?: string;
   }): Promise<{
     strategy: "direct-single" | "direct-multipart" | "proxy";
     storageKey: string;
@@ -99,7 +101,11 @@ export interface StorageAdapter {
     expiresInSeconds: number;
     contentDisposition?: string;
     contentType?: string;
-  }): Promise<{ url: string; headers?: Record<string, string>; expiresAt: Date }>;
+  }): Promise<{
+    url: string;
+    headers?: Record<string, string>;
+    expiresAt: Date;
+  }>;
 
   getDownloadStream?(input: { storageKey: string }): Promise<Response>;
 }
