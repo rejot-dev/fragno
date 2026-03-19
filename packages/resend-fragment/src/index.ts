@@ -7,18 +7,6 @@ import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { resendFragmentDefinition } from "./definition";
 import type { ResendFragmentConfig } from "./definition";
 import { resendRoutesFactory } from "./routes";
-import type {
-  ResendDomain,
-  ResendDomainDetail,
-  ResendDomainRecord,
-  ResendEmailInput,
-  ResendEmailDetail,
-  ResendEmailRecord,
-  ResendEmailSummary,
-  ResendListDomainsOutput,
-  ResendListEmailsOutput,
-  ResendSendEmailInput,
-} from "./routes";
 
 const routes = [resendRoutesFactory] as const;
 
@@ -39,6 +27,8 @@ export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConf
   return {
     useDomains: builder.createHook("/domains"),
     useDomain: builder.createHook("/domains/:domainId"),
+    useReceivedEmails: builder.createHook("/received-emails"),
+    useReceivedEmail: builder.createHook("/received-emails/:emailId"),
     useEmails: builder.createHook("/emails"),
     useEmail: builder.createHook("/emails/:emailId"),
     useSendEmail: builder.createMutator("POST", "/emails"),
@@ -48,7 +38,12 @@ export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConf
 export { resendFragmentDefinition } from "./definition";
 export { resendRoutesFactory } from "./routes";
 export { resendSchema } from "./schema";
-export type { ResendFragmentConfig } from "./definition";
+export type {
+  ResendEmailReceivedHookPayload,
+  ResendEmailStatusUpdatedHookPayload,
+  ResendFragmentConfig,
+  ResendReceivedEmailAttachment,
+} from "./definition";
 export type {
   ResendDomain,
   ResendDomainDetail,
@@ -59,6 +54,9 @@ export type {
   ResendEmailSummary,
   ResendListDomainsOutput,
   ResendListEmailsOutput,
+  ResendListReceivedEmailsOutput,
+  ResendReceivedEmailDetail,
+  ResendReceivedEmailSummary,
   ResendSendEmailInput,
-};
+} from "./routes";
 export type { FragnoRouteConfig } from "@fragno-dev/core";

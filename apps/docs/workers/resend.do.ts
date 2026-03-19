@@ -58,6 +58,7 @@ const WEBHOOK_EVENTS = [
   "email.clicked",
   "email.bounced",
   "email.complained",
+  "email.received",
 ] as const;
 
 const jsonResponse = (payload: unknown, status = 200) =>
@@ -140,7 +141,10 @@ const parseConfigInput = async (
     try {
       new URL(webhookBaseUrl);
     } catch {
-      return { ok: false, message: "Webhook base URL must be a valid absolute URL." };
+      return {
+        ok: false,
+        message: "Webhook base URL must be a valid absolute URL.",
+      };
     }
   }
 
@@ -457,7 +461,10 @@ export class Resend extends DurableObject<CloudflareEnv> {
     const fragment = await this.#ensureFragment();
     if (!fragment) {
       return jsonResponse(
-        { message: "Resend is not configured for this organisation.", code: "NOT_CONFIGURED" },
+        {
+          message: "Resend is not configured for this organisation.",
+          code: "NOT_CONFIGURED",
+        },
         400,
       );
     }
