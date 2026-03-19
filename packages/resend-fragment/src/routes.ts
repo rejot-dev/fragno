@@ -106,6 +106,47 @@ export const resendListEmailsOutputSchema = z.object({
   hasNextPage: z.boolean(),
 });
 
+export const resendReceivedEmailAttachmentSchema = z.object({
+  id: z.string(),
+  filename: z.string().nullable(),
+  size: z.number().int().nonnegative(),
+  contentType: z.string(),
+  contentDisposition: z.string().nullable(),
+  contentId: z.string().nullable(),
+});
+
+const resendReceivedEmailRawSchema = z.object({
+  downloadUrl: z.string(),
+  expiresAt: z.string(),
+});
+
+export const resendReceivedEmailSummarySchema = z.object({
+  id: z.string(),
+  from: z.string(),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  bcc: z.array(z.string()),
+  replyTo: z.array(z.string()),
+  subject: z.string(),
+  messageId: z.string(),
+  attachments: z.array(resendReceivedEmailAttachmentSchema),
+  attachmentCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+});
+
+export const resendReceivedEmailDetailSchema = resendReceivedEmailSummarySchema.extend({
+  html: z.string().nullable(),
+  text: z.string().nullable(),
+  headers: z.record(z.string(), z.string()).nullable(),
+  raw: resendReceivedEmailRawSchema.nullable(),
+});
+
+export const resendListReceivedEmailsOutputSchema = z.object({
+  emails: z.array(resendReceivedEmailSummarySchema),
+  cursor: z.string().optional(),
+  hasNextPage: z.boolean(),
+});
+
 const resendDomainCapabilityStatusSchema = z.enum(["enabled", "disabled"]);
 const resendDomainStatusSchema = z.enum([
   "pending",
@@ -155,6 +196,10 @@ export type ResendEmailRecord = z.infer<typeof resendEmailRecordSchema>;
 export type ResendEmailSummary = z.infer<typeof resendEmailSummarySchema>;
 export type ResendEmailDetail = z.infer<typeof resendEmailDetailSchema>;
 export type ResendListEmailsOutput = z.infer<typeof resendListEmailsOutputSchema>;
+export type ResendReceivedEmailAttachment = z.infer<typeof resendReceivedEmailAttachmentSchema>;
+export type ResendReceivedEmailSummary = z.infer<typeof resendReceivedEmailSummarySchema>;
+export type ResendReceivedEmailDetail = z.infer<typeof resendReceivedEmailDetailSchema>;
+export type ResendListReceivedEmailsOutput = z.infer<typeof resendListReceivedEmailsOutputSchema>;
 export type ResendDomain = z.infer<typeof resendDomainSchema>;
 export type ResendDomainRecord = z.infer<typeof resendDomainRecordSchema>;
 export type ResendDomainDetail = z.infer<typeof resendDomainDetailSchema>;
@@ -237,6 +282,12 @@ const resendListEmailsQuerySchema = z.object({
   pageSize: z.coerce.number().min(1).max(100).catch(50),
   order: z.enum(["asc", "desc"]).catch("desc"),
   status: z.string().min(1).optional(),
+});
+
+const resendListReceivedEmailsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  pageSize: z.coerce.number().min(1).max(100).catch(50),
+  order: z.enum(["asc", "desc"]).catch("desc"),
 });
 
 const safeDecodeCursor = (cursor: string, indexName: string) => {
@@ -374,6 +425,112 @@ const buildEmailDetail = (email: {
   };
 };
 
+const buildReceivedEmailAttachment = (attachment: {
+  id: string;
+  filename: string | null;
+  size: number;
+  content_type: string;
+  content_disposition: string | null;
+  content_id: string | null;
+}): ResendReceivedEmailAttachment => ({
+  id: attachment.id,
+  filename: attachment.filename,
+  size: attachment.size,
+  contentType: attachment.content_type,
+  contentDisposition: attachment.content_disposition,
+  contentId: attachment.content_id,
+});
+
+const buildReceivedEmailSummary = (email: {
+  id: string;
+  from: string;
+  to: string[];
+  cc: string[] | null;
+  bcc: string[] | null;
+  reply_to: string[] | null;
+  subject: string;
+  message_id: string;
+  attachments: Array<{
+    id: string;
+    filename: string | null;
+    size: number;
+    content_type: string;
+    content_id: string | null;
+    content_disposition: string | null;
+  }>;
+  created_at: string;
+}): ResendReceivedEmailSummary => {
+  const attachments = email.attachments.map((attachment) =>
+    buildReceivedEmailAttachment(attachment),
+  );
+  return {
+    id: email.id,
+    from: email.from,
+    to: email.to,
+    cc: email.cc ?? [],
+    bcc: email.bcc ?? [],
+    replyTo: email.reply_to ?? [],
+    subject: email.subject,
+    messageId: email.message_id,
+    attachments,
+    attachmentCount: attachments.length,
+    createdAt: email.created_at,
+  };
+};
+
+const buildReceivedEmailDetail = (email: {
+  id: string;
+  from: string;
+  to: string[];
+  cc: string[] | null;
+  bcc: string[] | null;
+  reply_to: string[] | null;
+  subject: string;
+  message_id: string;
+  attachments: Array<{
+    id: string;
+    filename: string | null;
+    size: number;
+    content_type: string;
+    content_id: string | null;
+    content_disposition: string | null;
+  }>;
+  created_at: string;
+  html: string | null;
+  text: string | null;
+  headers: Record<string, string> | null;
+  raw?: {
+    download_url: string;
+    expires_at: string;
+  } | null;
+}): ResendReceivedEmailDetail => {
+  const attachments = email.attachments.map((attachment) =>
+    buildReceivedEmailAttachment(attachment),
+  );
+  return {
+    id: email.id,
+    from: email.from,
+    to: email.to,
+    cc: email.cc ?? [],
+    bcc: email.bcc ?? [],
+    replyTo: email.reply_to ?? [],
+    subject: email.subject,
+    messageId: email.message_id,
+    attachments,
+    attachmentCount: attachments.length,
+    createdAt: email.created_at,
+    html: email.html,
+    text: email.text,
+    headers: email.headers,
+    raw: email.raw
+      ? {
+          downloadUrl: email.raw.download_url,
+          expiresAt: email.raw.expires_at,
+        }
+      : null,
+  };
+};
+
 const buildDomainSummary = (domain: Domain): ResendDomain => ({
   id: domain.id,
   name: domain.name,
@@ -490,6 +647,120 @@ export const resendRoutesFactory = defineRoutes(resendFragmentDefinition).create
             }
 
             return json(buildDomainDetail(response.data));
+          } catch (err) {
+            return error(
+              {
+                message: formatErrorMessage(err),
+                code: "RESEND_API_ERROR",
+              },
+              502,
+            );
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/received-emails",
+        queryParameters: ["cursor", "pageSize", "order"],
+        outputSchema: resendListReceivedEmailsOutputSchema,
+        errorCodes: ["RESEND_API_ERROR"] as const,
+        handler: async function ({ query }, { json, error }) {
+          const parsed = resendListReceivedEmailsQuerySchema.parse({
+            cursor: query.get("cursor") ?? undefined,
+            pageSize: query.get("pageSize"),
+            order: query.get("order"),
+          });
+
+          try {
+            const response = await deps.resend.emails.receiving.list({
+              limit: parsed.pageSize,
+              ...(parsed.cursor
+                ? parsed.order === "asc"
+                  ? { before: parsed.cursor }
+                  : { after: parsed.cursor }
+                : {}),
+            });
+
+            if (response.error) {
+              return error(
+                {
+                  message: response.error.message,
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            if (!response.data) {
+              return error(
+                {
+                  message: "Resend returned no received email data.",
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            const emails = response.data.data.map((email) => buildReceivedEmailSummary(email));
+            return json({
+              emails,
+              cursor:
+                response.data.has_more && emails.length > 0
+                  ? emails[emails.length - 1]?.id
+                  : undefined,
+              hasNextPage: response.data.has_more,
+            });
+          } catch (err) {
+            return error(
+              {
+                message: formatErrorMessage(err),
+                code: "RESEND_API_ERROR",
+              },
+              502,
+            );
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/received-emails/:emailId",
+        outputSchema: resendReceivedEmailDetailSchema,
+        errorCodes: ["RECEIVED_EMAIL_NOT_FOUND", "RESEND_API_ERROR"] as const,
+        handler: async function ({ pathParams }, { json, error }) {
+          try {
+            const response = await deps.resend.emails.receiving.get(pathParams.emailId);
+
+            if (response.error) {
+              if (response.error.name === "not_found") {
+                return error(
+                  {
+                    message: "Received email not found.",
+                    code: "RECEIVED_EMAIL_NOT_FOUND",
+                  },
+                  404,
+                );
+              }
+
+              return error(
+                {
+                  message: response.error.message,
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            if (!response.data) {
+              return error(
+                {
+                  message: "Resend returned no received email detail.",
+                  code: "RESEND_API_ERROR",
+                },
+                502,
+              );
+            }
+
+            return json(buildReceivedEmailDetail(response.data));
           } catch (err) {
             return error(
               {

@@ -13,11 +13,19 @@ const sendMock = vi.fn();
 const verifyMock = vi.fn();
 const domainsListMock = vi.fn();
 const domainsGetMock = vi.fn();
+const receivingListMock = vi.fn();
+const receivingGetMock = vi.fn();
 
 vi.mock("resend", () => {
   class MockResend {
     domains = { list: domainsListMock, get: domainsGetMock };
-    emails = { send: sendMock };
+    emails = {
+      send: sendMock,
+      receiving: {
+        list: receivingListMock,
+        get: receivingGetMock,
+      },
+    };
     webhooks = { verify: verifyMock };
   }
 
@@ -30,11 +38,13 @@ vi.mock("resend", () => {
 
 describe("resend-fragment", async () => {
   const onEmailStatusUpdated = vi.fn();
+  const onEmailReceived = vi.fn();
   const config: ResendFragmentConfig = {
     apiKey: "re_test",
     webhookSecret: "whsec_test",
     defaultFrom: "Acme <hello@example.com>",
     onEmailStatusUpdated,
+    onEmailReceived,
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -49,6 +59,8 @@ describe("resend-fragment", async () => {
 
   const getEmail = async (id: string) =>
     db.findFirst("email", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+  const getReceivedEmail = async (id: string) =>
+    db.findFirst("receivedEmail", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
 
   beforeEach(async () => {
     await testContext.resetDatabase();
@@ -57,6 +69,7 @@ describe("resend-fragment", async () => {
     domainsListMock.mockReset();
     domainsGetMock.mockReset();
     onEmailStatusUpdated.mockReset();
+    onEmailReceived.mockReset();
     config.defaultFrom = "Acme <hello@example.com>";
     config.webhookSecret = "whsec_test";
   });
@@ -174,6 +187,155 @@ describe("resend-fragment", async () => {
           priority: 10,
         },
       ],
+    });
+  });
+
+  test("lists received emails from the Resend API", async () => {
+    receivingListMock.mockResolvedValue({
+      data: {
+        object: "list",
+        has_more: false,
+        data: [
+          {
+            id: "recv_123",
+            from: "Acme <inbound@example.com>",
+            to: ["hello@example.com"],
+            cc: ["team@example.com"],
+            bcc: [],
+            reply_to: ["reply@example.com"],
+            subject: "Inbound hello",
+            message_id: "<message-123@example.com>",
+            created_at: "2026-03-18T10:00:00.000Z",
+            attachments: [
+              {
+                id: "att_123",
+                filename: "avatar.png",
+                size: 1234,
+                content_type: "image/png",
+                content_disposition: "inline",
+                content_id: "img001",
+              },
+            ],
+          },
+        ],
+      },
+      error: null,
+    });
+
+    const response = await fragment.callRoute("GET", "/received-emails");
+
+    expect(receivingListMock).toHaveBeenCalledWith({ limit: 50 });
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      return;
+    }
+
+    expect(response.data).toEqual({
+      emails: [
+        {
+          id: "recv_123",
+          from: "Acme <inbound@example.com>",
+          to: ["hello@example.com"],
+          cc: ["team@example.com"],
+          bcc: [],
+          replyTo: ["reply@example.com"],
+          subject: "Inbound hello",
+          messageId: "<message-123@example.com>",
+          attachments: [
+            {
+              id: "att_123",
+              filename: "avatar.png",
+              size: 1234,
+              contentType: "image/png",
+              contentDisposition: "inline",
+              contentId: "img001",
+            },
+          ],
+          attachmentCount: 1,
+          createdAt: "2026-03-18T10:00:00.000Z",
+        },
+      ],
+      hasNextPage: false,
+    });
+  });
+
+  test("fetches received email detail from the Resend API", async () => {
+    receivingGetMock.mockResolvedValue({
+      data: {
+        object: "email",
+        id: "recv_detail",
+        from: "Acme <inbound@example.com>",
+        to: ["support@example.com"],
+        cc: [],
+        bcc: ["audit@example.com"],
+        reply_to: ["reply@example.com"],
+        subject: "Inbound detail",
+        message_id: "<message-detail@example.com>",
+        created_at: "2026-03-18T11:00:00.000Z",
+        html: "<p>Hello inbound</p>",
+        text: "Hello inbound",
+        headers: {
+          "x-custom": "value",
+        },
+        raw: {
+          download_url: "https://example.com/raw.eml",
+          expires_at: "2026-03-18T12:00:00.000Z",
+        },
+        attachments: [
+          {
+            id: "att_detail",
+            filename: "report.pdf",
+            size: 9876,
+            content_type: "application/pdf",
+            content_disposition: "attachment",
+            content_id: null,
+          },
+        ],
+      },
+      error: null,
+      headers: null,
+    });
+
+    const response = await fragment.callRoute("GET", "/received-emails/:emailId", {
+      pathParams: { emailId: "recv_detail" },
+    });
+
+    expect(receivingGetMock).toHaveBeenCalledWith("recv_detail");
+    expect(response.type).toBe("json");
+    if (response.type !== "json") {
+      return;
+    }
+
+    expect(response.data).toEqual({
+      id: "recv_detail",
+      from: "Acme <inbound@example.com>",
+      to: ["support@example.com"],
+      cc: [],
+      bcc: ["audit@example.com"],
+      replyTo: ["reply@example.com"],
+      subject: "Inbound detail",
+      messageId: "<message-detail@example.com>",
+      attachments: [
+        {
+          id: "att_detail",
+          filename: "report.pdf",
+          size: 9876,
+          contentType: "application/pdf",
+          contentDisposition: "attachment",
+          contentId: null,
+        },
+      ],
+      attachmentCount: 1,
+      createdAt: "2026-03-18T11:00:00.000Z",
+      html: "<p>Hello inbound</p>",
+      text: "Hello inbound",
+      headers: {
+        "x-custom": "value",
+      },
+      raw: {
+        downloadUrl: "https://example.com/raw.eml",
+        expiresAt: "2026-03-18T12:00:00.000Z",
+      },
     });
   });
 
@@ -621,6 +783,91 @@ describe("resend-fragment", async () => {
       expect(response.status).toBe(404);
       expect(response.error.code).toBe("EMAIL_NOT_FOUND");
     }
+  });
+
+  test("webhook stores received email and triggers callback", async () => {
+    const event: WebhookEventPayload = {
+      type: "email.received",
+      created_at: "2026-03-18T12:00:01.000Z",
+      data: {
+        email_id: "recv_webhook",
+        created_at: "2026-03-18T12:00:00.000Z",
+        from: "Acme <inbound@example.com>",
+        to: ["hello@example.com"],
+        bcc: [],
+        cc: ["team@example.com"],
+        message_id: "<webhook-message@example.com>",
+        subject: "Webhook inbound",
+        attachments: [
+          {
+            id: "att_webhook",
+            filename: "avatar.png",
+            content_type: "image/png",
+            content_disposition: "inline",
+            content_id: "img001",
+          },
+        ],
+      },
+    };
+
+    const rawBody = JSON.stringify({ type: "email.received" });
+    verifyMock.mockReturnValue(event);
+
+    const response = await fragment.handler(
+      new Request(`http://localhost${fragment.mountRoute}/resend/webhook`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": "msg_received_1",
+          "svix-timestamp": "ts_received_1",
+          "svix-signature": "sig_received_1",
+        },
+        body: rawBody,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+
+    await drainDurableHooks(fragment);
+
+    const stored = await getReceivedEmail("recv_webhook");
+    expect(stored).toBeTruthy();
+    if (!stored) {
+      throw new Error("Expected stored received email record");
+    }
+
+    expect(stored.from).toBe("Acme <inbound@example.com>");
+    expect(stored.to).toEqual(["hello@example.com"]);
+    expect(stored.cc).toEqual(["team@example.com"]);
+    expect(stored.bcc).toEqual([]);
+    expect(stored.subject).toBe("Webhook inbound");
+    expect(stored.messageId).toBe("<webhook-message@example.com>");
+    expect(stored.receivedAt.toISOString()).toBe("2026-03-18T12:00:00.000Z");
+    expect(stored.webhookReceivedAt.toISOString()).toBe("2026-03-18T12:00:01.000Z");
+    expect(stored.attachments).toEqual([
+      {
+        id: "att_webhook",
+        filename: "avatar.png",
+        contentType: "image/png",
+        contentDisposition: "inline",
+        contentId: "img001",
+      },
+    ]);
+
+    expect(onEmailReceived).toHaveBeenCalledTimes(1);
+    expect(onEmailReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        emailId: "recv_webhook",
+        from: "Acme <inbound@example.com>",
+        to: ["hello@example.com"],
+        cc: ["team@example.com"],
+        bcc: [],
+        subject: "Webhook inbound",
+        messageId: "<webhook-message@example.com>",
+        eventType: "email.received",
+      }),
+    );
   });
 
   test("webhook updates email status and triggers callback", async () => {

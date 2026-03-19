@@ -7,6 +7,39 @@ import { withDatabase, type HookFn, type TypedUnitOfWork } from "@fragno-dev/db"
 
 import { resendSchema } from "./schema";
 
+export interface ResendReceivedEmailAttachment {
+  id: string;
+  filename: string | null;
+  contentType: string;
+  contentDisposition: string | null;
+  contentId: string | null;
+}
+
+export interface ResendEmailStatusUpdatedHookPayload {
+  emailId: string;
+  resendId: string;
+  status: string;
+  eventType: string;
+  event: WebhookEventPayload;
+  idempotencyKey: string;
+}
+
+export interface ResendEmailReceivedHookPayload {
+  emailId: string;
+  from: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  messageId: string;
+  attachments: ResendReceivedEmailAttachment[];
+  receivedAt: string;
+  webhookReceivedAt: string;
+  eventType: "email.received";
+  event: WebhookEventPayload;
+  idempotencyKey: string;
+}
+
 export interface ResendFragmentConfig {
   apiKey: string;
   webhookSecret: string;
@@ -14,17 +47,12 @@ export interface ResendFragmentConfig {
   defaultReplyTo?: string | string[];
   defaultTags?: Array<{ name: string; value: string }>;
   defaultHeaders?: Record<string, string>;
-  onEmailStatusUpdated?: (payload: {
-    emailId: string;
-    resendId: string;
-    status: string;
-    eventType: string;
-    event: WebhookEventPayload;
-    idempotencyKey: string;
-  }) => Promise<void> | void;
+  onEmailStatusUpdated?: (payload: ResendEmailStatusUpdatedHookPayload) => Promise<void> | void;
+  onEmailReceived?: (payload: ResendEmailReceivedHookPayload) => Promise<void> | void;
 }
 
 type ResendEmailWebhookEvent = Extract<WebhookEventPayload, { type: `email.${string}` }>;
+type ResendReceivedEmailWebhookEvent = Extract<WebhookEventPayload, { type: "email.received" }>;
 
 export type ResendHooksMap = {
   sendEmail: HookFn<{ emailId: string }>;
@@ -36,6 +64,10 @@ type ResendEmailRow = SelectResult<(typeof resendSchema)["tables"]["email"], {},
 
 const isEmailWebhookEvent = (event: WebhookEventPayload): event is ResendEmailWebhookEvent =>
   event.type.startsWith("email.");
+
+const isReceivedEmailWebhookEvent = (
+  event: WebhookEventPayload,
+): event is ResendReceivedEmailWebhookEvent => event.type === "email.received";
 
 const statusFromWebhookEvent = (event: ResendEmailWebhookEvent) => {
   return event.type.replace("email.", "");
@@ -71,6 +103,18 @@ const normalizeAddressList = (value?: string[] | null) => {
     return undefined;
   }
   return value;
+};
+
+const buildReceivedEmailAttachments = (
+  attachments: ResendReceivedEmailWebhookEvent["data"]["attachments"],
+): ResendReceivedEmailAttachment[] => {
+  return attachments.map((attachment) => ({
+    id: attachment.id,
+    filename: attachment.filename,
+    contentType: attachment.content_type,
+    contentDisposition: attachment.content_disposition,
+    contentId: attachment.content_id,
+  }));
 };
 
 const buildResendPayload = (email: ResendEmailRow): CreateEmailOptions => {
@@ -239,6 +283,65 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
       });
     }),
     onResendWebhook: defineHook(async function ({ event }) {
+      if (isReceivedEmailWebhookEvent(event)) {
+        const receivedAt = new Date(event.data.created_at);
+        const webhookReceivedAt = new Date(event.created_at);
+        const attachments = buildReceivedEmailAttachments(event.data.attachments);
+
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(resendSchema).findFirst("receivedEmail", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", event.data.email_id)),
+            ),
+          )
+          .mutate(({ forSchema, retrieveResult: [receivedEmail] }) => {
+            if (receivedEmail) {
+              return { created: false as const };
+            }
+
+            const uow = forSchema(resendSchema);
+            const emailId = uow.create("receivedEmail", {
+              id: event.data.email_id,
+              from: event.data.from,
+              to: event.data.to,
+              cc: event.data.cc,
+              bcc: event.data.bcc,
+              subject: event.data.subject,
+              messageId: event.data.message_id,
+              attachments,
+              receivedAt,
+              webhookReceivedAt,
+            });
+
+            return {
+              created: true as const,
+              emailId: emailId.valueOf(),
+            };
+          })
+          .execute();
+
+        if (!result.created || !config.onEmailReceived) {
+          return;
+        }
+
+        await config.onEmailReceived({
+          emailId: result.emailId,
+          from: event.data.from,
+          to: event.data.to,
+          cc: event.data.cc,
+          bcc: event.data.bcc,
+          subject: event.data.subject,
+          messageId: event.data.message_id,
+          attachments,
+          receivedAt: event.data.created_at,
+          webhookReceivedAt: event.created_at,
+          eventType: event.type,
+          event,
+          idempotencyKey: this.idempotencyKey,
+        });
+        return;
+      }
+
       if (!isEmailWebhookEvent(event)) {
         return;
       }
