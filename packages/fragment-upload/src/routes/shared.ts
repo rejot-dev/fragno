@@ -5,6 +5,7 @@ import { uploadSchema } from "../schema";
 import type { FileMetadata } from "../types";
 
 type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
+type FileMetadataSource = Omit<FileRow, "id"> & { id?: unknown };
 
 export const checksumSchema = z
   .object({
@@ -52,7 +53,7 @@ export const fileMetadataSchema = z.object({
   errorMessage: z.string().nullable(),
 });
 
-export const toFileMetadata = (file: FileRow): FileMetadata => {
+export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
   const toIsoString = (value: Date | null | undefined) => (value ? value.toISOString() : null);
 
   return {

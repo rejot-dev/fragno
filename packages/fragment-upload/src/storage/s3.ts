@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { assertFileKey } from "../file-key";
+import { appendStorageObjectKeyVersionSegment } from "./object-key";
 import type { StorageAdapter, UploadChecksum } from "./types";
 
 const BYTES_IN_MIB = 1024 * 1024;
@@ -415,9 +416,21 @@ export function createS3CompatibleStorageAdapter(
       multipartPartSizeBytes,
     },
     resolveStorageKey,
-    initUpload: async ({ provider, fileKey, sizeBytes, contentType, metadata, checksum }) => {
+    initUpload: async ({
+      provider,
+      fileKey,
+      sizeBytes,
+      contentType,
+      metadata,
+      checksum,
+      objectKeyVersionSegment,
+    }) => {
       validateMetadata(metadata);
-      const storageKey = resolveStorageKey({ provider, fileKey });
+      const storageKey = appendStorageObjectKeyVersionSegment(
+        resolveStorageKey({ provider, fileKey }),
+        objectKeyVersionSegment,
+        maxStorageKeyLengthBytes,
+      );
 
       const expiresAt = new Date(Date.now() + uploadExpiresInSeconds * 1000);
       const sizeNumber = Number(sizeBytes);

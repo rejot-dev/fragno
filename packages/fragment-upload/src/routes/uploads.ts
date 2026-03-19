@@ -7,6 +7,7 @@ import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { resolveFileKeyInput } from "../services/helpers";
 import { buildUploadSessionRouteData } from "../services/uploads";
+import { buildStorageObjectVersionSegment } from "../storage/object-key";
 import type { UploadChecksum } from "../storage/types";
 import type { UploadStatus, UploadStrategy } from "../types";
 import {
@@ -178,20 +179,38 @@ const handleServiceError = <Code extends UploadErrorCode>(
       return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" as Code }, 409);
     case "UPLOAD_ALREADY_ACTIVE":
       return error(
-        { message: "Upload already active", code: "UPLOAD_ALREADY_ACTIVE" as Code },
+        {
+          message: "Upload already active",
+          code: "UPLOAD_ALREADY_ACTIVE" as Code,
+        },
         409,
       );
     case "UPLOAD_METADATA_MISMATCH":
       return error(
-        { message: "Upload metadata mismatch", code: "UPLOAD_METADATA_MISMATCH" as Code },
+        {
+          message: "Upload metadata mismatch",
+          code: "UPLOAD_METADATA_MISMATCH" as Code,
+        },
         409,
       );
     case "UPLOAD_EXPIRED":
       return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
     case "UPLOAD_INVALID_STATE":
-      return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" as Code }, 409);
+      return error(
+        {
+          message: "Upload invalid state",
+          code: "UPLOAD_INVALID_STATE" as Code,
+        },
+        409,
+      );
     case "PROVIDER_MISMATCH":
-      return error({ message: "Upload provider mismatch", code: "PROVIDER_MISMATCH" as Code }, 409);
+      return error(
+        {
+          message: "Upload provider mismatch",
+          code: "PROVIDER_MISMATCH" as Code,
+        },
+        409,
+      );
     case "INVALID_FILE_KEY":
       return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
     case "INVALID_CHECKSUM":
@@ -231,6 +250,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             return handleServiceError(err, error);
           }
 
+          const objectKeyVersionSegment = buildStorageObjectVersionSegment();
+
           let storageInit;
           try {
             storageInit = await resolvedConfig.storage.initUpload({
@@ -240,6 +261,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               contentType: payload.contentType,
               checksum: payload.checksum ?? null,
               metadata: payload.metadata ?? null,
+              objectKeyVersionSegment,
             });
           } catch (err) {
             if (err instanceof Error && err.message === "INVALID_CHECKSUM") {
@@ -520,7 +542,10 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             }
 
             const inactiveResponse = rejectInactiveUpload(
-              { status: upload.status as UploadStatus, expiresAt: upload.expiresAt },
+              {
+                status: upload.status as UploadStatus,
+                expiresAt: upload.expiresAt,
+              },
               error,
             );
             if (inactiveResponse) {
@@ -536,7 +561,10 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
 
               if (!payload.parts || payload.parts.length === 0) {
                 return error(
-                  { message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" },
+                  {
+                    message: "Upload invalid state",
+                    code: "UPLOAD_INVALID_STATE",
+                  },
                   409,
                 );
               }
@@ -645,7 +673,10 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             }
 
             const inactiveResponse = rejectInactiveUpload(
-              { status: upload.status as UploadStatus, expiresAt: upload.expiresAt },
+              {
+                status: upload.status as UploadStatus,
+                expiresAt: upload.expiresAt,
+              },
               error,
             );
             if (inactiveResponse) {

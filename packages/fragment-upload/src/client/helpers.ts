@@ -398,7 +398,11 @@ export const createUploadHelpers = (input: {
 
       const partNumbers = Array.from({ length: totalParts }, (_, i) => i + 1);
       const partUrls = await fetchJson<{
-        parts: { partNumber: number; url: string; headers?: Record<string, string> }[];
+        parts: {
+          partNumber: number;
+          url: string;
+          headers?: Record<string, string>;
+        }[];
       }>(upload.upload.partsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -406,7 +410,11 @@ export const createUploadHelpers = (input: {
       });
 
       const parts = partUrls.parts.sort((a, b) => a.partNumber - b.partNumber);
-      const completedParts: { partNumber: number; etag: string; sizeBytes: number }[] = [];
+      const completedParts: {
+        partNumber: number;
+        etag: string;
+        sizeBytes: number;
+      }[] = [];
       const completionParts: { partNumber: number; etag: string }[] = [];
 
       for (const part of parts) {
@@ -430,7 +438,11 @@ export const createUploadHelpers = (input: {
         }
 
         const partSize = partBlob.size;
-        completedParts.push({ partNumber: part.partNumber, etag, sizeBytes: partSize });
+        completedParts.push({
+          partNumber: part.partNumber,
+          etag,
+          sizeBytes: partSize,
+        });
         completionParts.push({ partNumber: part.partNumber, etag });
 
         bytesUploaded += partSize;

@@ -59,6 +59,23 @@ export function describeStorageAdapterContract(
       }
     });
 
+    test("initUpload appends a trailing object key version segment when provided", async () => {
+      const { adapter, provider, fileKey, sizeBytes, contentType } = context;
+      const versionSegment = "20260319T115043123Z";
+      const result = await adapter.initUpload({
+        provider,
+        fileKey,
+        sizeBytes,
+        contentType,
+        metadata: null,
+        objectKeyVersionSegment: versionSegment,
+      });
+
+      expect(result.storageKey).toBe(
+        `${adapter.resolveStorageKey({ provider, fileKey })}/${versionSegment}`,
+      );
+    });
+
     test("proxy upload writes data and download stream returns it", async () => {
       const { adapter, provider, fileKey, contentType } = context;
       if (!adapter.capabilities.proxyUpload || !adapter.writeStream) {

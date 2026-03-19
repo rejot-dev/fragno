@@ -6,6 +6,7 @@ import type { FragnoRouteConfig } from "@fragno-dev/core";
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { resolveFileKeyInput } from "../services/helpers";
+import { buildStorageObjectVersionSegment } from "../storage/object-key";
 import {
   checksumSchema,
   fileMetadataSchema,
@@ -77,19 +78,30 @@ const handleServiceError = <Code extends FileErrorCode>(
       return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" as Code }, 409);
     case "UPLOAD_ALREADY_ACTIVE":
       return error(
-        { message: "Upload already active", code: "UPLOAD_ALREADY_ACTIVE" as Code },
+        {
+          message: "Upload already active",
+          code: "UPLOAD_ALREADY_ACTIVE" as Code,
+        },
         409,
       );
     case "UPLOAD_EXPIRED":
       return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
     case "UPLOAD_INVALID_STATE":
-      return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" as Code }, 409);
+      return error(
+        {
+          message: "Upload invalid state",
+          code: "UPLOAD_INVALID_STATE" as Code,
+        },
+        409,
+      );
     case "INVALID_FILE_KEY":
       return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
     case "INVALID_CHECKSUM":
       return error({ message: "Invalid checksum", code: "INVALID_CHECKSUM" as Code }, 400);
     case "INVALID_REQUEST":
       return error({ message: "Invalid request", code: "INVALID_REQUEST" as Code }, 400);
+    case "STORAGE_ERROR":
+      return error({ message: "Storage error", code: "STORAGE_ERROR" as Code }, 502);
     default:
       throw err;
   }
@@ -224,7 +236,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
           let resolvedKey;
           try {
-            resolvedKey = resolveFileKeyInput({ keyParts, fileKey: fileKey ?? undefined });
+            resolvedKey = resolveFileKeyInput({
+              keyParts,
+              fileKey: fileKey ?? undefined,
+            });
           } catch (err) {
             return handleServiceError(err, error);
           }
@@ -253,6 +268,8 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 : "upload";
           const contentType = file.type || "application/octet-stream";
 
+          const objectKeyVersionSegment = buildStorageObjectVersionSegment();
+
           const createInput = {
             provider,
             fileKey: resolvedKey.fileKey,
@@ -275,6 +292,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               contentType,
               checksum: checksumForStorage,
               metadata: metadata ?? null,
+              objectKeyVersionSegment,
             });
           } catch {
             return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
@@ -319,7 +337,13 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 throw new Error("STORAGE_ERROR");
               }
             } else {
-              return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
+              return error(
+                {
+                  message: "Upload invalid state",
+                  code: "UPLOAD_INVALID_STATE",
+                },
+                409,
+              );
             }
 
             if (resolvedConfig.storage.finalizeUpload) {
@@ -505,7 +529,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
           if (!resolvedConfig.storage.getDownloadUrl) {
             return error(
-              { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
+              {
+                message: "Signed URLs are not supported",
+                code: "SIGNED_URL_UNSUPPORTED",
+              },
               400,
             );
           }
@@ -552,7 +579,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
           if (!resolvedConfig.storage.getDownloadStream) {
             return error(
-              { message: "Download streaming unsupported", code: "SIGNED_URL_UNSUPPORTED" },
+              {
+                message: "Download streaming unsupported",
+                code: "SIGNED_URL_UNSUPPORTED",
+              },
               400,
             );
           }

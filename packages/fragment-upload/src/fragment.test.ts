@@ -20,27 +20,37 @@ const createDirectAdapter = (
   expiresAtOverride?: Date,
 ) => {
   const finalizeUpload = vi.fn(async () => ({ etag: "etag-final" }));
-  const completeMultipartUpload = vi.fn(async () => ({ etag: "etag-complete" }));
+  const completeMultipartUpload = vi.fn(async () => ({
+    etag: "etag-complete",
+  }));
+  const deleteObject = vi.fn(async () => undefined);
   const expiresAt = expiresAtOverride ?? new Date(Date.now() + 60_000);
-  const initUploadMock = vi.fn<StorageAdapter["initUpload"]>(async ({ provider, fileKey }) => {
-    if (strategy === "direct-multipart") {
-      return {
-        strategy: "direct-multipart" as const,
-        storageKey: `store/${provider}/${fileKey}`,
-        storageUploadId: "upload-123",
-        partSizeBytes: 3,
-        expiresAt,
-      };
-    }
+  const initUploadMock = vi.fn<StorageAdapter["initUpload"]>(
+    async ({ provider, fileKey, objectKeyVersionSegment }) => {
+      const baseStorageKey = `store/${provider}/${fileKey}`;
+      const storageKey = objectKeyVersionSegment
+        ? `${baseStorageKey}/${objectKeyVersionSegment}`
+        : baseStorageKey;
 
-    return {
-      strategy: "direct-single" as const,
-      storageKey: `store/${provider}/${fileKey}`,
-      expiresAt,
-      uploadUrl: "https://storage.local/upload",
-      uploadHeaders: { "Content-Type": "text/plain" },
-    };
-  });
+      if (strategy === "direct-multipart") {
+        return {
+          strategy: "direct-multipart" as const,
+          storageKey,
+          storageUploadId: "upload-123",
+          partSizeBytes: 3,
+          expiresAt,
+        };
+      }
+
+      return {
+        strategy: "direct-single" as const,
+        storageKey,
+        expiresAt,
+        uploadUrl: "https://storage.local/upload",
+        uploadHeaders: { "Content-Type": "text/plain" },
+      };
+    },
+  );
 
   const adapter: StorageAdapter = {
     name: "direct-test",
@@ -59,13 +69,14 @@ const createDirectAdapter = (
       })),
     completeMultipartUpload,
     finalizeUpload,
-    deleteObject: async () => {},
+    deleteObject,
   };
 
   return {
     adapter,
     finalizeUpload,
     completeMultipartUpload,
+    deleteObject,
     expiresAt,
     initUpload: initUploadMock,
   };
@@ -74,6 +85,7 @@ const createDirectAdapter = (
 const buildUploadFragment = async (config: UploadFragmentConfig) =>
   buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
+    .withDbRoundtripGuard({ maxRoundtrips: 2 })
     .withFragment(
       "upload",
       instantiate(uploadFragmentDefinition).withConfig(config).withRoutes(uploadRoutes),
@@ -96,7 +108,8 @@ const withUploadBuild = async (
 };
 
 describe("upload fragment direct single flows", () => {
-  const { adapter, finalizeUpload, initUpload } = createDirectAdapter("direct-single");
+  const { adapter, finalizeUpload, initUpload, deleteObject } =
+    createDirectAdapter("direct-single");
   let build!: UploadBuild;
 
   beforeAll(async () => {
@@ -107,6 +120,7 @@ describe("upload fragment direct single flows", () => {
     await build.test.resetDatabase();
     finalizeUpload.mockClear();
     initUpload.mockClear();
+    deleteObject.mockClear();
   });
 
   afterAll(async () => {
@@ -143,6 +157,11 @@ describe("upload fragment direct single flows", () => {
     );
 
     expect(stored?.status).toBe("ready");
+    expect(stored?.objectKey).toMatch(
+      new RegExp(
+        `^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z(?:-\\d{4})?$`,
+      ),
+    );
   });
 
   it("reuses an upload when checksum and metadata match", async () => {
@@ -286,7 +305,7 @@ describe("upload fragment direct single flows", () => {
     expect(response.error.code).toBe("UPLOAD_EXPIRED");
   });
 
-  it("returns INTERNAL_SERVER_ERROR when completing an upload after a file is created", async () => {
+  it("replaces the authoritative file row when a file appears before completion", async () => {
     const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -307,12 +326,13 @@ describe("upload fragment direct single flows", () => {
       throw new Error("Upload row missing");
     }
 
+    const supersededObjectKey = `store/${upload.provider}/${upload.key}/20260319T115043123Z`;
     const now = new Date();
     await db.create("file", {
       key: upload.key,
       provider: upload.provider,
       uploaderId: upload.uploaderId,
-      filename: upload.filename,
+      filename: "old.txt",
       sizeBytes: upload.expectedSizeBytes,
       contentType: upload.contentType,
       checksum: upload.checksum,
@@ -320,7 +340,7 @@ describe("upload fragment direct single flows", () => {
       tags: upload.tags,
       metadata: upload.metadata,
       status: "ready",
-      objectKey: upload.objectKey,
+      objectKey: supersededObjectKey,
       createdAt: now,
       updatedAt: now,
       completedAt: now,
@@ -334,9 +354,135 @@ describe("upload fragment direct single flows", () => {
       body: {},
     });
 
-    assert(completeResponse.type === "error");
-    expect(completeResponse.status).toBe(500);
-    expect(completeResponse.error.code).toBe("INTERNAL_SERVER_ERROR");
+    assert(completeResponse.type === "json");
+    expect(completeResponse.data.status).toBe("ready");
+
+    const currentFile = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
+      ),
+    );
+
+    expect(currentFile?.objectKey).toBe(upload.objectKey);
+    expect(deleteObject).not.toHaveBeenCalled();
+
+    await drainDurableHooks(fragment);
+
+    expect(deleteObject).toHaveBeenCalledWith({
+      storageKey: supersededObjectKey,
+    });
+  });
+
+  it("allows direct single uploads to overwrite the same logical file key", async () => {
+    const { fragment, db } = build.fragments.upload;
+    const firstCreate = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 15],
+        filename: "first.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(firstCreate.type === "json");
+
+    const firstComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: firstCreate.data.uploadId },
+      body: {},
+    });
+
+    assert(firstComplete.type === "json");
+
+    const firstFile = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+      ),
+    );
+    expect(firstFile?.objectKey).toBeDefined();
+    if (!firstFile?.objectKey) {
+      throw new Error("First file row missing objectKey");
+    }
+
+    const secondCreate = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: firstCreate.data.fileKey,
+        filename: "second.txt",
+        sizeBytes: 6,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(secondCreate.type === "json");
+
+    const secondComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: secondCreate.data.uploadId },
+      body: {},
+    });
+
+    assert(secondComplete.type === "json");
+    expect(secondComplete.data.filename).toBe("second.txt");
+
+    const currentFile = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+      ),
+    );
+    expect(currentFile?.objectKey).toBeDefined();
+    expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
+
+    await drainDurableHooks(fragment);
+
+    expect(deleteObject).toHaveBeenCalledWith({
+      storageKey: firstFile.objectKey,
+    });
+  });
+
+  it("throws when two overwrites resolve to the same timestamped object key", async () => {
+    const { fragment } = build.fragments.upload;
+    const now = Date.UTC(2026, 2, 19, 11, 50, 43, 123);
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+
+    try {
+      const firstCreate = await fragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["files", "direct", 16],
+          filename: "first.txt",
+          sizeBytes: 5,
+          contentType: "text/plain",
+        },
+      });
+
+      assert(firstCreate.type === "json");
+
+      const firstComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+        pathParams: { uploadId: firstCreate.data.uploadId },
+        body: {},
+      });
+
+      assert(firstComplete.type === "json");
+
+      const secondCreate = await fragment.callRoute("POST", "/uploads", {
+        body: {
+          fileKey: firstCreate.data.fileKey,
+          filename: "second.txt",
+          sizeBytes: 6,
+          contentType: "text/plain",
+        },
+      });
+
+      assert(secondCreate.type === "json");
+
+      const secondComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+        pathParams: { uploadId: secondCreate.data.uploadId },
+        body: {},
+      });
+
+      assert(secondComplete.type === "error");
+      expect(secondComplete.status).toBe(502);
+      expect(secondComplete.error.code).toBe("STORAGE_ERROR");
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
   it("surfaces checksum mismatches", async () => {
@@ -459,7 +605,7 @@ describe("upload fragment direct single flows", () => {
 
     try {
       await withUploadBuild({ storage, onFileDeleted }, async ({ fragments }) => {
-        const { fragment } = fragments.upload;
+        const { fragment, db } = fragments.upload;
         const form = new FormData();
         const file = new File([Buffer.from("delete me")], "delete-me.txt", {
           type: "text/plain",
@@ -468,16 +614,27 @@ describe("upload fragment direct single flows", () => {
         form.set("provider", storage.name);
         form.set("keyParts", JSON.stringify(["users", 99, "delete-me"]));
 
-        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        const createResponse = await fragment.callRoute("POST", "/files", {
+          body: form,
+        });
         assert(createResponse.type === "json");
 
-        const storageKey = storage.resolveStorageKey({
-          provider: storage.name,
-          fileKey: createResponse.data.fileKey,
-        });
+        const storedFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
+          ),
+        );
+        expect(storedFile?.objectKey).toBeDefined();
+        if (!storedFile?.objectKey) {
+          throw new Error("Stored file missing objectKey");
+        }
+        const storageKey = storedFile.objectKey;
 
         const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-          query: { provider: storage.name, key: createResponse.data.fileKey },
+          query: {
+            provider: storage.name,
+            key: createResponse.data.fileKey,
+          },
         });
 
         assert(deleteResponse.type === "json");
@@ -498,6 +655,354 @@ describe("upload fragment direct single flows", () => {
         );
       });
     } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans up superseded objects during overwrite without firing onFileDeleted", async () => {
+    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-overwrite-hook-"));
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      deleteObject,
+    } satisfies StorageAdapter;
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments }) => {
+        const { fragment, db } = fragments.upload;
+        const firstForm = new FormData();
+        firstForm.set(
+          "file",
+          new File([Buffer.from("first")], "first.txt", {
+            type: "text/plain",
+          }),
+        );
+        firstForm.set("provider", storage.name);
+        firstForm.set("keyParts", JSON.stringify(["users", 102, "overwrite"]));
+
+        const firstCreate = await fragment.callRoute("POST", "/files", {
+          body: firstForm,
+        });
+        assert(firstCreate.type === "json");
+
+        const firstFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(firstFile?.objectKey).toBeDefined();
+        if (!firstFile?.objectKey) {
+          throw new Error("First file row missing objectKey");
+        }
+
+        const secondForm = new FormData();
+        secondForm.set(
+          "file",
+          new File([Buffer.from("second")], "second.txt", {
+            type: "text/plain",
+          }),
+        );
+        secondForm.set("provider", storage.name);
+        secondForm.set("fileKey", firstCreate.data.fileKey);
+
+        const secondCreate = await fragment.callRoute("POST", "/files", {
+          body: secondForm,
+        });
+        assert(secondCreate.type === "json");
+
+        const currentFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(currentFile?.objectKey).toBeDefined();
+        expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
+        if (!currentFile?.objectKey) {
+          throw new Error("Current file row missing objectKey");
+        }
+
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        await drainDurableHooks(fragment);
+
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: firstFile.objectKey,
+        });
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        const currentStoragePath = path.join(rootDir, ...currentFile.objectKey.split("/"));
+        expect(await fs.readFile(currentStoragePath, "utf8")).toBe("second");
+      });
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans up multiple superseded objects after repeated overwrites before hook drain", async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "fragno-upload-overwrite-history-hook-"),
+    );
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      deleteObject,
+    } satisfies StorageAdapter;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(
+      (
+        (now) => () =>
+          now++
+      )(Date.UTC(2026, 2, 19, 11, 50, 43, 123)),
+    );
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments }) => {
+        const { fragment, db } = fragments.upload;
+        const readStoredContent = async (objectKey: string) =>
+          await fs.readFile(path.join(rootDir, ...objectKey.split("/")), "utf8");
+
+        const firstForm = new FormData();
+        firstForm.set(
+          "file",
+          new File([Buffer.from("first")], "first.txt", {
+            type: "text/plain",
+          }),
+        );
+        firstForm.set("provider", storage.name);
+        firstForm.set("keyParts", JSON.stringify(["users", 103, "overwrite-history"]));
+
+        const firstCreate = await fragment.callRoute("POST", "/files", {
+          body: firstForm,
+        });
+        assert(firstCreate.type === "json");
+
+        const firstFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(firstFile?.objectKey).toBeDefined();
+        if (!firstFile?.objectKey) {
+          throw new Error("First file row missing objectKey");
+        }
+
+        const secondForm = new FormData();
+        secondForm.set(
+          "file",
+          new File([Buffer.from("second")], "second.txt", {
+            type: "text/plain",
+          }),
+        );
+        secondForm.set("provider", storage.name);
+        secondForm.set("fileKey", firstCreate.data.fileKey);
+
+        const secondCreate = await fragment.callRoute("POST", "/files", {
+          body: secondForm,
+        });
+        assert(secondCreate.type === "json");
+
+        const secondFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(secondFile?.objectKey).toBeDefined();
+        expect(secondFile?.objectKey).not.toBe(firstFile.objectKey);
+        if (!secondFile?.objectKey) {
+          throw new Error("Second file row missing objectKey");
+        }
+
+        const thirdForm = new FormData();
+        thirdForm.set(
+          "file",
+          new File([Buffer.from("third")], "third.txt", {
+            type: "text/plain",
+          }),
+        );
+        thirdForm.set("provider", storage.name);
+        thirdForm.set("fileKey", firstCreate.data.fileKey);
+
+        const thirdCreate = await fragment.callRoute("POST", "/files", {
+          body: thirdForm,
+        });
+        assert(thirdCreate.type === "json");
+
+        const currentFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(currentFile?.objectKey).toBeDefined();
+        expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
+        expect(currentFile?.objectKey).not.toBe(secondFile.objectKey);
+        if (!currentFile?.objectKey) {
+          throw new Error("Current file row missing objectKey");
+        }
+
+        expect(await readStoredContent(firstFile.objectKey)).toBe("first");
+        expect(await readStoredContent(secondFile.objectKey)).toBe("second");
+        expect(await readStoredContent(currentFile.objectKey)).toBe("third");
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+          query: { provider: storage.name, key: firstCreate.data.fileKey },
+        });
+        expect(beforeDrain.status).toBe(200);
+        expect(await beforeDrain.text()).toBe("third");
+
+        await drainDurableHooks(fragment);
+
+        expect(deleteObject).toHaveBeenCalledTimes(2);
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: firstFile.objectKey,
+        });
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: secondFile.objectKey,
+        });
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        await expect(readStoredContent(firstFile.objectKey)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        await expect(readStoredContent(secondFile.objectKey)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        expect(await readStoredContent(currentFile.objectKey)).toBe("third");
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("deletes both superseded and current bytes when an overwritten file is later deleted", async () => {
+    const rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "fragno-upload-overwrite-then-delete-hook-"),
+    );
+    const baseStorage = createFilesystemStorageAdapter({ rootDir });
+    const deleteObject = vi.fn(baseStorage.deleteObject);
+    const onFileDeleted = vi.fn(async () => {});
+    const storage = {
+      ...baseStorage,
+      deleteObject,
+    } satisfies StorageAdapter;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(
+      (
+        (now) => () =>
+          now++
+      )(Date.UTC(2026, 2, 19, 11, 55, 0, 0)),
+    );
+
+    try {
+      await withUploadBuild({ storage, onFileDeleted }, async ({ fragments }) => {
+        const { fragment, db } = fragments.upload;
+        const readStoredContent = async (objectKey: string) =>
+          await fs.readFile(path.join(rootDir, ...objectKey.split("/")), "utf8");
+
+        const firstForm = new FormData();
+        firstForm.set(
+          "file",
+          new File([Buffer.from("first")], "first.txt", {
+            type: "text/plain",
+          }),
+        );
+        firstForm.set("provider", storage.name);
+        firstForm.set("keyParts", JSON.stringify(["users", 104, "overwrite-then-delete"]));
+
+        const firstCreate = await fragment.callRoute("POST", "/files", {
+          body: firstForm,
+        });
+        assert(firstCreate.type === "json");
+
+        const firstFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(firstFile?.objectKey).toBeDefined();
+        if (!firstFile?.objectKey) {
+          throw new Error("First file row missing objectKey");
+        }
+
+        const secondForm = new FormData();
+        secondForm.set(
+          "file",
+          new File([Buffer.from("second")], "second.txt", {
+            type: "text/plain",
+          }),
+        );
+        secondForm.set("provider", storage.name);
+        secondForm.set("fileKey", firstCreate.data.fileKey);
+
+        const secondCreate = await fragment.callRoute("POST", "/files", {
+          body: secondForm,
+        });
+        assert(secondCreate.type === "json");
+
+        const currentFile = await db.findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+        expect(currentFile?.objectKey).toBeDefined();
+        expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
+        if (!currentFile?.objectKey) {
+          throw new Error("Current file row missing objectKey");
+        }
+
+        const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
+          query: {
+            provider: storage.name,
+            key: firstCreate.data.fileKey,
+          },
+        });
+        assert(deleteResponse.type === "json");
+
+        expect(await readStoredContent(firstFile.objectKey)).toBe("first");
+        expect(await readStoredContent(currentFile.objectKey)).toBe("second");
+        expect(deleteObject).not.toHaveBeenCalled();
+        expect(onFileDeleted).not.toHaveBeenCalled();
+
+        const contentResponse = await fragment.callRoute("GET", "/files/by-key/content", {
+          query: { provider: storage.name, key: firstCreate.data.fileKey },
+        });
+        assert(contentResponse.type === "error");
+        expect(contentResponse.status).toBe(410);
+        expect(contentResponse.error.code).toBe("FILE_DELETED");
+
+        await drainDurableHooks(fragment);
+
+        expect(deleteObject).toHaveBeenCalledTimes(2);
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: firstFile.objectKey,
+        });
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: currentFile.objectKey,
+        });
+        expect(onFileDeleted).toHaveBeenCalledTimes(1);
+        expect(onFileDeleted).toHaveBeenCalledWith(
+          expect.objectContaining({
+            provider: storage.name,
+            fileKey: firstCreate.data.fileKey,
+            objectKey: currentFile.objectKey,
+          }),
+          expect.any(String),
+        );
+
+        await expect(readStoredContent(firstFile.objectKey)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        await expect(readStoredContent(currentFile.objectKey)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      });
+    } finally {
+      dateNowSpy.mockRestore();
       await fs.rm(rootDir, { recursive: true, force: true });
     }
   });
@@ -527,11 +1032,16 @@ describe("upload fragment direct single flows", () => {
         form.set("provider", storage.name);
         form.set("keyParts", JSON.stringify(["users", 100, "delete-me-missing-payload-key"]));
 
-        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        const createResponse = await fragment.callRoute("POST", "/files", {
+          body: form,
+        });
         assert(createResponse.type === "json");
 
         const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-          query: { provider: storage.name, key: createResponse.data.fileKey },
+          query: {
+            provider: storage.name,
+            key: createResponse.data.fileKey,
+          },
         });
 
         assert(deleteResponse.type === "json");
@@ -570,7 +1080,9 @@ describe("upload fragment direct single flows", () => {
           throw new Error("Delete hook missing");
         }
 
-        const hookPayload = deleteHook.payload as { objectKey?: string } & Record<string, unknown>;
+        const hookPayload = deleteHook.payload as {
+          objectKey?: string;
+        } & Record<string, unknown>;
         const { objectKey: _objectKey, ...payloadWithoutObjectKey } = hookPayload;
 
         await internalFragment.inContext(async function () {
@@ -587,7 +1099,9 @@ describe("upload fragment direct single flows", () => {
         await drainDurableHooks(fragment);
 
         expect(resolveStorageKey).not.toHaveBeenCalled();
-        expect(deleteObject).toHaveBeenCalledWith({ storageKey: persistedFile.objectKey });
+        expect(deleteObject).toHaveBeenCalledWith({
+          storageKey: persistedFile.objectKey,
+        });
         expect(onFileDeleted).toHaveBeenCalledWith(
           expect.objectContaining({
             provider: storage.name,
@@ -627,11 +1141,16 @@ describe("upload fragment direct single flows", () => {
         form.set("provider", storage.name);
         form.set("keyParts", JSON.stringify(["users", 101, "delete-me-missing-record"]));
 
-        const createResponse = await fragment.callRoute("POST", "/files", { body: form });
+        const createResponse = await fragment.callRoute("POST", "/files", {
+          body: form,
+        });
         assert(createResponse.type === "json");
 
         const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-          query: { provider: storage.name, key: createResponse.data.fileKey },
+          query: {
+            provider: storage.name,
+            key: createResponse.data.fileKey,
+          },
         });
 
         assert(deleteResponse.type === "json");
@@ -670,7 +1189,9 @@ describe("upload fragment direct single flows", () => {
           throw new Error("Delete hook missing");
         }
 
-        const hookPayload = deleteHook.payload as { objectKey?: string } & Record<string, unknown>;
+        const hookPayload = deleteHook.payload as {
+          objectKey?: string;
+        } & Record<string, unknown>;
         const { objectKey: _objectKey, ...payloadWithoutObjectKey } = hookPayload;
 
         await internalFragment.inContext(async function () {
@@ -811,7 +1332,8 @@ describe("upload fragment direct single flows", () => {
 });
 
 describe("upload fragment direct multipart flows", () => {
-  const { adapter, completeMultipartUpload } = createDirectAdapter("direct-multipart");
+  const { adapter, completeMultipartUpload, deleteObject } =
+    createDirectAdapter("direct-multipart");
   let build!: UploadBuild;
 
   beforeAll(async () => {
@@ -821,6 +1343,7 @@ describe("upload fragment direct multipart flows", () => {
   beforeEach(async () => {
     await build.test.resetDatabase();
     completeMultipartUpload.mockClear();
+    deleteObject.mockClear();
   });
 
   afterAll(async () => {
@@ -876,13 +1399,91 @@ describe("upload fragment direct multipart flows", () => {
     assert(completeResponse.type === "json");
     expect(completeResponse.data.status).toBe("ready");
     expect(completeMultipartUpload).toHaveBeenCalledWith({
-      storageKey: `store/${adapter.name}/${createResponse.data.fileKey}`,
+      storageKey: expect.stringMatching(
+        new RegExp(`^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z$`),
+      ),
       storageUploadId: "upload-123",
       parts: [
         { partNumber: 1, etag: "etag-1" },
         { partNumber: 2, etag: "etag-2" },
         { partNumber: 3, etag: "etag-3" },
       ],
+    });
+  });
+
+  it("allows direct multipart uploads to overwrite the same logical file key", async () => {
+    const { fragment, db } = build.fragments.upload;
+    const firstCreate = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "multipart", 2],
+        filename: "movie-v1.mp4",
+        sizeBytes: 8,
+        contentType: "video/mp4",
+      },
+    });
+
+    assert(firstCreate.type === "json");
+
+    const firstComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: firstCreate.data.uploadId },
+      body: {
+        parts: [
+          { partNumber: 1, etag: "etag-1" },
+          { partNumber: 2, etag: "etag-2" },
+          { partNumber: 3, etag: "etag-3" },
+        ],
+      },
+    });
+
+    assert(firstComplete.type === "json");
+
+    const firstFile = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+      ),
+    );
+    expect(firstFile?.objectKey).toBeDefined();
+    if (!firstFile?.objectKey) {
+      throw new Error("First multipart file row missing objectKey");
+    }
+
+    const secondCreate = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: firstCreate.data.fileKey,
+        filename: "movie-v2.mp4",
+        sizeBytes: 8,
+        contentType: "video/mp4",
+      },
+    });
+
+    assert(secondCreate.type === "json");
+
+    const secondComplete = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: secondCreate.data.uploadId },
+      body: {
+        parts: [
+          { partNumber: 1, etag: "etag-1b" },
+          { partNumber: 2, etag: "etag-2b" },
+          { partNumber: 3, etag: "etag-3b" },
+        ],
+      },
+    });
+
+    assert(secondComplete.type === "json");
+    expect(secondComplete.data.filename).toBe("movie-v2.mp4");
+
+    const currentFile = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_provider_key", (eb) =>
+        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+      ),
+    );
+    expect(currentFile?.objectKey).toBeDefined();
+    expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
+
+    await drainDurableHooks(fragment);
+
+    expect(deleteObject).toHaveBeenCalledWith({
+      storageKey: firstFile.objectKey,
     });
   });
 });

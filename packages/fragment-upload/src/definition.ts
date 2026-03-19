@@ -10,6 +10,9 @@ import type { UploadStatus } from "./types";
 const buildMissingDeletedFileObjectKeyError = (input: { provider: string; fileKey: string }) =>
   `Missing persisted objectKey for deleted file '${input.provider}:${input.fileKey}'. Refusing to reconstruct storage key from provider/fileKey.`;
 
+const buildMissingCleanupObjectKeyError = (input: { provider: string; fileKey: string }) =>
+  `Missing storage cleanup objectKey for '${input.provider}:${input.fileKey}'. Refusing to reconstruct storage key from provider/fileKey.`;
+
 export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("upload")
   .extend(withDatabase(uploadSchema))
   .withDependencies(({ config }) => ({
@@ -24,6 +27,23 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
       }),
       onUploadFailed: defineHook(async function (payload) {
         await config.onUploadFailed?.(payload, this.idempotencyKey);
+      }),
+      cleanupStorageObject: defineHook(async function (payload) {
+        const objectKey =
+          typeof payload.objectKey === "string" && payload.objectKey.length > 0
+            ? payload.objectKey
+            : null;
+
+        if (!objectKey) {
+          throw new Error(
+            buildMissingCleanupObjectKeyError({
+              provider: payload.provider,
+              fileKey: payload.fileKey,
+            }),
+          );
+        }
+
+        await resolvedConfig.storage.deleteObject({ storageKey: objectKey });
       }),
       onFileDeleted: defineHook(async function (payload) {
         const payloadObjectKey =
@@ -41,7 +61,11 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               ),
             )
             .transformRetrieve(([file]) => {
-              if (typeof file?.objectKey === "string" && file.objectKey.length > 0) {
+              if (
+                file?.status === "deleted" &&
+                typeof file.objectKey === "string" &&
+                file.objectKey.length > 0
+              ) {
                 return file.objectKey;
               }
               return null;
