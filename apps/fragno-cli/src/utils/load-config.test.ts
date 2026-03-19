@@ -10,10 +10,7 @@ describe("stripJsonComments", () => {
   // This is a comment
   "key": "value"
 }`;
-    const expected = `{
-  
-  "key": "value"
-}`;
+    const expected = ["{", "  ", '  "key": "value"', "}"].join("\n");
     expect(stripJsonComments(input)).toBe(expected);
   });
 
@@ -32,12 +29,9 @@ describe("stripJsonComments", () => {
   // Second comment
   "key2": "value2"
 }`;
-    const expected = `{
-  
-  "key1": "value1", 
-  
-  "key2": "value2"
-}`;
+    const expected = ["{", "  ", '  "key1": "value1", ', "  ", '  "key2": "value2"', "}"].join(
+      "\n",
+    );
     expect(stripJsonComments(input)).toBe(expected);
   });
 
@@ -59,10 +53,7 @@ describe("stripJsonComments", () => {
      multi-line comment */
   "key": "value"
 }`;
-    const expected = `{
-  
-  "key": "value"
-}`;
+    const expected = ["{", "  ", '  "key": "value"', "}"].join("\n");
     expect(stripJsonComments(input)).toBe(expected);
   });
 
@@ -74,12 +65,7 @@ describe("stripJsonComments", () => {
      spanning lines */
   "key2": "value2"
 }`;
-    const expected = `{
-  
-  "key1": "value1",
-  
-  "key2": "value2"
-}`;
+    const expected = ["{", "  ", '  "key1": "value1",', "  ", '  "key2": "value2"', "}"].join("\n");
     expect(stripJsonComments(input)).toBe(expected);
   });
 
@@ -91,12 +77,9 @@ describe("stripJsonComments", () => {
      comment */
   "key2": "value2" // Another single line
 }`;
-    const expected = `{
-  
-  "key1": "value1",
-  
-  "key2": "value2" 
-}`;
+    const expected = ["{", "  ", '  "key1": "value1",', "  ", '  "key2": "value2" ', "}"].join(
+      "\n",
+    );
     expect(stripJsonComments(input)).toBe(expected);
   });
 
