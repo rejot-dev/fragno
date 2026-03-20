@@ -1,10 +1,13 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { PiSession, PiSessionDetail, createPiFragment } from "@fragno-dev/pi-fragment";
+import type {
+  PiActiveSessionProtocolMessage,
+  PiSession,
+  PiSessionDetail,
+  createPiFragment,
+} from "@fragno-dev/pi-fragment";
 
 import { createAutomationCommands } from "../automation/commands/bash-adapter";
-
-type PiFragment = ReturnType<typeof createPiFragment>;
 import {
   assertNoPositionals,
   parseCliTokens,
@@ -21,7 +24,14 @@ import type {
 } from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
 
-const PI_COMMAND_NAMES = ["pi.session.create", "pi.session.get", "pi.session.list"] as const;
+type PiFragment = ReturnType<typeof createPiFragment>;
+
+const PI_COMMAND_NAMES = [
+  "pi.session.create",
+  "pi.session.get",
+  "pi.session.list",
+  "pi.session.turn",
+] as const;
 
 export type PiCommandName = (typeof PI_COMMAND_NAMES)[number];
 
@@ -44,10 +54,29 @@ export type PiSessionListArgs = {
   limit?: number;
 };
 
+export type PiSessionTurnArgs = {
+  sessionId: string;
+  text: string;
+  steeringMode?: "all" | "one-at-a-time";
+};
+
+export type PiSessionTurnTerminalFrame = Extract<
+  PiActiveSessionProtocolMessage,
+  { layer: "system"; type: "settled" | "inactive" }
+>;
+
+export type PiSessionTurnResult = PiSessionDetail & {
+  assistantText: string;
+  messageStatus: PiSession["status"];
+  stream: PiActiveSessionProtocolMessage[];
+  terminalFrame: PiSessionTurnTerminalFrame;
+};
+
 export type PiParsedCommandByName = {
   "pi.session.create": ParsedCommand<"pi.session.create", PiSessionCreateArgs>;
   "pi.session.get": ParsedCommand<"pi.session.get", PiSessionGetArgs>;
   "pi.session.list": ParsedCommand<"pi.session.list", PiSessionListArgs>;
+  "pi.session.turn": ParsedCommand<"pi.session.turn", PiSessionTurnArgs>;
 };
 
 type PiCommandHandlers<TContext = unknown> = AutomationCommandHandlersFor<
@@ -59,6 +88,7 @@ export type PiBashRuntime = {
   createSession: (args: PiSessionCreateArgs) => Promise<PiSession>;
   getSession: (args: PiSessionGetArgs) => Promise<PiSessionDetail>;
   listSessions: (args: PiSessionListArgs) => Promise<PiSession[]>;
+  runTurn: (args: PiSessionTurnArgs) => Promise<PiSessionTurnResult>;
 };
 
 type RegisteredPiBashCommandContext = {
@@ -114,10 +144,26 @@ const parseBooleanOption = (
   throw new Error(`--${name} must be true or false`);
 };
 
+const normalizeSteeringMode = (
+  value: string | undefined,
+  optionName = "steering-mode",
+): PiSessionCreateArgs["steeringMode"] | undefined => {
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+
+  if (value !== "all" && value !== "one-at-a-time") {
+    throw new Error(`--${optionName} must be one of: all, one-at-a-time`);
+  }
+
+  return value;
+};
+
 const HELP: {
   sessionCreate: AutomationCommandHelp;
   sessionGet: AutomationCommandHelp;
   sessionList: AutomationCommandHelp;
+  sessionTurn: AutomationCommandHelp;
 } = {
   sessionCreate: {
     summary: "pi.session.create creates a new Pi session via the existing Pi session route.",
@@ -155,7 +201,7 @@ const HELP: {
       },
     ],
     examples: [
-      'pi.session.create --agent assistant --name onboarding --tag team-alpha --tag priority --metadata-json \'{"purpose":"support"}\'',
+      `pi.session.create --agent assistant --name onboarding --tag team-alpha --tag priority --metadata-json '{"purpose":"support"}'`,
       "pi.session.create --agent assistant --steering-mode one-at-a-time --format json",
     ],
   },
@@ -206,6 +252,36 @@ const HELP: {
       "pi.session.list --limit 5 --print 0.id",
     ],
   },
+  sessionTurn: {
+    summary:
+      "pi.session.turn sends one user turn through the active-session stream + message routes and returns the settled result.",
+    options: [
+      {
+        name: "session-id",
+        required: true,
+        valueRequired: true,
+        valueName: "session-id",
+        description: "Pi session id to send the turn to",
+      },
+      {
+        name: "text",
+        required: true,
+        valueRequired: true,
+        valueName: "text",
+        description: "User message text to send for this turn",
+      },
+      {
+        name: "steering-mode",
+        valueRequired: true,
+        valueName: "steering-mode",
+        description: "Override steering mode for this turn (all|one-at-a-time)",
+      },
+    ],
+    examples: [
+      'pi.session.turn --session-id session-123 --text "Hello there" --print assistantText',
+      'pi.session.turn --session-id session-123 --text "Summarize the latest messages" --format json',
+    ],
+  },
 };
 
 const parsePiSessionCreate = (args: string[]): PiParsedCommandByName["pi.session.create"] => {
@@ -214,14 +290,6 @@ const parsePiSessionCreate = (args: string[]): PiParsedCommandByName["pi.session
 
   const tags = parseStringArrayOption(parsed.options);
   const metadata = readJsonOption(parsed, "metadata-json");
-  const steeringMode = readStringOption(parsed, "steering-mode");
-  if (
-    typeof steeringMode === "string" &&
-    steeringMode !== "all" &&
-    steeringMode !== "one-at-a-time"
-  ) {
-    throw new Error(`--steering-mode must be one of: all, one-at-a-time`);
-  }
 
   return {
     name: "pi.session.create",
@@ -230,7 +298,7 @@ const parsePiSessionCreate = (args: string[]): PiParsedCommandByName["pi.session
       name: readStringOption(parsed, "name") ?? undefined,
       metadata,
       tags,
-      steeringMode: steeringMode as PiSessionCreateArgs["steeringMode"],
+      steeringMode: normalizeSteeringMode(readStringOption(parsed, "steering-mode")),
     },
     output: readOutputOptions(parsed),
     rawArgs: args,
@@ -270,6 +338,24 @@ const parsePiSessionList = (args: string[]): PiParsedCommandByName["pi.session.l
   };
 };
 
+const parsePiSessionTurn = (args: string[]): PiParsedCommandByName["pi.session.turn"] => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "pi.session.turn");
+
+  const output = readOutputOptions(parsed);
+
+  return {
+    name: "pi.session.turn",
+    args: {
+      sessionId: readStringOption(parsed, "session-id", true)!,
+      text: readStringOption(parsed, "text", true)!,
+      steeringMode: normalizeSteeringMode(readStringOption(parsed, "steering-mode")),
+    },
+    output: output.print || parsed.options.has("format") ? output : { ...output, format: "json" },
+    rawArgs: args,
+  };
+};
+
 const PI_COMMAND_SPECS = {
   "pi.session.create": {
     name: "pi.session.create",
@@ -285,6 +371,11 @@ const PI_COMMAND_SPECS = {
     name: "pi.session.list",
     help: HELP.sessionList,
     parse: parsePiSessionList,
+  },
+  "pi.session.turn": {
+    name: "pi.session.turn",
+    help: HELP.sessionTurn,
+    parse: parsePiSessionTurn,
   },
 } satisfies {
   [TCommandName in PiCommandName]: AutomationCommandSpec<
@@ -313,6 +404,11 @@ const piCommandHandlers: PiCommandHandlers<RegisteredPiBashCommandContext> = {
   "pi.session.list": async (command, context) => {
     return {
       data: await context.runtime.listSessions(command.args),
+    };
+  },
+  "pi.session.turn": async (command, context) => {
+    return {
+      data: await context.runtime.runTurn(command.args),
     };
   },
 };
@@ -378,6 +474,65 @@ const throwOnRouteError = (
   throw new Error(`Pi fragment returned ${response.status} (${label})`);
 };
 
+const isTerminalTurnFrame = (
+  message: PiActiveSessionProtocolMessage,
+): message is PiSessionTurnTerminalFrame => {
+  return message.layer === "system" && (message.type === "settled" || message.type === "inactive");
+};
+
+const extractAssistantText = (messages: PiSessionDetail["messages"]): string => {
+  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  if (!assistantMessage || !Array.isArray(assistantMessage.content)) {
+    return "";
+  }
+
+  return assistantMessage.content
+    .filter((block) => typeof block === "object" && block !== null && block.type === "text")
+    .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
+    .join("")
+    .trim();
+};
+
+const closeActiveStream = async (stream: AsyncGenerator<PiActiveSessionProtocolMessage>) => {
+  if (typeof stream.return !== "function") {
+    return;
+  }
+
+  try {
+    await stream.return(undefined as never);
+  } catch {
+    // Best-effort cleanup only.
+  }
+};
+
+const consumeActiveStreamUntilTerminal = async (
+  stream: AsyncGenerator<PiActiveSessionProtocolMessage>,
+): Promise<{
+  frames: PiActiveSessionProtocolMessage[];
+  terminalFrame: PiSessionTurnTerminalFrame;
+}> => {
+  const frames: PiActiveSessionProtocolMessage[] = [];
+
+  try {
+    for await (const frame of stream) {
+      frames.push(frame);
+      if (!isTerminalTurnFrame(frame)) {
+        continue;
+      }
+
+      return {
+        frames,
+        terminalFrame: frame,
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Pi active session stream failed: ${message}`);
+  }
+
+  throw new Error("Pi active session stream ended before emitting a settled or inactive frame");
+};
+
 export const createPiRouteBashRuntime = ({
   env,
   orgId,
@@ -432,6 +587,65 @@ export const createPiRouteBashRuntime = ({
         return response.data;
       }
       return throwOnRouteError(response, "pi.session.list");
+    },
+    runTurn: async ({ sessionId, text, steeringMode }) => {
+      const normalizedSessionId = sessionId.trim();
+      if (!normalizedSessionId) {
+        throw new Error("pi.session.turn requires a session id");
+      }
+
+      const normalizedText = text.trim();
+      if (!normalizedText) {
+        throw new Error("pi.session.turn requires non-empty text");
+      }
+
+      const activeRoute = await callRoute("GET", "/sessions/:sessionId/active", {
+        pathParams: { sessionId: normalizedSessionId },
+      });
+      if (!isSuccessStatus(activeRoute.status)) {
+        return throwOnRouteError(activeRoute, "pi.session.turn active");
+      }
+      if (activeRoute.type !== "jsonStream") {
+        throw new Error(
+          `Pi fragment returned ${activeRoute.status}: active session route did not return a jsonStream response`,
+        );
+      }
+
+      try {
+        const messageResponse = await callRoute("POST", "/sessions/:sessionId/messages", {
+          pathParams: { sessionId: normalizedSessionId },
+          body: {
+            text: normalizedText,
+            ...(steeringMode ? { steeringMode } : {}),
+          },
+        });
+        if (messageResponse.type !== "json" || !isSuccessStatus(messageResponse.status)) {
+          return throwOnRouteError(messageResponse, "pi.session.turn message");
+        }
+
+        const { frames, terminalFrame } = await consumeActiveStreamUntilTerminal(
+          activeRoute.stream,
+        );
+
+        const detailResponse = await callRoute("GET", "/sessions/:sessionId", {
+          pathParams: { sessionId: normalizedSessionId },
+        });
+        if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
+          return throwOnRouteError(detailResponse, "pi.session.turn detail");
+        }
+
+        const detail = detailResponse.data;
+        return {
+          ...detail,
+          assistantText: extractAssistantText(detail.messages),
+          messageStatus: messageResponse.data.status,
+          stream: frames,
+          terminalFrame,
+        };
+      } catch (error) {
+        await closeActiveStream(activeRoute.stream);
+        throw error;
+      }
     },
   };
 };

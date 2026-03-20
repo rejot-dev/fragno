@@ -17,8 +17,6 @@ export type AutomationScriptItem = {
   path: string;
   absolutePath: string;
   version: number;
-  agent: string | null;
-  env: Record<string, string>;
   bindingIds: string[];
   bindingCount: number;
   enabledBindingCount: number;
@@ -36,7 +34,6 @@ export type AutomationTriggerItem = {
   absoluteScriptPath: string;
   scriptVersion: number;
   scriptEngine: string;
-  scriptAgent: string | null;
   scriptEnv: Record<string, string>;
   enabled: boolean;
   triggerOrder?: number | null;
@@ -54,15 +51,65 @@ export type AutomationIdentityItem = {
   updatedAt?: string | Date | null;
 };
 
+export type AutomationScenarioStepItem = {
+  index: number;
+  id: string;
+  title?: string;
+  event: {
+    id: string;
+    orgId?: string;
+    source: string;
+    eventType: string;
+    occurredAt: string;
+    payload: Record<string, unknown>;
+    actor?: {
+      type?: string;
+      externalId?: string;
+      [key: string]: unknown;
+    } | null;
+    subject?: {
+      orgId?: string;
+      userId?: string;
+      [key: string]: unknown;
+    } | null;
+  };
+  matchedBindingIds: string[];
+  matchedScriptIds: string[];
+  matchedScriptKeys: string[];
+  matchedScriptPaths: string[];
+};
+
+export type AutomationScenarioItem = {
+  id: string;
+  path: string;
+  relativePath: string;
+  fileName: string;
+  name: string;
+  description?: string;
+  env: Record<string, string>;
+  initialState?: unknown;
+  commandMocks?: unknown;
+  stepCount: number;
+  relatedBindingIds: string[];
+  relatedScriptIds: string[];
+  relatedScriptKeys: string[];
+  relatedScriptPaths: string[];
+  sources: string[];
+  eventTypes: string[];
+  steps: AutomationScenarioStepItem[];
+};
+
 export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
   scripts: AutomationScriptItem[];
   triggerBindings: AutomationTriggerItem[];
   identityBindings: AutomationIdentityItem[];
+  scenarios: AutomationScenarioItem[];
   scriptsError: string | null;
   triggerBindingsError: string | null;
   identityBindingsError: string | null;
+  scenariosError: string | null;
 };
 
 export type AutomationTab = "scripts" | "triggers" | "identity";

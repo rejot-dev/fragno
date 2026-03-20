@@ -55,7 +55,9 @@ export {
   AUTOMATION_SIMULATION_SCENARIOS_ROOT,
   automationScenarioSchema,
   defineAutomationScenario,
+  listAutomationScenarios,
   loadAutomationScenarioFile,
+  resolveAutomationScenarioPath,
   runAutomationScenarioFile,
   simulateAutomationScenario,
 } from "./scenario";
@@ -84,6 +86,8 @@ export type {
   AutomationSourceAdapterRegistry,
 } from "./contracts";
 export type {
+  AutomationScenarioCatalogEntry,
+  AutomationScenarioCatalogStepEntry,
   AutomationScenarioCommandMock,
   AutomationScenarioCommandName,
   AutomationScenarioDefinition,

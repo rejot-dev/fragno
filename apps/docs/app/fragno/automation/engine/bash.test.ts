@@ -713,6 +713,9 @@ describe("bash command runner", () => {
             listSessions: async () => {
               throw new Error("pi automation context not configured for this test");
             },
+            runTurn: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
           },
         },
       }),
@@ -791,6 +794,9 @@ describe("bash command runner", () => {
               throw new Error("pi automation context not configured for this test");
             },
             listSessions: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+            runTurn: async () => {
               throw new Error("pi automation context not configured for this test");
             },
           },

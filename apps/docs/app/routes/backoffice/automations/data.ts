@@ -4,7 +4,9 @@ import type { RouterContextProvider } from "react-router";
 import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import type {
   AutomationBindingCatalogEntry,
+  AutomationScenarioCatalogEntry,
   AutomationScriptCatalogEntry,
+  AutomationSimulationResult,
   createAutomationFragment,
 } from "@/fragno/automation";
 
@@ -21,6 +23,7 @@ type AutomationIdLike =
 
 export type AutomationScriptRecord = AutomationScriptCatalogEntry;
 export type AutomationTriggerBindingRecord = AutomationBindingCatalogEntry;
+export type AutomationScenarioRecord = AutomationScenarioCatalogEntry;
 
 export type AutomationIdentityBindingRecord = {
   id?: AutomationIdLike;
@@ -188,6 +191,91 @@ export async function fetchAutomationIdentityBindings(
       identityBindings: [],
       identityBindingsError:
         error instanceof Error ? error.message : "Failed to load identity bindings.",
+    };
+  }
+}
+
+export async function fetchAutomationScenarios(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): Promise<{
+  scenarios: AutomationScenarioRecord[];
+  scenariosError: string | null;
+}> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("GET", "/scenarios");
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return {
+        scenarios: toRecordArray<AutomationScenarioRecord>(response.data),
+        scenariosError: null,
+      };
+    }
+
+    if (response.type === "error") {
+      return {
+        scenarios: [],
+        scenariosError: response.error.message,
+      };
+    }
+
+    return {
+      scenarios: [],
+      scenariosError: `Failed to fetch automation scenarios (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      scenarios: [],
+      scenariosError:
+        error instanceof Error ? error.message : "Failed to load automation scenarios.",
+    };
+  }
+}
+
+export async function runAutomationScenario(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  path: string,
+): Promise<{
+  ok: boolean;
+  result: AutomationSimulationResult | null;
+  error: string | null;
+}> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/scenarios/run", {
+      body: { path },
+    });
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return {
+        ok: true,
+        result: response.data as AutomationSimulationResult,
+        error: null,
+      };
+    }
+
+    if (response.type === "error") {
+      return {
+        ok: false,
+        result: null,
+        error: response.error.message,
+      };
+    }
+
+    return {
+      ok: false,
+      result: null,
+      error: `Failed to run automation scenario (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      result: null,
+      error: error instanceof Error ? error.message : "Failed to run automation scenario.",
     };
   }
 }
