@@ -1196,49 +1196,49 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             )[requestWaitUntilSymbol];
           };
-          const builder = createHandlerTxBuilder<THooks>({
-            ...execOptions,
-            createUnitOfWork: () => {
-              const baseUow = dbContextForHooks.db.createBaseUnitOfWork();
-              baseUow.registerSchema(
-                hooksConfig.internalFragment.$internal.deps.schema,
-                hooksConfig.internalFragment.$internal.deps.namespace,
-              );
-              if (storageRef) {
-                storageRef.uow = baseUow;
-              }
-              return baseUow;
-            },
-            onBeforeMutate: (uow) => {
-              if (!planMode) {
-                prepareHookMutations(
-                  uow,
-                  hooksConfig.internalFragment,
-                  hooksConfig.defaultRetryPolicy,
+          return createHandlerTxBuilder<THooks>(
+            {
+              ...execOptions,
+              createUnitOfWork: () => {
+                const baseUow = dbContextForHooks.db.createBaseUnitOfWork();
+                baseUow.registerSchema(
+                  hooksConfig.internalFragment.$internal.deps.schema,
+                  hooksConfig.internalFragment.$internal.deps.namespace,
                 );
-              }
-              if (userOnBeforeMutate) {
-                userOnBeforeMutate(uow);
-              }
+                if (storageRef) {
+                  storageRef.uow = baseUow;
+                }
+                return baseUow;
+              },
+              onBeforeMutate: (uow) => {
+                if (!planMode) {
+                  prepareHookMutations(
+                    uow,
+                    hooksConfig.internalFragment,
+                    hooksConfig.defaultRetryPolicy,
+                  );
+                }
+                if (userOnBeforeMutate) {
+                  userOnBeforeMutate(uow);
+                }
+              },
+              onAfterMutate: async (uow) => {
+                notifyDurableHooksAfterMutate({
+                  uow,
+                  hooksConfig,
+                  internalFragment: hooksConfig.internalFragment,
+                  autoSchedule,
+                  planMode,
+                  logContext: { source: "hook", waitUntil: getHookWaitUntil() },
+                });
+                if (userOnAfterMutate) {
+                  await userOnAfterMutate(uow);
+                }
+              },
             },
-            onAfterMutate: async (uow) => {
-              notifyDurableHooksAfterMutate({
-                uow,
-                hooksConfig,
-                internalFragment: hooksConfig.internalFragment,
-                autoSchedule,
-                planMode,
-                logContext: { source: "hook", waitUntil: getHookWaitUntil() },
-              });
-              if (userOnAfterMutate) {
-                await userOnAfterMutate(uow);
-              }
-            },
-          });
-          const execute = builder.execute.bind(builder);
-          builder.execute = () =>
-            hookContextStorage.runWithInitializer(
-              () => {
+            undefined,
+            (run) =>
+              hookContextStorage.runWithInitializer(() => {
                 const inheritedWaitUntil = getHookWaitUntil();
                 storageRef = { uow: null as unknown as DatabaseContextStorage["uow"] };
                 if (inheritedWaitUntil) {
@@ -1249,10 +1249,8 @@ export class DatabaseFragmentDefinitionBuilder<
                   )[requestWaitUntilSymbol] = inheritedWaitUntil;
                 }
                 return storageRef;
-              },
-              () => execute(),
-            );
-          return builder;
+              }, run),
+          );
         },
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,

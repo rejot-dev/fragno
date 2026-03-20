@@ -9,6 +9,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { internalSchema } from "../fragments/internal-fragment";
 import { getInternalFragment } from "../internal/adapter-registry";
+import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, column, idColumn } from "../schema/create";
 import { withDatabase } from "../with-database";
 import {
@@ -21,10 +22,31 @@ const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
 
+const boundServiceHookSpy = vi.fn<(count: number) => void>();
+let getItemCountService: (() => TxResult<number>) | undefined;
+
 const testFragmentDefinition = defineFragment("test")
   .extend(withDatabase(testSchema))
+  .providesBaseService(({ defineService }) =>
+    defineService({
+      getItemCount() {
+        return this.serviceTx(testSchema)
+          .retrieve((uow) => uow.find("items", (b) => b.whereIndex("primary")))
+          .transformRetrieve(([items]) => items.length)
+          .build();
+      },
+    }),
+  )
   .provideHooks(({ defineHook }) => ({
     onTest: defineHook(async function () {}),
+    onTestUsesBoundService: defineHook(async function () {
+      const itemCount = await this.handlerTx()
+        .withServiceCalls(() => [getItemCountService!()] as const)
+        .transform(({ serviceResult: [count] }) => count)
+        .execute();
+
+      boundServiceHookSpy(itemCount);
+    }),
   }))
   .build();
 
@@ -34,11 +56,12 @@ const noHooksFragmentDefinition = defineFragment("no-hooks")
 
 describe("createDurableHooksProcessor", () => {
   let adapter: SqlAdapter;
-  let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: { databaseAdapter: SqlAdapter }) {
     return instantiate(testFragmentDefinition).withConfig({}).withOptions(options).build();
   }
+
+  let fragment: ReturnType<typeof instantiateFragment>;
 
   beforeAll(async () => {
     const sqliteDatabase = new SQLite(":memory:");
@@ -56,6 +79,7 @@ describe("createDurableHooksProcessor", () => {
     await testMigrations.executeWithDriver(adapter.driver, 0);
 
     fragment = instantiateFragment({ databaseAdapter: adapter });
+    getItemCountService = fragment.services.getItemCount;
 
     return async () => {
       await adapter.close();
@@ -124,6 +148,28 @@ describe("createDurableHooksProcessor", () => {
     const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("allows bound fragment services to run inside durable hooks", async () => {
+    boundServiceHookSpy.mockReset();
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(testSchema);
+          uow.create("items", {
+            name: "bound-service-item",
+          });
+          uow.triggerHook("onTestUsesBoundService", {});
+        })
+        .execute();
+    });
+
+    const processor = createDurableHooksProcessor(fragment);
+    await processor.drain();
+
+    expect(boundServiceHookSpy).toHaveBeenCalledOnce();
+    expect(boundServiceHookSpy).toHaveBeenCalledWith(1);
   });
 
   it("throws when fragment has no hooks configured", () => {
