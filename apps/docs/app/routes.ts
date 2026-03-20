@@ -65,9 +65,18 @@ export default [
             index("routes/backoffice/connections/resend/domains-index.tsx"),
             route(":domainId", "routes/backoffice/connections/resend/domain-detail.tsx"),
           ]),
-          route("send", "routes/backoffice/connections/resend/send.tsx"),
-          route("outbox", "routes/backoffice/connections/resend/outbox.tsx", [
+          route("threads", "routes/backoffice/connections/resend/threads.tsx", [
+            index("routes/backoffice/connections/resend/threads-index.tsx"),
+            route("start", "routes/backoffice/connections/resend/thread-start.tsx"),
+            route(":threadId", "routes/backoffice/connections/resend/thread-detail.tsx"),
+          ]),
+          route("incoming", "routes/backoffice/connections/resend/incoming.tsx", [
+            index("routes/backoffice/connections/resend/incoming-index.tsx"),
+            route(":emailId", "routes/backoffice/connections/resend/incoming-detail.tsx"),
+          ]),
+          route("outgoing", "routes/backoffice/connections/resend/outbox.tsx", [
             index("routes/backoffice/connections/resend/outbox-index.tsx"),
+            route("send", "routes/backoffice/connections/resend/send.tsx"),
             route(":emailId", "routes/backoffice/connections/resend/outbox-detail.tsx"),
           ]),
         ],

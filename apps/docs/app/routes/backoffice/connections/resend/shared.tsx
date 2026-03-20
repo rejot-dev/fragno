@@ -39,7 +39,7 @@ export type ResendLayoutContext = {
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
 
-export type ResendTab = "domains" | "outbox" | "send" | "configuration";
+export type ResendTab = "threads" | "incoming" | "outgoing" | "domains" | "configuration";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -87,7 +87,7 @@ export function ResendHeader({
       ]}
       eyebrow="Integrations"
       title={`Resend for ${organisationName ?? orgId}`}
-      description="Connect Resend to send emails, inspect domains, register webhooks, and monitor delivery status."
+      description="Connect Resend to send and receive email, inspect domains, manage threads, and monitor delivery state."
       actions={
         <Link
           to="/backoffice/connections/resend"
@@ -112,15 +112,21 @@ export function ResendTabs({
   const basePath = `/backoffice/connections/resend/${orgId}`;
   const tabs = [
     {
-      id: "send" as const,
-      label: "Send",
-      to: `${basePath}/send`,
+      id: "threads" as const,
+      label: "Threads",
+      to: `${basePath}/threads`,
       disabled: !isConfigured,
     },
     {
-      id: "outbox" as const,
-      label: "Outbox",
-      to: `${basePath}/outbox`,
+      id: "incoming" as const,
+      label: "Incoming",
+      to: `${basePath}/incoming`,
+      disabled: !isConfigured,
+    },
+    {
+      id: "outgoing" as const,
+      label: "Outgoing",
+      to: `${basePath}/outgoing`,
       disabled: !isConfigured,
     },
     {
