@@ -8,24 +8,24 @@ import {
   useParams,
 } from "react-router";
 
-import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
+import type { ResendThreadSummary } from "@fragno-dev/resend-fragment";
 
-import type { Route } from "./+types/outbox";
-import { fetchResendConfig, fetchResendOutbox } from "./data";
+import type { Route } from "./+types/threads";
+import { fetchResendConfig, fetchResendThreads } from "./data";
 import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
 
-type ResendOutboxLoaderData = {
+type ResendThreadsLoaderData = {
   configError: string | null;
-  outboxError: string | null;
-  emails: ResendEmailSummary[];
+  threadsError: string | null;
+  threads: ResendThreadSummary[];
   cursor?: string;
   hasNextPage: boolean;
 };
 
-export type ResendOutgoingOutletContext = {
-  emails: ResendEmailSummary[];
-  selectedEmailId: string | null;
-  isSendRoute: boolean;
+export type ResendThreadsOutletContext = {
+  threads: ResendThreadSummary[];
+  selectedThreadId: string | null;
+  isStartRoute: boolean;
   basePath: string;
   orgId: string;
   configState: ResendConfigState | null;
@@ -40,18 +40,18 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (configError) {
     return {
       configError,
-      outboxError: null,
-      emails: [],
+      threadsError: null,
+      threads: [],
       cursor: undefined,
       hasNextPage: false,
-    } satisfies ResendOutboxLoaderData;
+    } satisfies ResendThreadsLoaderData;
   }
 
   if (!configState?.configured) {
     return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
   }
 
-  const { emails, cursor, hasNextPage, outboxError } = await fetchResendOutbox(
+  const { threads, cursor, hasNextPage, threadsError } = await fetchResendThreads(
     request,
     context,
     params.orgId,
@@ -60,22 +60,22 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     configError: null,
-    outboxError,
-    emails,
+    threadsError,
+    threads,
     cursor,
     hasNextPage,
-  } satisfies ResendOutboxLoaderData;
+  } satisfies ResendThreadsLoaderData;
 }
 
-export default function BackofficeOrganisationResendOutbox() {
-  const { emails, configError, outboxError, hasNextPage } = useLoaderData<typeof loader>();
+export default function BackofficeOrganisationResendThreads() {
+  const { threads, configError, threadsError, hasNextPage } = useLoaderData<typeof loader>();
   const { orgId, configState } = useOutletContext<ResendLayoutContext>();
-  const { emailId } = useParams();
+  const { threadId } = useParams();
   const location = useLocation();
-  const selectedEmailId = emailId ?? null;
-  const basePath = `/backoffice/connections/resend/${orgId}/outgoing`;
-  const isSendRoute = location.pathname.replace(/\/+$/, "").endsWith("/send");
-  const isDetailRoute = Boolean(selectedEmailId || isSendRoute);
+  const selectedThreadId = threadId ?? null;
+  const basePath = `/backoffice/connections/resend/${orgId}/threads`;
+  const isStartRoute = location.pathname.replace(/\/+$/, "").endsWith("/start");
+  const isDetailRoute = Boolean(selectedThreadId || isStartRoute);
 
   if (configError) {
     return (
@@ -83,9 +83,9 @@ export default function BackofficeOrganisationResendOutbox() {
     );
   }
 
-  if (outboxError) {
+  if (threadsError) {
     return (
-      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">{outboxError}</div>
+      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">{threadsError}</div>
     );
   }
 
@@ -93,72 +93,59 @@ export default function BackofficeOrganisationResendOutbox() {
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   return (
-    <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+    <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)]">
       <div
         className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
       >
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Outgoing
+              Threads
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Outgoing email log</h2>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Conversation threads</h2>
           </div>
           <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-            {emails.length} shown
+            {threads.length} shown
           </span>
         </div>
 
         <div className="mt-4 space-y-2">
           <Link
-            to={`${basePath}/send`}
-            aria-current={isSendRoute ? "page" : undefined}
+            to={`${basePath}/start`}
+            aria-current={isStartRoute ? "page" : undefined}
             className={
-              isSendRoute
+              isStartRoute
                 ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
                 : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)]"
             }
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-[var(--bo-fg)]">Send</p>
+                <p className="text-sm font-semibold text-[var(--bo-fg)]">Start thread</p>
                 <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                  Queue a new outgoing email from this connection.
+                  Compose the first message in a new conversation.
                 </p>
               </div>
               <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                Compose
+                New
               </span>
             </div>
           </Link>
 
-          {emails.length > 0 ? (
-            emails.map((email) => {
-              const subject = email.subject ?? "(No subject)";
-              const recipients = email.to.join(", ") || "(None)";
-              const isSelected = email.id === selectedEmailId;
-              const statusTone = email.status
-                ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
-              const timingLabel = email.sentAt
-                ? `Sent ${formatTimestamp(email.sentAt)}`
-                : email.scheduledAt
-                  ? `Scheduled ${formatTimestamp(email.scheduledAt)}`
-                  : "Not sent";
-              const eventTimestamp = formatTimestamp(email.lastEventAt);
-              const eventLabel = email.lastEventType
-                ? eventTimestamp
-                  ? `${email.lastEventType} · ${eventTimestamp}`
-                  : email.lastEventType
-                : null;
-              const errorLabel = email.errorCode
-                ? `${email.errorCode}: ${email.errorMessage ?? ""}`.trim()
-                : null;
+          {threads.length > 0 ? (
+            threads.map((thread) => {
+              const isSelected = thread.id === selectedThreadId;
+              const subject = thread.subject || "(No subject)";
+              const participants = thread.participants.join(", ") || "No participants recorded";
+              const preview = thread.lastMessagePreview || "No preview available.";
+              const directionLabel = thread.lastDirection
+                ? `Last ${thread.lastDirection}`
+                : "Activity";
 
               return (
                 <Link
-                  key={email.id}
-                  to={`${basePath}/${email.id}`}
+                  key={thread.id}
+                  to={`${basePath}/${thread.id}`}
                   aria-current={isSelected ? "page" : undefined}
                   className={
                     isSelected
@@ -169,37 +156,31 @@ export default function BackofficeOrganisationResendOutbox() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-[var(--bo-fg)]">{subject}</p>
-                      <p className="mt-1 text-xs text-[var(--bo-muted-2)]">{recipients}</p>
-                      {email.from ? (
-                        <p className="mt-1 text-xs text-[var(--bo-muted-2)]">From: {email.from}</p>
-                      ) : null}
+                      <p className="mt-1 text-xs text-[var(--bo-muted-2)]">{participants}</p>
                     </div>
-                    <span
-                      className={`border px-2 py-1 text-[9px] tracking-[0.22em] uppercase ${statusTone}`}
-                    >
-                      {email.status}
+                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+                      {thread.messageCount} msg
                     </span>
                   </div>
+                  <p className="mt-2 text-xs text-[var(--bo-muted)]">{preview}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--bo-muted-2)]">
-                    <span>{timingLabel}</span>
-                    {eventLabel ? <span>· {eventLabel}</span> : null}
+                    <span>{directionLabel}</span>
+                    <span>·</span>
+                    <span>{formatTimestamp(thread.lastMessageAt)}</span>
                   </div>
-                  {errorLabel ? (
-                    <p className="mt-2 text-[11px] text-red-500">{errorLabel}</p>
-                  ) : null}
                 </Link>
               );
             })
           ) : (
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-sm text-[var(--bo-muted)]">
-              No outgoing emails yet. Use Send to queue your first message.
+              No threads yet. Start a thread to send the first message in a new conversation.
             </div>
           )}
         </div>
 
         {hasNextPage ? (
           <p className="mt-4 text-xs text-[var(--bo-muted-2)]">
-            Showing the latest 50 outgoing emails. Use pagination in the fragment API to load more.
+            Showing the latest 50 threads. Use pagination in the fragment API to load more.
           </p>
         ) : null}
       </div>
@@ -209,9 +190,9 @@ export default function BackofficeOrganisationResendOutbox() {
       >
         <Outlet
           context={{
-            emails,
-            selectedEmailId,
-            isSendRoute,
+            threads,
+            selectedThreadId,
+            isStartRoute,
             basePath,
             orgId,
             configState,

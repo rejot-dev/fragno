@@ -40,7 +40,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = `/backoffice/connections/resend/${params.orgId}`;
   if (currentPath === basePath) {
-    const target = configState?.configured ? "domains" : "configuration";
+    const target = configState?.configured ? "threads" : "configuration";
     return redirect(`${basePath}/${target}`);
   }
 
@@ -82,17 +82,32 @@ export default function BackofficeOrganisationResendLayout({
     setConfigError(initialConfigError);
   }, [initialConfigError, initialConfigState, orgId]);
 
-  let activeTab: ResendTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
-  if (pathSegments.includes("domains")) {
-    activeTab = "domains";
-  } else if (pathSegments.includes("outbox")) {
-    activeTab = "outbox";
-  } else if (pathSegments.includes("send")) {
-    activeTab = "send";
-  } else if (pathSegments.includes("configuration")) {
-    activeTab = "configuration";
+  const resendIndex = pathSegments.lastIndexOf("resend");
+  const activeSegment = resendIndex >= 0 ? pathSegments[resendIndex + 2] : undefined;
+
+  let activeTab: ResendTab = "configuration";
+  switch (activeSegment) {
+    case "threads":
+      activeTab = "threads";
+      break;
+    case "incoming":
+      activeTab = "incoming";
+      break;
+    case "outgoing":
+    case "outgoings":
+    case "outbox":
+      activeTab = "outgoing";
+      break;
+    case "domains":
+      activeTab = "domains";
+      break;
+    case "configuration":
+      activeTab = "configuration";
+      break;
+    default:
+      break;
   }
 
   return (

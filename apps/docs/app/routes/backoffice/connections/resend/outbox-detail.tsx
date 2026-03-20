@@ -4,7 +4,7 @@ import type { ResendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type { Route } from "./+types/outbox-detail";
 import { fetchResendEmailDetail } from "./data";
-import type { ResendOutboxOutletContext } from "./outbox";
+import type { ResendOutgoingOutletContext } from "./outbox";
 import { formatTimestamp } from "./shared";
 
 type ResendOutboxDetailLoaderData = {
@@ -33,25 +33,25 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationResendOutboxDetail() {
   const { email, error } = useLoaderData<typeof loader>();
-  const { basePath } = useOutletContext<ResendOutboxOutletContext>();
+  const { basePath } = useOutletContext<ResendOutgoingOutletContext>();
   const { emailId } = useParams();
 
   if (!emailId || error || !email) {
     return (
       <div className="space-y-3 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          Email detail
+          Outgoing detail
         </p>
-        <p>{error ?? "We could not find that email in the current outbox page."}</p>
+        <p>{error ?? "We could not find that email in the current outgoing page."}</p>
         <p className="text-xs text-[var(--bo-muted-2)]">
-          The outbox shows the most recent 50 emails. Use pagination in the fragment API to load
-          older messages.
+          The outgoing view shows the most recent 50 emails. Use pagination in the fragment API to
+          load older messages.
         </p>
         <Link
           to={basePath}
           className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to outbox
+          Back to outgoing
         </Link>
       </div>
     );
@@ -98,7 +98,9 @@ export default function BackofficeOrganisationResendOutboxDetail() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Email</p>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            Outgoing
+          </p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{subject}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">ID: {email.id}</p>
           {email.resendId ? (
@@ -109,7 +111,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
           to={basePath}
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
         >
-          Back to outbox
+          Back to outgoing
         </Link>
       </div>
 

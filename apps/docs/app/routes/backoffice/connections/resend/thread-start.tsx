@@ -1,19 +1,25 @@
 import { useEffect, useRef } from "react";
-import { useFetcher, useOutletContext } from "react-router";
+import { useFetcher, useNavigate, useOutletContext } from "react-router";
 
-import type { ResendEmailRecord, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
+import type { ResendSendEmailInput, ResendThreadMutationOutput } from "@fragno-dev/resend-fragment";
 
 import { FormContainer, FormField } from "@/components/backoffice";
 
-import type { Route } from "./+types/send";
-import { sendResendEmail } from "./data";
-import type { ResendOutgoingOutletContext } from "./outbox";
+import type { Route } from "./+types/thread-start";
+import { createResendThread } from "./data";
+import type { ResendThreadsOutletContext } from "./threads";
 
-type ResendSendActionData = {
-  ok: boolean;
-  message: string;
-  record?: ResendEmailRecord;
-};
+type ResendStartThreadActionData =
+  | {
+      ok: true;
+      message: string;
+      threadId: string;
+      result: ResendThreadMutationOutput;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
 
 const parseAddressList = (value: string) =>
   value
@@ -53,18 +59,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return {
       ok: false,
       message: "At least one recipient is required.",
-    } satisfies ResendSendActionData;
+    } satisfies ResendStartThreadActionData;
   }
 
   if (!subject) {
-    return { ok: false, message: "Subject is required." } satisfies ResendSendActionData;
+    return {
+      ok: false,
+      message: "Subject is required.",
+    } satisfies ResendStartThreadActionData;
   }
 
   if (!text && !html) {
     return {
       ok: false,
       message: "Provide either a text or HTML body.",
-    } satisfies ResendSendActionData;
+    } satisfies ResendStartThreadActionData;
   }
 
   let scheduledIn: ResendSendEmailInput["scheduledIn"];
@@ -74,15 +83,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return {
         ok: false,
         message: "Scheduled delay must be a positive number.",
-      } satisfies ResendSendActionData;
+      } satisfies ResendStartThreadActionData;
     }
 
-    if (scheduledInUnit === "hours") {
-      scheduledIn = { hours: value };
-    } else if (scheduledInUnit === "days") {
-      scheduledIn = { days: value };
-    } else {
-      scheduledIn = { minutes: value };
+    switch (scheduledInUnit) {
+      case "hours":
+        scheduledIn = { hours: value };
+        break;
+      case "days":
+        scheduledIn = { days: value };
+        break;
+      case "minutes":
+        scheduledIn = { minutes: value };
+        break;
+      default:
+        return {
+          ok: false,
+          message: 'Scheduled delay unit must be "minutes", "hours", or "days".',
+        } satisfies ResendStartThreadActionData;
     }
   }
 
@@ -98,44 +116,46 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     scheduledIn,
   };
 
-  const result = await sendResendEmail(request, context, params.orgId, payload);
-  if (result.error || !result.record) {
+  const result = await createResendThread(request, context, params.orgId, payload);
+  if (result.error || !result.result) {
     return {
       ok: false,
-      message: result.error ?? "Failed to queue email.",
-    } satisfies ResendSendActionData;
+      message: result.error ?? "Failed to create thread.",
+    } satisfies ResendStartThreadActionData;
   }
 
   return {
     ok: true,
-    message: "Email queued for delivery.",
-    record: result.record,
-  } satisfies ResendSendActionData;
+    message: "Thread queued for delivery.",
+    threadId: result.result.thread.id,
+    result: result.result,
+  } satisfies ResendStartThreadActionData;
 }
 
-export default function BackofficeOrganisationResendSend() {
-  const { configState } = useOutletContext<ResendOutgoingOutletContext>();
+export default function BackofficeOrganisationResendThreadStart() {
+  const { basePath, configState } = useOutletContext<ResendThreadsOutletContext>();
   const fetcher = useFetcher<typeof action>();
+  const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement | null>(null);
-  const isSending = fetcher.state !== "idle";
 
   useEffect(() => {
     if (fetcher.data?.ok) {
       formRef.current?.reset();
+      navigate(`${basePath}/${fetcher.data.threadId}`);
     }
-  }, [fetcher.data]);
+  }, [basePath, fetcher.data, navigate]);
 
+  const isSending = fetcher.state !== "idle";
   const defaultFrom = configState?.config?.defaultFrom ?? "";
   const defaultReplyTo = configState?.config?.defaultReplyTo?.join(", ") ?? "";
   const sendError = fetcher.data && !fetcher.data.ok ? fetcher.data.message : null;
-  const sendSuccess = fetcher.data && fetcher.data.ok ? fetcher.data.message : null;
 
   return (
     <div className="space-y-4">
       <FormContainer
-        eyebrow="Delivery"
-        title="Send outgoing email"
-        description="Queue a message through the Resend fragment. Newly queued messages appear in the list on the left."
+        eyebrow="Threads"
+        title="Start thread"
+        description="Send the first message in a new tracked conversation. The created thread will appear in the list on the left."
       >
         <fetcher.Form ref={formRef} method="post" className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
@@ -147,11 +167,11 @@ export default function BackofficeOrganisationResendSend() {
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
-            <FormField label="Subject" hint="Short summary line shown in the inbox preview.">
+            <FormField label="Subject" hint="Required for the first message in the thread.">
               <input
                 name="subject"
                 required
-                placeholder="What would you like to send?"
+                placeholder="What would you like to discuss?"
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
@@ -229,12 +249,12 @@ export default function BackofficeOrganisationResendSend() {
             </div>
           </FormField>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <FormField label="Text" hint="Provide either text or HTML.">
               <textarea
                 name="text"
                 rows={6}
-                placeholder="Write the plain text version of the email..."
+                placeholder="Write the plain text version of the first message..."
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
             </FormField>
@@ -249,14 +269,13 @@ export default function BackofficeOrganisationResendSend() {
           </div>
 
           {sendError ? <p className="text-xs text-red-500">{sendError}</p> : null}
-          {sendSuccess ? <p className="text-xs text-green-500">{sendSuccess}</p> : null}
 
           <button
             type="submit"
             disabled={isSending}
             className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
           >
-            {isSending ? "Sending…" : "Send email"}
+            {isSending ? "Creating…" : "Start thread"}
           </button>
         </fetcher.Form>
       </FormContainer>
