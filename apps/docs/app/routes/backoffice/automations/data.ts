@@ -2,7 +2,11 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
 import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
-import type { createAutomationFragment } from "@/fragno/automation";
+import type {
+  AutomationBindingCatalogEntry,
+  AutomationScriptCatalogEntry,
+  createAutomationFragment,
+} from "@/fragno/automation";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
@@ -15,33 +19,15 @@ type AutomationIdLike =
   | null
   | undefined;
 
-export type AutomationScriptRecord = {
-  id?: AutomationIdLike;
-  key?: string | null;
-  name?: string | null;
-  engine?: string | null;
-  script?: string | null;
-  version?: number | string | null;
-  enabled?: boolean | null;
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
-};
-
-export type AutomationTriggerBindingRecord = {
-  id?: AutomationIdLike;
-  source?: string | null;
-  eventType?: string | null;
-  scriptId?: AutomationIdLike;
-  enabled?: boolean | null;
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
-};
+export type AutomationScriptRecord = AutomationScriptCatalogEntry;
+export type AutomationTriggerBindingRecord = AutomationBindingCatalogEntry;
 
 export type AutomationIdentityBindingRecord = {
   id?: AutomationIdLike;
   source?: string | null;
-  externalActorId?: string | null;
-  userId?: string | null;
+  key?: string | null;
+  value?: string | null;
+  description?: string | null;
   status?: string | null;
   linkedAt?: string | Date | null;
   createdAt?: string | Date | null;
@@ -60,7 +46,11 @@ const createAutomationsRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/automations/bindings",
     baseHeaders: request.headers,
-    fetch: automationsDo.fetch.bind(automationsDo),
+    fetch: async (outboundRequest) => {
+      const url = new URL(outboundRequest.url);
+      url.searchParams.set("orgId", orgId);
+      return automationsDo.fetch(new Request(url.toString(), outboundRequest));
+    },
   });
 };
 

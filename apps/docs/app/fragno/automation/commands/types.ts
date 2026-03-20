@@ -44,13 +44,14 @@ export type IdentityCreateClaimArgs = {
 
 export type IdentityLookupBindingArgs = {
   source: string;
-  externalActorId: string;
+  key: string;
 };
 
 export type IdentityBindActorArgs = {
   source: string;
-  externalActorId: string;
-  userId: string;
+  key: string;
+  value: string;
+  description?: string;
 };
 
 export type EventReplyArgs = {
@@ -121,9 +122,18 @@ export type BashAutomationCommandResult = {
 };
 
 export type AutomationTriggerBinding = {
+  id?: string;
   source: string;
   eventType: string;
   scriptId: string;
+  scriptKey?: string;
+  scriptName?: string;
+  scriptPath?: string;
+  scriptVersion?: number;
+  scriptAgent?: string | null;
+  scriptEnv?: Record<string, string>;
+  /** Default sentinel sorts last among bindings for the same event. */
+  triggerOrder?: number;
 };
 
 export type AutomationCloudflareEnv = Record<string, string | undefined>;

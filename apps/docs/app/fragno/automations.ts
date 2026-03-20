@@ -33,7 +33,11 @@ export const createAutomationsRuntime = (
   state: DurableObjectState,
   config: Pick<
     AutomationFragmentConfig,
-    "env" | "sourceAdapters" | "createPiAutomationContext" | "builtinScripts" | "builtinBindings"
+    | "env"
+    | "sourceAdapters"
+    | "createPiAutomationContext"
+    | "automationFileSystem"
+    | "getAutomationFileSystem"
   > = {},
 ) => {
   const databaseAdapter = createAutomationsAdapter(state);
@@ -52,8 +56,8 @@ export const createAutomationsRuntime = (
       env: config.env,
       sourceAdapters: config.sourceAdapters,
       createPiAutomationContext: config.createPiAutomationContext,
-      builtinScripts: config.builtinScripts,
-      builtinBindings: config.builtinBindings,
+      automationFileSystem: config.automationFileSystem,
+      getAutomationFileSystem: config.getAutomationFileSystem,
     },
     {
       databaseAdapter,

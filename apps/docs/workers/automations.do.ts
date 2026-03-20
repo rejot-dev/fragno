@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
 
+import { createMasterFileSystem } from "@/files";
 import type { AutomationEvent, AutomationIngestResult } from "@/fragno/automation";
-import { builtinAutomationBindings, builtinAutomationScripts } from "@/fragno/automation/builtins";
 import {
   buildNotConfiguredResponse,
   createAutomationsDispatcher,
@@ -65,8 +65,7 @@ export class Automations extends DurableObject<CloudflareEnv> {
           }),
         },
         createPiAutomationContext: this.#createPiAutomationContext.bind(this),
-        builtinScripts: builtinAutomationScripts,
-        builtinBindings: builtinAutomationBindings,
+        getAutomationFileSystem: ({ orgId }) => this.#createAutomationFileSystem(orgId),
       });
       await migrate(this.#runtime.workflowsFragment);
       await migrate(this.#runtime.automationFragment);
@@ -91,6 +90,32 @@ export class Automations extends DurableObject<CloudflareEnv> {
     await this.#runtime.dispatcher.notify({
       source: "request",
       waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
+  }
+
+  async #createAutomationFileSystem(orgId?: string) {
+    const normalizedOrgId = orgId?.trim();
+    if (!normalizedOrgId || !this.#env.UPLOAD) {
+      return createMasterFileSystem({
+        orgId: normalizedOrgId || "automation-default-org",
+        origin: "https://automations.internal",
+        backend: "pi",
+        uploadConfig: null,
+      });
+    }
+
+    const uploadDo = this.#env.UPLOAD.get(this.#env.UPLOAD.idFromName(normalizedOrgId));
+    const uploadConfig = await uploadDo.getAdminConfig();
+
+    return createMasterFileSystem({
+      orgId: normalizedOrgId,
+      origin: "https://automations.internal",
+      backend: "pi",
+      uploadConfig,
+      uploadRuntime: {
+        baseUrl: "https://automations.internal",
+        fetch: uploadDo.fetch.bind(uploadDo),
+      },
     });
   }
 

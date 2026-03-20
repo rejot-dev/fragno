@@ -1,7 +1,7 @@
 import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import type { AutomationLayoutContext } from "./shared";
-import { AutomationBadge, formatTimestamp } from "./shared";
+import { AutomationBadge } from "./shared";
 
 export default function BackofficeOrganisationAutomationScripts() {
   const { orgId, scripts, scriptsError } = useOutletContext<AutomationLayoutContext>();
@@ -14,7 +14,7 @@ export default function BackofficeOrganisationAutomationScripts() {
   if (scriptsError) {
     return (
       <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-        Could not load scripts from the automation schema: {scriptsError}
+        Could not load automation scripts from /workspace/automations: {scriptsError}
       </div>
     );
   }
@@ -22,7 +22,7 @@ export default function BackofficeOrganisationAutomationScripts() {
   if (scripts.length === 0) {
     return (
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        No scripts are available for this organisation.
+        No automation scripts are defined in this organisation&apos;s workspace.
       </div>
     );
   }
@@ -37,7 +37,7 @@ export default function BackofficeOrganisationAutomationScripts() {
             <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
               Scripts
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Automation scripts</h2>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Workspace scripts</h2>
           </div>
           <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
             {scripts.length} total
@@ -66,11 +66,12 @@ export default function BackofficeOrganisationAutomationScripts() {
                     <p className="mt-1 truncate font-mono text-xs text-[var(--bo-muted-2)]">
                       {script.key}
                     </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
+                      {script.path}
+                    </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    <AutomationBadge tone={script.kind === "builtin" ? "accent" : "neutral"}>
-                      {script.kind === "builtin" ? "Built-in" : "Stored"}
-                    </AutomationBadge>
+                    <AutomationBadge tone="accent">Workspace</AutomationBadge>
                     <AutomationBadge tone={script.enabled ? "success" : "neutral"}>
                       {script.enabled ? "Enabled" : "Disabled"}
                     </AutomationBadge>
@@ -98,9 +99,7 @@ export default function BackofficeOrganisationAutomationScripts() {
                   </Link>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <AutomationBadge tone={selectedScript.kind === "builtin" ? "accent" : "neutral"}>
-                    {selectedScript.kind === "builtin" ? "Built-in" : "Stored"}
-                  </AutomationBadge>
+                  <AutomationBadge tone="accent">Workspace</AutomationBadge>
                   <AutomationBadge>{selectedScript.engine}</AutomationBadge>
                   <AutomationBadge tone={selectedScript.enabled ? "success" : "neutral"}>
                     {selectedScript.enabled ? "Enabled" : "Disabled"}
@@ -116,7 +115,7 @@ export default function BackofficeOrganisationAutomationScripts() {
                 </div>
               </div>
 
-              <dl className="grid gap-3 text-sm text-[var(--bo-muted)] sm:grid-cols-3">
+              <dl className="grid gap-3 text-sm text-[var(--bo-muted)] sm:grid-cols-4">
                 <div>
                   <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Version
@@ -127,25 +126,46 @@ export default function BackofficeOrganisationAutomationScripts() {
                 </div>
                 <div>
                   <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Added
+                    Relative path
                   </dt>
-                  <dd className="mt-1">
-                    {selectedScript.kind === "builtin"
-                      ? "Runtime"
-                      : formatTimestamp(selectedScript.createdAt)}
+                  <dd className="mt-1 font-mono text-xs text-[var(--bo-fg)]">
+                    {selectedScript.path}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Updated
+                    Agent
                   </dt>
-                  <dd className="mt-1">
-                    {selectedScript.kind === "builtin"
-                      ? "Runtime"
-                      : formatTimestamp(selectedScript.updatedAt)}
+                  <dd className="mt-1">{selectedScript.agent ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                    Bindings
+                  </dt>
+                  <dd className="mt-1 font-semibold text-[var(--bo-fg)]">
+                    {selectedScript.enabledBindingCount}/{selectedScript.bindingCount} enabled
                   </dd>
                 </div>
               </dl>
+            </div>
+
+            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                Filesystem location
+              </p>
+              <p className="mt-2 font-mono text-xs text-[var(--bo-fg)]">
+                {selectedScript.absolutePath}
+              </p>
+              {Object.keys(selectedScript.env).length > 0 ? (
+                <div className="mt-3">
+                  <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                    Binding env
+                  </p>
+                  <pre className="mt-2 overflow-auto font-mono text-xs text-[var(--bo-fg)]">
+                    <code>{JSON.stringify(selectedScript.env, null, 2)}</code>
+                  </pre>
+                </div>
+              ) : null}
             </div>
 
             <div className="border border-[color:var(--bo-border)] bg-[rgba(var(--bo-grid),0.08)]">
@@ -159,7 +179,7 @@ export default function BackofficeOrganisationAutomationScripts() {
           </div>
         ) : (
           <div className="flex h-full min-h-64 items-center justify-center border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-6 text-center text-sm text-[var(--bo-muted)]">
-            Select a script to inspect its bash contents.
+            Select a script to inspect its filesystem-backed bash contents.
           </div>
         )}
       </div>

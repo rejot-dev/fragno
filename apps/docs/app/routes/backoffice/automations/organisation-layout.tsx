@@ -1,7 +1,6 @@
 import { Outlet } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth-server";
-import { builtinAutomationBindings, builtinAutomationScripts } from "@/fragno/automation/builtins";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { throwOrganisationNotFound } from "../route-errors";
@@ -20,131 +19,64 @@ import {
   type AutomationTab,
 } from "./shared";
 
-const toVersion = (value: unknown, fallback = 1) => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
-};
-
-const compareKinds = (left: "builtin" | "custom", right: "builtin" | "custom") => {
-  if (left === right) {
-    return 0;
-  }
-
-  return left === "builtin" ? -1 : 1;
-};
-
 const normalizeScripts = (
-  storedScripts: Awaited<ReturnType<typeof fetchAutomationScripts>>["scripts"],
-) => {
-  const builtins: AutomationScriptItem[] = builtinAutomationScripts.map((script) => ({
-    id: `builtin:${script.key}@${script.version}`,
-    key: script.key,
-    name: script.name,
-    engine: script.engine,
-    script: script.script,
-    version: script.version,
-    enabled: script.enabled !== false,
-    kind: "builtin",
-    createdAt: null,
-    updatedAt: null,
-  }));
-
-  const custom: AutomationScriptItem[] = storedScripts.map((script, index) => ({
-    id: toExternalId(script.id) || `script-${index}`,
-    key: script.key?.trim() || `script-${index}`,
-    name: script.name?.trim() || script.key?.trim() || `Script ${index + 1}`,
-    engine: script.engine?.trim() || "bash",
-    script: script.script ?? "",
-    version: toVersion(script.version),
-    enabled: script.enabled !== false,
-    kind: "custom",
-    createdAt: script.createdAt ?? null,
-    updatedAt: script.updatedAt ?? null,
-  }));
-
-  return [...builtins, ...custom].sort((left, right) => {
-    const kindOrder = compareKinds(left.kind, right.kind);
-    if (kindOrder !== 0) {
-      return kindOrder;
-    }
-
-    return left.name.localeCompare(right.name);
-  });
+  scripts: Awaited<ReturnType<typeof fetchAutomationScripts>>["scripts"],
+): AutomationScriptItem[] => {
+  return scripts
+    .map((script) => ({
+      id: script.id,
+      key: script.key,
+      name: script.name,
+      engine: script.engine,
+      script: script.body,
+      path: script.path,
+      absolutePath: script.absolutePath,
+      version: script.version,
+      agent: script.agent,
+      env: script.env,
+      bindingIds: script.bindingIds,
+      bindingCount: script.bindingCount,
+      enabledBindingCount: script.enabledBindingCount,
+      enabled: script.enabled,
+    }))
+    .sort(
+      (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+    );
 };
 
 const normalizeTriggerBindings = (
-  storedBindings: Awaited<ReturnType<typeof fetchAutomationTriggerBindings>>["bindings"],
-  scripts: AutomationScriptItem[],
-) => {
-  const scriptById = new Map(
-    scripts.filter((script) => script.kind === "custom").map((script) => [script.id, script]),
-  );
-  const builtinScriptByKeyVersion = new Map(
-    builtinAutomationScripts.map((script) => [`${script.key}@${script.version}`, script]),
-  );
-
-  const builtins: AutomationTriggerItem[] = builtinAutomationBindings.map((binding, index) => {
-    const script = builtinScriptByKeyVersion.get(
-      `${binding.scriptKey}@${binding.scriptVersion ?? 1}`,
-    );
-
-    return {
-      id: `builtin-binding:${binding.source}:${binding.eventType}:${binding.scriptKey}:${index}`,
+  bindings: Awaited<ReturnType<typeof fetchAutomationTriggerBindings>>["bindings"],
+): AutomationTriggerItem[] => {
+  return bindings
+    .map((binding) => ({
+      id: binding.id,
       source: binding.source,
       eventType: binding.eventType,
-      scriptId: script ? `builtin:${script.key}@${script.version}` : binding.scriptKey,
+      scriptId: binding.scriptId,
       scriptKey: binding.scriptKey,
-      scriptName: script?.name ?? binding.scriptKey,
-      scriptVersion: script?.version ?? binding.scriptVersion ?? 1,
-      enabled: binding.enabled !== false,
-      kind: "builtin",
-      createdAt: null,
-      updatedAt: null,
-    };
-  });
+      scriptName: binding.scriptName,
+      scriptPath: binding.scriptPath,
+      absoluteScriptPath: binding.absoluteScriptPath,
+      scriptVersion: binding.scriptVersion,
+      scriptEngine: binding.scriptEngine,
+      scriptAgent: binding.scriptAgent,
+      scriptEnv: binding.scriptEnv,
+      enabled: binding.enabled,
+      triggerOrder: binding.triggerOrder,
+    }))
+    .sort((left, right) => {
+      const sourceOrder = left.source.localeCompare(right.source);
+      if (sourceOrder !== 0) {
+        return sourceOrder;
+      }
 
-  const custom: AutomationTriggerItem[] = storedBindings.map((binding, index) => {
-    const scriptId = toExternalId(binding.scriptId);
-    const script = scriptById.get(scriptId);
+      const eventOrder = left.eventType.localeCompare(right.eventType);
+      if (eventOrder !== 0) {
+        return eventOrder;
+      }
 
-    return {
-      id: toExternalId(binding.id) || `binding-${index}`,
-      source: binding.source?.trim() || "unknown",
-      eventType: binding.eventType?.trim() || "unknown",
-      scriptId,
-      scriptKey: script?.key ?? (scriptId || "unknown-script"),
-      scriptName: script?.name ?? "Unknown script",
-      scriptVersion: script?.version ?? null,
-      enabled: binding.enabled !== false,
-      kind: "custom",
-      createdAt: binding.createdAt ?? null,
-      updatedAt: binding.updatedAt ?? null,
-    };
-  });
-
-  return [...builtins, ...custom].sort((left, right) => {
-    const kindOrder = compareKinds(left.kind, right.kind);
-    if (kindOrder !== 0) {
-      return kindOrder;
-    }
-
-    const sourceOrder = left.source.localeCompare(right.source);
-    if (sourceOrder !== 0) {
-      return sourceOrder;
-    }
-
-    return left.eventType.localeCompare(right.eventType);
-  });
+      return left.id.localeCompare(right.id);
+    });
 };
 
 const normalizeIdentityBindings = (
@@ -153,8 +85,9 @@ const normalizeIdentityBindings = (
   const bindings: AutomationIdentityItem[] = storedBindings.map((binding, index) => ({
     id: toExternalId(binding.id) || `identity-binding-${index}`,
     source: binding.source?.trim() || "unknown",
-    externalActorId: binding.externalActorId?.trim() || "—",
-    userId: binding.userId?.trim() || "—",
+    key: binding.key?.trim() || "—",
+    value: binding.value?.trim() || "—",
+    description: binding.description?.trim() || null,
     status: binding.status?.trim() || "linked",
     linkedAt: binding.linkedAt ?? null,
     createdAt: binding.createdAt ?? null,
@@ -195,7 +128,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   ]);
 
   const scripts = normalizeScripts(scriptsResult.scripts);
-  const triggerBindings = normalizeTriggerBindings(bindingsResult.bindings, scripts);
+  const triggerBindings = normalizeTriggerBindings(bindingsResult.bindings);
   const identityBindings = normalizeIdentityBindings(identityResult.identityBindings);
 
   return {

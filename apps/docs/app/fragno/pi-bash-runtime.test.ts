@@ -89,22 +89,22 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
 });
 
 const createAutomationsRuntime = (): AutomationsBashRuntime => ({
-  lookupBinding: async ({ externalActorId }) => {
-    if (externalActorId !== "actor-1") {
+  lookupBinding: async ({ key }) => {
+    if (key !== "actor-1") {
       return null;
     }
 
     return {
       source: "telegram",
-      externalActorId,
-      userId: "user-1",
+      key,
+      value: "user-1",
       status: "linked",
     };
   },
-  bindActor: async ({ source, externalActorId, userId }) => ({
+  bindActor: async ({ source, key, value }) => ({
     source,
-    externalActorId,
-    userId,
+    key,
+    value,
     status: "linked",
   }),
 });
@@ -130,8 +130,8 @@ describe("pi bash command registration", () => {
 
     const result = await bash.exec(
       'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
-        'user_id="$(automations.identity.lookup-binding --source telegram --external-actor-id actor-1 --print user-id)"\n' +
-        'automations.identity.bind-actor --source telegram --external-actor-id actor-2 --user-id "$user_id" >/dev/null\n' +
+        'user_id="$(automations.identity.lookup-binding --source telegram --key actor-1 --print value)"\n' +
+        'automations.identity.bind-actor --source telegram --key actor-2 --value "$user_id" >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
         'pi.session.get --session-id "$session_id" --print id',
     );

@@ -14,11 +14,15 @@ export type AutomationScriptItem = {
   name: string;
   engine: string;
   script: string;
+  path: string;
+  absolutePath: string;
   version: number;
+  agent: string | null;
+  env: Record<string, string>;
+  bindingIds: string[];
+  bindingCount: number;
+  enabledBindingCount: number;
   enabled: boolean;
-  kind: "builtin" | "custom";
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
 };
 
 export type AutomationTriggerItem = {
@@ -28,18 +32,22 @@ export type AutomationTriggerItem = {
   scriptId: string;
   scriptKey: string;
   scriptName: string;
-  scriptVersion: number | null;
+  scriptPath: string;
+  absoluteScriptPath: string;
+  scriptVersion: number;
+  scriptEngine: string;
+  scriptAgent: string | null;
+  scriptEnv: Record<string, string>;
   enabled: boolean;
-  kind: "builtin" | "custom";
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
+  triggerOrder?: number | null;
 };
 
 export type AutomationIdentityItem = {
   id: string;
   source: string;
-  externalActorId: string;
-  userId: string;
+  key: string;
+  value: string;
+  description?: string | null;
   status: string;
   linkedAt?: string | Date | null;
   createdAt?: string | Date | null;
@@ -107,7 +115,7 @@ export function AutomationHeader({
       ]}
       eyebrow="Automations"
       title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect stored automation definitions and the built-in runtime bindings for this organisation."
+      description="Inspect filesystem-backed automation bindings and shell scripts for this organisation. Edit the underlying files through Backoffice Files under /workspace/automations."
       actions={
         <Link
           to={`/backoffice/organisations/${orgId}`}

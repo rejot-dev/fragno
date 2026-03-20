@@ -1,7 +1,9 @@
 import { Link, useOutletContext } from "react-router";
 
+import { AUTOMATION_TRIGGER_ORDER_LAST } from "@/fragno/automation/schema";
+
 import type { AutomationLayoutContext } from "./shared";
-import { AutomationBadge, formatAutomationSource, formatTimestamp } from "./shared";
+import { AutomationBadge, formatAutomationSource } from "./shared";
 
 export default function BackofficeOrganisationAutomationTriggers() {
   const { orgId, triggerBindings, triggerBindingsError } =
@@ -10,7 +12,7 @@ export default function BackofficeOrganisationAutomationTriggers() {
   if (triggerBindingsError) {
     return (
       <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-        Could not load trigger bindings from the automation schema: {triggerBindingsError}
+        Could not load automation bindings from /workspace/automations: {triggerBindingsError}
       </div>
     );
   }
@@ -18,7 +20,7 @@ export default function BackofficeOrganisationAutomationTriggers() {
   if (triggerBindings.length === 0) {
     return (
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        No trigger bindings are configured for this organisation yet.
+        No automation bindings are configured in this organisation&apos;s workspace yet.
       </div>
     );
   }
@@ -35,16 +37,16 @@ export default function BackofficeOrganisationAutomationTriggers() {
               Event type
             </th>
             <th scope="col" className="px-3 py-2">
+              Order
+            </th>
+            <th scope="col" className="px-3 py-2">
               Script
             </th>
             <th scope="col" className="px-3 py-2">
-              Kind
+              Location
             </th>
             <th scope="col" className="px-3 py-2">
               Status
-            </th>
-            <th scope="col" className="px-3 py-2">
-              Updated
             </th>
           </tr>
         </thead>
@@ -65,6 +67,15 @@ export default function BackofficeOrganisationAutomationTriggers() {
                 <code className="font-mono text-xs text-[var(--bo-fg)]">{binding.eventType}</code>
               </td>
               <td className="px-3 py-3 align-top">
+                <span className="font-mono text-xs text-[var(--bo-fg)]">
+                  {binding.triggerOrder != null &&
+                  Number.isFinite(binding.triggerOrder) &&
+                  binding.triggerOrder !== AUTOMATION_TRIGGER_ORDER_LAST
+                    ? String(binding.triggerOrder)
+                    : "—"}
+                </span>
+              </td>
+              <td className="px-3 py-3 align-top">
                 <div className="space-y-1">
                   <Link
                     to={`/backoffice/automations/${orgId}/scripts?script=${encodeURIComponent(binding.scriptId)}`}
@@ -73,23 +84,20 @@ export default function BackofficeOrganisationAutomationTriggers() {
                     {binding.scriptName}
                   </Link>
                   <p className="font-mono text-xs text-[var(--bo-muted-2)]">
-                    {binding.scriptKey}
-                    {binding.scriptVersion ? ` · v${binding.scriptVersion}` : ""}
+                    {binding.scriptKey} · v{binding.scriptVersion}
                   </p>
                 </div>
               </td>
               <td className="px-3 py-3 align-top">
-                <AutomationBadge tone={binding.kind === "builtin" ? "accent" : "neutral"}>
-                  {binding.kind === "builtin" ? "Built-in" : "Stored"}
-                </AutomationBadge>
+                <div className="space-y-2">
+                  <AutomationBadge tone="accent">Workspace</AutomationBadge>
+                  <p className="font-mono text-xs text-[var(--bo-muted-2)]">{binding.scriptPath}</p>
+                </div>
               </td>
               <td className="px-3 py-3 align-top">
                 <AutomationBadge tone={binding.enabled ? "success" : "neutral"}>
                   {binding.enabled ? "Enabled" : "Disabled"}
                 </AutomationBadge>
-              </td>
-              <td className="px-3 py-3 align-top">
-                {binding.kind === "builtin" ? "Runtime" : formatTimestamp(binding.updatedAt)}
               </td>
             </tr>
           ))}

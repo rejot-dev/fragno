@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { InMemoryAdapter } from "@fragno-dev/db";
 
 import type { AutomationWorkflowsService } from "./definition";
-import { createAutomationFragment } from "./index";
+import {
+  AUTOMATION_BINDINGS_MANIFEST_PATH,
+  AUTOMATION_WORKSPACE_ROOT,
+  createAutomationFragment,
+  createDefaultAutomationFileSystem,
+} from "./index";
 
-const createAutomation = () => {
+const createAutomation = (options?: {
+  automationFileSystem?: Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+}) => {
   const services = {
     workflows: {
       createInstance: async () => ({}),
@@ -17,7 +24,9 @@ const createAutomation = () => {
   };
 
   return createAutomationFragment(
-    {},
+    {
+      automationFileSystem: options?.automationFileSystem,
+    },
     {
       databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-scripts-test" }),
       dbRoundtripGuard: true,
@@ -30,69 +39,72 @@ const createAutomation = () => {
 describe("automation routes /scripts", () => {
   let fragment: ReturnType<typeof createAutomation>;
 
-  beforeEach(() => {
-    fragment = createAutomation();
+  beforeEach(async () => {
+    fragment = createAutomation({
+      automationFileSystem: await createDefaultAutomationFileSystem("org_123"),
+    });
   });
 
-  test("returns empty list initially", async () => {
+  test("lists starter workspace scripts derived from the filesystem manifest", async () => {
     const response = await fragment.callRoute("GET", "/scripts");
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
-      expect(response.data).toEqual([]);
-    }
-  });
-
-  test("creates and lists a script", async () => {
-    const createResponse = await fragment.callRoute("POST", "/scripts", {
-      body: {
-        key: "  welcome-script  ",
-        name: "  Welcome Message  ",
-        engine: "bash",
-        script: "  echo hi  ",
-        version: 1,
-        enabled: true,
-      },
-    });
-
-    expect(createResponse.type).toBe("json");
-    if (createResponse.type === "json") {
-      expect(typeof createResponse.data.id).toBe("string");
-    }
-
-    const listResponse = await fragment.callRoute("GET", "/scripts", {
-      query: {},
-    });
-
-    expect(listResponse.type).toBe("json");
-    if (listResponse.type === "json") {
-      expect(listResponse.data).toHaveLength(1);
-      expect(listResponse.data[0]).toMatchObject({
-        key: "welcome-script",
-        name: "Welcome Message",
-        engine: "bash",
-        script: "echo hi",
-        version: 1,
-        enabled: true,
+      expect(response.data).toHaveLength(3);
+      expect(response.data[0]).toMatchObject({
+        id: expect.stringContaining("script:"),
+        path: expect.stringContaining("scripts/"),
+        absolutePath: expect.stringContaining(`${AUTOMATION_WORKSPACE_ROOT}/scripts/`),
+        bindingCount: 1,
       });
+      expect(response.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "telegram-claim-linking.start",
+            name: "Telegram claim linking start",
+          }),
+          expect.objectContaining({
+            key: "telegram-claim-linking.complete",
+            name: "Telegram claim linking completion",
+          }),
+          expect.objectContaining({
+            key: "telegram-pi-session.start",
+            name: "Telegram Pi session bootstrap",
+          }),
+        ]),
+      );
     }
   });
 
-  test("rejects invalid script payloads", async () => {
-    const response = await fragment.callRoute("POST", "/scripts", {
-      body: {
-        key: "   ",
-        name: "   ",
-        engine: "node",
-        script: "   ",
-        version: 0,
-        enabled: true,
+  test("fails clearly when the automation manifest is malformed", async () => {
+    const readInvalidFile = async (path: string) => {
+      if (path === AUTOMATION_BINDINGS_MANIFEST_PATH) {
+        return "{not-json}";
+      }
+
+      throw new Error(`Unexpected path: ${path}`);
+    };
+    const invalidFileSystem = {
+      readFile: readInvalidFile,
+      async readFileBuffer(path: string) {
+        return new TextEncoder().encode(await readInvalidFile(path));
       },
-    } as never);
+      getAllPaths() {
+        return [AUTOMATION_BINDINGS_MANIFEST_PATH];
+      },
+    } as Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+
+    const invalidFragment = createAutomation({
+      automationFileSystem: invalidFileSystem,
+    });
+
+    const response = await invalidFragment.callRoute("GET", "/scripts");
 
     expect(response.type).toBe("error");
     if (response.type === "error") {
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(500);
+      expect(response.error.message).toContain("Automation manifest");
+      expect(response.error.message).toContain("not valid JSON");
     }
   });
 });

@@ -75,6 +75,7 @@ describe("files service", () => {
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
+      ["folder", "/workspace/automations/", "automations"],
       ["folder", "/workspace/input/", "input"],
       ["folder", "/workspace/output/", "output"],
       ["folder", "/workspace/prompts/", "prompts"],
