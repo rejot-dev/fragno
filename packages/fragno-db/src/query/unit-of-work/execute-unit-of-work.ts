@@ -1593,6 +1593,7 @@ interface HandlerTxBuilderState<
 > {
   options: ExecuteTxOptions;
   hooks?: THooks;
+  executeWrapper?: <T>(run: () => Promise<T>) => Promise<T>;
   withServiceCallsFn?: () => TServiceCalls;
   retrieveFn?: (context: {
     forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
@@ -1929,22 +1930,24 @@ export class HandlerTxBuilder<
         : undefined,
     };
 
-    // Use the existing executeTx implementation
-    return executeTx(callbacks as Parameters<typeof executeTx>[0], state.options) as Promise<
-      AwaitedPromisesInObject<
-        InferBuilderResultType<
-          TRetrieveResults,
-          TRetrieveSuccessResult,
-          TServiceCalls,
-          TMutateResult,
-          TTransformResult,
-          HasTransform,
-          HasMutate,
-          HasTransformRetrieve,
-          HasRetrieve
+    const run = () =>
+      executeTx(callbacks as Parameters<typeof executeTx>[0], state.options) as Promise<
+        AwaitedPromisesInObject<
+          InferBuilderResultType<
+            TRetrieveResults,
+            TRetrieveSuccessResult,
+            TServiceCalls,
+            TMutateResult,
+            TTransformResult,
+            HasTransform,
+            HasMutate,
+            HasTransformRetrieve,
+            HasRetrieve
+          >
         >
-      >
-    >;
+      >;
+
+    return state.executeWrapper ? state.executeWrapper(run) : run();
   }
 }
 
@@ -1954,9 +1957,11 @@ export class HandlerTxBuilder<
 export function createHandlerTxBuilder<THooks extends HooksMap = {}>(
   options: ExecuteTxOptions,
   hooks?: THooks,
+  executeWrapper?: <T>(run: () => Promise<T>) => Promise<T>,
 ): HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, THooks> {
   return new HandlerTxBuilder({
     options,
     hooks,
+    executeWrapper,
   });
 }

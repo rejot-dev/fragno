@@ -173,7 +173,7 @@ describe("otp fragment", async () => {
 
   it("returns OTP_EXPIRED for expired OTPs and resolves expiry hook dates", async () => {
     const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
+      .withTestAdapter({ type: "kysely-sqlite" })
       .withFragment(
         "otp",
         instantiate(otpFragmentDefinition)
@@ -235,7 +235,7 @@ describe("otp fragment", async () => {
   it("confirms lowercase OTPs exactly when a custom lowercase alphabet is configured", async () => {
     const { test: lowercaseTest, fragments: lowercaseFragments } =
       await buildDatabaseFragmentsTest()
-        .withTestAdapter({ type: "drizzle-pglite" })
+        .withTestAdapter({ type: "kysely-sqlite" })
         .withFragment(
           "otp",
           instantiate(otpFragmentDefinition)
@@ -272,7 +272,7 @@ describe("otp fragment", async () => {
   it("requires exact case matching when confirming mixed-case OTPs", async () => {
     const { test: mixedCaseTest, fragments: mixedCaseFragments } =
       await buildDatabaseFragmentsTest()
-        .withTestAdapter({ type: "drizzle-pglite" })
+        .withTestAdapter({ type: "kysely-sqlite" })
         .withFragment(
           "otp",
           instantiate(otpFragmentDefinition)
@@ -325,7 +325,7 @@ describe("otp fragment", async () => {
 
   it("persists expiry immediately when confirmation observes an expired OTP", async () => {
     const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
+      .withTestAdapter({ type: "kysely-sqlite" })
       .withFragment(
         "otp",
         instantiate(otpFragmentDefinition)
