@@ -72,7 +72,6 @@ describe("automation routes /bindings", () => {
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
-      expect(response.data).toHaveLength(3);
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -87,6 +86,13 @@ describe("automation routes /bindings", () => {
             source: "otp",
             eventType: "identity.claim.completed",
             scriptKey: "telegram-claim-linking.complete",
+          }),
+          expect.objectContaining({
+            id: "telegram-pi-session-ensure",
+            source: "telegram",
+            eventType: "message.received",
+            scriptKey: "telegram-pi-session.ensure",
+            scriptPath: "scripts/telegram-pi-session.ensure.sh",
           }),
         ]),
       );

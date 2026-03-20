@@ -98,7 +98,6 @@ const createAutomationContext = () => ({
     AUTOMATION_SCRIPT_ID: "script-1",
     AUTOMATION_IDEMPOTENCY_KEY: "idem-1",
   },
-  cloudflareEnv: {},
   runtime: {
     reply: async () => ({ ok: true as const }),
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({

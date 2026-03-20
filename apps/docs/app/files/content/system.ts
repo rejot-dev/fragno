@@ -46,6 +46,7 @@ Semantics:
 
 - starter files come from TS-owned content
 - starter automation defaults live under \`/workspace/automations\`
+- \`automations/simulator/\` contains scenario JSON files for replaying the real automation workspace with mocked commands
 - when Upload is configured, persistent org-scoped files override starter files at the same path
 - deleting a persistent override reveals the starter file again
 - starter-only files remain read-only because tombstones are not supported

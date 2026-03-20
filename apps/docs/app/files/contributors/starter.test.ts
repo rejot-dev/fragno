@@ -37,6 +37,12 @@ describe("starter file contributor", () => {
     const bindingsManifest = await fs.readFile?.(
       `${STARTER_FILE_MOUNT_POINT}/automations/bindings.json`,
     );
+    const simulatorReadme = await fs.readFile?.(
+      `${STARTER_FILE_MOUNT_POINT}/automations/simulator/README.md`,
+    );
+    const scenarioExample = await fs.readFile?.(
+      `${STARTER_FILE_MOUNT_POINT}/automations/simulator/scenarios/telegram-claim-linking.json`,
+    );
 
     expect(entries?.map((entry) => entry.name)).toEqual(
       expect.arrayContaining(["README.md", "automations", "input", "output", "prompts"]),
@@ -49,6 +55,8 @@ describe("starter file contributor", () => {
     );
     expect(readme).toContain("Workspace starter pack");
     expect(bindingsManifest).toContain('"bindings"');
+    expect(simulatorReadme).toContain("Automation simulator");
+    expect(scenarioExample).toContain('"steps"');
   });
 
   test("falls back to a read-only starter workspace when Upload is unavailable", async () => {
