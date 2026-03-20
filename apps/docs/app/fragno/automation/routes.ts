@@ -6,86 +6,74 @@ import {
   bindAutomationIdentityActor,
   lookupAutomationIdentityBinding,
 } from "./automations-bash-runtime";
+import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import { automationFragmentSchema } from "./schema";
-
-const automationScriptEngines = ["bash"] as const;
 
 const identityBindingOutputSchema = z.object({
   id: z.unknown().optional(),
   source: z.string(),
-  externalActorId: z.string(),
-  userId: z.string(),
+  key: z.string(),
+  value: z.string(),
+  description: z.string().nullable().optional(),
   status: z.string(),
   linkedAt: z.unknown().optional(),
   createdAt: z.unknown().optional(),
   updatedAt: z.unknown().optional(),
 });
 
+const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
+  query.get("orgId")?.trim() || undefined;
+
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
-  ({ defineRoute }) => {
+  ({ defineRoute, config }) => {
     return [
       defineRoute({
         method: "GET",
         path: "/scripts",
         outputSchema: z.array(z.record(z.string(), z.unknown())),
-        handler: async function (_, { json }) {
-          const rows = await this.handlerTx()
-            .retrieve(({ forSchema }) => forSchema(automationFragmentSchema).find("script"))
-            .transformRetrieve(([scripts]) => scripts)
-            .execute();
+        handler: async function ({ query }, { json, error }) {
+          try {
+            const catalog = await loadAutomationCatalogFromConfig(config, {
+              orgId: getOrgIdFromRequestQuery(query),
+              purpose: "route",
+            });
 
-          return json(rows);
-        },
-      }),
-      defineRoute({
-        method: "POST",
-        path: "/scripts",
-        inputSchema: z.object({
-          key: z
-            .string()
-            .trim()
-            .min(1)
-            .regex(/^[a-z0-9-_]+$/),
-          name: z.string().trim().min(1),
-          engine: z.enum(automationScriptEngines).default("bash"),
-          script: z.string().trim().min(1),
-          version: z.number().int().min(1).default(1),
-          enabled: z.boolean().default(true),
-        }),
-        outputSchema: z.object({ id: z.string() }),
-        handler: async function ({ input }, { json }) {
-          const payload = await input.valid();
-          const result = await this.handlerTx()
-            .mutate(({ forSchema }) => {
-              return forSchema(automationFragmentSchema).create("script", {
-                key: payload.key,
-                name: payload.name,
-                engine: payload.engine,
-                script: payload.script,
-                version: payload.version,
-                enabled: payload.enabled,
-              });
-            })
-            .transform(({ mutateResult }) => ({ id: String(mutateResult) }))
-            .execute();
-
-          return json(result);
+            return json(catalog.scripts);
+          } catch (cause) {
+            return error(
+              {
+                message:
+                  cause instanceof Error ? cause.message : "Failed to load automation scripts.",
+                code: "AUTOMATION_CATALOG_INVALID",
+              },
+              500,
+            );
+          }
         },
       }),
       defineRoute({
         method: "GET",
         path: "/bindings",
         outputSchema: z.array(z.record(z.string(), z.unknown())),
-        handler: async function (_, { json }) {
-          const rows = await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(automationFragmentSchema).find("trigger_binding"),
-            )
-            .transformRetrieve(([bindings]) => bindings)
-            .execute();
+        handler: async function ({ query }, { json, error }) {
+          try {
+            const catalog = await loadAutomationCatalogFromConfig(config, {
+              orgId: getOrgIdFromRequestQuery(query),
+              purpose: "route",
+            });
 
-          return json(rows);
+            return json(catalog.bindings);
+          } catch (cause) {
+            return error(
+              {
+                message:
+                  cause instanceof Error ? cause.message : "Failed to load automation bindings.",
+                code: "AUTOMATION_CATALOG_INVALID",
+              },
+              500,
+            );
+          }
         },
       }),
       defineRoute({
@@ -109,7 +97,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         outputSchema: identityBindingOutputSchema,
         handler: async function ({ query }, { json, error }) {
           const source = query.get("source")?.trim();
-          const externalActorId = query.get("externalActorId")?.trim();
+          const key = query.get("key")?.trim();
 
           if (!source) {
             return error(
@@ -121,11 +109,11 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
             );
           }
 
-          if (!externalActorId) {
+          if (!key) {
             return error(
               {
-                message: "Missing externalActorId query parameter.",
-                code: "EXTERNAL_ACTOR_ID_REQUIRED",
+                message: "Missing key query parameter.",
+                code: "KEY_REQUIRED",
               },
               400,
             );
@@ -133,13 +121,13 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
 
           const binding = await lookupAutomationIdentityBinding(this, {
             source,
-            externalActorId,
+            key,
           });
 
           if (!binding) {
             return error(
               {
-                message: `Identity binding not found for ${source}:${externalActorId}.`,
+                message: `Identity binding not found for ${source}:${key}.`,
                 code: "IDENTITY_BINDING_NOT_FOUND",
               },
               404,
@@ -154,8 +142,9 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         path: "/identity-bindings/bind",
         inputSchema: z.object({
           source: z.string().trim().min(1),
-          externalActorId: z.string().trim().min(1),
-          userId: z.string().trim().min(1),
+          key: z.string().trim().min(1),
+          value: z.string().trim().min(1),
+          description: z.string().optional(),
         }),
         outputSchema: identityBindingOutputSchema,
         handler: async function ({ input }, { json }) {
@@ -205,83 +194,6 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
               return { ok: true as const, id: pathParams.bindingId };
             })
             .transform(({ mutateResult }) => mutateResult)
-            .execute();
-
-          return json(result);
-        },
-      }),
-      defineRoute({
-        method: "POST",
-        path: "/bindings",
-        inputSchema: z.object({
-          source: z.string().trim().min(1),
-          eventType: z.string(),
-          scriptId: z.string(),
-          enabled: z.boolean().default(true),
-        }),
-        outputSchema: z.object({ id: z.string() }),
-        handler: async function ({ input }, { json, error }) {
-          const payload = await input.valid();
-
-          const { script, existing } = await this.handlerTx()
-            .retrieve(({ forSchema }) => {
-              const table = forSchema(automationFragmentSchema);
-
-              return table
-                .findFirst("script", (s) =>
-                  s.whereIndex("primary", (eb) => eb("id", "=", payload.scriptId)),
-                )
-                .findFirst("trigger_binding", (b) =>
-                  b.whereIndex("idx_trigger_binding_source_event_created_at_id", (eb) =>
-                    eb.and(
-                      eb("source", "=", payload.source),
-                      eb("eventType", "=", payload.eventType),
-                    ),
-                  ),
-                );
-            })
-            .transformRetrieve(([script, existing]) => ({ script, existing }))
-            .execute();
-
-          if (!script) {
-            return error(
-              {
-                message: `Script ${payload.scriptId} not found.`,
-                code: "SCRIPT_NOT_FOUND",
-              },
-              404,
-            );
-          }
-
-          if (existing) {
-            await this.handlerTx()
-              .mutate(({ forSchema }) => {
-                forSchema(automationFragmentSchema).update("trigger_binding", existing.id, (b) =>
-                  b
-                    .set({
-                      source: payload.source,
-                      eventType: payload.eventType,
-                      scriptId: payload.scriptId,
-                      enabled: payload.enabled,
-                    })
-                    .check(),
-                );
-              })
-              .execute();
-
-            return json({ id: String(existing.id) });
-          }
-
-          const result = await this.handlerTx()
-            .mutate(({ forSchema }) => {
-              return forSchema(automationFragmentSchema).create("trigger_binding", {
-                source: payload.source,
-                eventType: payload.eventType,
-                scriptId: payload.scriptId,
-                enabled: payload.enabled,
-              });
-            })
-            .transform(({ mutateResult }) => ({ id: String(mutateResult) }))
             .execute();
 
           return json(result);

@@ -7,14 +7,14 @@ import { createBashHost } from "./bash-host";
 const createAutomationsRuntime = () => ({
   lookupBinding: async () => ({
     source: "telegram",
-    externalActorId: "actor-1",
-    userId: "user-1",
+    key: "actor-1",
+    value: "user-1",
     status: "linked",
   }),
-  bindActor: async ({ source, externalActorId, userId }: Record<string, string>) => ({
+  bindActor: async ({ source, key, value }: Record<string, string>) => ({
     source,
-    externalActorId,
-    userId,
+    key,
+    value,
     status: "linked",
   }),
 });

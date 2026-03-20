@@ -172,6 +172,11 @@ describe("prepareSandboxFileSystem", () => {
       encoding: "utf-8",
     });
     expect(handle.writeFile).toHaveBeenCalledWith(
+      "/workspace/automations/bindings.json",
+      expect.stringContaining('"bindings"'),
+      { encoding: "utf-8" },
+    );
+    expect(handle.writeFile).toHaveBeenCalledWith(
       BOOTSTRAP_SENTINEL_PATH,
       expect.stringContaining('"version":1'),
       { encoding: "utf-8" },
@@ -257,6 +262,11 @@ describe("prepareSandboxFileSystem", () => {
     expect(handle.writeFile).toHaveBeenCalledWith("/workspace/README.md", expect.any(String), {
       encoding: "utf-8",
     });
+    expect(handle.writeFile).toHaveBeenCalledWith(
+      "/workspace/automations/bindings.json",
+      expect.stringContaining('"bindings"'),
+      { encoding: "utf-8" },
+    );
     expect(handle.writeFile).not.toHaveBeenCalledWith("/workspace/reports/q1.txt", "ready", {
       encoding: "utf-8",
     });
@@ -266,8 +276,12 @@ describe("prepareSandboxFileSystem", () => {
       { encoding: "utf-8" },
     );
     expect(events.indexOf("write:/workspace/README.md")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("write:/workspace/automations/bindings.json")).toBeGreaterThanOrEqual(0);
     expect(events.indexOf("mount:/workspace")).toBeGreaterThanOrEqual(0);
     expect(events.indexOf("write:/workspace/README.md")).toBeLessThan(
+      events.indexOf("mount:/workspace"),
+    );
+    expect(events.indexOf("write:/workspace/automations/bindings.json")).toBeLessThan(
       events.indexOf("mount:/workspace"),
     );
   });

@@ -150,7 +150,7 @@ describe("Pi Durable Object", () => {
     }));
 
     createRouteBackedAutomationsBashRuntimeMock.mockImplementation(({ env, orgId }) => ({
-      lookupBinding: async (args: { source: string; externalActorId: string }) => {
+      lookupBinding: async (args: { source: string; key: string }) => {
         const query = new URLSearchParams(args);
         const automationsDo = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
         const response = await automationsDo.fetch(
@@ -164,7 +164,7 @@ describe("Pi Durable Object", () => {
 
         return await response.json();
       },
-      bindActor: async (args: { source: string; externalActorId: string; userId: string }) => {
+      bindActor: async (args: { source: string; key: string; value: string }) => {
         const automationsDo = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
         const response = await automationsDo.fetch(
           new Request(
@@ -281,8 +281,8 @@ describe("Pi Durable Object", () => {
         new Response(
           JSON.stringify({
             source: "telegram",
-            externalActorId: "actor-1",
-            userId: "user-1",
+            key: "actor-1",
+            value: "user-1",
             status: "linked",
           }),
           {
@@ -306,13 +306,13 @@ describe("Pi Durable Object", () => {
 
     const automationsRuntime = createRouteBackedAutomationsBashRuntimeMock.mock.results.at(-1)
       ?.value as {
-      lookupBinding: (args: { source: string; externalActorId: string }) => Promise<unknown>;
+      lookupBinding: (args: { source: string; key: string }) => Promise<unknown>;
     };
 
     await expect(
-      automationsRuntime.lookupBinding({ source: "telegram", externalActorId: "actor-1" }),
+      automationsRuntime.lookupBinding({ source: "telegram", key: "actor-1" }),
     ).resolves.toMatchObject({
-      userId: "user-1",
+      value: "user-1",
       status: "linked",
     });
 
@@ -320,7 +320,7 @@ describe("Pi Durable Object", () => {
     expect(requestCall).toBeDefined();
     const request = requestCall!.at(0) as unknown as Request;
     expect(request.url).toBe(
-      "https://automations.do/api/automations/bindings/identity-bindings/lookup?source=telegram&externalActorId=actor-1&orgId=acme",
+      "https://automations.do/api/automations/bindings/identity-bindings/lookup?source=telegram&key=actor-1&orgId=acme",
     );
   });
 

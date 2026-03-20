@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
-import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { AutomationWorkflowsService } from "./definition";
-import { bindAutomationIdentityActor, createAutomationFragment } from "./index";
+import {
+  bindAutomationIdentityActor,
+  createAutomationFragment,
+  createDefaultAutomationFileSystem,
+} from "./index";
 
-const createAutomation = () => {
+const createAutomation = (options?: {
+  automationFileSystem?: Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+}) => {
   const services = {
     workflows: {
       createInstance: async () => ({}),
@@ -18,7 +23,9 @@ const createAutomation = () => {
   };
 
   return createAutomationFragment(
-    {},
+    {
+      automationFileSystem: options?.automationFileSystem,
+    },
     {
       databaseAdapter: new InMemoryAdapter({
         idSeed: "automation-routes-bindings-test",
@@ -28,28 +35,6 @@ const createAutomation = () => {
     },
     services,
   );
-};
-
-const createScript = async (
-  fragment: ReturnType<typeof createAutomation>,
-  key = "welcome-script",
-) => {
-  const response = await fragment.callRoute("POST", "/scripts", {
-    body: {
-      key,
-      name: "Welcome Message",
-      engine: "bash",
-      script: "echo hi",
-      version: 1,
-      enabled: true,
-    },
-  });
-
-  expect(response.type).toBe("json");
-  if (response.type !== "json") {
-    throw new Error("Expected script creation response");
-  }
-  return response.data.id;
 };
 
 const readRecordId = (value: unknown): string => {
@@ -76,16 +61,35 @@ const readRecordId = (value: unknown): string => {
 describe("automation routes /bindings", () => {
   let fragment: ReturnType<typeof createAutomation>;
 
-  beforeEach(() => {
-    fragment = createAutomation();
+  beforeEach(async () => {
+    fragment = createAutomation({
+      automationFileSystem: await createDefaultAutomationFileSystem("org_123"),
+    });
   });
 
-  test("returns empty list when no bindings exist", async () => {
+  test("returns filesystem-backed starter bindings", async () => {
     const response = await fragment.callRoute("GET", "/bindings");
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
-      expect(response.data).toEqual([]);
+      expect(response.data).toHaveLength(3);
+      expect(response.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "telegram-claim-linking-start",
+            source: "telegram",
+            eventType: "message.received",
+            scriptKey: "telegram-claim-linking.start",
+            scriptPath: "scripts/telegram-claim-linking.start.sh",
+          }),
+          expect.objectContaining({
+            id: "telegram-claim-linking-complete",
+            source: "otp",
+            eventType: "identity.claim.completed",
+            scriptKey: "telegram-claim-linking.complete",
+          }),
+        ]),
+      );
     }
   });
 
@@ -98,105 +102,12 @@ describe("automation routes /bindings", () => {
     }
   });
 
-  test("creates and reads a binding with source", async () => {
-    const scriptId = await createScript(fragment, "binding-script");
-
-    const bindingResponse = await fragment.callRoute("POST", "/bindings", {
-      body: {
-        eventType: "message.received",
-        source: "any-source",
-        scriptId,
-        enabled: true,
-      },
-    });
-
-    expect(bindingResponse.type).toBe("json");
-    if (bindingResponse.type === "json") {
-      expect(typeof bindingResponse.data.id).toBe("string");
-    }
-
-    const listResponse = await fragment.callRoute("GET", "/bindings", {
-      query: {},
-    });
-
-    expect(listResponse.type).toBe("json");
-    if (listResponse.type === "json") {
-      expect(listResponse.data).toHaveLength(1);
-      expect(listResponse.data[0]).toMatchObject({
-        source: "any-source",
-        eventType: "message.received",
-      });
-    }
-  });
-
-  test("returns an error when creating a binding for a missing script", async () => {
-    const response = await fragment.callRoute("POST", "/bindings", {
-      body: {
-        eventType: "message.received",
-        source: "telegram",
-        scriptId: "missing-script",
-        enabled: true,
-      },
-    } as never);
-
-    expect(response.type).toBe("error");
-    if (response.type === "error") {
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("SCRIPT_NOT_FOUND");
-      expect(response.error.message).toContain("missing-script");
-    }
-  });
-
-  test("updates existing binding instead of creating duplicates", async () => {
-    const scriptId = await createScript(fragment, "binding-script-v2");
-
-    const firstBinding = await fragment.callRoute("POST", "/bindings", {
-      body: {
-        eventType: "message.received",
-        source: "telegram",
-        scriptId,
-        enabled: true,
-      },
-    });
-    expect(firstBinding.type).toBe("json");
-    if (firstBinding.type !== "json") {
-      throw new Error("Expected first binding creation response");
-    }
-
-    const secondBinding = await fragment.callRoute("POST", "/bindings", {
-      body: {
-        eventType: "message.received",
-        source: "telegram",
-        scriptId,
-        enabled: false,
-      },
-    });
-    expect(secondBinding.type).toBe("json");
-    if (secondBinding.type !== "json") {
-      throw new Error("Expected second binding update response");
-    }
-
-    expect(secondBinding.data.id).toBe(firstBinding.data.id);
-
-    const listResponse = await fragment.callRoute("GET", "/bindings");
-
-    expect(listResponse.type).toBe("json");
-    if (listResponse.type === "json") {
-      expect(listResponse.data).toHaveLength(1);
-      expect(listResponse.data[0]).toMatchObject({
-        eventType: "message.received",
-        source: "telegram",
-        enabled: false,
-      });
-    }
-  });
-
   test("binds an identity actor and reuses the same record on rebind", async () => {
     const firstBindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
       body: {
         source: "telegram",
-        externalActorId: "chat-bind-1",
-        userId: "user-1",
+        key: "chat-bind-1",
+        value: "user-1",
       },
     });
 
@@ -208,8 +119,8 @@ describe("automation routes /bindings", () => {
     const secondBindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
       body: {
         source: "telegram",
-        externalActorId: "chat-bind-1",
-        userId: "user-2",
+        key: "chat-bind-1",
+        value: "user-2",
       },
     });
 
@@ -221,8 +132,8 @@ describe("automation routes /bindings", () => {
     expect(readRecordId(secondBindResponse.data.id)).toBe(readRecordId(firstBindResponse.data.id));
     expect(secondBindResponse.data).toMatchObject({
       source: "telegram",
-      externalActorId: "chat-bind-1",
-      userId: "user-2",
+      key: "chat-bind-1",
+      value: "user-2",
       status: "linked",
     });
 
@@ -236,8 +147,8 @@ describe("automation routes /bindings", () => {
       );
       expect(identityBindingsResponse.data[0]).toMatchObject({
         source: "telegram",
-        externalActorId: "chat-bind-1",
-        userId: "user-2",
+        key: "chat-bind-1",
+        value: "user-2",
         status: "linked",
       });
     }
@@ -247,8 +158,8 @@ describe("automation routes /bindings", () => {
     const binding = {
       id: "binding-concurrent-1",
       source: "telegram",
-      externalActorId: "chat-concurrent-1",
-      userId: "user-b",
+      key: "chat-concurrent-1",
+      value: "user-b",
       status: "linked",
       linkedAt: new Date("2026-01-01T00:00:00.000Z"),
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -277,8 +188,8 @@ describe("automation routes /bindings", () => {
       } as never,
       {
         source: "telegram",
-        externalActorId: "chat-concurrent-1",
-        userId: "user-b",
+        key: "chat-concurrent-1",
+        value: "user-b",
       },
     );
 
@@ -291,65 +202,20 @@ describe("automation routes /bindings", () => {
   });
 
   test("revokes an existing identity binding", async () => {
-    const linkingScript = await fragment.callRoute("POST", "/scripts", {
+    const bindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
       body: {
-        key: "identity-bind-script",
-        name: "Identity Bind Script",
-        engine: "bash",
-        script:
-          'automations.identity.bind-actor --source "$AUTOMATION_SOURCE" --external-actor-id "$AUTOMATION_EXTERNAL_ACTOR_ID" --user-id "$AUTOMATION_SUBJECT_USER_ID" >/dev/null',
-        version: 1,
-        enabled: true,
+        source: "telegram",
+        key: "chat-1",
+        value: "user-1",
       },
     });
 
-    expect(linkingScript.type).toBe("json");
-    if (linkingScript.type !== "json") {
-      throw new Error("Expected identity bind script creation response");
+    expect(bindResponse.type).toBe("json");
+    if (bindResponse.type !== "json") {
+      throw new Error("Expected bind response");
     }
 
-    await fragment.callRoute("POST", "/bindings", {
-      body: {
-        eventType: "message.received",
-        source: "telegram",
-        scriptId: linkingScript.data.id,
-        enabled: true,
-      },
-    });
-
-    await fragment.callServices(() =>
-      fragment.services.ingestEvent({
-        id: "event-bind-1",
-        source: "telegram",
-        eventType: "message.received",
-        occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
-        payload: {},
-        actor: {
-          type: "external",
-          externalId: "chat-1",
-        },
-        subject: {
-          userId: "user-1",
-        },
-      }),
-    );
-    await drainDurableHooks(fragment);
-
-    const identityBindingsResponse = await fragment.callRoute("GET", "/identity-bindings");
-
-    expect(identityBindingsResponse.type).toBe("json");
-    if (identityBindingsResponse.type !== "json") {
-      throw new Error("Expected identity bindings response");
-    }
-
-    expect(identityBindingsResponse.data).toHaveLength(1);
-    const bindingId = readRecordId(identityBindingsResponse.data[0]?.id);
-    expect(identityBindingsResponse.data[0]).toMatchObject({
-      source: "telegram",
-      externalActorId: "chat-1",
-      userId: "user-1",
-      status: "linked",
-    });
+    const bindingId = readRecordId(bindResponse.data.id);
 
     const revokeResponse = await fragment.callRoute(
       "POST",
@@ -384,8 +250,8 @@ describe("automation routes /bindings", () => {
     const bindResponse = await fragment.callRoute("POST", "/identity-bindings/bind", {
       body: {
         source: "telegram",
-        externalActorId: "chat-revoked-lookup",
-        userId: "user-revoked",
+        key: "chat-revoked-lookup",
+        value: "user-revoked",
       },
     });
 
@@ -412,7 +278,7 @@ describe("automation routes /bindings", () => {
     const lookupResponse = await fragment.callRoute("GET", "/identity-bindings/lookup", {
       query: {
         source: "telegram",
-        externalActorId: "chat-revoked-lookup",
+        key: "chat-revoked-lookup",
       },
     });
 

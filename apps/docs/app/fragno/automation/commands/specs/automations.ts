@@ -13,7 +13,7 @@ const HELP: {
 } = {
   lookupBinding: {
     summary:
-      "automations.identity.lookup-binding checks whether an external actor is already linked in automation identity bindings.",
+      "automations.identity.lookup-binding checks whether a key is already present in automation identity bindings.",
     options: [
       {
         name: "source",
@@ -23,20 +23,19 @@ const HELP: {
         description: "Identity source name (e.g. telegram)",
       },
       {
-        name: "external-actor-id",
+        name: "key",
         required: true,
         valueRequired: true,
-        valueName: "external-actor-id",
-        description: "External actor identifier from the source",
+        valueName: "key",
+        description: "Storage key for this source (e.g. external chat id)",
       },
     ],
     examples: [
-      "automations.identity.lookup-binding --source telegram --external-actor-id chat-123 --print user-id",
+      "automations.identity.lookup-binding --source telegram --key chat-123 --print value",
     ],
   },
   bindActor: {
-    summary:
-      "automations.identity.bind-actor creates or updates a linked automation identity mapping.",
+    summary: "automations.identity.bind-actor creates or updates a key/value identity binding.",
     options: [
       {
         name: "source",
@@ -46,22 +45,29 @@ const HELP: {
         description: "Identity source name (e.g. telegram)",
       },
       {
-        name: "external-actor-id",
+        name: "key",
         required: true,
         valueRequired: true,
-        valueName: "external-actor-id",
-        description: "External actor identifier from the source",
+        valueName: "key",
+        description: "Storage key for this source",
       },
       {
-        name: "user-id",
+        name: "value",
         required: true,
         valueRequired: true,
-        valueName: "user-id",
-        description: "Fragno user id to bind to this external actor",
+        valueName: "value",
+        description: "Value to store (e.g. Fragno user id)",
+      },
+      {
+        name: "description",
+        valueRequired: true,
+        valueName: "text",
+        description: "Optional human-readable description of this binding",
       },
     ],
     examples: [
-      "automations.identity.bind-actor --source telegram --external-actor-id chat-123 --user-id user-55",
+      "automations.identity.bind-actor --source telegram --key chat-123 --value user-55",
+      'automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
     ],
   },
 };
@@ -76,7 +82,7 @@ const parseAutomationsIdentityLookupBinding = (
     name: "automations.identity.lookup-binding",
     args: {
       source: readStringOption(parsed, "source", true)!,
-      externalActorId: readStringOption(parsed, "external-actor-id", true)!,
+      key: readStringOption(parsed, "key", true)!,
     },
     output: readOutputOptions(parsed),
     rawArgs: args,
@@ -93,8 +99,9 @@ const parseAutomationsIdentityBindActor = (
     name: "automations.identity.bind-actor",
     args: {
       source: readStringOption(parsed, "source", true)!,
-      externalActorId: readStringOption(parsed, "external-actor-id", true)!,
-      userId: readStringOption(parsed, "user-id", true)!,
+      key: readStringOption(parsed, "key", true)!,
+      value: readStringOption(parsed, "value", true)!,
+      description: readStringOption(parsed, "description"),
     },
     output: readOutputOptions(parsed),
     rawArgs: args,

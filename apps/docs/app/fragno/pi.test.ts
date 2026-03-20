@@ -82,10 +82,42 @@ describe("Pi bash tool", () => {
     });
     expect((result.details as { stdout: string }).stdout.split("\n")).toEqual([
       "README.md",
+      "automations",
       "input",
       "output",
       "prompts",
     ]);
+  });
+
+  test("exposes starter automation files inside the shared Pi filesystem", async () => {
+    const tools = createPiToolRegistry(new Map(), {
+      orgId: "acme-org",
+      uploadRuntime: createUploadRuntime(),
+    });
+
+    const bashFactory = tools["bash"];
+    if (typeof bashFactory !== "function") {
+      throw new Error("Expected bash tool to be registered as a factory.");
+    }
+
+    const tool = await bashFactory({
+      session: { id: "session-automations" },
+      turnId: "turn-1",
+      toolConfig: null,
+      messages: [],
+      replay: { journal: [], sideEffects: {} },
+    } as never);
+
+    const result = await tool.execute("tool-call-automations-1", {
+      script: "cat /workspace/automations/bindings.json",
+    } as never);
+    expect(result.details).toMatchObject({
+      stderr: "",
+      exitCode: 0,
+    });
+    expect((result.details as { stdout: string }).stdout).toContain(
+      '"telegram-claim-linking-start"',
+    );
   });
 
   test("uses the shared workspace overlay for reads and writes", async () => {

@@ -18,8 +18,9 @@ type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 export type AutomationIdentityBindingRecord = {
   id?: unknown;
   source: string;
-  externalActorId: string;
-  userId: string;
+  key: string;
+  value: string;
+  description?: string | null;
   status: string;
   linkedAt?: unknown;
   createdAt?: unknown;
@@ -102,14 +103,14 @@ const isDuplicateIdentityBindingError = (error: unknown): boolean => {
 
 export const lookupAutomationIdentityBinding = async (
   context: AutomationIdentityStorageContext,
-  { source, externalActorId }: IdentityLookupBindingArgs,
+  { source, key }: IdentityLookupBindingArgs,
 ): Promise<AutomationIdentityBindingRecord | null> => {
   return await context
     .handlerTx()
     .retrieve(({ forSchema }) =>
       forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-        b.whereIndex("idx_identity_binding_source_actor", (eb) =>
-          eb.and(eb("source", "=", source), eb("externalActorId", "=", externalActorId)),
+        b.whereIndex("idx_identity_binding_source_key", (eb) =>
+          eb.and(eb("source", "=", source), eb("key", "=", key)),
         ),
       ),
     )
@@ -119,7 +120,7 @@ export const lookupAutomationIdentityBinding = async (
 
 export const bindAutomationIdentityActor = async (
   context: AutomationIdentityStorageContext,
-  { source, externalActorId, userId }: IdentityBindActorArgs,
+  { source, key, value, description }: IdentityBindActorArgs,
 ): Promise<AutomationIdentityBindingRecord> => {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -127,22 +128,31 @@ export const bindAutomationIdentityActor = async (
         .handlerTx()
         .retrieve(({ forSchema }) =>
           forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-            b.whereIndex("idx_identity_binding_source_actor", (eb) =>
-              eb.and(eb("source", "=", source), eb("externalActorId", "=", externalActorId)),
+            b.whereIndex("idx_identity_binding_source_key", (eb) =>
+              eb.and(eb("source", "=", source), eb("key", "=", key)),
             ),
           ),
         )
         .mutate(({ forSchema, retrieveResult: [existing] }) => {
           const table = forSchema(automationFragmentSchema);
           const now = table.now();
+          const descriptionValue =
+            typeof description === "string"
+              ? description.trim() !== ""
+                ? description.trim()
+                : null
+              : existing && existing.description != null
+                ? String(existing.description)
+                : null;
 
           if (existing) {
             table.update("identity_binding", existing.id, (b) =>
               b
                 .set({
                   source,
-                  externalActorId,
-                  userId,
+                  key,
+                  value,
+                  description: descriptionValue,
                   status: "linked",
                   linkedAt: now,
                   updatedAt: now,
@@ -153,8 +163,9 @@ export const bindAutomationIdentityActor = async (
             return {
               ...existing,
               source,
-              externalActorId,
-              userId,
+              key,
+              value,
+              description: descriptionValue,
               status: "linked" as const,
               linkedAt: now,
               updatedAt: now,
@@ -163,8 +174,9 @@ export const bindAutomationIdentityActor = async (
 
           const createdId = table.create("identity_binding", {
             source,
-            externalActorId,
-            userId,
+            key,
+            value,
+            description: descriptionValue,
             status: "linked",
             linkedAt: now,
             createdAt: now,
@@ -174,8 +186,9 @@ export const bindAutomationIdentityActor = async (
           return {
             id: createdId.valueOf(),
             source,
-            externalActorId,
-            userId,
+            key,
+            value,
+            description: descriptionValue,
             status: "linked" as const,
             linkedAt: now,
             createdAt: now,
@@ -243,9 +256,9 @@ export const createRouteBackedAutomationsBashRuntime = ({
   const callRoute = createAutomationsRouteCaller(env, normalizedOrgId);
 
   return createAutomationsBashRuntime({
-    lookupBinding: async ({ source, externalActorId }) => {
+    lookupBinding: async ({ source, key }) => {
       const response = await callRoute("GET", "/identity-bindings/lookup", {
-        query: { source, externalActorId },
+        query: { source, key },
       });
 
       if (response.type === "error" && response.status === 404) {

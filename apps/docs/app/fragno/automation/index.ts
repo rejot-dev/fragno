@@ -38,16 +38,27 @@ export function createAutomationFragment(
 }
 
 export { automationFragmentDefinition } from "./definition";
-export { automationFragmentSchema } from "./schema";
+export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
-  builtinAutomationBindings,
-  builtinAutomationScripts,
-  telegramClaimLinkingCompleteScript,
-  telegramClaimLinkingStartScript,
-  telegramCreatePiSessionScript,
-} from "./builtins";
-export type { AutomationBuiltinScript, AutomationBuiltinTriggerBinding } from "./builtins";
+  AUTOMATION_BINDINGS_MANIFEST_PATH,
+  AUTOMATION_SCRIPTS_ROOT,
+  AUTOMATION_WORKSPACE_ROOT,
+  createDefaultAutomationFileSystem,
+  getAutomationBindingsForEvent,
+  loadAutomationCatalog,
+  loadAutomationCatalogFromConfig,
+  resolveAutomationFileSystem,
+} from "./catalog";
+export type {
+  AutomationBindingCatalogEntry,
+  AutomationCatalog,
+  AutomationFileSystemConfig,
+  AutomationFileSystemResolvePurpose,
+  AutomationFileSystemResolver,
+  AutomationFileSystemResolverInput,
+  AutomationScriptCatalogEntry,
+} from "./catalog";
 export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./contracts";
 export type { AutomationEvent, AutomationIngestResult };
 export type {
@@ -83,7 +94,6 @@ export type {
   AutomationBashRuntime,
   AutomationEmitEventResult,
   AutomationIdentityBindingRecord,
-  AutomationIdentityClaimRecord,
 } from "./engine/bash";
 export type { AutomationsBashRuntime } from "./automations-bash-runtime";
 export type { AutomationReplyResult, EventBashRuntime } from "./event-bash-runtime";

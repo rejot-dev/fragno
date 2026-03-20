@@ -34,9 +34,12 @@ describe("starter file contributor", () => {
     const fs = createStarterMountedFileSystem();
     const entries = await fs.readdirWithFileTypes?.(STARTER_FILE_MOUNT_POINT);
     const readme = await fs.readFile?.(`${STARTER_FILE_MOUNT_POINT}/README.md`);
+    const bindingsManifest = await fs.readFile?.(
+      `${STARTER_FILE_MOUNT_POINT}/automations/bindings.json`,
+    );
 
     expect(entries?.map((entry) => entry.name)).toEqual(
-      expect.arrayContaining(["README.md", "input", "output", "prompts"]),
+      expect.arrayContaining(["README.md", "automations", "input", "output", "prompts"]),
     );
     expect(fs.getAllPaths?.()).toEqual(
       expect.arrayContaining([
@@ -45,6 +48,7 @@ describe("starter file contributor", () => {
       ]),
     );
     expect(readme).toContain("Workspace starter pack");
+    expect(bindingsManifest).toContain('"bindings"');
   });
 
   test("falls back to a read-only starter workspace when Upload is unavailable", async () => {

@@ -31,6 +31,7 @@ import {
   type AutomationIdentityClaimRecord,
   type OtpBashRuntime,
 } from "../otp-bash-runtime";
+import { AUTOMATION_TRIGGER_ORDER_LAST } from "../schema";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -139,6 +140,7 @@ export const createAutomationBashCommandContext = ({
   };
 
   const bashEnv: AutomationBashEnvironment = {
+    ...binding.scriptEnv,
     AUTOMATION_EVENT_ID: normalizedEvent.id,
     AUTOMATION_ORG_ID: normalizedEvent.orgId,
     AUTOMATION_SOURCE: normalizedEvent.source,
@@ -147,7 +149,20 @@ export const createAutomationBashCommandContext = ({
     AUTOMATION_ACTOR_TYPE: normalizedEvent.actor?.type,
     AUTOMATION_EXTERNAL_ACTOR_ID: normalizedEvent.actor?.externalId,
     AUTOMATION_SUBJECT_USER_ID: normalizedEvent.subject?.userId,
+    AUTOMATION_BINDING_ID: binding.id,
     AUTOMATION_SCRIPT_ID: binding.scriptId,
+    AUTOMATION_SCRIPT_KEY: binding.scriptKey,
+    AUTOMATION_SCRIPT_NAME: binding.scriptName,
+    AUTOMATION_SCRIPT_PATH: binding.scriptPath,
+    AUTOMATION_SCRIPT_VERSION:
+      binding.scriptVersion != null ? String(binding.scriptVersion) : undefined,
+    AUTOMATION_SCRIPT_AGENT: binding.scriptAgent ?? undefined,
+    AUTOMATION_TRIGGER_ORDER:
+      binding.triggerOrder != null &&
+      Number.isFinite(binding.triggerOrder) &&
+      binding.triggerOrder !== AUTOMATION_TRIGGER_ORDER_LAST
+        ? String(binding.triggerOrder)
+        : undefined,
     AUTOMATION_IDEMPOTENCY_KEY: idempotencyKey,
     ...sourceAdapter?.toBashEnv(normalizedEvent),
     ...pi?.bashEnv,

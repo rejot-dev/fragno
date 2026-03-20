@@ -72,8 +72,8 @@ const runtime: AutomationBashRuntime = {
   lookupBinding: async () => null,
   bindActor: async (input) => ({
     source: input.source,
-    externalActorId: input.externalActorId,
-    userId: input.userId,
+    key: input.key,
+    value: input.value,
     status: "linked",
   }),
   createClaim: async (input) => ({
@@ -111,12 +111,12 @@ describe("bash command runner", () => {
       },
       "automations.identity.lookup-binding": async (command) => {
         context.invocation.push("lookup");
-        if (command.args.externalActorId === "missing") {
+        if (command.args.key === "missing") {
           return { exitCode: 1 };
         }
         return {
           data: {
-            userId: `user-for-${command.args.externalActorId}`,
+            value: `user-for-${command.args.key}`,
           },
         };
       },
@@ -124,8 +124,8 @@ describe("bash command runner", () => {
         context.invocation.push("bind");
         return {
           data: {
-            userId: command.args.userId,
-            externalActorId: command.args.externalActorId,
+            value: command.args.value,
+            key: command.args.key,
           },
         };
       },
@@ -163,9 +163,9 @@ describe("bash command runner", () => {
 
     const result = await bash.exec(
       'claim_url="$(otp.identity.create-claim --source telegram --external-actor-id actor_1 --print url)"\n' +
-        'linked_user="$(automations.identity.lookup-binding --source telegram --external-actor-id actor_1 --print user-id)"\n' +
-        'missing_user="$(automations.identity.lookup-binding --source telegram --external-actor-id missing --print user-id || true)"\n' +
-        'automations.identity.bind-actor --source telegram --external-actor-id actor_1 --user-id "$linked_user" --format json\n' +
+        'linked_user="$(automations.identity.lookup-binding --source telegram --key actor_1 --print value)"\n' +
+        'missing_user="$(automations.identity.lookup-binding --source telegram --key missing --print value || true)"\n' +
+        'automations.identity.bind-actor --source telegram --key actor_1 --value "$linked_user" --format json\n' +
         'event.reply --source telegram --external-actor-id actor_2 --text "done"\n' +
         "event.emit --event-type identity.binding.completed --source otp --format json\n" +
         'echo "$claim_url|$linked_user|$missing_user"',
@@ -201,7 +201,7 @@ describe("bash command runner", () => {
       },
       {
         command: "automations.identity.bind-actor",
-        output: '{"userId":"user-for-actor_1","externalActorId":"actor_1"}',
+        output: '{"value":"user-for-actor_1","key":"actor_1"}',
         exitCode: 0,
       },
       {
@@ -232,15 +232,15 @@ describe("bash command runner", () => {
       },
       "automations.identity.lookup-binding": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
         },
       }),
       "automations.identity.bind-actor": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
-          externalActorId: "external-id",
+          key: "external-id",
           status: "linked",
         },
       }),
@@ -295,13 +295,13 @@ describe("bash command runner", () => {
         data: { url: "https://example.com", externalId: "external-id", code: "123456" },
       }),
       "automations.identity.lookup-binding": async () => ({
-        data: { userId: "help-user", source: "telegram" },
+        data: { value: "help-user", source: "telegram" },
       }),
       "automations.identity.bind-actor": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
-          externalActorId: "external-id",
+          key: "external-id",
           status: "linked",
         },
       }),
@@ -385,15 +385,15 @@ describe("bash command runner", () => {
       },
       "automations.identity.lookup-binding": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
         },
       }),
       "automations.identity.bind-actor": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
-          externalActorId: "external-id",
+          key: "external-id",
           status: "linked",
         },
       }),
@@ -450,15 +450,15 @@ describe("bash command runner", () => {
       },
       "automations.identity.lookup-binding": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
         },
       }),
       "automations.identity.bind-actor": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
-          externalActorId: "external-id",
+          key: "external-id",
           status: "linked",
         },
       }),
@@ -601,15 +601,15 @@ describe("bash command runner", () => {
       },
       "automations.identity.lookup-binding": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
         },
       }),
       "automations.identity.bind-actor": async () => ({
         data: {
-          userId: "help-user",
+          value: "help-user",
           source: "telegram",
-          externalActorId: "external-id",
+          key: "external-id",
           status: "linked",
         },
       }),

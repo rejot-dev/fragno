@@ -74,7 +74,7 @@ export default function BackofficeOrganisationAutomationIdentity() {
 
       {identityBindingsError ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          Could not load identity bindings from the automation schema: {identityBindingsError}
+          Could not load identity bindings from the automations service: {identityBindingsError}
         </div>
       ) : identityBindings.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
@@ -89,10 +89,13 @@ export default function BackofficeOrganisationAutomationIdentity() {
                   Source
                 </th>
                 <th scope="col" className="px-3 py-2">
-                  External actor
+                  Key
                 </th>
                 <th scope="col" className="px-3 py-2">
-                  User
+                  Value
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Description
                 </th>
                 <th scope="col" className="px-3 py-2">
                   Status
@@ -126,13 +129,14 @@ export default function BackofficeOrganisationAutomationIdentity() {
                       </div>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <span className="font-mono text-xs text-[var(--bo-fg)]">
-                        {binding.externalActorId}
-                      </span>
+                      <span className="font-mono text-xs text-[var(--bo-fg)]">{binding.key}</span>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <span className="font-mono text-xs text-[var(--bo-fg)]">
-                        {binding.userId}
+                      <span className="font-mono text-xs text-[var(--bo-fg)]">{binding.value}</span>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span className="text-xs text-[var(--bo-muted)]">
+                        {binding.description?.trim() ? binding.description : "—"}
                       </span>
                     </td>
                     <td className="px-3 py-3 align-top">

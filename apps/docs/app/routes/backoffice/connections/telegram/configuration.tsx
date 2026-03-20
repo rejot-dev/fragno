@@ -498,8 +498,8 @@ export default function BackofficeOrganisationTelegramConfiguration() {
             events.
           </p>
           <p>
-            The docs app now ships with built-in automation bindings and hardcoded bash scripts for
-            the Telegram claim-linking flow:
+            The docs app now ships with starter automation files under
+            <code> /workspace/automations </code> for the Telegram claim-linking flow:
             <code> /start </code> issues a claim link and OTP confirmation finalizes the identity
             binding.
           </p>
