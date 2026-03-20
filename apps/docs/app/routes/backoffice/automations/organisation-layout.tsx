@@ -7,11 +7,17 @@ import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
 import {
   fetchAutomationIdentityBindings,
+  fetchAutomationScenarios,
   fetchAutomationScripts,
   fetchAutomationTriggerBindings,
   toExternalId,
 } from "./data";
-import type { AutomationIdentityItem, AutomationScriptItem, AutomationTriggerItem } from "./shared";
+import type {
+  AutomationIdentityItem,
+  AutomationScenarioItem,
+  AutomationScriptItem,
+  AutomationTriggerItem,
+} from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
@@ -32,8 +38,6 @@ const normalizeScripts = (
       path: script.path,
       absolutePath: script.absolutePath,
       version: script.version,
-      agent: script.agent,
-      env: script.env,
       bindingIds: script.bindingIds,
       bindingCount: script.bindingCount,
       enabledBindingCount: script.enabledBindingCount,
@@ -59,7 +63,6 @@ const normalizeTriggerBindings = (
       absoluteScriptPath: binding.absoluteScriptPath,
       scriptVersion: binding.scriptVersion,
       scriptEngine: binding.scriptEngine,
-      scriptAgent: binding.scriptAgent,
       scriptEnv: binding.scriptEnv,
       enabled: binding.enabled,
       triggerOrder: binding.triggerOrder,
@@ -101,6 +104,153 @@ const normalizeIdentityBindings = (
   });
 };
 
+const normalizeScenarios = (
+  scenarios: Awaited<ReturnType<typeof fetchAutomationScenarios>>["scenarios"],
+): AutomationScenarioItem[] => {
+  return scenarios
+    .map((scenario, index) => ({
+      id: scenario.id?.trim() || `automation-scenario-${index}`,
+      path: scenario.path?.trim() || "",
+      relativePath: scenario.relativePath?.trim() || scenario.fileName?.trim() || "",
+      fileName: scenario.fileName?.trim() || scenario.relativePath?.trim() || "scenario.json",
+      name: scenario.name?.trim() || scenario.fileName?.trim() || `Scenario ${index + 1}`,
+      description: scenario.description?.trim() || undefined,
+      env:
+        scenario.env && typeof scenario.env === "object"
+          ? Object.fromEntries(
+              Object.entries(scenario.env).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === "string" && typeof entry[1] === "string",
+              ),
+            )
+          : {},
+      initialState: scenario.initialState,
+      commandMocks: scenario.commandMocks,
+      stepCount:
+        typeof scenario.stepCount === "number" && Number.isFinite(scenario.stepCount)
+          ? scenario.stepCount
+          : 0,
+      relatedBindingIds: Array.isArray(scenario.relatedBindingIds)
+        ? scenario.relatedBindingIds.filter((value): value is string => typeof value === "string")
+        : [],
+      relatedScriptIds: Array.isArray(scenario.relatedScriptIds)
+        ? scenario.relatedScriptIds.filter((value): value is string => typeof value === "string")
+        : [],
+      relatedScriptKeys: Array.isArray(scenario.relatedScriptKeys)
+        ? scenario.relatedScriptKeys.filter((value): value is string => typeof value === "string")
+        : [],
+      relatedScriptPaths: Array.isArray(scenario.relatedScriptPaths)
+        ? scenario.relatedScriptPaths.filter((value): value is string => typeof value === "string")
+        : [],
+      sources: Array.isArray(scenario.sources)
+        ? scenario.sources.filter((value): value is string => typeof value === "string")
+        : [],
+      eventTypes: Array.isArray(scenario.eventTypes)
+        ? scenario.eventTypes.filter((value): value is string => typeof value === "string")
+        : [],
+      steps: Array.isArray(scenario.steps)
+        ? scenario.steps.map((step, stepIndex) => {
+            const rawStep = step as Record<string, unknown>;
+            const rawEvent =
+              rawStep.event && typeof rawStep.event === "object"
+                ? (rawStep.event as Record<string, unknown>)
+                : null;
+
+            return {
+              index:
+                typeof rawStep.index === "number" && Number.isFinite(rawStep.index)
+                  ? rawStep.index
+                  : stepIndex,
+              id:
+                typeof rawStep.id === "string" && rawStep.id.trim()
+                  ? rawStep.id
+                  : `step-${stepIndex + 1}`,
+              title:
+                typeof rawStep.title === "string" && rawStep.title.trim()
+                  ? rawStep.title
+                  : undefined,
+              event: rawEvent
+                ? {
+                    id:
+                      typeof rawEvent.id === "string" && rawEvent.id.trim()
+                        ? rawEvent.id
+                        : `event-${stepIndex + 1}`,
+                    orgId:
+                      typeof rawEvent.orgId === "string" && rawEvent.orgId.trim()
+                        ? rawEvent.orgId
+                        : undefined,
+                    source:
+                      typeof rawEvent.source === "string" && rawEvent.source.trim()
+                        ? rawEvent.source
+                        : "unknown",
+                    eventType:
+                      typeof rawEvent.eventType === "string" && rawEvent.eventType.trim()
+                        ? rawEvent.eventType
+                        : "unknown",
+                    occurredAt:
+                      typeof rawEvent.occurredAt === "string" && rawEvent.occurredAt.trim()
+                        ? rawEvent.occurredAt
+                        : "",
+                    payload:
+                      rawEvent.payload && typeof rawEvent.payload === "object"
+                        ? (rawEvent.payload as Record<string, unknown>)
+                        : {},
+                    actor:
+                      rawEvent.actor && typeof rawEvent.actor === "object"
+                        ? (rawEvent.actor as {
+                            type?: string;
+                            externalId?: string;
+                            [key: string]: unknown;
+                          })
+                        : null,
+                    subject:
+                      rawEvent.subject && typeof rawEvent.subject === "object"
+                        ? (rawEvent.subject as {
+                            orgId?: string;
+                            userId?: string;
+                            [key: string]: unknown;
+                          })
+                        : null,
+                  }
+                : {
+                    id: `event-${stepIndex + 1}`,
+                    source: "unknown",
+                    eventType: "unknown",
+                    occurredAt: "",
+                    payload: {},
+                    actor: null,
+                    subject: null,
+                  },
+              matchedBindingIds: Array.isArray(rawStep.matchedBindingIds)
+                ? rawStep.matchedBindingIds.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              matchedScriptIds: Array.isArray(rawStep.matchedScriptIds)
+                ? rawStep.matchedScriptIds.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              matchedScriptKeys: Array.isArray(rawStep.matchedScriptKeys)
+                ? rawStep.matchedScriptKeys.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              matchedScriptPaths: Array.isArray(rawStep.matchedScriptPaths)
+                ? rawStep.matchedScriptPaths.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+            };
+          })
+        : [],
+    }))
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.relativePath.localeCompare(right.relativePath),
+    );
+};
+
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
@@ -121,15 +271,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throwOrganisationNotFound(params.orgId);
   }
 
-  const [scriptsResult, bindingsResult, identityResult] = await Promise.all([
+  const [scriptsResult, bindingsResult, identityResult, scenariosResult] = await Promise.all([
     fetchAutomationScripts(request, context, params.orgId),
     fetchAutomationTriggerBindings(request, context, params.orgId),
     fetchAutomationIdentityBindings(request, context, params.orgId),
+    fetchAutomationScenarios(request, context, params.orgId),
   ]);
 
   const scripts = normalizeScripts(scriptsResult.scripts);
   const triggerBindings = normalizeTriggerBindings(bindingsResult.bindings);
   const identityBindings = normalizeIdentityBindings(identityResult.identityBindings);
+  const scenarios = normalizeScenarios(scenariosResult.scenarios);
 
   return {
     orgId: params.orgId,
@@ -137,9 +289,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     scripts,
     triggerBindings,
     identityBindings,
+    scenarios,
     scriptsError: scriptsResult.scriptsError,
     triggerBindingsError: bindingsResult.bindingsError,
     identityBindingsError: identityResult.identityBindingsError,
+    scenariosError: scenariosResult.scenariosError,
   };
 }
 

@@ -6,8 +6,13 @@ import {
   bindAutomationIdentityActor,
   lookupAutomationIdentityBinding,
 } from "../bash-runtime/automations-bash-runtime";
-import { loadAutomationCatalogFromConfig } from "./catalog";
+import { loadAutomationCatalogFromConfig, resolveAutomationFileSystem } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
+import {
+  listAutomationScenarios,
+  resolveAutomationScenarioPath,
+  runAutomationScenarioFile,
+} from "./scenario";
 import { automationFragmentSchema } from "./schema";
 
 const identityBindingOutputSchema = z.object({
@@ -70,6 +75,63 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
                 message:
                   cause instanceof Error ? cause.message : "Failed to load automation bindings.",
                 code: "AUTOMATION_CATALOG_INVALID",
+              },
+              500,
+            );
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/scenarios",
+        outputSchema: z.array(z.record(z.string(), z.unknown())),
+        handler: async function ({ query }, { json, error }) {
+          try {
+            const fileSystem = await resolveAutomationFileSystem(config, {
+              orgId: getOrgIdFromRequestQuery(query),
+              purpose: "route",
+            });
+
+            return json(await listAutomationScenarios(fileSystem));
+          } catch (cause) {
+            return error(
+              {
+                message:
+                  cause instanceof Error ? cause.message : "Failed to load automation scenarios.",
+                code: "AUTOMATION_SCENARIOS_INVALID",
+              },
+              500,
+            );
+          }
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/scenarios/run",
+        inputSchema: z.object({
+          path: z.string().trim().min(1),
+        }),
+        outputSchema: z.record(z.string(), z.unknown()),
+        handler: async function ({ input, query }, { json, error }) {
+          try {
+            const payload = await input.valid();
+            const fileSystem = await resolveAutomationFileSystem(config, {
+              orgId: getOrgIdFromRequestQuery(query),
+              purpose: "route",
+            });
+
+            return json(
+              await runAutomationScenarioFile({
+                fileSystem,
+                path: resolveAutomationScenarioPath(payload.path),
+              }),
+            );
+          } catch (cause) {
+            return error(
+              {
+                message:
+                  cause instanceof Error ? cause.message : "Failed to run automation scenario.",
+                code: "AUTOMATION_SCENARIO_RUN_FAILED",
               },
               500,
             );

@@ -155,14 +155,35 @@ if [ -z "$pi_session_id" ] || [ "$terminal_session" = "true" ]; then
       --value "$new_session_id" \
       --description "Pi session for Telegram chat $AUTOMATION_EXTERNAL_ACTOR_ID" \
       >/dev/null || exit 1
-  
+
+    pi_session_id="$new_session_id"
+
     if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" = "/pi" ]; then
       event.reply --text "Created Pi session: $new_session_id"
+      exit 0
     fi
-    exit 0
+  else
+    exit 1
   fi
+fi
 
-  exit 1
+if [ -z "\${AUTOMATION_TELEGRAM_TEXT:-}" ]; then
+  exit 0
+fi
+
+if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" = "/pi" ]; then
+  exit 0
+fi
+
+assistant_text="$(
+  pi.session.turn \
+    --session-id "$pi_session_id" \
+    --text "$AUTOMATION_TELEGRAM_TEXT" \
+    --print assistantText
+)" || exit 1
+
+if [ -n "$assistant_text" ]; then
+  event.reply --text "$assistant_text"
 fi
 
 exit 0
@@ -192,10 +213,23 @@ Useful optional fields:
 
 - \`env\`: global bash env overrides applied to every step
 - \`initialState\`: starting identity bindings, claims, Pi sessions, replies, and emitted events
-- \`commandMocks\`: ordered mock results for custom commands like \`event.reply\`, \`otp.identity.create-claim\`, \`pi.session.create\`, and \`pi.session.get\`
+- \`commandMocks\`: ordered mock results for custom commands like \`event.reply\`, \`otp.identity.create-claim\`, \`pi.session.create\`, \`pi.session.get\`, and \`pi.session.turn\`
 - \`expectations\`: documentation-only examples of the transcript or final state you expect
 
 The simulator keeps state across steps, records a normalized transcript, and stops a step when a binding exits non-zero.
+
+To bridge an external automation event into an existing Pi session, use \`pi.session.turn\` with a stable session binding and print the final assistant text:
+
+\`\`\`bash
+assistant_text="$(
+  pi.session.turn \\
+    --session-id "$pi_session_id" \\
+    --text "$AUTOMATION_TELEGRAM_TEXT" \\
+    --print assistantText
+)"
+
+event.reply --text "$assistant_text"
+\`\`\`
 `;
 
 const STARTER_TELEGRAM_CLAIM_LINKING_SCENARIO = {
@@ -292,9 +326,9 @@ const STARTER_TELEGRAM_CLAIM_LINKING_SCENARIO = {
 
 const STARTER_TELEGRAM_PI_SESSION_SCENARIO = {
   version: 1,
-  name: "Starter Telegram /pi session bootstrap",
+  name: "Starter Telegram Pi session bootstrap + turns",
   description:
-    "Ensures the real starter /pi script can create and bind a Pi session for a linked Telegram user.",
+    "Ensures the real starter Telegram Pi script can create and bind a Pi session, then forward follow-up Telegram messages into that session.",
   env: {
     AUTOMATION_PI_DEFAULT_AGENT: "default::openai::gpt-5-mini",
   },
@@ -328,6 +362,35 @@ const STARTER_TELEGRAM_PI_SESSION_SCENARIO = {
       ],
       onExhausted: "default",
     },
+    "pi.session.turn": {
+      results: [
+        {
+          data: {
+            id: "session-for-default::openai::gpt-5-mini",
+            agent: "default::openai::gpt-5-mini",
+            status: "waiting",
+            steeringMode: "one-at-a-time",
+            workflow: {
+              status: "waiting",
+            },
+            assistantText: "Pi says hello from the linked Telegram session.",
+          },
+        },
+        {
+          data: {
+            id: "session-for-default::openai::gpt-5-mini",
+            agent: "default::openai::gpt-5-mini",
+            status: "waiting",
+            steeringMode: "one-at-a-time",
+            workflow: {
+              status: "waiting",
+            },
+            assistantText: "Pi continues the original conversation.",
+          },
+        },
+      ],
+      onExhausted: "default",
+    },
   },
   steps: [
     {
@@ -348,9 +411,49 @@ const STARTER_TELEGRAM_PI_SESSION_SCENARIO = {
         },
       },
     },
+    {
+      id: "telegram-follow-up",
+      event: {
+        id: "event-telegram-pi-2",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:11:00.000Z",
+        payload: {
+          text: "Hello Pi",
+          chatId: "chat-1",
+        },
+        actor: {
+          type: "external",
+          externalId: "chat-1",
+        },
+      },
+    },
+    {
+      id: "telegram-follow-up-2",
+      event: {
+        id: "event-telegram-pi-3",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:12:00.000Z",
+        payload: {
+          text: "And one more thing",
+          chatId: "chat-1",
+        },
+        actor: {
+          type: "external",
+          externalId: "chat-1",
+        },
+      },
+    },
   ],
   expectations: {
-    replies: ["Created Pi session: session-for-default::openai::gpt-5-mini"],
+    replies: [
+      "Created Pi session: session-for-default::openai::gpt-5-mini",
+      "Pi says hello from the linked Telegram session.",
+      "Pi continues the original conversation.",
+    ],
     identityBindings: [
       {
         source: "telegram-pi-session",

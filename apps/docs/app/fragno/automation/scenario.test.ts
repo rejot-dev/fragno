@@ -128,4 +128,93 @@ describe("automation scenario simulator", () => {
     );
     expect(result.finalState.replies).toEqual([]);
   });
+
+  test("synthesizes pi.session.turn results and persists the updated Pi session state", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([
+        {
+          id: "pi-turn",
+          enabled: true,
+          script: {
+            key: "pi-turn",
+            name: "Pi turn",
+            path: "scripts/pi-turn.sh",
+          },
+        },
+      ]),
+      "automations/scripts/pi-turn.sh": [
+        'assistant_text="$(pi.session.turn --session-id session-1 --text "$AUTOMATION_TELEGRAM_TEXT" --print assistantText)"',
+        'event.reply --text "$assistant_text"',
+      ].join("\n"),
+    });
+
+    const result = await simulateAutomationScenario({
+      fileSystem,
+      scenario: defineAutomationScenario({
+        version: 1,
+        name: "pi-turn",
+        initialState: {
+          piSessions: [
+            {
+              id: "session-1",
+              agent: "assistant",
+              name: "Support",
+              status: "waiting",
+              steeringMode: "one-at-a-time",
+              metadata: null,
+              tags: ["telegram"],
+              workflow: {
+                status: "waiting",
+              },
+              messages: [],
+              summaries: [],
+              turn: 0,
+              phase: "waiting-for-user",
+              waitingFor: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        steps: [
+          {
+            event: createTelegramMessageEvent({
+              id: "pi-turn-1",
+              payload: {
+                text: "hello from telegram",
+                chatId: "chat-1",
+              },
+            }),
+          },
+        ],
+      }),
+    });
+
+    expect(result.finalState.replies.map((reply) => reply.text)).toEqual([
+      "Simulated assistant reply to: hello from telegram",
+    ]);
+    expect(result.finalState.piSessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "session-1",
+          workflow: expect.objectContaining({
+            status: "waiting",
+          }),
+          assistantText: "Simulated assistant reply to: hello from telegram",
+        }),
+      ]),
+    );
+    expect(result.transcript.steps[0]?.bindingRuns[0]?.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "pi.session.turn",
+          args: expect.objectContaining({
+            sessionId: "session-1",
+            text: "hello from telegram",
+          }),
+          stdout: "Simulated assistant reply to: hello from telegram\n",
+        }),
+      ]),
+    );
+  });
 });

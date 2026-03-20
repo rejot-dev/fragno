@@ -1,7 +1,7 @@
 import { Bash, InMemoryFs, defineCommand } from "just-bash";
 import { z } from "zod";
 
-import type { IFileSystem } from "@/files";
+import { normalizeRelativePath, type IFileSystem } from "@/files";
 
 import { PI_COMMAND_SPEC_LIST, type PiParsedCommandByName } from "../bash-runtime/pi-bash-runtime";
 import {
@@ -128,6 +128,37 @@ export type AutomationScenarioStep = {
   expectations?: unknown;
   example?: unknown;
   [key: string]: unknown;
+};
+
+export type AutomationScenarioCatalogStepEntry = {
+  index: number;
+  id: string;
+  title?: string;
+  event: AutomationEvent;
+  matchedBindingIds: string[];
+  matchedScriptIds: string[];
+  matchedScriptKeys: string[];
+  matchedScriptPaths: string[];
+};
+
+export type AutomationScenarioCatalogEntry = {
+  id: string;
+  path: string;
+  relativePath: string;
+  fileName: string;
+  name: string;
+  description?: string;
+  env: Record<string, string>;
+  initialState?: unknown;
+  commandMocks?: unknown;
+  stepCount: number;
+  relatedBindingIds: string[];
+  relatedScriptIds: string[];
+  relatedScriptKeys: string[];
+  relatedScriptPaths: string[];
+  sources: string[];
+  eventTypes: string[];
+  steps: AutomationScenarioCatalogStepEntry[];
 };
 
 export type AutomationSimulationCommandTranscript = {
@@ -344,6 +375,7 @@ const scenarioCommandMocksSchema = z
     "pi.session.create": commandMockSchema.optional(),
     "pi.session.get": commandMockSchema.optional(),
     "pi.session.list": commandMockSchema.optional(),
+    "pi.session.turn": commandMockSchema.optional(),
   })
   .partial();
 
@@ -727,6 +759,152 @@ const normalizePiSessionFromData = (
   });
 };
 
+const findPiSession = (state: AutomationSimulationState, sessionId: string) =>
+  state.piSessions.find((entry) => entry.id === sessionId);
+
+const createSimulatedAssistantMessage = (text: string, occurredAt: string) => ({
+  role: "assistant",
+  content: [{ type: "text", text }],
+  api: "simulated",
+  provider: "simulator",
+  model: "simulator",
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  },
+  stopReason: "stop",
+  timestamp: Date.parse(occurredAt) || Date.now(),
+});
+
+const createDefaultPiTurnResult = (
+  state: AutomationSimulationState,
+  event: AutomationEvent,
+  args: {
+    sessionId: string;
+    text: string;
+    steeringMode?: string;
+  },
+) => {
+  const existing = findPiSession(state, args.sessionId);
+  if (!existing) {
+    throw new Error(`Pi session '${args.sessionId}' was not found`);
+  }
+
+  const assistantText = `Simulated assistant reply to: ${args.text}`;
+  const messages = Array.isArray(existing.messages) ? clone(existing.messages) : [];
+  messages.push(createSimulatedAssistantMessage(assistantText, event.occurredAt));
+
+  const summaries = Array.isArray(existing.summaries) ? clone(existing.summaries) : [];
+  const existingTurn = typeof existing.turn === "number" ? existing.turn : 0;
+  summaries.push({
+    turn: existingTurn,
+    assistant: null,
+    summary: assistantText,
+  });
+
+  return ensurePiSessionShape({
+    ...clone(existing),
+    id: args.sessionId,
+    status: "waiting",
+    steeringMode: args.steeringMode ?? existing.steeringMode ?? "one-at-a-time",
+    workflow: {
+      ...(existing.workflow && typeof existing.workflow === "object"
+        ? clone(existing.workflow)
+        : {}),
+      status: "waiting",
+    },
+    messages,
+    summaries,
+    phase: "waiting-for-user",
+    waitingFor: null,
+    updatedAt: event.occurredAt,
+    assistantText,
+    messageStatus: "active",
+    stream: [
+      {
+        layer: "system",
+        type: "snapshot",
+        turn: existingTurn,
+        phase: "running-agent",
+        waitingFor: null,
+        replayCount: 0,
+      },
+      {
+        layer: "system",
+        type: "settled",
+        turn: existingTurn,
+        status: "waiting-for-user",
+      },
+    ],
+    terminalFrame: {
+      layer: "system",
+      type: "settled",
+      turn: existingTurn,
+      status: "waiting-for-user",
+    },
+  });
+};
+
+const normalizePiTurnResultSession = (
+  state: AutomationSimulationState,
+  event: AutomationEvent,
+  args: {
+    sessionId: string;
+    text: string;
+    steeringMode?: string;
+  },
+  data: unknown,
+): AutomationSimulationPiSession => {
+  const fallback = createDefaultPiTurnResult(state, event, args);
+  if (!data || typeof data !== "object") {
+    return fallback;
+  }
+
+  const record = clone(data as Record<string, unknown>);
+  return ensurePiSessionShape({
+    ...fallback,
+    ...record,
+    id: typeof record.id === "string" && record.id.trim() ? record.id : fallback.id,
+    agent: typeof record.agent === "string" && record.agent.trim() ? record.agent : fallback.agent,
+    name:
+      typeof record.name === "string" || record.name === null
+        ? (record.name as string | null)
+        : fallback.name,
+    status:
+      typeof record.status === "string" && record.status.trim()
+        ? record.status
+        : (getNestedStatus(record) ?? fallback.status),
+    steeringMode:
+      typeof record.steeringMode === "string" && record.steeringMode.trim()
+        ? record.steeringMode
+        : fallback.steeringMode,
+    metadata: "metadata" in record ? clone(record.metadata) : fallback.metadata,
+    tags: Array.isArray(record.tags) ? record.tags.map((tag) => String(tag)) : fallback.tags,
+    workflow:
+      record.workflow && typeof record.workflow === "object"
+        ? clone(record.workflow as Record<string, unknown>)
+        : fallback.workflow,
+    createdAt:
+      typeof record.createdAt === "string" && record.createdAt.trim()
+        ? record.createdAt
+        : fallback.createdAt,
+    updatedAt:
+      typeof record.updatedAt === "string" && record.updatedAt.trim()
+        ? record.updatedAt
+        : fallback.updatedAt,
+  });
+};
+
 const applySuccessfulCommandState = (
   context: CommandExecutionContext,
   command: ScenarioParsedCommand,
@@ -782,6 +960,13 @@ const applySuccessfulCommandState = (
       upsertPiSession(
         context.state,
         normalizePiSessionFromData(context.state, context.event, command.args, result.data),
+      );
+      break;
+    }
+    case "pi.session.turn": {
+      upsertPiSession(
+        context.state,
+        normalizePiTurnResultSession(context.state, context.event, command.args, result.data),
       );
       break;
     }
@@ -927,6 +1112,13 @@ const executeBuiltinCommand = async (
           typeof command.args.limit === "number" ? sessions.slice(0, command.args.limit) : sessions,
       };
     }
+    case "pi.session.turn": {
+      const result = createDefaultPiTurnResult(context.state, context.event, command.args);
+      upsertPiSession(context.state, result);
+      return {
+        data: clone(result),
+      };
+    }
   }
 };
 
@@ -976,7 +1168,6 @@ const buildBashEnv = ({
       AUTOMATION_SCRIPT_PATH: binding.scriptPath,
       AUTOMATION_SCRIPT_VERSION:
         binding.scriptVersion != null ? String(binding.scriptVersion) : undefined,
-      AUTOMATION_SCRIPT_AGENT: binding.scriptAgent ?? undefined,
       AUTOMATION_TRIGGER_ORDER:
         triggerOrder != null && Number.isFinite(triggerOrder) ? String(triggerOrder) : undefined,
       ...binding.scriptEnv,
@@ -1196,6 +1387,105 @@ export const loadAutomationScenarioFile = async (
   }
 
   return parseScenario(parsed);
+};
+
+export const resolveAutomationScenarioPath = (relativePath: string) => {
+  const normalized = normalizeRelativePath(relativePath.trim());
+  if (!normalized || !normalized.endsWith(".json")) {
+    throw new Error(
+      "Automation scenario paths must reference a .json file under simulator/scenarios.",
+    );
+  }
+
+  return `${AUTOMATION_SIMULATION_SCENARIOS_ROOT}/${normalized}`;
+};
+
+export const listAutomationScenarios = async (
+  fileSystem: IFileSystem,
+): Promise<AutomationScenarioCatalogEntry[]> => {
+  const catalog = await loadAutomationCatalog(fileSystem);
+
+  let names: string[];
+  try {
+    names = await fileSystem.readdir(AUTOMATION_SIMULATION_SCENARIOS_ROOT);
+  } catch {
+    return [];
+  }
+
+  const entries = await Promise.all(
+    names
+      .filter((name) => name.toLowerCase().endsWith(".json"))
+      .sort((left, right) => left.localeCompare(right))
+      .map(async (fileName) => {
+        const relativePath = normalizeRelativePath(fileName);
+        const path = resolveAutomationScenarioPath(relativePath);
+        const scenario = await loadAutomationScenarioFile(fileSystem, path);
+        const relatedBindingIds = new Set<string>();
+        const relatedScriptIds = new Set<string>();
+        const relatedScriptKeys = new Set<string>();
+        const relatedScriptPaths = new Set<string>();
+        const sources = new Set<string>();
+        const eventTypes = new Set<string>();
+
+        const steps = scenario.steps.map((step, index) => {
+          sources.add(step.event.source);
+          eventTypes.add(step.event.eventType);
+
+          const matchingBindings = getAutomationBindingsForEvent(catalog, step.event);
+          const matchedBindingIds = new Set<string>();
+          const matchedScriptIds = new Set<string>();
+          const matchedScriptKeys = new Set<string>();
+          const matchedScriptPaths = new Set<string>();
+
+          for (const binding of matchingBindings) {
+            relatedBindingIds.add(binding.id);
+            relatedScriptIds.add(binding.scriptId);
+            relatedScriptKeys.add(binding.scriptKey);
+            relatedScriptPaths.add(binding.scriptPath);
+            matchedBindingIds.add(binding.id);
+            matchedScriptIds.add(binding.scriptId);
+            matchedScriptKeys.add(binding.scriptKey);
+            matchedScriptPaths.add(binding.scriptPath);
+          }
+
+          return {
+            index,
+            id: step.id ?? `step-${index + 1}`,
+            title: step.title,
+            event: clone(step.event),
+            matchedBindingIds: Array.from(matchedBindingIds).sort(),
+            matchedScriptIds: Array.from(matchedScriptIds).sort(),
+            matchedScriptKeys: Array.from(matchedScriptKeys).sort(),
+            matchedScriptPaths: Array.from(matchedScriptPaths).sort(),
+          } satisfies AutomationScenarioCatalogStepEntry;
+        });
+
+        return {
+          id: `scenario:${relativePath}`,
+          path,
+          relativePath,
+          fileName,
+          name: scenario.name,
+          description: scenario.description,
+          env: clone(scenario.env ?? {}),
+          initialState: scenario.initialState ? clone(scenario.initialState) : undefined,
+          commandMocks: scenario.commandMocks ? clone(scenario.commandMocks) : undefined,
+          stepCount: scenario.steps.length,
+          relatedBindingIds: Array.from(relatedBindingIds).sort(),
+          relatedScriptIds: Array.from(relatedScriptIds).sort(),
+          relatedScriptKeys: Array.from(relatedScriptKeys).sort(),
+          relatedScriptPaths: Array.from(relatedScriptPaths).sort(),
+          sources: Array.from(sources).sort(),
+          eventTypes: Array.from(eventTypes).sort(),
+          steps,
+        } satisfies AutomationScenarioCatalogEntry;
+      }),
+  );
+
+  return entries.sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) || left.relativePath.localeCompare(right.relativePath),
+  );
 };
 
 export const simulateAutomationScenario = async ({

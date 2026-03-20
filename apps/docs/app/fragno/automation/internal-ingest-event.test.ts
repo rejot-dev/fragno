@@ -516,7 +516,45 @@ describe("automation internalIngestEvent", () => {
     ]);
   });
 
-  test("uses the starter Telegram /pi automation script from the workspace filesystem", async () => {
+  test("uses the starter Telegram Pi automation script from the workspace filesystem for bootstrap + follow-up turns", async () => {
+    const runTurnMock = vi.fn(async ({ sessionId, text }: { sessionId: string; text: string }) => ({
+      id: sessionId,
+      name: "Telegram chat-1",
+      status: "waiting" as const,
+      agent: "default::openai::gpt-5-mini",
+      steeringMode: "one-at-a-time" as const,
+      metadata: null,
+      tags: ["telegram", "auto-session"],
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      workflow: {
+        status: "waiting" as const,
+      },
+      messages: [],
+      events: [],
+      trace: [],
+      summaries: [],
+      turn: 0,
+      phase: "waiting-for-user" as const,
+      waitingFor: null,
+      assistantText: `agent:${text}`,
+      messageStatus: "active" as const,
+      stream: [
+        {
+          layer: "system" as const,
+          type: "settled" as const,
+          turn: 0,
+          status: "waiting-for-user" as const,
+        },
+      ],
+      terminalFrame: {
+        layer: "system" as const,
+        type: "settled" as const,
+        turn: 0,
+        status: "waiting-for-user" as const,
+      },
+    }));
+
     const createPiAutomationContext = vi.fn(() => ({
       runtime: {
         createSession: createPiSessionMock,
@@ -526,6 +564,7 @@ describe("automation internalIngestEvent", () => {
         listSessions: vi.fn(async () => {
           throw new Error("unused in test");
         }),
+        runTurn: runTurnMock,
       } satisfies PiBashRuntime,
       bashEnv: {
         AUTOMATION_PI_DEFAULT_AGENT: "default::openai::gpt-5-mini",
@@ -556,7 +595,7 @@ describe("automation internalIngestEvent", () => {
         throw new Error("Expected identity binding bind response");
       }
 
-      const result = await starterFragment.fragment.callServices(() =>
+      const bootstrapResult = await starterFragment.fragment.callServices(() =>
         starterFragment.services.ingestEvent({
           id: "starter-telegram-pi-1",
           orgId: "org-1",
@@ -576,9 +615,36 @@ describe("automation internalIngestEvent", () => {
 
       await drainDurableHooks(starterFragment.fragment);
 
-      expect(result).toEqual({
+      const followUpResult = await starterFragment.fragment.callServices(() =>
+        starterFragment.services.ingestEvent({
+          id: "starter-telegram-pi-2",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: new Date("2026-01-01T00:01:00.000Z").toISOString(),
+          payload: {
+            text: "Hello Pi",
+            chatId: "chat-1",
+          },
+          actor: {
+            type: "external",
+            externalId: "chat-1",
+          },
+        }),
+      );
+
+      await drainDurableHooks(starterFragment.fragment);
+
+      expect(bootstrapResult).toEqual({
         accepted: true,
         eventId: "starter-telegram-pi-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+      });
+      expect(followUpResult).toEqual({
+        accepted: true,
+        eventId: "starter-telegram-pi-2",
         orgId: "org-1",
         source: "telegram",
         eventType: "message.received",
@@ -592,12 +658,29 @@ describe("automation internalIngestEvent", () => {
         }),
         idempotencyKey: expect.any(String),
       });
+      expect(createPiAutomationContext).toHaveBeenCalledWith({
+        event: expect.objectContaining({
+          id: "starter-telegram-pi-2",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+        }),
+        idempotencyKey: expect.any(String),
+      });
       expect(createPiSessionMock).toHaveBeenCalledWith({
         agent: "default::openai::gpt-5-mini",
         name: "Telegram chat-1",
         tags: ["telegram", "auto-session"],
       });
-      expect(replyCalls).toEqual(["Created Pi session: session-for-default::openai::gpt-5-mini"]);
+      expect(runTurnMock).toHaveBeenCalledWith({
+        sessionId: "session-for-default::openai::gpt-5-mini",
+        text: "Hello Pi",
+        steeringMode: undefined,
+      });
+      expect(replyCalls).toEqual([
+        "Created Pi session: session-for-default::openai::gpt-5-mini",
+        "agent:Hello Pi",
+      ]);
     } finally {
       await starterContext.test.cleanup();
     }
