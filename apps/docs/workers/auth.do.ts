@@ -6,7 +6,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
 
-import { createAuthServer, type AuthFragment } from "@/fragno/auth";
+import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
 import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,

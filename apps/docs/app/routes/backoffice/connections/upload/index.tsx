@@ -1,7 +1,7 @@
 import { Link, redirect, useOutletContext, type LoaderFunctionArgs } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import { formatTimestamp } from "./shared";

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 
-import { withSinclairSchema } from "./pi/typebox-compat";
+import { withSinclairSchema } from "./typebox-compat";
 
 export const bashParametersSchema = withSinclairSchema(
   Type.Object({

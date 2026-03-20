@@ -1,7 +1,7 @@
-import type { BashCommandFactoryInput } from "../bash-host";
-import { createAutomationCommands } from "./commands/bash-adapter";
-import { OTP_COMMAND_SPEC_LIST } from "./commands/registry";
-import type { IdentityCreateClaimArgs, OtpCommandHandlers } from "./commands/types";
+import { createAutomationCommands } from "../automation/commands/bash-adapter";
+import { OTP_COMMAND_SPEC_LIST } from "../automation/commands/registry";
+import type { IdentityCreateClaimArgs, OtpCommandHandlers } from "../automation/commands/types";
+import type { BashCommandFactoryInput } from "./bash-host";
 
 export type AutomationIdentityClaimRecord = {
   url: string;

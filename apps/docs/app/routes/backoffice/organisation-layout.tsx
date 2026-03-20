@@ -1,6 +1,6 @@
 import { Outlet } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/organisation-layout";
 import { buildBackofficeLoginPath } from "./auth-navigation";

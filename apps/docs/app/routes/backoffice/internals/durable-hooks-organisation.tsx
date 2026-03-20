@@ -12,7 +12,7 @@ import {
   getUploadDurableObject,
 } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";

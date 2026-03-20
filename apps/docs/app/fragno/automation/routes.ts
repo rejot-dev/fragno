@@ -5,7 +5,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import {
   bindAutomationIdentityActor,
   lookupAutomationIdentityBinding,
-} from "./automations-bash-runtime";
+} from "../bash-runtime/automations-bash-runtime";
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import { automationFragmentSchema } from "./schema";

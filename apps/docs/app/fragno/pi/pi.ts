@@ -23,10 +23,10 @@ import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import {
   createRouteBackedAutomationsBashRuntime,
   type AutomationsBashRuntime,
-} from "./automation/automations-bash-runtime";
-import { createOtpBashRuntime, type OtpBashRuntime } from "./automation/otp-bash-runtime";
-import { createBashHost } from "./bash-host";
-import { createPiRouteBashRuntime, type PiBashRuntime } from "./pi-bash-runtime";
+} from "../bash-runtime/automations-bash-runtime";
+import { createBashHost } from "../bash-runtime/bash-host";
+import { createOtpBashRuntime, type OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
+import { createPiRouteBashRuntime, type PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
@@ -329,4 +329,4 @@ export const createPiRuntime = (options: {
   };
 };
 
-export { createPiRouteBashRuntime } from "./pi-bash-runtime";
+export { createPiRouteBashRuntime } from "../bash-runtime/pi-bash-runtime";

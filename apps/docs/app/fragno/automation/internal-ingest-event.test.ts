@@ -19,7 +19,7 @@ import {
 } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
-import type { PiBashRuntime } from "../pi-bash-runtime";
+import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import type { AutomationEvent, AutomationSourceAdapterRegistry } from "./contracts";
 import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
 import { automationFragmentRoutes } from "./routes";

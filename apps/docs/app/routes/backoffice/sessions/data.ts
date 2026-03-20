@@ -9,7 +9,7 @@ import type {
 } from "@fragno-dev/pi-fragment";
 
 import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
-import type { PiConfigState } from "@/fragno/pi-shared";
+import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { z } from "zod";
 
-import type { AutomationEvent, AutomationSourceAdapterRegistry } from "./contracts";
+import type { AutomationEvent, AutomationSourceAdapterRegistry } from "../automation/contracts";
 import { createEventBashRuntime } from "./event-bash-runtime";
 
 const createTelegramAdapter = (

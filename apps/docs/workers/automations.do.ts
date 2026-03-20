@@ -9,19 +9,19 @@ import {
   createAutomationsDispatcher,
   createAutomationsRuntime,
   type AutomationsRuntime,
-} from "@/fragno/automations";
+} from "@/fragno/automation/automations";
 import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
-import { createPiRouteBashRuntime } from "@/fragno/pi";
+import { createPiRouteBashRuntime } from "@/fragno/pi/pi";
 import {
   PI_MODEL_CATALOG,
   createPiAgentName,
   resolvePiHarnesses,
   type PiConfigState,
-} from "@/fragno/pi-shared";
+} from "@/fragno/pi/pi-shared";
 import { createTelegramSourceAdapter } from "@/fragno/telegram";
 
 const resolveDefaultPiAgent = (configState: PiConfigState) => {

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLoaderData } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workflows-organisation-detail";
 import {

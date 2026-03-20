@@ -7,8 +7,8 @@ import { JsonForms } from "@jsonforms/react";
 import { Turnstile } from "@marsidev/react-turnstile";
 
 import { Button } from "@/components/ui/button";
-import { formsClient } from "@/fragno/forms.client";
-import { surveyForm, SURVEY_FORM_SLUG } from "@/fragno/static-forms";
+import { formsClient } from "@/fragno/forms/forms.client";
+import { surveyForm, SURVEY_FORM_SLUG } from "@/fragno/forms/static-forms";
 
 interface SurveyAboutFormsProps {
   turnstileSitekey: string;

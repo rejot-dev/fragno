@@ -1,7 +1,7 @@
 import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
 import type { ReactNode } from "react";
 
-import type { AuthMeData } from "@/fragno/auth-client";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { BackofficeSidebar } from "./sidebar";

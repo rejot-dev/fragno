@@ -1,6 +1,6 @@
 import { useOutletContext } from "react-router";
 
-import { resolvePiHarnesses } from "@/fragno/pi-shared";
+import { resolvePiHarnesses } from "@/fragno/pi/pi-shared";
 
 import type { PiLayoutContext } from "./shared";
 

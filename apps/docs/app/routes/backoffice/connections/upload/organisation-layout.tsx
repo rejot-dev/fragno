@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { throwOrganisationNotFound } from "../../route-errors";
 import { fetchUploadConfig } from "./data";

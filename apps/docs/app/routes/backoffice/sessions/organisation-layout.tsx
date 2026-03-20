@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth-server";
-import type { PiConfigState } from "@/fragno/pi-shared";
+import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";

@@ -2,7 +2,7 @@ import { Link, type RouterContextProvider } from "react-router";
 
 import { getOtpDurableObject } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 

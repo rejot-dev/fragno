@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
+import { authClient } from "@/fragno/auth/auth-client";
 
 import type { OrganisationLayoutContext } from "./organisation-layout";
 import {

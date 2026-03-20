@@ -3,7 +3,7 @@ import "../../backoffice.css";
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/sign-up";
 
