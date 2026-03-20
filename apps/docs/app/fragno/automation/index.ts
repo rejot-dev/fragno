@@ -50,6 +50,15 @@ export {
   loadAutomationCatalogFromConfig,
   resolveAutomationFileSystem,
 } from "./catalog";
+export {
+  AUTOMATION_SIMULATION_ROOT,
+  AUTOMATION_SIMULATION_SCENARIOS_ROOT,
+  automationScenarioSchema,
+  defineAutomationScenario,
+  loadAutomationScenarioFile,
+  runAutomationScenarioFile,
+  simulateAutomationScenario,
+} from "./scenario";
 export type {
   AutomationBindingCatalogEntry,
   AutomationCatalog,
@@ -74,6 +83,25 @@ export type {
   AutomationSourceAdapter,
   AutomationSourceAdapterRegistry,
 } from "./contracts";
+export type {
+  AutomationScenarioCommandMock,
+  AutomationScenarioCommandName,
+  AutomationScenarioDefinition,
+  AutomationScenarioMockResult,
+  AutomationScenarioSourceEnvProjector,
+  AutomationScenarioStep,
+  AutomationSimulationBindingTranscript,
+  AutomationSimulationClaim,
+  AutomationSimulationCommandTranscript,
+  AutomationSimulationIdentityBinding,
+  AutomationSimulationPiSession,
+  AutomationSimulationReply,
+  AutomationSimulationResult,
+  AutomationSimulationState,
+  AutomationSimulationStepTranscript,
+  RunAutomationScenarioFileOptions,
+  SimulateAutomationScenarioOptions,
+} from "./scenario";
 export {
   bindAutomationIdentityActor,
   createAutomationsBashRuntime,

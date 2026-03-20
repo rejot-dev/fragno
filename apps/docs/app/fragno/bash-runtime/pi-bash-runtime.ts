@@ -23,7 +23,7 @@ import type { BashCommandFactoryInput } from "./bash-host";
 
 const PI_COMMAND_NAMES = ["pi.session.create", "pi.session.get", "pi.session.list"] as const;
 
-type PiCommandName = (typeof PI_COMMAND_NAMES)[number];
+export type PiCommandName = (typeof PI_COMMAND_NAMES)[number];
 
 export type PiSessionCreateArgs = {
   agent: string;
@@ -44,7 +44,7 @@ export type PiSessionListArgs = {
   limit?: number;
 };
 
-type PiParsedCommandByName = {
+export type PiParsedCommandByName = {
   "pi.session.create": ParsedCommand<"pi.session.create", PiSessionCreateArgs>;
   "pi.session.get": ParsedCommand<"pi.session.get", PiSessionGetArgs>;
   "pi.session.list": ParsedCommand<"pi.session.list", PiSessionListArgs>;
@@ -295,7 +295,7 @@ const PI_COMMAND_SPECS = {
   };
 };
 
-const PI_COMMAND_SPEC_LIST = PI_COMMAND_NAMES.map(
+export const PI_COMMAND_SPEC_LIST = PI_COMMAND_NAMES.map(
   (name) => PI_COMMAND_SPECS[name],
 ) as readonly (typeof PI_COMMAND_SPECS)[PiCommandName][];
 

@@ -8,7 +8,16 @@ export const STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH = `${STARTER_AUTOMATION_R
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramClaimLinkingStart: `${STARTER_AUTOMATION_ROOT}/scripts/telegram-claim-linking.start.sh`,
   telegramClaimLinkingComplete: `${STARTER_AUTOMATION_ROOT}/scripts/telegram-claim-linking.complete.sh`,
-  telegramPiSessionStart: `${STARTER_AUTOMATION_ROOT}/scripts/telegram-pi-session.start.sh`,
+  telegramPiSessionEnsure: `${STARTER_AUTOMATION_ROOT}/scripts/telegram-pi-session.ensure.sh`,
+} as const;
+
+export const STARTER_AUTOMATION_SIMULATOR_ROOT = `${STARTER_AUTOMATION_ROOT}/simulator`;
+export const STARTER_AUTOMATION_SCENARIO_ROOT = `${STARTER_AUTOMATION_SIMULATOR_ROOT}/scenarios`;
+
+export const STARTER_AUTOMATION_SIMULATOR_PATHS = {
+  readme: `${STARTER_AUTOMATION_SIMULATOR_ROOT}/README.md`,
+  telegramClaimLinking: `${STARTER_AUTOMATION_SCENARIO_ROOT}/telegram-claim-linking.json`,
+  telegramPiSession: `${STARTER_AUTOMATION_SCENARIO_ROOT}/telegram-pi-session.json`,
 } as const;
 
 export const starterTelegramClaimLinkingStartScript = `if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" != "/start" ]; then
@@ -83,32 +92,274 @@ reply_linking_status "We couldn't link your Telegram chat. Please try again."
 exit 1
 `;
 
-export const starterTelegramPiSessionStartScript = `if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" != "/pi" ]; then
-  exit 0
-fi
-
+export const starterTelegramPiSessionEnsureScript = `
 if [ -z "\${AUTOMATION_PI_DEFAULT_AGENT:-}" ]; then
-  event.reply --text "Pi session creation is not configured for this organisation."
   exit 0
 fi
 
-session_name="Telegram \${AUTOMATION_TELEGRAM_CHAT_ID:-session}"
+# Only bootstrap Pi sessions for identity-linked Telegram chats.
+linked_user="$(
+  automations.identity.lookup-binding \
+    --source "telegram" \
+    --key "$AUTOMATION_EXTERNAL_ACTOR_ID" \
+    --print value || true
+)"
 
-if session_id="$(
-  pi.session.create \
-    --agent "$AUTOMATION_PI_DEFAULT_AGENT" \
-    --name "$session_name" \
-    --tag telegram \
-    --tag auto-session \
-    --print id
-)"; then
-  event.reply --text "Created Pi session: $session_id"
+if [ -z "$linked_user" ]; then
   exit 0
 fi
 
-event.reply --text "Failed to create a Pi session."
-exit 1
+binding_source="telegram-pi-session"
+# Use the linked user id as the storage key so sessions are per-user (not per-chat).
+binding_key="$linked_user"
+
+pi_session_id="$(
+  automations.identity.lookup-binding \
+    --source "$binding_source" \
+    --key "$binding_key" \
+    --print value || true
+)"
+
+terminal_session=false
+if [ -n "$pi_session_id" ]; then
+  session_status="$(pi.session.get \
+    --session-id "$pi_session_id" \
+    --print workflow.status \
+    2>/dev/null || true
+  )"
+
+  case "$session_status" in
+    terminated | complete | errored)
+      terminal_session=true
+      ;;
+    "")
+      terminal_session=true
+      ;;
+  esac
+fi
+
+if [ -z "$pi_session_id" ] || [ "$terminal_session" = "true" ]; then
+  session_name="Telegram \${AUTOMATION_TELEGRAM_CHAT_ID:-$AUTOMATION_EXTERNAL_ACTOR_ID}"
+
+  if new_session_id="$(
+    pi.session.create \
+      --agent "$AUTOMATION_PI_DEFAULT_AGENT" \
+      --name "$session_name" \
+      --tag telegram \
+      --tag auto-session \
+      --print id
+  )"; then
+    automations.identity.bind-actor \
+      --source "$binding_source" \
+      --key "$binding_key" \
+      --value "$new_session_id" \
+      --description "Pi session for Telegram chat $AUTOMATION_EXTERNAL_ACTOR_ID" \
+      >/dev/null || exit 1
+  
+    if [ "\${AUTOMATION_TELEGRAM_TEXT:-}" = "/pi" ]; then
+      event.reply --text "Created Pi session: $new_session_id"
+    fi
+    exit 0
+  fi
+
+  exit 1
+fi
+
+exit 0
 `;
+
+export const starterAutomationSimulatorReadme = `# Automation simulator
+
+Use the scenario DSL in this folder to run the real automation workspace files against mock command state.
+
+## What it uses
+
+- \`../bindings.json\`
+- \`../scripts/*.sh\`
+- plain JSON scenarios under \`./scenarios\`
+
+## Scenario shape
+
+Each scenario is plain data so the same file can power repo tests today and a Backoffice UI later.
+
+Required fields:
+
+- \`version\`: currently \`1\`
+- \`name\`: human-readable label
+- \`steps[]\`: one or more events to ingest in order
+
+Useful optional fields:
+
+- \`env\`: global bash env overrides applied to every step
+- \`initialState\`: starting identity bindings, claims, Pi sessions, replies, and emitted events
+- \`commandMocks\`: ordered mock results for custom commands like \`event.reply\`, \`otp.identity.create-claim\`, \`pi.session.create\`, and \`pi.session.get\`
+- \`expectations\`: documentation-only examples of the transcript or final state you expect
+
+The simulator keeps state across steps, records a normalized transcript, and stops a step when a binding exits non-zero.
+`;
+
+const STARTER_TELEGRAM_CLAIM_LINKING_SCENARIO = {
+  version: 1,
+  name: "Starter Telegram claim-linking flow",
+  description:
+    "Runs the real starter automation files across /start -> OTP completion -> /start using shared mock state.",
+  commandMocks: {
+    "otp.identity.create-claim": {
+      results: [
+        {
+          data: {
+            url: "https://example.com/claims/chat-1",
+            externalId: "chat-1",
+            code: "123456",
+            type: "otp",
+          },
+        },
+      ],
+      onExhausted: "default",
+    },
+  },
+  steps: [
+    {
+      id: "telegram-start",
+      event: {
+        id: "event-telegram-start-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {
+          text: "/start",
+          chatId: "chat-1",
+        },
+        actor: {
+          type: "external",
+          externalId: "chat-1",
+        },
+      },
+    },
+    {
+      id: "otp-complete",
+      event: {
+        id: "event-otp-1",
+        orgId: "org-1",
+        source: "otp",
+        eventType: "identity.claim.completed",
+        occurredAt: "2026-01-01T00:01:00.000Z",
+        payload: {
+          linkSource: "telegram",
+          externalActorId: "chat-1",
+        },
+        actor: null,
+        subject: {
+          userId: "user-1",
+        },
+      },
+    },
+    {
+      id: "telegram-start-again",
+      event: {
+        id: "event-telegram-start-2",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:02:00.000Z",
+        payload: {
+          text: "/start",
+          chatId: "chat-1",
+        },
+        actor: {
+          type: "external",
+          externalId: "chat-1",
+        },
+      },
+    },
+  ],
+  expectations: {
+    replies: [
+      "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
+      "Your Telegram chat is now linked.",
+      "This Telegram chat is already linked.",
+    ],
+    identityBindings: [
+      {
+        source: "telegram",
+        key: "chat-1",
+        value: "user-1",
+      },
+    ],
+  },
+} as const;
+
+const STARTER_TELEGRAM_PI_SESSION_SCENARIO = {
+  version: 1,
+  name: "Starter Telegram /pi session bootstrap",
+  description:
+    "Ensures the real starter /pi script can create and bind a Pi session for a linked Telegram user.",
+  env: {
+    AUTOMATION_PI_DEFAULT_AGENT: "default::openai::gpt-5-mini",
+  },
+  initialState: {
+    identityBindings: [
+      {
+        source: "telegram",
+        key: "chat-1",
+        value: "user-1",
+        status: "linked",
+      },
+    ],
+  },
+  commandMocks: {
+    "pi.session.create": {
+      results: [
+        {
+          data: {
+            id: "session-for-default::openai::gpt-5-mini",
+            agent: "default::openai::gpt-5-mini",
+            name: "Telegram chat-1",
+            status: "waiting",
+            steeringMode: "one-at-a-time",
+            metadata: null,
+            tags: ["telegram", "auto-session"],
+            workflow: {
+              status: "waiting",
+            },
+          },
+        },
+      ],
+      onExhausted: "default",
+    },
+  },
+  steps: [
+    {
+      id: "telegram-pi",
+      event: {
+        id: "event-telegram-pi-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:10:00.000Z",
+        payload: {
+          text: "/pi",
+          chatId: "chat-1",
+        },
+        actor: {
+          type: "external",
+          externalId: "chat-1",
+        },
+      },
+    },
+  ],
+  expectations: {
+    replies: ["Created Pi session: session-for-default::openai::gpt-5-mini"],
+    identityBindings: [
+      {
+        source: "telegram-pi-session",
+        key: "user-1",
+        value: "session-for-default::openai::gpt-5-mini",
+      },
+    ],
+  },
+} as const;
 
 const STARTER_AUTOMATION_MANIFEST = {
   version: 1,
@@ -144,15 +395,15 @@ const STARTER_AUTOMATION_MANIFEST = {
       },
     },
     {
-      id: "telegram-pi-session-start",
+      id: "telegram-pi-session-ensure",
       source: AUTOMATION_SOURCES.telegram,
       eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
       enabled: true,
       script: {
-        key: "telegram-pi-session.start",
-        name: "Telegram Pi session bootstrap",
+        key: "telegram-pi-session.ensure",
+        name: "Telegram Pi session ensure (linked chat)",
         engine: "bash",
-        path: "scripts/telegram-pi-session.start.sh",
+        path: "scripts/telegram-pi-session.ensure.sh",
         version: 1,
         agent: null,
         env: {},
@@ -167,5 +418,8 @@ export const STARTER_AUTOMATION_CONTENT = {
     starterTelegramClaimLinkingStartScript,
   [STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingComplete]:
     starterTelegramClaimLinkingCompleteScript,
-  [STARTER_AUTOMATION_SCRIPT_PATHS.telegramPiSessionStart]: starterTelegramPiSessionStartScript,
+  [STARTER_AUTOMATION_SCRIPT_PATHS.telegramPiSessionEnsure]: starterTelegramPiSessionEnsureScript,
+  [STARTER_AUTOMATION_SIMULATOR_PATHS.readme]: starterAutomationSimulatorReadme,
+  [STARTER_AUTOMATION_SIMULATOR_PATHS.telegramClaimLinking]: `${JSON.stringify(STARTER_TELEGRAM_CLAIM_LINKING_SCENARIO, null, 2)}\n`,
+  [STARTER_AUTOMATION_SIMULATOR_PATHS.telegramPiSession]: `${JSON.stringify(STARTER_TELEGRAM_PI_SESSION_SCENARIO, null, 2)}\n`,
 } satisfies Record<string, FileSystemArtifact>;

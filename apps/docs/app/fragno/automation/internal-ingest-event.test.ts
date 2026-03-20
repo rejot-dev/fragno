@@ -540,6 +540,22 @@ describe("automation internalIngestEvent", () => {
       const starterFragment = starterContext.fragments.automation;
       currentAutomationFileSystem = await createAutomationFileSystem();
 
+      const linkResponse = await starterFragment.fragment.callRoute(
+        "POST",
+        "/identity-bindings/bind",
+        {
+          body: {
+            source: "telegram",
+            key: "chat-1",
+            value: "user-1",
+          },
+        },
+      );
+
+      if (linkResponse.type !== "json") {
+        throw new Error("Expected identity binding bind response");
+      }
+
       const result = await starterFragment.fragment.callServices(() =>
         starterFragment.services.ingestEvent({
           id: "starter-telegram-pi-1",

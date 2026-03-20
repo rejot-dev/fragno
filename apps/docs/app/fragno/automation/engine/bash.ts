@@ -20,7 +20,6 @@ import {
   type OtpBashRuntime,
 } from "../../bash-runtime/otp-bash-runtime";
 import type {
-  AutomationCloudflareEnv,
   AutomationCommandContext,
   AutomationTriggerBinding,
   BashAutomationCommandResult,
@@ -123,7 +122,6 @@ export const createAutomationBashCommandContext = ({
   idempotencyKey,
   runtime,
   sourceAdapter,
-  cloudflareEnv,
   pi,
 }: {
   event: AutomationEvent;
@@ -131,7 +129,6 @@ export const createAutomationBashCommandContext = ({
   idempotencyKey: string;
   runtime: AutomationBashRuntime;
   sourceAdapter: AnyAutomationSourceAdapter | undefined;
-  cloudflareEnv: AutomationCloudflareEnv;
   pi?: AutomationPiBashContext;
 }): AutomationBashHostContext => {
   const normalizedEvent: AutomationEvent = {
@@ -156,7 +153,6 @@ export const createAutomationBashCommandContext = ({
     AUTOMATION_SCRIPT_PATH: binding.scriptPath,
     AUTOMATION_SCRIPT_VERSION:
       binding.scriptVersion != null ? String(binding.scriptVersion) : undefined,
-    AUTOMATION_SCRIPT_AGENT: binding.scriptAgent ?? undefined,
     AUTOMATION_TRIGGER_ORDER:
       binding.triggerOrder != null &&
       Number.isFinite(binding.triggerOrder) &&
@@ -175,7 +171,6 @@ export const createAutomationBashCommandContext = ({
       binding,
       idempotencyKey,
       bashEnv,
-      cloudflareEnv,
       runtime,
     },
     automations: {

@@ -130,13 +130,10 @@ export type AutomationTriggerBinding = {
   scriptName?: string;
   scriptPath?: string;
   scriptVersion?: number;
-  scriptAgent?: string | null;
   scriptEnv?: Record<string, string>;
   /** Default sentinel sorts last among bindings for the same event. */
   triggerOrder?: number;
 };
-
-export type AutomationCloudflareEnv = Record<string, string | undefined>;
 
 export type AutomationCommandContext = {
   event: AutomationEvent;
@@ -144,7 +141,6 @@ export type AutomationCommandContext = {
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
   bashEnv: AutomationBashEnvironment;
-  cloudflareEnv: AutomationCloudflareEnv;
 };
 
 export type AutomationCommandContextValue<TContext = unknown> = TContext;

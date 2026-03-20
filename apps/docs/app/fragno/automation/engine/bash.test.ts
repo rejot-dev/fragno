@@ -64,7 +64,6 @@ const createTestCommandContext = (overrides: Partial<TestContext> = {}): TestCon
     AUTOMATION_SCRIPT_ID: "script-ctx",
     AUTOMATION_IDEMPOTENCY_KEY: "idempotency-ctx",
   },
-  cloudflareEnv: {},
   ...overrides,
 });
 
@@ -564,9 +563,6 @@ describe("bash command runner", () => {
         AUTOMATION_SCRIPT_ID: "script-shared",
         AUTOMATION_IDEMPOTENCY_KEY: "idem-shared",
       },
-      cloudflareEnv: {
-        CF_TEST_NAMESPACE: "cf-value",
-      },
     });
 
     let observedContext: {
@@ -576,7 +572,6 @@ describe("bash command runner", () => {
       binding: string;
       scriptId: string;
       bashEventId: string | undefined;
-      cfEnvValue: string | undefined;
     } | null = null;
 
     const handlers: TestAutomationCommandHandlers = {
@@ -588,7 +583,6 @@ describe("bash command runner", () => {
           binding: commandContext.binding.source,
           scriptId: commandContext.binding.scriptId,
           bashEventId: commandContext.bashEnv.AUTOMATION_EVENT_ID,
-          cfEnvValue: commandContext.cloudflareEnv.CF_TEST_NAMESPACE,
         };
 
         return {
@@ -649,7 +643,6 @@ describe("bash command runner", () => {
       binding: "telegram",
       scriptId: "script-shared",
       bashEventId: "event-shared",
-      cfEnvValue: "cf-value",
     });
     expect(commandCallsResult).toEqual([
       {
@@ -708,7 +701,20 @@ describe("bash command runner", () => {
         idempotencyKey: "idempotency-otp-1",
         runtime: automationRuntime,
         sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
-        cloudflareEnv: {},
+        pi: {
+          bashEnv: {},
+          runtime: {
+            createSession: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+            getSession: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+            listSessions: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+          },
+        },
       }),
     });
 
@@ -775,7 +781,20 @@ describe("bash command runner", () => {
         idempotencyKey: "idempotency-1",
         runtime: automationRuntime,
         sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
-        cloudflareEnv: {},
+        pi: {
+          bashEnv: {},
+          runtime: {
+            createSession: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+            getSession: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+            listSessions: async () => {
+              throw new Error("pi automation context not configured for this test");
+            },
+          },
+        },
       }),
     });
 

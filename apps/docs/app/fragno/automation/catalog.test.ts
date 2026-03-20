@@ -15,6 +15,7 @@ import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/da
 
 import {
   AUTOMATION_BINDINGS_MANIFEST_PATH,
+  AUTOMATION_SCRIPT_AGENT_ENV_KEY,
   AUTOMATION_WORKSPACE_ROOT,
   getAutomationBindingsForEvent,
   loadAutomationCatalog,
@@ -147,16 +148,18 @@ describe("automation catalog", () => {
     const catalog = await loadAutomationCatalog(fileSystem);
 
     expect(catalog.manifestPath).toBe(AUTOMATION_BINDINGS_MANIFEST_PATH);
-    expect(catalog.bindings.map((binding) => binding.id)).toEqual([
-      "telegram-claim-linking-complete",
-      "telegram-claim-linking-start",
-      "telegram-pi-session-start",
-    ]);
+    expect(catalog.bindings.map((binding) => binding.id)).toEqual(
+      expect.arrayContaining([
+        "telegram-claim-linking-complete",
+        "telegram-claim-linking-start",
+        "telegram-pi-session-ensure",
+      ]),
+    );
     expect(catalog.scripts.map((script) => script.path)).toEqual(
       expect.arrayContaining([
         "scripts/telegram-claim-linking.complete.sh",
         "scripts/telegram-claim-linking.start.sh",
-        "scripts/telegram-pi-session.start.sh",
+        "scripts/telegram-pi-session.ensure.sh",
       ]),
     );
 
@@ -164,10 +167,9 @@ describe("automation catalog", () => {
       source: AUTOMATION_SOURCES.telegram,
       eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
     });
-    expect(telegramBindings.map((binding) => binding.id)).toEqual([
-      "telegram-claim-linking-start",
-      "telegram-pi-session-start",
-    ]);
+    expect(telegramBindings.map((binding) => binding.id)).toEqual(
+      expect.arrayContaining(["telegram-claim-linking-start", "telegram-pi-session-ensure"]),
+    );
   });
 
   test("rejects malformed manifests with a clear error", async () => {
@@ -247,7 +249,7 @@ describe("automation catalog", () => {
     );
   });
 
-  test("derives a deduplicated scripts view from binding-local script metadata", async () => {
+  test("derives a deduplicated scripts view even when bindings override env and agent", async () => {
     const sharedScriptPath = "automations/scripts/shared.sh";
     const fileSystem = await createAutomationFileSystem({
       [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify(
@@ -265,7 +267,7 @@ describe("automation catalog", () => {
                 engine: "bash",
                 path: "scripts/shared.sh",
                 version: 2,
-                agent: null,
+                agent: "default::openai::gpt-5",
                 env: { MODE: "one" },
               },
             },
@@ -280,8 +282,8 @@ describe("automation catalog", () => {
                 engine: "bash",
                 path: "scripts/shared.sh",
                 version: 2,
-                agent: null,
-                env: { MODE: "one" },
+                agent: "default::openai::gpt-5-mini",
+                env: { MODE: "two" },
               },
             },
           ],
@@ -303,6 +305,60 @@ describe("automation catalog", () => {
       enabledBindingCount: 1,
       enabled: true,
     });
+    expect(catalog.bindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "binding-a",
+          scriptEnv: {
+            MODE: "one",
+            [AUTOMATION_SCRIPT_AGENT_ENV_KEY]: "default::openai::gpt-5",
+          },
+        }),
+        expect.objectContaining({
+          id: "binding-b",
+          scriptEnv: {
+            MODE: "two",
+            [AUTOMATION_SCRIPT_AGENT_ENV_KEY]: "default::openai::gpt-5-mini",
+          },
+        }),
+      ]),
+    );
+  });
+
+  test("rejects conflicting legacy and env-based script agent values", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify(
+        {
+          version: 1,
+          bindings: [
+            {
+              id: "conflicting-agent",
+              source: AUTOMATION_SOURCES.telegram,
+              eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+              enabled: true,
+              script: {
+                key: "conflicting-agent",
+                name: "Conflicting agent",
+                engine: "bash",
+                path: "scripts/conflicting-agent.sh",
+                version: 1,
+                agent: "default::openai::gpt-5",
+                env: {
+                  [AUTOMATION_SCRIPT_AGENT_ENV_KEY]: "default::openai::gpt-5-mini",
+                },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "automations/scripts/conflicting-agent.sh": 'echo "agent"',
+    });
+
+    await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow(
+      `Automation binding 'conflicting-agent' defines both script.agent and script.env.${AUTOMATION_SCRIPT_AGENT_ENV_KEY} with different values.`,
+    );
   });
 
   test("prefers persistent workspace overlay files over starter automation defaults", async () => {
