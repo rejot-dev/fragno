@@ -5,7 +5,7 @@ const { getAuthMeMock, fetchUploadConfigMock } = vi.hoisted(() => ({
   fetchUploadConfigMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth-server", () => ({
+vi.mock("@/fragno/auth/auth-server", () => ({
   getAuthMe: getAuthMeMock,
 }));
 

@@ -16,13 +16,13 @@ import {
   isValidPiToolId,
   type PiRuntimeFragments,
   type PiSessionFileSystemContext,
-} from "@/fragno/pi";
+} from "@/fragno/pi/pi";
 import {
   resolvePiHarnesses,
   type PiConfigState,
   type PiHarnessConfig,
   type StoredPiConfig,
-} from "@/fragno/pi-shared";
+} from "@/fragno/pi/pi-shared";
 
 const CONFIG_KEY = "pi-config";
 type PiHookQueueFragment = "pi" | "workflows";

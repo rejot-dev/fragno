@@ -2,8 +2,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth-client";
-import type { PiConfigState } from "@/fragno/pi-shared";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 

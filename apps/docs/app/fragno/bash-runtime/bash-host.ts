@@ -1,9 +1,9 @@
 import { Bash } from "just-bash";
 
-import { createAutomationsBashCommands } from "./automation/automations-bash-runtime";
-import type { BashAutomationCommandResult } from "./automation/commands/types";
-import { createEventBashCommands } from "./automation/event-bash-runtime";
-import { createOtpBashCommands } from "./automation/otp-bash-runtime";
+import type { BashAutomationCommandResult } from "../automation/commands/types";
+import { createAutomationsBashCommands } from "./automations-bash-runtime";
+import { createEventBashCommands } from "./event-bash-runtime";
+import { createOtpBashCommands } from "./otp-bash-runtime";
 import { createPiBashCommands } from "./pi-bash-runtime";
 
 type BashOptions = NonNullable<ConstructorParameters<typeof Bash>[0]>;

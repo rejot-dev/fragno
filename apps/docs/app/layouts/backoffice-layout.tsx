@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Link, Outlet, isRouteErrorResponse, redirect, useRouteError } from "react-router";
 
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
 
 import type { Route } from "./+types/backoffice-layout";

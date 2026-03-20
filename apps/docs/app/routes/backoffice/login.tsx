@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
+import { authClient } from "@/fragno/auth/auth-client";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/login";
 import {

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
+import { authClient } from "@/fragno/auth/auth-client";
 
 import { Notice, type ActionNotice, getErrorMessage } from "./organisation-shared";
 

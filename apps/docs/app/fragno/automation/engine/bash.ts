@@ -1,14 +1,24 @@
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost } from "@/fragno/bash-host";
-import type { PiBashRuntime } from "@/fragno/pi-bash-runtime";
+import { createBashHost } from "@/fragno/bash-runtime/bash-host";
+import type { PiBashRuntime } from "@/fragno/bash-runtime/pi-bash-runtime";
 
 import {
   createStorageBackedAutomationsBashRuntime,
   type AutomationIdentityBindingRecord,
   type AutomationIdentityStorageContext,
   type AutomationsBashRuntime,
-} from "../automations-bash-runtime";
+} from "../../bash-runtime/automations-bash-runtime";
+import {
+  createEventBashRuntime,
+  type AutomationEmitEventResult,
+  type EventBashRuntime,
+} from "../../bash-runtime/event-bash-runtime";
+import {
+  createOtpBashRuntime,
+  type AutomationIdentityClaimRecord,
+  type OtpBashRuntime,
+} from "../../bash-runtime/otp-bash-runtime";
 import type {
   AutomationCloudflareEnv,
   AutomationCommandContext,
@@ -21,16 +31,6 @@ import type {
   AutomationEvent,
   AutomationSourceAdapterRegistry,
 } from "../contracts";
-import {
-  createEventBashRuntime,
-  type AutomationEmitEventResult,
-  type EventBashRuntime,
-} from "../event-bash-runtime";
-import {
-  createOtpBashRuntime,
-  type AutomationIdentityClaimRecord,
-  type OtpBashRuntime,
-} from "../otp-bash-runtime";
 import { AUTOMATION_TRIGGER_ORDER_LAST } from "../schema";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;

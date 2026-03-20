@@ -15,14 +15,14 @@ import {
 
 import type { PiSession, PiSessionStatus } from "@fragno-dev/pi-fragment";
 
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   createPiAgentName,
   findPiModelOption,
   PI_MODEL_CATALOG,
   resolvePiHarnesses,
   type PiHarnessConfig,
-} from "@/fragno/pi-shared";
+} from "@/fragno/pi/pi-shared";
 
 import type { Route } from "./+types/sessions";
 import {

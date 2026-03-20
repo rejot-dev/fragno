@@ -80,9 +80,9 @@ export {
   createRouteBackedAutomationsBashRuntime,
   createStorageBackedAutomationsBashRuntime,
   lookupAutomationIdentityBinding,
-} from "./automations-bash-runtime";
-export { createEventBashRuntime } from "./event-bash-runtime";
-export { createOtpBashRuntime } from "./otp-bash-runtime";
+} from "../bash-runtime/automations-bash-runtime";
+export { createEventBashRuntime } from "../bash-runtime/event-bash-runtime";
+export { createOtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 export {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
@@ -95,6 +95,6 @@ export type {
   AutomationEmitEventResult,
   AutomationIdentityBindingRecord,
 } from "./engine/bash";
-export type { AutomationsBashRuntime } from "./automations-bash-runtime";
-export type { AutomationReplyResult, EventBashRuntime } from "./event-bash-runtime";
-export type { OtpBashRuntime } from "./otp-bash-runtime";
+export type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
+export type { AutomationReplyResult, EventBashRuntime } from "../bash-runtime/event-bash-runtime";
+export type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";

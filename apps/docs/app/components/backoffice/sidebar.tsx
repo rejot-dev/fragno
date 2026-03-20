@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router";
 
-import type { AuthMeData } from "@/fragno/auth-client";
-import { authClient } from "@/fragno/auth-client";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
+import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 import { toCfSandboxPath } from "@/routes/backoffice/environments/cf-sandbox-path";
 import { toWorkersPath } from "@/routes/backoffice/environments/workers.route-state";

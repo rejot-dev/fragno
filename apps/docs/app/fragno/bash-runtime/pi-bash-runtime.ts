@@ -2,7 +2,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { PiSession, PiSessionDetail, createPiFragment } from "@fragno-dev/pi-fragment";
 
-import { createAutomationCommands } from "./automation/commands/bash-adapter";
+import { createAutomationCommands } from "../automation/commands/bash-adapter";
 
 type PiFragment = ReturnType<typeof createPiFragment>;
 import {
@@ -12,13 +12,13 @@ import {
   readJsonOption,
   readOutputOptions,
   readStringOption,
-} from "./automation/commands/cli";
+} from "../automation/commands/cli";
 import type {
   AutomationCommandHelp,
   AutomationCommandHandlersFor,
   AutomationCommandSpec,
   ParsedCommand,
-} from "./automation/commands/types";
+} from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
 
 const PI_COMMAND_NAMES = ["pi.session.create", "pi.session.get", "pi.session.list"] as const;

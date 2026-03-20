@@ -15,7 +15,7 @@ import {
 } from "@/cloudflare/worker-dispatch";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workers";
 import {

@@ -1,7 +1,7 @@
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth-client";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "./route-errors";

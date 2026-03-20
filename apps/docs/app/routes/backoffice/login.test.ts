@@ -1,27 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth-server";
+import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
 
 import { BACKOFFICE_HOME_PATH } from "./auth-navigation";
 import { action, loader } from "./login";
 
-vi.mock("@/components/backoffice", () => ({
-  FormContainer: ({ children }: { children: unknown }) => children,
-  FormField: ({ children }: { children: unknown }) => children,
-}));
-
-vi.mock("@/fragno/auth-client", () => ({
-  authClient: {
-    defaultOrganization: {
-      read: vi.fn(() => null),
-    },
-    oauth: {
-      getAuthorizationUrl: vi.fn(),
-    },
-  },
-}));
-
-vi.mock("@/fragno/auth-server", () => ({
+vi.mock("@/fragno/auth/auth-server", () => ({
   createAuthRouteCaller: vi.fn(),
   getAuthMe: vi.fn(),
 }));

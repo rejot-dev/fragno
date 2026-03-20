@@ -1,7 +1,7 @@
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workflows-organisation";
 import {

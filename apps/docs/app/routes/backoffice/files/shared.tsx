@@ -2,7 +2,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { FileMountMetadata } from "@/files";
-import type { AuthMeData } from "@/fragno/auth-client";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
 

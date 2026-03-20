@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useOutletContext, useParams } from "react-router";
 
-import { createOrgPiClient } from "@/fragno/pi-client";
-import { findPiModelOption, parsePiAgentName } from "@/fragno/pi-shared";
+import { createOrgPiClient } from "@/fragno/pi/pi-client";
+import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
 
 import type { Route } from "./+types/session-detail";
 import { fetchPiSessionDetail } from "./data";

@@ -2,16 +2,16 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { HookContext } from "@fragno-dev/db";
 
-import type { BashCommandFactoryInput } from "../bash-host";
-import { createAutomationCommands } from "./commands/bash-adapter";
-import { AUTOMATIONS_COMMAND_SPEC_LIST } from "./commands/registry";
+import { createAutomationCommands } from "../automation/commands/bash-adapter";
+import { AUTOMATIONS_COMMAND_SPEC_LIST } from "../automation/commands/registry";
 import type {
   AutomationsCommandHandlers,
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
-} from "./commands/types";
-import type { createAutomationFragment } from "./index";
-import { automationFragmentSchema } from "./schema";
+} from "../automation/commands/types";
+import type { createAutomationFragment } from "../automation/index";
+import { automationFragmentSchema } from "../automation/schema";
+import type { BashCommandFactoryInput } from "./bash-host";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 

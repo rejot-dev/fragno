@@ -9,7 +9,7 @@ import {
   resolveUploadMountConfig,
   type ResolveUploadMount,
 } from "@/files";
-import { getAuthMe } from "@/fragno/auth-server";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import type {
   SandboxCommandResult,
   SandboxInstanceStatus,

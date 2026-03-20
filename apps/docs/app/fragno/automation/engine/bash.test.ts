@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Bash, InMemoryFs } from "just-bash";
 
-import { createBashHost } from "../../bash-host";
+import { createBashHost } from "../../bash-runtime/bash-host";
 import { createTelegramSourceAdapter } from "../../telegram";
 import { createAutomationCommands } from "../commands/bash-adapter";
 import {

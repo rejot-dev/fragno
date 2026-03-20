@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth-client";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";

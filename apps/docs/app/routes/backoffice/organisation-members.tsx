@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router";
 
 import { FormContainer } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
+import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import type { OrganisationLayoutContext } from "./organisation-layout";

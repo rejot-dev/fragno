@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth-client";
+import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import {
