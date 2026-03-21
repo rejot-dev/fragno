@@ -1,7 +1,6 @@
 {
   "name": "@fragno-dev/resend-fragment",
   "version": "0.0.1",
-  "private": true,
   "description": "Resend fragment",
   "keywords": [
     "fragno",

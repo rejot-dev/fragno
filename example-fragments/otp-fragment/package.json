@@ -1,7 +1,6 @@
 {
   "name": "@fragno-dev/otp-fragment",
   "version": "0.0.8",
-  "private": true,
   "description": "OTP fragment with durable confirmation and expiry hooks",
   "keywords": [
     "fragno",
