@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetcher, useNavigate, useOutletContext } from "react-router";
 
 import type { ResendSendEmailInput, ResendThreadMutationOutput } from "@fragno-dev/resend-fragment";
@@ -117,7 +117,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   };
 
   const result = await createResendThread(request, context, params.orgId, payload);
-  if (result.error || !result.result) {
+  if (result.error || !result.result || !result.result.thread.id) {
     return {
       ok: false,
       message: result.error ?? "Failed to create thread.",
@@ -133,22 +133,45 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationResendThreadStart() {
-  const { basePath, configState } = useOutletContext<ResendThreadsOutletContext>();
+  const outletContext = useOutletContext<ResendThreadsOutletContext | null>();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
-      formRef.current?.reset();
-      navigate(`${basePath}/${fetcher.data.threadId}`);
+    if (!outletContext || !fetcher.data) {
+      return;
     }
-  }, [basePath, fetcher.data, navigate]);
+
+    if (fetcher.data.ok) {
+      if (!fetcher.data.threadId) {
+        setNavigationError("Thread was created, but no thread id was returned.");
+        return;
+      }
+
+      formRef.current?.reset();
+      setNavigationError(null);
+      navigate(`${outletContext.basePath}/${encodeURIComponent(fetcher.data.threadId)}`);
+      return;
+    }
+
+    setNavigationError(null);
+  }, [fetcher.data, navigate, outletContext]);
+
+  if (!outletContext) {
+    return (
+      <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        Unable to initialize the thread composer. Reload this page and try again.
+      </div>
+    );
+  }
 
   const isSending = fetcher.state !== "idle";
-  const defaultFrom = configState?.config?.defaultFrom ?? "";
-  const defaultReplyTo = configState?.config?.defaultReplyTo?.join(", ") ?? "";
-  const sendError = fetcher.data && !fetcher.data.ok ? fetcher.data.message : null;
+  const defaultFrom = outletContext.configState?.config?.defaultFrom ?? "";
+  const defaultReplyTo = outletContext.configState?.config?.defaultReplyTo?.join(", ") ?? "";
+  const sendError =
+    (fetcher.data && !fetcher.data.ok ? fetcher.data.message : null) ?? navigationError;
 
   return (
     <div className="space-y-4">
