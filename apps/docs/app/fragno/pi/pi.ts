@@ -27,6 +27,10 @@ import {
 import { createBashHost } from "../bash-runtime/bash-host";
 import { createOtpBashRuntime, type OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 import { createPiRouteBashRuntime, type PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
+import {
+  createResendRouteBashRuntime,
+  type ResendBashRuntime,
+} from "../bash-runtime/resend-bash-runtime";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
@@ -54,15 +58,21 @@ export type PiBashCommandContext = {
   otp: {
     runtime: OtpBashRuntime;
   };
+  resend: {
+    runtime: ResendBashRuntime;
+  };
 };
 
 export type PiSessionUploadRuntime = NonNullable<FilesContext["uploadRuntime"]> & {
   uploadConfig: UploadAdminConfigResponse | null;
 };
 
+export type PiSessionResendRuntime = NonNullable<FilesContext["resendRuntime"]>;
+
 export type PiSessionFileSystemContext = {
   orgId: string;
   uploadRuntime: PiSessionUploadRuntime;
+  resendRuntime?: PiSessionResendRuntime;
 };
 
 function createPiAdapter(state: DurableObjectState) {
@@ -154,6 +164,7 @@ const getSessionFs = async (
     backend: "pi",
     uploadConfig: context.uploadRuntime.uploadConfig,
     uploadRuntime: context.uploadRuntime,
+    resendRuntime: context.resendRuntime,
   });
 
   cache.set(sessionId, pendingFileSystem);
@@ -255,26 +266,36 @@ export const createPiBashCommandContext = ({
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): PiBashCommandContext => ({
-  pi: {
-    runtime: createPiRouteBashRuntime({
-      env,
-      orgId,
-    }),
-  },
-  automations: {
-    runtime: createRouteBackedAutomationsBashRuntime({
-      env,
-      orgId,
-    }),
-  },
-  otp: {
-    runtime: createOtpBashRuntime({
-      env,
-      orgId,
-    }),
-  },
-});
+}): PiBashCommandContext => {
+  const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
+
+  return {
+    pi: {
+      runtime: createPiRouteBashRuntime({
+        env,
+        orgId,
+      }),
+    },
+    automations: {
+      runtime: createRouteBackedAutomationsBashRuntime({
+        env,
+        orgId,
+      }),
+    },
+    otp: {
+      runtime: createOtpBashRuntime({
+        env,
+        orgId,
+      }),
+    },
+    resend: {
+      runtime: createResendRouteBashRuntime({
+        baseUrl: "https://resend.do",
+        fetch: resendDo.fetch.bind(resendDo),
+      }),
+    },
+  };
+};
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;

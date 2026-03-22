@@ -61,6 +61,11 @@ export type FilesContext = {
     headers?: HeadersInit;
     fetch(request: Request): Promise<Response>;
   };
+  resendRuntime?: {
+    baseUrl?: string;
+    headers?: HeadersInit;
+    fetch(request: Request): Promise<Response>;
+  };
   request?: Request;
   routerContext?: Readonly<RouterContextProvider>;
 };

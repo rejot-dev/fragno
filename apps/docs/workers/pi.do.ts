@@ -237,6 +237,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
 
     const uploadBinding = this.#env.UPLOAD;
     const uploadDo = uploadBinding?.get(uploadBinding.idFromName(orgId));
+    const resendDo = this.#env.RESEND.get(this.#env.RESEND.idFromName(orgId));
     const sessionFileSystemContext: PiSessionFileSystemContext = uploadDo
       ? {
           orgId,
@@ -245,6 +246,10 @@ export class Pi extends DurableObject<CloudflareEnv> {
             uploadConfig: await uploadDo.getAdminConfig(),
             fetch: uploadDo.fetch.bind(uploadDo),
           },
+          resendRuntime: {
+            baseUrl: "https://pi.internal",
+            fetch: resendDo.fetch.bind(resendDo),
+          },
         }
       : {
           orgId,
@@ -252,6 +257,10 @@ export class Pi extends DurableObject<CloudflareEnv> {
             baseUrl: "https://pi.internal",
             uploadConfig: null,
             fetch: async () => new Response("Upload binding not configured.", { status: 404 }),
+          },
+          resendRuntime: {
+            baseUrl: "https://pi.internal",
+            fetch: resendDo.fetch.bind(resendDo),
           },
         };
 

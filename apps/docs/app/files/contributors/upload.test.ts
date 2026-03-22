@@ -137,6 +137,7 @@ describe("upload file contributor", () => {
     expect(getRegisteredFileContributors().map((contributor) => contributor.id)).toEqual([
       "system",
       "workspace",
+      "resend",
     ]);
   });
 
