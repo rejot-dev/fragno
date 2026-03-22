@@ -715,29 +715,6 @@ export default function BackofficeOrganisationAutomationScripts() {
             <div className="border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-6 text-sm text-[var(--bo-muted)]">
               Select a script to inspect its source or linked tests.
             </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Simulator
-                  </p>
-                  <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                    Workspace test scenarios
-                  </h3>
-                </div>
-                <AutomationBadge>{pluralize(visibleScenarios.length, "scenario")}</AutomationBadge>
-              </div>
-
-              {scenariosError ? (
-                <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-                  Could not load automation scenarios from
-                  /workspace/automations/simulator/scenarios: {scenariosError}
-                </div>
-              ) : (
-                <ScenarioList scenarios={visibleScenarios} />
-              )}
-            </div>
           </div>
         )}
       </div>
