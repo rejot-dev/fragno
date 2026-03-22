@@ -97,13 +97,14 @@ describe("files service", () => {
       ]),
     );
 
-    const folderDetail = await getFilesNodeDetail(master, "/system/roots/");
-    expect(folderDetail?.node).toMatchObject({
-      kind: "folder",
-      path: "/system/roots/",
-      fileCount: 2,
-      folderCount: 0,
+    const systemDetail = await getFilesNodeDetail(master, "/system/SYSTEM.md");
+    expect(systemDetail?.node).toMatchObject({
+      kind: "file",
+      path: "/system/SYSTEM.md",
+      title: "SYSTEM.md",
+      contentType: "text/markdown",
     });
+    expect(systemDetail?.textContent).toContain("sessions");
   });
 
   test("preserves upload metadata like content type for overlay-backed workspace files", async () => {

@@ -1,8 +1,13 @@
 import { getRegisteredFileContributors, registerFileContributor } from "../registry";
+import { resendFileContributor } from "./resend";
 import { starterFileContributor } from "./starter";
 import { staticFileContributor } from "./static";
 
-const BUILT_IN_FILE_CONTRIBUTORS = [staticFileContributor, starterFileContributor] as const;
+const BUILT_IN_FILE_CONTRIBUTORS = [
+  staticFileContributor,
+  starterFileContributor,
+  resendFileContributor,
+] as const;
 
 export const ensureBuiltInFileContributorsRegistered = (): void => {
   const registeredIds = new Set(

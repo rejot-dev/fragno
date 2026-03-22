@@ -271,10 +271,10 @@ describe("createMasterFileSystem", () => {
 
     const master = await createMasterFileSystem(context);
 
-    await expect(master.cp("/system/README.md", "/project/README.md")).rejects.toThrow(
+    await expect(master.cp("/system/SYSTEM.md", "/project/README.md")).rejects.toThrow(
       /Cross-mount copy/,
     );
-    await expect(master.mv("/system/README.md", "/project/README.md")).rejects.toThrow(
+    await expect(master.mv("/system/SYSTEM.md", "/project/README.md")).rejects.toThrow(
       /Cross-mount move/,
     );
   });

@@ -168,7 +168,7 @@ describe("prepareSandboxFileSystem", () => {
 
     expect(handle.mkdir).toHaveBeenCalledWith("/system", { recursive: true });
     expect(handle.mkdir).toHaveBeenCalledWith("/workspace", { recursive: true });
-    expect(handle.writeFile).toHaveBeenCalledWith("/system/README.md", expect.any(String), {
+    expect(handle.writeFile).toHaveBeenCalledWith("/system/SYSTEM.md", expect.any(String), {
       encoding: "utf-8",
     });
     expect(handle.writeFile).toHaveBeenCalledWith(

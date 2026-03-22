@@ -5,7 +5,11 @@ import { resetFileContributorsForTest } from "@/files";
 import { UPLOAD_PROVIDER_R2, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
-import { createPiToolRegistry, type PiSessionUploadRuntime } from "./pi";
+import {
+  createPiToolRegistry,
+  type PiSessionResendRuntime,
+  type PiSessionUploadRuntime,
+} from "./pi";
 
 describe("Pi bash tool", () => {
   beforeEach(() => {
@@ -118,6 +122,45 @@ describe("Pi bash tool", () => {
     expect((result.details as { stdout: string }).stdout).toContain(
       '"telegram-claim-linking-start"',
     );
+  });
+
+  test("mounts resend thread snapshots when a resend runtime is available", async () => {
+    const tools = createPiToolRegistry(new Map(), {
+      orgId: "acme-org",
+      uploadRuntime: createUploadRuntime(),
+      resendRuntime: createResendRuntime(),
+    });
+
+    const bashFactory = tools["bash"];
+    if (typeof bashFactory !== "function") {
+      throw new Error("Expected bash tool to be registered as a factory.");
+    }
+
+    const tool = await bashFactory({
+      session: { id: "session-resend" },
+      turnId: "turn-1",
+      toolConfig: null,
+      messages: [],
+      replay: { journal: [], sideEffects: {} },
+    } as never);
+
+    const listResult = await tool.execute("tool-call-resend-1", {
+      script: "ls /resend",
+    } as never);
+    expect(listResult.details).toMatchObject({
+      stderr: "",
+      exitCode: 0,
+    });
+    expect((listResult.details as { stdout: string }).stdout).toBe("thread-1.md");
+
+    const readResult = await tool.execute("tool-call-resend-2", {
+      script: "cat /resend/thread-1.md",
+    } as never);
+    expect(readResult.details).toMatchObject({
+      stderr: "",
+      exitCode: 0,
+    });
+    expect((readResult.details as { stdout: string }).stdout).toContain("# Invoice Update");
   });
 
   test("uses the shared workspace overlay for reads and writes", async () => {
@@ -474,6 +517,75 @@ const createUploadRuntime = (
     },
   };
 };
+
+const createResendRuntime = (): PiSessionResendRuntime => ({
+  baseUrl: "https://pi.internal",
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/api/resend/threads") {
+      return Response.json({
+        threads: [
+          {
+            id: "thread-1",
+            subject: "Invoice Update",
+            normalizedSubject: "invoice update",
+            participants: ["customer@example.com", "support@example.com"],
+            messageCount: 1,
+            firstMessageAt: "2026-03-18T12:00:00.000Z",
+            lastMessageAt: "2026-03-18T12:00:00.000Z",
+            lastDirection: "outbound",
+            lastMessagePreview: "Hello there",
+            createdAt: "2026-03-18T12:00:00.000Z",
+            updatedAt: "2026-03-18T12:00:00.000Z",
+          },
+        ],
+        hasNextPage: false,
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/resend/threads/thread-1/messages") {
+      return Response.json({
+        messages: [
+          {
+            id: "message-1",
+            threadId: "thread-1",
+            direction: "outbound",
+            status: "sent",
+            from: "support@example.com",
+            to: ["customer@example.com"],
+            cc: [],
+            bcc: [],
+            replyTo: [],
+            subject: "Invoice Update",
+            normalizedSubject: "invoice update",
+            participants: ["customer@example.com", "support@example.com"],
+            messageId: null,
+            inReplyTo: null,
+            references: [],
+            providerEmailId: "provider-1",
+            attachments: [],
+            html: null,
+            text: "Hello there",
+            headers: null,
+            occurredAt: "2026-03-18T12:00:00.000Z",
+            scheduledAt: null,
+            sentAt: "2026-03-18T12:00:00.000Z",
+            lastEventType: null,
+            lastEventAt: null,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: "2026-03-18T12:00:00.000Z",
+            updatedAt: "2026-03-18T12:00:00.000Z",
+          },
+        ],
+        hasNextPage: false,
+      });
+    }
+
+    return Response.json({ message: "Not found.", code: "THREAD_NOT_FOUND" }, { status: 404 });
+  },
+});
 
 const guessContentType = (fileKey: string): string => {
   if (/\.(md|mdx)$/i.test(fileKey)) {

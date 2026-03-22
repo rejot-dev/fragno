@@ -58,6 +58,13 @@ export {
 } from "./registry";
 export { ensureBuiltInFileContributorsRegistered } from "./contributors";
 export {
+  RESEND_FILE_CONTRIBUTOR_ID,
+  RESEND_FILE_MOUNT_ID,
+  RESEND_FILE_MOUNT_POINT,
+  resendFileContributor,
+  resendFileMount,
+} from "./contributors/resend";
+export {
   STARTER_FILE_CONTRIBUTOR_ID,
   STARTER_FILE_MOUNT_ID,
   STARTER_FILE_MOUNT_POINT,
