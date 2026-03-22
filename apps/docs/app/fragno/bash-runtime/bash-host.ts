@@ -5,6 +5,7 @@ import { createAutomationsBashCommands } from "./automations-bash-runtime";
 import { createEventBashCommands } from "./event-bash-runtime";
 import { createOtpBashCommands } from "./otp-bash-runtime";
 import { createPiBashCommands } from "./pi-bash-runtime";
+import { createResendBashCommands } from "./resend-bash-runtime";
 
 type BashOptions = NonNullable<ConstructorParameters<typeof Bash>[0]>;
 
@@ -48,6 +49,7 @@ export const createBashHost = <TContext>(
         ...createOtpBashCommands(commandInput),
         ...createEventBashCommands(commandInput),
         ...createPiBashCommands(commandInput),
+        ...createResendBashCommands(commandInput),
       ],
     }),
     sessionId: input.sessionId,
