@@ -24,9 +24,9 @@ export async function loader(_: Route.LoaderArgs) {
 
   const fragmentPages = [
     "/fragments",
-    "/fragments/forms",
     "/fragments/stripe",
     "/fragments/telegram",
+    "/fragments/forms",
     "/fragments/workflows",
     "/fragments/upload",
     "/fragments/auth",

@@ -1,7 +1,7 @@
 # GitHub App Installation Flow (Current Implementation)
 
-This describes the current GitHub installation flow in `apps/docs`, including UI behavior, global
-callback/webhook routes, and Durable Object responsibilities.
+This describes the current GitHub installation flow in `apps/backoffice`, including UI behavior,
+global callback/webhook routes, and Durable Object responsibilities.
 
 ## Required GitHub App Settings
 
@@ -20,7 +20,7 @@ These URLs are global (not org-specific):
 1. User-facing org configuration page
 
 - Route: `/backoffice/connections/github/:orgId/configuration`
-- File: `apps/docs/app/routes/backoffice/connections/github/configuration.tsx`
+- File: `apps/backoffice/app/routes/backoffice/connections/github/configuration.tsx`
 - Role:
   - Starts installation for a specific org
   - Consumes callback query params (`state`, `installation_id`, `setup_action`)
@@ -30,7 +30,7 @@ These URLs are global (not org-specific):
 2. Global setup callback route
 
 - Route: `/backoffice/connections/github/setup-callback`
-- File: `apps/docs/app/routes/backoffice/connections/github/setup-callback.tsx`
+- File: `apps/backoffice/app/routes/backoffice/connections/github/setup-callback.tsx`
 - Role:
   - Requires signed-in user
   - Resolves org from nonce `state` via router singleton DO
@@ -39,7 +39,7 @@ These URLs are global (not org-specific):
 3. Global webhook ingress route
 
 - Route: `/api/github/webhooks`
-- File: `apps/docs/app/routes/api/github-webhooks.ts`
+- File: `apps/backoffice/app/routes/api/github-webhooks.ts`
 - Role:
   - Extracts `installation_id` from webhook payload
   - Resolves `installation_id -> orgId` via router singleton DO
@@ -49,14 +49,14 @@ These URLs are global (not org-specific):
 4. Org-scoped GitHub API proxy route
 
 - Route: `/api/github/:orgId/*`
-- File: `apps/docs/app/routes/api/github.ts`
+- File: `apps/backoffice/app/routes/api/github.ts`
 - Role:
   - Proxies org-scoped API requests into the org GitHub DO (`/api/github/*`)
 
 5. Operator internals page
 
 - Route: `/backoffice/internals/github`
-- File: `apps/docs/app/routes/backoffice/internals/github.tsx`
+- File: `apps/backoffice/app/routes/backoffice/internals/github.tsx`
 - Role:
   - Shows runtime config health
   - Shows router singleton snapshot (installation mappings, pending webhook queue, active install
@@ -70,7 +70,7 @@ There are two GitHub Durable Object classes:
 1. Org GitHub fragment DO
 
 - Binding/class: `GITHUB` / `GitHub`
-- File: `apps/docs/workers/github.do.ts`
+- File: `apps/backoffice/workers/github.do.ts`
 - Keyed by: `orgId`
 - Responsibilities:
   - Hosts GitHub fragment runtime
@@ -82,7 +82,7 @@ There are two GitHub Durable Object classes:
 2. Global router singleton DO
 
 - Binding/class: `GITHUB_WEBHOOK_ROUTER` / `GitHubWebhookRouter`
-- File: `apps/docs/workers/github-webhook-router.do.ts`
+- File: `apps/backoffice/workers/github-webhook-router.do.ts`
 - Keyed by singleton name: `GITHUB_WEBHOOK_ROUTER_SINGLETON_ID`
 - Responsibilities:
   - Stores nonce install state records

@@ -31,8 +31,8 @@ export default function BlogPage({ loaderData }: Route.ComponentProps) {
   const { posts } = loaderData;
 
   return (
-    <main className="container flex min-h-screen flex-1 flex-col items-center py-12">
-      <div className="w-full max-w-6xl">
+    <main className="flex min-h-screen flex-1 flex-col py-12">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
         <header className="relative mb-10 overflow-hidden rounded-3xl border border-black/5 bg-white/70 px-6 py-10 shadow-sm backdrop-blur sm:px-10 dark:border-white/10 dark:bg-slate-950/50">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
             <div className="absolute -top-16 -left-12 h-48 w-72 rounded-full bg-linear-to-br from-blue-500/15 via-sky-400/10 to-transparent blur-3xl" />
