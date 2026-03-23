@@ -14,7 +14,6 @@ import {
   isCloudflareWorkerDispatchEnabled,
 } from "@/cloudflare/worker-dispatch";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workers";
@@ -701,24 +700,30 @@ function WorkerDetailView({
         </div>
       ) : null}
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab((value as WorkerDetailTab) || "info")}
-        className="gap-4"
-      >
-        <TabsList className="h-auto w-full flex-wrap items-center justify-start gap-2 rounded-none border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-          {WORKER_DETAIL_TABS.map((tab) => (
-            <TabsTrigger
+      <div className="flex h-auto w-full flex-wrap items-center justify-start gap-2 rounded-none border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+        {WORKER_DETAIL_TABS.map((tab) => {
+          const isActive = activeTab === tab.value;
+          return (
+            <button
               key={tab.value}
-              value={tab.value}
-              className="h-auto flex-none rounded-none border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase shadow-none transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] data-[state=active]:border-[color:var(--bo-accent)] data-[state=active]:bg-[var(--bo-accent-bg)] data-[state=active]:text-[var(--bo-accent-fg)] data-[state=active]:shadow-none"
+              type="button"
+              onClick={() => setActiveTab(tab.value)}
+              className={`h-auto flex-none rounded-none border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase shadow-none transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] ${
+                isActive
+                  ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                  : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]"
+              }`}
+              aria-pressed={isActive}
+              aria-current={isActive ? "page" : undefined}
             >
               {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+            </button>
+          );
+        })}
+      </div>
 
-        <TabsContent value="info" className="space-y-4">
+      {activeTab === "info" ? (
+        <div className="space-y-4">
           <WorkerInfoTab
             worker={worker}
             deployments={deployments}
@@ -726,9 +731,11 @@ function WorkerDetailView({
             detailError={detailError}
             latestDeployment={latestDeployment}
           />
-        </TabsContent>
+        </div>
+      ) : null}
 
-        <TabsContent value="request" className="space-y-4">
+      {activeTab === "request" ? (
+        <div className="space-y-4">
           <WorkerRequestView
             organizationId={organizationId}
             worker={worker}
@@ -736,9 +743,11 @@ function WorkerDetailView({
             liveError={liveError}
             latestDeployment={latestDeployment}
           />
-        </TabsContent>
+        </div>
+      ) : null}
 
-        <TabsContent value="source" className="space-y-4">
+      {activeTab === "source" ? (
+        <div className="space-y-4">
           <WorkerSourceView
             worker={worker}
             latestDeploymentDetail={latestDeploymentDetail}
@@ -747,8 +756,8 @@ function WorkerDetailView({
             values={values}
             isDeploying={isDeploying}
           />
-        </TabsContent>
-      </Tabs>
+        </div>
+      ) : null}
     </div>
   );
 }

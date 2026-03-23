@@ -1,38 +1,14 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import path from "path";
+import path from "node:path";
 
 import { reactRouter } from "@react-router/dev/vite";
-import mdx from "fumadocs-mdx/vite";
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
-
-import * as MdxConfig from "./source.config";
-
-const fumadocsDeps = [
-  "fumadocs-ui/components/callout",
-  "fumadocs-ui/components/steps",
-  "fumadocs-ui/components/card",
-  "fumadocs-ui/components/type-table",
-  "fumadocs-ui/components/codeblock",
-  "fumadocs-ui/components/tabs",
-  "fumadocs-ui/components/dynamic-codeblock",
-  "fumadocs-ui/components/ui/popover",
-  "fumadocs-ui/contexts/search",
-  "fumadocs-ui/layouts/home",
-  "fumadocs-ui/layouts/docs",
-  "fumadocs-ui/page",
-  "fumadocs-ui/provider/react-router",
-  "fumadocs-ui/utils/use-copy-button",
-  "fumadocs-core/highlight/client",
-  "hast-util-to-jsx-runtime",
-  "lucide-react",
-  "@marsidev/react-turnstile",
-];
 
 // Warm the Cloudflare worker entry so the Durable Object graph is transformed
 // during dev-server boot instead of on the first SSR request.
@@ -46,27 +22,20 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),
+        ajv: path.resolve(__dirname, "./shims/ajv.ts"),
+        "ajv-formats": path.resolve(__dirname, "./shims/ajv-formats.ts"),
+        undici: path.resolve(__dirname, "./shims/undici.ts"),
       },
     },
     plugins: [
-      mdx(MdxConfig),
       cloudflare({ viteEnvironment: { name: "ssr" } }),
       tailwindcss(),
       reactRouter(),
       devtoolsJson(),
     ],
-    optimizeDeps: isDev
-      ? {
-          include: fumadocsDeps,
-        }
-      : undefined,
-    ssr: isDev
-      ? {
-          optimizeDeps: {
-            include: fumadocsDeps,
-          },
-        }
-      : {},
+    ssr: {
+      noExternal: ["@mariozechner/pi-ai"],
+    },
     environments: isDev
       ? {
           ssr: {

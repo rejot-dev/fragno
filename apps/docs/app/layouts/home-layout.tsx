@@ -38,7 +38,7 @@ function SearchBar() {
 
 export default function Layout({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation();
-  const isDocsPage = pathname.startsWith("/docs/");
+  const isDocsPage = pathname === "/docs" || pathname.startsWith("/docs/");
 
   return <HomeLayoutWithFooter isDocsPage={isDocsPage}>{children}</HomeLayoutWithFooter>;
 }
@@ -223,7 +223,7 @@ export function Footer({ isDocsPage }: { isDocsPage: boolean }) {
               </li>
               <li>
                 <Link
-                  to="/docs/fragno"
+                  to="/docs"
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                 >
                   Docs

@@ -1,0 +1,17 @@
+.DS_Store
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
+.source
+
+# Cloudflare
+.mf
+.wrangler
+.dev.vars*
+!.dev.vars.example
+worker-configuration.d.ts
+
+# Typescript
+*.tsbuildinfo

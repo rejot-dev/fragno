@@ -1,0 +1,24 @@
+# Canonical env template for local docs development.
+# This file is also used by `pnpm run types:generate` to keep worker types deterministic.
+TURNSTILE_SITEKEY=1x00000000000000000000AA
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+
+RESEND_API_KEY=
+
+# For GitHub OAuth (login)
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# For Cloudflare Workers Platform deployments.
+CLOUDFLARE_WORKERS_ACCOUNT_ID=
+CLOUDFLARE_WORKERS_API_TOKEN=
+
+DOCS_PUBLIC_BASE_URL=http://localhost:5173/
+
+# For GitHub App
+GITHUB_APP_ID=1234567
+GITHUB_APP_SLUG=local-example-app
+GITHUB_APP_CLIENT_ID=Iv23exampleclientid
+GITHUB_APP_CLIENT_SECRET=example_client_secret_replace_me
+GITHUB_APP_WEBHOOK_SECRET=example_webhook_secret_replace_me
+GITHUB_APP_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nEXAMPLE_PRIVATE_KEY_CONTENT_REPLACE_ME\n-----END PRIVATE KEY-----\n

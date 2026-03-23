@@ -22,7 +22,6 @@ interface CloudflareEnv {
   GITHUB_APP_CLIENT_ID: string;
   GITHUB_APP_CLIENT_SECRET: string;
   RESEND_API_KEY: string;
-  TURNSTILE_SITEKEY: string;
   TURNSTILE_SECRET_KEY: string;
   DOCS_PUBLIC_BASE_URL?: string;
 }

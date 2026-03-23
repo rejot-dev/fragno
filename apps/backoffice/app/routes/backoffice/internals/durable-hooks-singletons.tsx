@@ -72,12 +72,6 @@ const SINGLETON_TABS = [
     to: "/backoffice/internals/durable-hooks/singletons",
     disabled: false,
   },
-  {
-    id: "forms",
-    label: "Forms",
-    to: "/backoffice/internals/durable-hooks/singletons",
-    disabled: true,
-  },
 ];
 
 export default function BackofficeDurableHooksSingletons() {

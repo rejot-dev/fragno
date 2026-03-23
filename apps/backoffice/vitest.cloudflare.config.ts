@@ -10,6 +10,9 @@ export default mergeConfig(
   defineProject({
     plugins: [
       cloudflareTest({
+        // CI is not logged into Wrangler. Disable remote bindings so Vitest
+        // doesn't try to open a remote proxy session for the dispatch
+        // namespace configured with `remote: true` in wrangler.jsonc.
         remoteBindings: false,
         wrangler: { configPath: "./wrangler.jsonc" },
       }),
@@ -18,6 +21,13 @@ export default mergeConfig(
     test: {
       name: "cloudflare",
       include: ["test/cloudflare/**/*.test.ts"],
+      deps: {
+        optimizer: {
+          ssr: {
+            include: ["just-bash", "@mariozechner/pi-ai", "@cloudflare/sandbox"],
+          },
+        },
+      },
     },
   }),
 );
