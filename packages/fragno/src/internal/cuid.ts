@@ -1,26 +1,60 @@
 const defaultLength = 24;
 const bigLength = 32;
 const initialCountMax = 476782367;
+const randomPoolSize = 128;
+const uint32ToFloatScale = 1 / 4294967296;
 
-const alphabet = Array.from({ length: 26 }, (_, index) => String.fromCharCode(index + 97));
+const alphabet = "abcdefghijklmnopqrstuvwxyz";
+const entropyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 
-const cryptoRandom = () => {
-  const cryptoApi = globalThis.crypto;
-
+const createCryptoRandom = (cryptoApi = globalThis.crypto) => {
   if (!cryptoApi?.getRandomValues) {
     throw new Error("Fragno cuid requires globalThis.crypto.getRandomValues()");
   }
 
-  const values = new Uint32Array(1);
-  cryptoApi.getRandomValues(values);
-  return values[0]! / 4294967296;
+  const values = new Uint32Array(randomPoolSize);
+  let offset = values.length;
+
+  return () => {
+    if (offset >= values.length) {
+      cryptoApi.getRandomValues(values);
+      offset = 0;
+    }
+
+    const value = values[offset]!;
+    offset += 1;
+    return value * uint32ToFloatScale;
+  };
+};
+
+const cryptoRandom = (() => {
+  let random: (() => number) | undefined;
+
+  return () => {
+    random ??= createCryptoRandom();
+    return random();
+  };
+})();
+
+const pickIndex = (random: () => number, length: number) => {
+  const value = random();
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  if (value >= 1) {
+    return length - 1;
+  }
+
+  return Math.floor(value * length);
 };
 
 const createEntropy = (length = 4, random = cryptoRandom) => {
   let entropy = "";
 
   while (entropy.length < length) {
-    entropy += Math.floor(random() * 36).toString(36);
+    entropy += entropyAlphabet[pickIndex(random, entropyAlphabet.length)] ?? "0";
   }
 
   return entropy;
@@ -55,27 +89,18 @@ const hash = (input: string, length = bigLength) => {
 };
 
 const createFingerprint = ({
-  globalObj = globalThis,
   random = cryptoRandom,
 }: {
-  globalObj?: object;
   random?: () => number;
-} = {}) => {
-  const globals = Object.keys(globalObj).toString();
-  const source = globals.length
-    ? `${globals}${createEntropy(bigLength, random)}`
-    : createEntropy(bigLength, random);
-
-  return hash(source, bigLength);
-};
+} = {}) => createEntropy(bigLength, random);
 
 const createCounter = (count: number) => () => count++;
 
 export const init = ({
   random = cryptoRandom,
-  counter = createCounter(Math.floor(random() * initialCountMax)),
+  counter,
   length = defaultLength,
-  fingerprint = createFingerprint({ random }),
+  fingerprint,
 }: {
   random?: () => number;
   counter?: () => number;
@@ -83,20 +108,26 @@ export const init = ({
   fingerprint?: string;
 } = {}) => {
   const normalizedLength = Math.max(1, Math.floor(length));
+  let resolvedCounter = counter;
+  let resolvedFingerprint = fingerprint;
 
   return () => {
-    const firstLetter = alphabet[Math.floor(random() * alphabet.length)] ?? "a";
+    resolvedCounter ??= createCounter(pickIndex(random, initialCountMax));
+    resolvedFingerprint ??= createFingerprint({ random });
+
+    const firstLetter = alphabet[pickIndex(random, alphabet.length)] ?? "a";
 
     if (normalizedLength === 1) {
       return firstLetter;
     }
 
     const time = Date.now().toString(36);
-    const count = counter().toString(36);
+    const count = resolvedCounter().toString(36);
     const salt = createEntropy(normalizedLength, random);
-    const body = hash(`${time}:${salt}:${count}:${fingerprint}`, normalizedLength - 1);
+    const body = hash(`${time}:${salt}:${count}:${resolvedFingerprint}`, normalizedLength - 1);
     return `${firstLetter}${body}`;
   };
 };
 
+// Safe to keep at module scope: init() defers all randomness until the first ID request.
 export const createId = init();
