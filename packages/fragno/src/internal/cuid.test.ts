@@ -31,6 +31,21 @@ describe("cuid", () => {
     expect(id).toMatch(idPattern);
   });
 
+  it("defers default state initialization until the first generated id", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-01T00:00:00.000Z"));
+
+    const random = vi.fn(() => 0.5);
+
+    const generator = init({ random });
+
+    expect(random).not.toHaveBeenCalled();
+
+    generator();
+
+    expect(random).toHaveBeenCalled();
+  });
+
   it("uses web-standard crypto randomness by default", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2020-01-01T00:00:00.000Z"));
@@ -38,10 +53,11 @@ describe("cuid", () => {
     const mathRandomSpy = vi.spyOn(Math, "random");
     const getRandomValuesSpy = vi.spyOn(globalThis.crypto, "getRandomValues");
 
-    const id = init()();
+    const generator = init();
+    const ids = Array.from({ length: 10 }, () => generator());
 
-    expect(id).toHaveLength(24);
-    expect(id).toMatch(idPattern);
+    expect(ids[0]).toHaveLength(24);
+    expect(ids[0]).toMatch(idPattern);
     expect(mathRandomSpy).not.toHaveBeenCalled();
     expect(getRandomValuesSpy).toHaveBeenCalled();
   });
