@@ -153,12 +153,6 @@ const routes = [
 export default function TelegramPage() {
   return (
     <main className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute top-[-120px] -left-32 h-[420px] w-[420px] rounded-full bg-teal-500/20 blur-[140px] dark:bg-teal-400/20" />
-        <div className="absolute top-20 -right-32 h-[420px] w-[420px] rounded-full bg-sky-500/20 blur-[140px] dark:bg-sky-400/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(14,116,144,0.12)_1px,transparent_0)] [background-size:28px_28px]" />
-      </div>
-
       <div className="mx-auto max-w-7xl space-y-16 px-4 py-16 md:px-8">
         <FragmentSubnav current="telegram" />
 
@@ -203,7 +197,6 @@ export default function TelegramPage() {
           </div>
 
           <div className="relative rounded-3xl border border-black/5 bg-white/80 p-6 shadow-xl shadow-sky-500/10 backdrop-blur dark:border-white/10 dark:bg-slate-950/70">
-            <div className="absolute top-6 -right-10 h-24 w-24 rounded-full bg-teal-500/20 blur-2xl" />
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-teal-400/40 text-teal-600 dark:text-teal-300">
                 <MessageSquare className="size-5" />

@@ -122,7 +122,7 @@ const clientLoader = browserCollections.docs.createClientLoader<Record<string, n
         <meta name="description" content={frontmatter.description} />
         <DocsTitle>{frontmatter.title}</DocsTitle>
         <DocsDescription>{frontmatter.description}</DocsDescription>
-        <div className="-mt-6 flex flex-row items-center gap-2 border-b pt-2 pb-6">
+        <div className="editorial-doc-actions -mt-3 flex flex-row items-center gap-2 pt-2 pb-6">
           <CopyMarkdownButton markdownText={processedMarkdown} />
           <ViewOptions
             markdownUrl={`${url}.md`}
@@ -145,6 +145,7 @@ export default function Page({ loaderData }: Route.ComponentProps) {
 
   return (
     <div
+      className="editorial-docs"
       // The docs layout uses `--fd-banner-height` to offset its fixed elements.
       // Since we render it under the site header (HomeLayout), we bump this so
       // the sidebar/top controls don't sit behind the header.

@@ -8,6 +8,7 @@ import { JsonForms } from "@jsonforms/react";
 
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { FormBuilder, type GeneratedSchemas } from "@/components/form-builder";
+import { FragmentEyebrow, FragmentPageShell } from "@/components/fragment-editorial";
 import { FragmentSubnav } from "@/components/fragment-subnav";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { GitHub } from "@/components/logos/github";
@@ -167,30 +168,32 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
   };
 
   return (
-    <main className="relative min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-12 px-4 py-16 md:px-8">
+    <FragmentPageShell>
+      <div className="space-y-12">
         <FragmentSubnav current="forms" />
-        {/* Hero Section */}
-        <section className="space-y-4 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl lg:text-6xl">
-            Forms, <span className="text-blue-600 dark:text-blue-400">Simplified</span>
-          </h1>
-          <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg md:text-xl">
-            Build forms and collect responses. Based on open standards. Add to any application.
-            Bring your own design.
-          </p>
-          <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
+        <section className="space-y-6">
+          <FragmentEyebrow>Forms</FragmentEyebrow>
+          <div className="max-w-3xl space-y-4">
+            <h1 className="text-5xl leading-[0.96] font-bold tracking-[-0.05em] md:text-7xl">
+              Forms as a reusable product surface.
+            </h1>
+            <p className="max-w-2xl text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)] md:text-lg">
+              Build forms and collect responses using open standards. Mount the fragment, keep the
+              schema portable, and bring your own design system.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row">
             <Link
               to="/docs/forms"
-              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+              className="inline-flex items-center justify-center bg-[var(--editorial-ink)] px-6 py-3 text-sm font-bold tracking-[0.12em] text-[var(--editorial-paper)] uppercase transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_88%,black)]"
             >
-              View Docs
+              View docs
             </Link>
             <a
               href="https://github.com/rejot-dev/fragno"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold tracking-[0.12em] text-[var(--editorial-ink)] uppercase shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)]"
             >
               <GitHub className="size-4" />
               Star on GitHub
@@ -348,6 +351,6 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
         {/* For linking to the form */}
         <div id="survey" />
       </div>
-    </main>
+    </FragmentPageShell>
   );
 }

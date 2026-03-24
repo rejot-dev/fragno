@@ -28,6 +28,9 @@ export async function loader(_: Route.LoaderArgs) {
     "/fragments/telegram",
     "/fragments/forms",
     "/fragments/workflows",
+    "/fragments/pi",
+    "/fragments/resend",
+    "/fragments/github",
     "/fragments/upload",
     "/fragments/auth",
   ];

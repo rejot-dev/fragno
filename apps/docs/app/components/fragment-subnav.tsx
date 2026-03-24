@@ -3,12 +3,45 @@ import { Link } from "react-router";
 import { cn } from "@/lib/cn";
 
 const fragments = [
-  { id: "stripe", label: "Stripe", href: "/fragments/stripe", dot: "bg-violet-500/80" },
-  { id: "telegram", label: "Telegram", href: "/fragments/telegram", dot: "bg-teal-500/80" },
-  { id: "forms", label: "Forms", href: "/fragments/forms", dot: "bg-sky-500/80" },
-  { id: "workflows", label: "Workflows", href: "/fragments/workflows", dot: "bg-amber-500/80" },
-  { id: "upload", label: "Uploads", href: "/fragments/upload", dot: "bg-cyan-500/80" },
-  { id: "auth", label: "Auth", href: "/fragments/auth", dot: "bg-emerald-500/80" },
+  {
+    id: "stripe",
+    label: "Stripe",
+    href: "/fragments/stripe",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    href: "/fragments/telegram",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  { id: "forms", label: "Forms", href: "/fragments/forms", dot: "bg-[var(--editorial-muted)]/60" },
+  {
+    id: "workflows",
+    label: "Workflows",
+    href: "/fragments/workflows",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  { id: "pi", label: "Pi", href: "/fragments/pi", dot: "bg-[var(--editorial-muted)]/60" },
+  {
+    id: "resend",
+    label: "Resend",
+    href: "/fragments/resend",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    href: "/fragments/github",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  {
+    id: "upload",
+    label: "Uploads",
+    href: "/fragments/upload",
+    dot: "bg-[var(--editorial-muted)]/60",
+  },
+  { id: "auth", label: "Auth", href: "/fragments/auth", dot: "bg-[var(--editorial-muted)]/60" },
 ] as const;
 
 type FragmentId = (typeof fragments)[number]["id"];
@@ -21,19 +54,16 @@ export function FragmentSubnav({
   className?: string;
 }) {
   return (
-    <div
+    <nav
+      aria-label="Fragment navigation"
       className={cn(
-        "flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500",
+        "mb-12 flex flex-wrap items-center gap-2 text-[11px] font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase",
         className,
       )}
     >
-      <span className="rounded-full border border-slate-200/70 px-3 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase dark:border-white/10 dark:text-slate-300">
-        First party fragment
+      <span className="bg-[color-mix(in_srgb,var(--editorial-surface)_78%,transparent)] px-3 py-1.5 shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] backdrop-blur-[12px]">
+        First party fragments
       </span>
-      <span
-        aria-hidden
-        className="mx-1 inline-flex h-4 w-px rounded-full bg-slate-200 dark:bg-slate-700"
-      />
       {fragments.map((fragment) => {
         const content = (
           <>
@@ -47,7 +77,7 @@ export function FragmentSubnav({
             <span
               key={fragment.id}
               aria-current="page"
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-[10px] font-semibold text-slate-900 dark:border-white/10 dark:bg-slate-950/60 dark:text-white"
+              className="inline-flex items-center gap-2 bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] px-3 py-1.5 text-[var(--editorial-ink)] shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] backdrop-blur-[12px]"
             >
               {content}
             </span>
@@ -58,12 +88,12 @@ export function FragmentSubnav({
           <Link
             key={fragment.id}
             to={fragment.href}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200/70 px-3 py-1 text-[10px] font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-white/10 dark:text-slate-300 dark:hover:text-white"
+            className="inline-flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)] hover:text-[var(--editorial-ink)]"
           >
             {content}
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

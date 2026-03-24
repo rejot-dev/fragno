@@ -1,15 +1,14 @@
-import {
-  ArrowRight,
-  BadgeCheck,
-  Building2,
-  Database,
-  KeyRound,
-  Shield,
-  UserPlus,
-  Users,
-} from "lucide-react";
+import { Database, KeyRound, Shield, Users } from "lucide-react";
 import type { ReactNode } from "react";
 
+import {
+  FragmentEyebrow,
+  FragmentHero,
+  FragmentMetric,
+  FragmentPageShell,
+  FragmentPanel,
+  FragmentSection,
+} from "@/components/fragment-editorial";
 import { FragmentSubnav } from "@/components/fragment-subnav";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
@@ -118,298 +117,180 @@ const useCases = [
 
 export default function AuthPage() {
   return (
-    <main className="relative min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-14 px-4 py-16 md:px-8">
-        <FragmentSubnav current="auth" />
-        <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-          <div className="space-y-5">
-            <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl lg:text-6xl">
-              Authentication Fragment
-            </h1>
-            <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
-              Build sign-up, sessions, organizations, and role-based access without rolling your own
-              auth stack.
-            </p>
-            <div className="max-w-md space-y-2 pt-3">
-              <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                Install
-              </p>
-              <FragnoCodeBlock
-                lang="bash"
-                code="npm install @fragno-dev/auth @fragno-dev/db"
-                allowCopy
-                className="rounded-xl"
-              />
-            </div>
-          </div>
+    <FragmentPageShell>
+      <FragmentSubnav current="auth" />
 
-          <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-400/30 text-emerald-600 dark:text-emerald-300">
-                <KeyRound className="size-5" />
-              </span>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Route surface
-                </h2>
-                <p className="text-fd-muted-foreground text-sm">
-                  The core endpoints the fragment exposes.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <FragnoCodeBlock lang="bash" code={routeSurface} allowCopy className="rounded-xl" />
-            </div>
+      <FragmentHero
+        eyebrow={<FragmentEyebrow>Authentication</FragmentEyebrow>}
+        title={<>Auth should arrive as a finished boundary, not a forever-project.</>}
+        description={
+          <>
+            Sessions, sign-up, organizations, invitations, and active-workspace state are rarely
+            just one table and a login form. The auth fragment packages those concerns into a typed
+            surface so the app can focus on product logic instead of rebuilding identity plumbing.
+          </>
+        }
+        aside={
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+            <FragmentMetric
+              label="Mount route"
+              value="/api/auth"
+              accentClass="text-[var(--editorial-muted)] text-lg md:text-2xl"
+            />
+            <FragmentMetric
+              label="Includes"
+              value="Users + orgs + roles"
+              accentClass="text-[var(--editorial-muted)] text-lg md:text-2xl"
+            />
+            <FragmentMetric
+              label="Backed by"
+              value="Your database"
+              accentClass="text-[var(--editorial-muted)] text-lg md:text-2xl"
+            />
           </div>
-        </section>
+        }
+      >
+        <div className="max-w-xl space-y-2 pt-3">
+          <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+            Install
+          </p>
+          <FragnoCodeBlock
+            lang="bash"
+            code="npm install @fragno-dev/auth @fragno-dev/db"
+            allowCopy
+            syntaxTheme="editorial-triad"
+            className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+          />
+        </div>
+      </FragmentHero>
 
-        <section className="grid gap-6 md:grid-cols-3">
+      <FragmentSection
+        eyebrow={<FragmentEyebrow>Capabilities</FragmentEyebrow>}
+        title={<>The everyday auth primitives are already shaped.</>}
+      >
+        <div className="grid gap-5 md:grid-cols-3">
           {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 text-emerald-600 dark:text-emerald-300">
-                  {feature.icon}
-                </span>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {feature.title}
-                  </h3>
-                  <p className="text-fd-muted-foreground mt-1 text-sm">{feature.description}</p>
-                </div>
+            <FragmentPanel key={feature.title} className="space-y-4">
+              <div className="flex items-center gap-3 text-[var(--editorial-muted)]">
+                {feature.icon}
+                <h3 className="text-xl font-bold tracking-[-0.03em] text-[var(--editorial-ink)]">
+                  {feature.title}
+                </h3>
               </div>
-            </div>
-          ))}
-        </section>
-
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 text-emerald-600 dark:text-emerald-300">
-              <KeyRound className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
-                Setup blueprint
-              </h2>
-              <p className="text-fd-muted-foreground text-sm">
-                Server wiring on the left, client hooks on the right.
+              <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                {feature.description}
               </p>
+            </FragmentPanel>
+          ))}
+        </div>
+      </FragmentSection>
+
+      <FragmentSection
+        eyebrow={<FragmentEyebrow>Interface</FragmentEyebrow>}
+        title={<>Auth routes are compact, but the product surface is broad.</>}
+      >
+        <div className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
+          <FragmentPanel className="space-y-3">
+            <div className="flex items-center gap-3 text-[var(--editorial-muted)]">
+              <KeyRound className="size-5" />
+              <h3 className="text-xl font-bold tracking-[-0.03em] text-[var(--editorial-ink)]">
+                Route surface
+              </h3>
             </div>
-          </div>
+            <FragnoCodeBlock
+              lang="bash"
+              code={routeSurface}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              Why it matters
+            </p>
+            <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+              Good auth is never only about identity. It is about product access, membership,
+              workspace context, and role semantics. This fragment treats that seam as one thing to
+              mount and one thing to consume from typed clients.
+            </p>
+          </FragmentPanel>
+        </div>
+      </FragmentSection>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Create the fragment server
-                </h3>
-                <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Configure cookie defaults and pass the database adapter.
-                </p>
-                <div className="mt-4">
-                  <FragnoCodeBlock
-                    lang="ts"
-                    code={serverSnippet}
-                    allowCopy
-                    className="rounded-xl"
-                  />
-                </div>
-              </div>
+      <FragmentSection
+        eyebrow={<FragmentEyebrow>Blueprint</FragmentEyebrow>}
+        title={<>Wire the server, mount the handlers, then consume typed auth hooks.</>}
+      >
+        <div className="grid gap-5 lg:grid-cols-3">
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              Create the fragment
+            </p>
+            <FragnoCodeBlock
+              lang="ts"
+              code={serverSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              Mount handlers
+            </p>
+            <FragnoCodeBlock
+              lang="ts"
+              code={mountSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              Create client
+            </p>
+            <FragnoCodeBlock
+              lang="ts"
+              code={clientSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+        </div>
+      </FragmentSection>
 
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Mount routes
-                </h3>
-                <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Expose auth routes in your framework adapter.
-                </p>
-                <div className="mt-4">
-                  <FragnoCodeBlock lang="ts" code={mountSnippet} allowCopy className="rounded-xl" />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Client hooks
-                </h3>
-                <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Typed hooks cover auth, users, organizations, members, and invitations.
-                </p>
-                <div className="mt-4">
-                  <FragnoCodeBlock
-                    lang="ts"
-                    code={clientSnippet}
-                    allowCopy
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="mt-4">
-                  <FragnoCodeBlock lang="ts" code={hookSnippet} allowCopy className="rounded-xl" />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Get updates
-                </h3>
-                <p className="text-fd-muted-foreground mt-2 text-sm">
-                  The auth fragment is in active development. Join the community to shape the
-                  roadmap.
-                </p>
-                <a
-                  href="https://discord.gg/jdXZxyGCnC"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200"
-                >
-                  Talk to the team
-                  <ArrowRight className="size-4" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Use cases</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+      <FragmentSection
+        eyebrow={<FragmentEyebrow>Use it</FragmentEyebrow>}
+        title={<>The client API matches the actual auth model.</>}
+      >
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              Hooks
+            </p>
+            <FragnoCodeBlock
+              lang="ts"
+              code={hookSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+          <div className="grid gap-5 md:grid-cols-3 lg:grid-cols-1">
             {useCases.map((useCase) => (
-              <div
-                key={useCase.title}
-                className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
-              >
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {useCase.title}
-                </h3>
-                <p className="text-fd-muted-foreground mt-2 text-sm">{useCase.description}</p>
-              </div>
+              <FragmentPanel key={useCase.title} className="space-y-3">
+                <p className="text-lg font-bold tracking-[-0.03em]">{useCase.title}</p>
+                <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                  {useCase.description}
+                </p>
+              </FragmentPanel>
             ))}
           </div>
-        </section>
-
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 text-emerald-600 dark:text-emerald-300">
-              <Building2 className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
-                Organization workflows
-              </h2>
-              <p className="text-fd-muted-foreground text-sm">
-                Everything you need to model teams, workspaces, and access policies in one place.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 via-white to-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Lifecycle at a glance
-              </h3>
-              <p className="text-fd-muted-foreground mt-1 text-sm">
-                Organizations connect users, roles, and invitations with a single session-aware API
-                surface.
-              </p>
-              <div className="mt-5 space-y-3">
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                    <Building2 className="size-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Create the organization
-                    </p>
-                    <p className="text-fd-muted-foreground text-sm">
-                      Create the org, seed the first member, and start assigning roles immediately.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                    <UserPlus className="size-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Invite and onboard
-                    </p>
-                    <p className="text-fd-muted-foreground text-sm">
-                      Send invitations, accept or reject them, and keep membership in sync.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-white/80 p-3 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                    <BadgeCheck className="size-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Manage roles and access
-                    </p>
-                    <p className="text-fd-muted-foreground text-sm">
-                      Update member roles, remove members, and enforce permissions consistently.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                    <Shield className="size-4" />
-                  </span>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    Active organization
-                  </h3>
-                </div>
-                <p className="text-fd-muted-foreground mt-2 text-sm">
-                  Keep workspace context on the session so clients always know which org is active.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-200">
-                  <span className="rounded-full border border-emerald-200/70 bg-emerald-50 px-2.5 py-1 dark:border-emerald-400/20 dark:bg-emerald-500/10">
-                    /organizations/active
-                  </span>
-                  <span className="rounded-full border border-emerald-200/70 bg-emerald-50 px-2.5 py-1 dark:border-emerald-400/20 dark:bg-emerald-500/10">
-                    session context
-                  </span>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                    <Users className="size-4" />
-                  </span>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    Org hooks + insights
-                  </h3>
-                </div>
-                <p className="text-fd-muted-foreground mt-2 text-sm">
-                  Subscribe to organization, member, and invitation hooks to drive onboarding,
-                  billing, and audit trails.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-200">
-                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
-                    org lifecycle
-                  </span>
-                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
-                    member updates
-                  </span>
-                  <span className="rounded-full border border-black/5 bg-slate-50 px-2.5 py-1 dark:border-white/10 dark:bg-slate-900/40">
-                    invitation flow
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      </FragmentSection>
+    </FragmentPageShell>
   );
 }

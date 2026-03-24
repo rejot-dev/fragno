@@ -13,13 +13,21 @@ import { Svelte } from "@/components/logos/frameworks/svelte";
 import { Vue } from "@/components/logos/frameworks/vue";
 import { cn } from "@/lib/cn";
 
-export default function Frameworks({ className }: { className?: string }) {
+type FrameworksProps = {
+  className?: string;
+  variant?: "default" | "editorial";
+};
+
+export default function Frameworks({ className, variant = "default" }: FrameworksProps) {
   const [mouseX, setMouseX] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(1);
   const [hydrated, setHydrated] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (variant === "editorial") {
+      return;
+    }
     if (window.innerWidth < 1024) {
       return;
     }
@@ -44,7 +52,7 @@ export default function Frameworks({ className }: { className?: string }) {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("resize", handleResize);
     };
-  }, []);
+  }, [variant]);
 
   const items = useMemo(() => {
     return [
@@ -94,6 +102,9 @@ export default function Frameworks({ className }: { className?: string }) {
   }, [mouseX, viewportWidth, items.length]);
 
   const getIntensityForIndex = (index: number): number => {
+    if (variant === "editorial") {
+      return 1;
+    }
     if (!hydrated) {
       // SSR, no-JS fallback, or mobile: everything stays grayscale
       return 0;
@@ -109,6 +120,14 @@ export default function Frameworks({ className }: { className?: string }) {
   };
 
   const getStyleForIntensity = (intensity: number): CSSProperties => {
+    if (variant === "editorial") {
+      return {
+        filter: "grayscale(1) saturate(0)",
+        transform: "none",
+        transition: "none",
+        opacity: 0.85,
+      };
+    }
     const grayscale = 1 - intensity; // 1: fully gray, 0: full color
     const saturate = 1 + 0.6 * intensity;
     const brightness = 1 + 0.12 * intensity;
@@ -124,36 +143,70 @@ export default function Frameworks({ className }: { className?: string }) {
   };
 
   return (
-    <section className={cn("w-full max-w-6xl space-y-6", className)}>
-      <div className="space-y-4 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Frameworks</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          These frameworks{" "}
-          <a href="/docs/fragno/reference/frameworks" className="text-blue-500 hover:underline">
-            and more
-          </a>{" "}
-          are already supported
-        </p>
-      </div>
-      <div
-        ref={gridRef}
-        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9"
-      >
-        {items.map((item, index) => {
-          const intensity = getIntensityForIndex(index);
-          const style = getStyleForIntensity(intensity);
-          return (
-            <div key={item.name} className="flex flex-col items-center gap-2">
-              <div className="rounded-md p-1" style={style} aria-label={`${item.name} logo`}>
-                {item.element}
+    <section className={cn("w-full max-w-6xl", className)}>
+      {variant === "editorial" ? (
+        <div className="max-w-4xl">
+          <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-md dark:shadow-[0_24px_48px_rgb(2_6_23/0.28)]">
+            <div className="space-y-6 p-6 md:p-10">
+              <div
+                ref={gridRef}
+                className="grid w-full grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9"
+              >
+                {items.map((item, index) => {
+                  const intensity = getIntensityForIndex(index);
+                  const style = getStyleForIntensity(intensity);
+                  return (
+                    <div key={item.name} className="flex flex-col items-center gap-2">
+                      <div
+                        className="rounded-md p-1"
+                        style={style}
+                        aria-label={`${item.name} logo`}
+                      >
+                        {item.element}
+                      </div>
+                      <span className="text-xs font-medium text-(--editorial-muted)">
+                        {item.name}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                {item.name}
-              </span>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="space-y-4 text-center">
+            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Frameworks</h2>
+            <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
+              These frameworks{" "}
+              <a href="/docs/fragno/reference/frameworks" className="text-blue-500 hover:underline">
+                and more
+              </a>{" "}
+              are already supported
+            </p>
+          </div>
+          <div
+            ref={gridRef}
+            className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9"
+          >
+            {items.map((item, index) => {
+              const intensity = getIntensityForIndex(index);
+              const style = getStyleForIntensity(intensity);
+              return (
+                <div key={item.name} className="flex flex-col items-center gap-2">
+                  <div className="rounded-md p-1" style={style} aria-label={`${item.name} logo`}>
+                    {item.element}
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {item.name}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -19,7 +19,7 @@ import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
 import { CommunitySection } from "@/components/community-section";
 import DatabaseIntegration from "@/components/database-integration";
-import { DatabaseSupport } from "@/components/database-support";
+import DatabaseSupport from "@/components/database-support";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import Frameworks from "@/components/frameworks";
 import { Cake } from "@/components/logos/cakes";
