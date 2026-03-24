@@ -1,56 +1,55 @@
 import { Drizzle } from "@/components/logos/frameworks/drizzle";
 import { Kysely } from "@/components/logos/frameworks/kysely";
 import { Prisma } from "@/components/logos/frameworks/prisma";
-import { cn } from "@/lib/cn";
 
-export function DatabaseSupport({ className }: { className?: string }) {
-  const orms = [
-    { name: "Kysely", element: <Kysely className="size-6" /> },
-    { name: "Drizzle", element: <Drizzle className="size-6" /> },
-    { name: "Prisma", element: <Prisma className="size-6" /> },
-  ];
-
-  const databases = ["PostgreSQL", "MySQL / MariaDB", "SQLite"];
-
+function LetterMark({ letter }: { letter: string }) {
   return (
-    <section className={cn("w-full max-w-5xl space-y-6", className)}>
-      <div className="space-y-3 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Database Support</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg">
-          Fragments ship schema outputs for your ORM workflow and integrate with the databases you
-          already run.
-        </p>
-        <p className="text-fd-muted-foreground text-sm">
-          <a
-            href="/docs/fragno/for-users/database-fragments/overview"
-            className="text-blue-600 hover:underline dark:text-blue-400"
-          >
-            Database Adapters
-          </a>
-        </p>
-      </div>
+    <div className="flex size-12 items-center justify-center rounded-md border border-(--editorial-ghost-border) text-2xl font-bold text-(--editorial-muted)">
+      {letter}
+    </div>
+  );
+}
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {orms.map((orm) => (
-          <div
-            key={orm.name}
-            className="flex items-center gap-2 rounded-full border border-black/5 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200"
-          >
-            <span className="text-slate-500 dark:text-slate-300">{orm.element}</span>
-            {orm.name}
+const items = [
+  { name: "Kysely", element: <Kysely className="size-12" /> },
+  { name: "Drizzle", element: <Drizzle className="size-12" /> },
+  { name: "Prisma", element: <Prisma className="size-12" /> },
+  { name: "PostgreSQL", element: <LetterMark letter="P" /> },
+  { name: "SQLite", element: <LetterMark letter="S" /> },
+  { name: "MySQL", element: <LetterMark letter="M" /> },
+];
+
+export default function DatabaseSupport({ className }: { className?: string }) {
+  return (
+    <section className={className}>
+      <div className="max-w-4xl">
+        <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-md dark:shadow-[0_24px_48px_rgb(2_6_23/0.28)]">
+          <div className="space-y-6 p-6 md:p-10">
+            <div className="grid w-full grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-6">
+              {items.map((item, index) => (
+                <div key={item.name} className="relative flex flex-col items-center gap-2">
+                  {index === 3 ? (
+                    <div
+                      className="absolute -ml-3 hidden h-16 w-px bg-(--editorial-ghost-border) opacity-70 md:block"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <div
+                    className="rounded-md p-1"
+                    style={{
+                      filter: "grayscale(1) saturate(0)",
+                      opacity: 0.85,
+                    }}
+                    aria-label={`${item.name} logo`}
+                  >
+                    {item.element}
+                  </div>
+                  <span className="text-xs font-medium text-(--editorial-muted)">{item.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {databases.map((db) => (
-          <span
-            key={db}
-            className="rounded-full border border-slate-200/80 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
-          >
-            {db}
-          </span>
-        ))}
+        </div>
       </div>
     </section>
   );

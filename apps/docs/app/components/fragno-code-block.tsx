@@ -3,6 +3,7 @@ import type { HighlightOptions } from "fumadocs-core/highlight";
 import { useShiki } from "fumadocs-core/highlight/client";
 import { CodeBlock, Pre, type CodeBlockProps } from "fumadocs-ui/components/codeblock";
 import { type ComponentProps, createContext, type FC, Suspense, use } from "react";
+import type { ThemeRegistrationAny } from "shiki";
 
 import { cn } from "@/lib/cn";
 
@@ -29,9 +30,124 @@ export interface DynamicCodeblockProps {
    * @defaultValue true
    */
   allowCopy?: boolean;
+  /**
+   * Opinionated syntax theme presets for Fragno code blocks.
+   *
+   * @defaultValue "default"
+   */
+  syntaxTheme?: "default" | "editorial-triad";
 }
 
 const PropsContext = createContext<CodeBlockProps | undefined>(undefined);
+
+function createEditorialTriadTheme(mode: "light" | "dark"): ThemeRegistrationAny {
+  const palette =
+    mode === "light"
+      ? {
+          ink: "#0f172a",
+          muted: "#475569",
+          paper: "transparent",
+        }
+      : {
+          ink: "#e5eefb",
+          muted: "#9fb0c8",
+          paper: "transparent",
+        };
+
+  return {
+    name: `fragno-editorial-triad-${mode}`,
+    displayName: `Fragno Editorial Triad ${mode === "light" ? "Light" : "Dark"}`,
+    type: mode,
+    fg: palette.ink,
+    bg: palette.paper,
+    settings: [
+      {
+        settings: {
+          foreground: palette.ink,
+          background: palette.paper,
+        },
+      },
+      {
+        scope: ["comment", "punctuation.definition.comment"],
+        settings: {
+          foreground: palette.muted,
+          fontStyle: "italic",
+        },
+      },
+      {
+        scope: [
+          "keyword",
+          "storage.modifier",
+          "keyword.control",
+          "keyword.operator.new",
+          "keyword.operator.expression",
+          "keyword.operator.type.import",
+          "keyword.operator.type.export",
+          "keyword.operator.type.as",
+          "entity.name.tag",
+          "punctuation.definition.tag",
+        ],
+        settings: {
+          foreground: "#f66364",
+        },
+      },
+      {
+        scope: [
+          "entity.name.function",
+          "support.function",
+          "variable.function",
+          "entity.name.method",
+          "entity.name.type",
+          "entity.name.class",
+          "entity.name.namespace",
+          "support.class",
+          "support.interface",
+        ],
+        settings: {
+          foreground: "#5ba4f9",
+        },
+      },
+      {
+        scope: [
+          "support.type",
+          "support.type.primitive",
+          "storage.type",
+          "constant.language",
+          "constant.numeric",
+        ],
+        settings: {
+          foreground: "#fcc433",
+        },
+      },
+      {
+        scope: [
+          "string",
+          "constant.character.escape",
+          "regexp",
+          "markup.inline.raw",
+          "storage",
+          "meta.object-literal.key",
+          "variable.other.property",
+        ],
+        settings: {
+          foreground: palette.ink,
+        },
+      },
+      {
+        scope: ["invalid", "invalid.illegal"],
+        settings: {
+          foreground: "#f66364",
+          fontStyle: "underline",
+        },
+      },
+    ],
+  };
+}
+
+const editorialTriadThemes = {
+  light: createEditorialTriadTheme("light"),
+  dark: createEditorialTriadTheme("dark"),
+} satisfies NonNullable<Extract<HighlightOptions, { themes: unknown }>["themes"]>;
 
 function DefaultPre(props: ComponentProps<"pre">) {
   const extraProps = use(PropsContext);
@@ -59,9 +175,11 @@ export function FragnoCodeBlock({
   wrapInSuspense = true,
   className,
   allowCopy = true,
+  syntaxTheme = "default",
 }: DynamicCodeblockProps) {
   const shikiOptions = {
     lang,
+    ...(syntaxTheme === "editorial-triad" ? { themes: editorialTriadThemes } : {}),
     ...options,
     components: {
       pre: DefaultPre,

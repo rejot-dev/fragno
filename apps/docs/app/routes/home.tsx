@@ -1,25 +1,38 @@
-import { Package, Route as RouteIcon, Layers } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { X } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
+import { Form, Link, useActionData, useNavigation } from "react-router";
+
+import { Turnstile } from "@marsidev/react-turnstile";
 
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
-import { CommunitySection } from "@/components/community-section";
-import { DatabaseSupport } from "@/components/database-support";
+import DatabaseSupport from "@/components/database-support";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import Frameworks from "@/components/frameworks";
-import { SkillCta } from "@/components/skill-cta";
 
 import type { Route } from "./+types/home";
+import { AccentText, PerspectiveFocus } from "./home/essay-primitives";
+import { PerspectiveControls } from "./home/perspective-controls";
+import { dataLayerTabs, mountSnippet, showcaseTabs } from "./home/snippets";
+import type { ShowcaseTab } from "./home/snippets";
+import { defaultPerspective } from "./home/types";
+import type {
+  HomeActionData,
+  NewsletterActionData,
+  PerspectiveActionData,
+  PerspectiveAudience,
+  PerspectiveTime,
+} from "./home/types";
 
 export function meta() {
   return [
-    { title: "Fragno for Users: Integrate Full-Stack Fragments" },
+    { title: "Fragno: Full-Stack libraries" },
     {
       name: "description",
       content:
-        "Integrate full-stack fragments into your app with typed hooks, server routes, and database schemas included.",
+        "Fragno lets authors build portable full-stack fragments and lets users integrate them with routes, hooks, and optional database schemas included.",
     },
   ];
 }
@@ -31,519 +44,1081 @@ export async function loader({ context }: Route.LoaderArgs) {
   };
 }
 
+function parsePerspectiveTime(value: FormDataEntryValue | null): PerspectiveTime | null {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  if (value === "1") {
+    return "low";
+  }
+  if (value === "2") {
+    return "medium";
+  }
+  if (value === "3") {
+    return "high";
+  }
+  return null;
+}
+
+function parseAudience(value: FormDataEntryValue | null): PerspectiveAudience {
+  if (value === "authors" || value === "users" || value === "both") {
+    return value;
+  }
+  return defaultPerspective.audience;
+}
+
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.get(CloudflareContext);
   const formData = await request.formData();
-  const email = formData.get("email");
+  const intent = formData.get("intent");
 
+  if (intent === "perspective") {
+    const time = parsePerspectiveTime(formData.get("time") ?? formData.get("timeRange"));
+    return {
+      intent: "perspective",
+      perspective: {
+        audience: parseAudience(formData.get("audience")),
+        time: time ?? defaultPerspective.time,
+      },
+    } satisfies PerspectiveActionData;
+  }
+
+  const email = formData.get("email");
   if (!email || typeof email !== "string") {
     return {
+      intent: "newsletter",
       success: false,
       message: "Email is required",
-    };
+    } satisfies NewsletterActionData;
   }
 
   const turnstileToken = formData.get("cf-turnstile-response");
   if (!turnstileToken || typeof turnstileToken !== "string") {
     return {
+      intent: "newsletter",
       success: false,
       message: "Turnstile token is required",
-    };
+    } satisfies NewsletterActionData;
   }
 
   const turnstileResult = await validateTurnstileToken(env.TURNSTILE_SECRET_KEY, turnstileToken);
   if (!turnstileResult.success) {
     return {
+      intent: "newsletter",
       success: false,
       message: "Turnstile validation failed",
-    };
+    } satisfies NewsletterActionData;
   }
 
   try {
     const mailingListDo = getMailingListDurableObject(context);
     await mailingListDo.subscribe(email);
-
     return {
+      intent: "newsletter",
       success: true,
       message: "Successfully subscribed!",
-    };
+    } satisfies NewsletterActionData;
   } catch (error) {
     console.error("Mailing list subscription error:", error);
     return {
+      intent: "newsletter",
       success: false,
       message: "Failed to subscribe. Please try again.",
-    };
+    } satisfies NewsletterActionData;
   }
 }
 
-function Hero() {
+const TAB_COLOR_VAR: Record<ShowcaseTab["color"], string> = {
+  primary: "var(--editorial-primary)",
+  secondary: "var(--editorial-secondary)",
+  tertiary: "var(--editorial-tertiary)",
+};
+
+function TabbedCodeFigure({
+  tabs,
+  figcaption,
+  ariaLabel,
+}: {
+  tabs: ShowcaseTab[];
+  figcaption: string;
+  ariaLabel: string;
+}) {
+  const [activeTabId, setActiveTabId] = useState(tabs[0].id);
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const accentVar = TAB_COLOR_VAR[activeTab.color];
+
   return (
-    <section className="w-full max-w-6xl py-6 md:py-10">
-      <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-        <div className="space-y-6">
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-            Integrate full-stack libraries in minutes
-          </h1>
-          <p className="text-fd-muted-foreground max-w-xl text-lg md:text-xl">
-            Drop in auth, billing, forms, workflows, or Telegram bots without stitching backend
-            routes, database tables, and frontend hooks by hand.
-          </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              to="/docs/fragno/user-quick-start"
-              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+    <figure className="mb-12 max-w-4xl space-y-6">
+      <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-[12px] dark:shadow-[0_24px_48px_rgb(2_6_23_/_0.28)]">
+        <div
+          className="flex flex-wrap gap-4 bg-[color-mix(in_srgb,var(--editorial-surface-low)_92%,transparent)] px-6 py-4 text-base font-bold tracking-[0.14em] uppercase md:px-10"
+          role="tablist"
+          aria-label={ariaLabel}
+        >
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTabId(tab.id)}
+                className={`transition-colors ${
+                  isActive
+                    ? `text-[${TAB_COLOR_VAR[tab.color]}] underline decoration-2 underline-offset-[0.65rem]`
+                    : "text-(--editorial-muted) hover:text-(--editorial-ink)"
+                }`}
+                style={isActive ? { color: TAB_COLOR_VAR[tab.color] } : undefined}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="space-y-6 p-6 md:p-10">
+          <div className="max-w-4xl space-y-4">
+            <div
+              className="text-base font-bold tracking-[0.14em] uppercase"
+              style={{ color: accentVar }}
             >
-              User Quick Start
-            </Link>
-            <Link
-              to="/fragments"
-              className="rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Explore Fragments
-            </Link>
+              {activeTab.headline}
+            </div>
+            <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+              {activeTab.description}
+            </p>
           </div>
-          <p className="text-fd-muted-foreground text-sm">
-            Building fragments instead?{" "}
-            <Link to="/authors" className="font-medium text-blue-600 hover:underline">
-              Visit the fragment author overview
-            </Link>
-          </p>
-        </div>
 
-        <SkillCta
-          title="Install the Fragno Skill"
-          command="npx skills add https://github.com/rejot-dev/fragno --skill fragno"
-          description='Then ask: "Use the fragno skill to integrate the Stripe fragment into my app."'
-        />
-      </div>
-    </section>
-  );
-}
-
-type StepCardProps = {
-  icon: ReactNode;
-  title: string;
-  description: string;
-};
-
-function StepCard({ icon, title, description }: StepCardProps) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-white/90 p-6 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
-      <div className="flex items-start gap-3">
-        <span className="flex items-center justify-center rounded-xl bg-blue-500/10 p-3 text-2xl text-blue-600 dark:bg-blue-400/20 dark:text-blue-300">
-          {icon}
-        </span>
-        <div>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
-          <p className="text-fd-muted-foreground mt-1 text-sm">{description}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserFlow() {
-  const steps = [
-    {
-      icon: <Package className="size-6" />,
-      title: "Install a fragment",
-      description: "Add a full-stack feature like billing or auth as a package, not a rewrite.",
-    },
-    {
-      icon: <RouteIcon className="size-6" />,
-      title: "Mount routes once",
-      description:
-        "Register fragment routes on your server adapter and configure environment bindings.",
-    },
-    {
-      icon: <Layers className="size-6" />,
-      title: "Use typed hooks",
-      description: "Call framework-specific hooks and stores with end-to-end type safety.",
-    },
-  ];
-
-  return (
-    <section className="w-full max-w-6xl space-y-8">
-      <div className="space-y-4 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">How it works</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Fragments ship the server, database, and client glue so you can focus on product.
-        </p>
-      </div>
-      <div className="grid gap-6 md:grid-cols-3">
-        {steps.map((step) => (
-          <StepCard key={step.title} {...step} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-type ShowcaseItem = {
-  id: "auth" | "stripe" | "upload" | "forms" | "workflows" | "telegram";
-  label: string;
-  title: ReactNode;
-  titlePlain: string;
-  summary: string;
-  description: string;
-  installCommand: string;
-  details: string[];
-  href: string;
-  docsHref: string;
-  cta: string;
-  glowClass: string;
-  dotClass: string;
-  ctaClass: string;
-  activeRing: string;
-  comingSoon?: boolean;
-};
-
-const showcaseItems: ShowcaseItem[] = [
-  {
-    id: "stripe",
-    label: "Billing",
-    title: (
-      <>
-        <span className="bg-linear-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent dark:from-violet-400 dark:to-purple-400">
-          Stripe
-        </span>{" "}
-        Billing
-      </>
-    ),
-    titlePlain: "Stripe Billing",
-    summary: "Manage subscriptions using Stripe",
-    description: "Stripe Checkout, webhooks, and subscription management.",
-    installCommand: "npm install @fragno-dev/stripe",
-    details: [
-      "Keep track of subscriptions status in your database.",
-      "Webhook handlers included.",
-      "Hooks for creating/cancelling/upgrading subscription plans.",
-    ],
-    href: "/fragments/stripe",
-    docsHref: "/docs/stripe",
-    cta: "Stripe Overview",
-    glowClass: "bg-violet-500/10 dark:bg-violet-400/15",
-    dotClass: "bg-violet-500/70 dark:bg-violet-400/70",
-    ctaClass: "bg-violet-600 hover:bg-violet-700",
-    activeRing: "ring-violet-500/30 dark:ring-violet-400/30",
-  },
-  {
-    id: "telegram",
-    label: "Messaging",
-    title: (
-      <>
-        <span className="bg-linear-to-r from-teal-600 to-sky-500 bg-clip-text text-transparent dark:from-teal-400 dark:to-sky-300">
-          Telegram
-        </span>{" "}
-        Bots
-      </>
-    ),
-    titlePlain: "Telegram Bots",
-    summary: "Commands, chats, and message history.",
-    description: "Durable webhooks, command registry, and a full chat data model.",
-    installCommand: "npm install @fragno-dev/telegram-fragment @fragno-dev/db",
-    details: [
-      "Durable webhook intake with retries.",
-      "Command registry + per-chat bindings.",
-      "Chat, member, and message tracking.",
-    ],
-    href: "/fragments/telegram",
-    docsHref: "/docs/telegram",
-    cta: "Telegram Overview",
-    glowClass: "bg-teal-500/10 dark:bg-teal-400/15",
-    dotClass: "bg-teal-500/70 dark:bg-teal-400/70",
-    ctaClass: "bg-teal-600 hover:bg-teal-700",
-    activeRing: "ring-teal-500/30 dark:ring-teal-400/30",
-  },
-  {
-    id: "forms",
-    label: "Forms and Surveys",
-    title: (
-      <span className="bg-linear-to-r from-blue-600 to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-400">
-        Forms
-      </span>
-    ),
-    titlePlain: "Forms",
-    summary: "Build forms and collect responses.",
-    description:
-      "Form definitions, submission handling, and response storage built on open standards.",
-    installCommand: "npm install @fragno-dev/forms",
-    details: [
-      "Built on JSON Schema + JSON Forms.",
-      "Render beautiful forms with shadcn/ui",
-      "User friendly form builder included.",
-    ],
-    href: "/fragments/forms",
-    docsHref: "/docs/forms",
-    cta: "Forms Overview",
-    glowClass: "bg-blue-500/10 dark:bg-blue-400/15",
-    dotClass: "bg-blue-500/70 dark:bg-blue-400/70",
-    ctaClass: "bg-blue-600 hover:bg-blue-700",
-    activeRing: "ring-blue-500/30 dark:ring-blue-400/30",
-  },
-  {
-    id: "workflows",
-    label: "Workflows",
-    title: (
-      <>
-        <span className="bg-linear-to-r from-amber-600 to-orange-500 bg-clip-text text-transparent dark:from-amber-400 dark:to-orange-300">
-          Durable Workflow
-        </span>{" "}
-        Runtime
-      </>
-    ),
-    titlePlain: "Durable Workflows",
-    summary: "Queues, retries, and durable state.",
-    description: "Queues, retries, and durable state for background work.",
-    installCommand: "npm install @fragno-dev/workflows",
-    details: [
-      "Steps, timers, retries, and external events.",
-      "Runner + dispatcher model for durable execution.",
-      "Test harness for deterministic workflow runs.",
-    ],
-    href: "/fragments/workflows",
-    docsHref: "/docs/workflows",
-    cta: "Workflows Overview",
-    glowClass: "bg-amber-500/10 dark:bg-amber-400/15",
-    dotClass: "bg-amber-500/70 dark:bg-amber-400/70",
-    ctaClass: "bg-amber-600 hover:bg-amber-700",
-    activeRing: "ring-amber-500/30 dark:ring-amber-400/30",
-  },
-  {
-    id: "auth",
-    label: "Auth",
-    title: (
-      <span className="bg-linear-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-400 dark:to-teal-300">
-        Authentication
-      </span>
-    ),
-    titlePlain: "Authentication",
-    summary: "User and session management.",
-    description: "User and session management.",
-    installCommand: "npm install @fragno-dev/auth",
-    details: [],
-    href: "/fragments/auth",
-    docsHref: "/docs/auth",
-    cta: "Auth Overview",
-    glowClass: "bg-emerald-500/10 dark:bg-emerald-400/15",
-    dotClass: "bg-emerald-500/70 dark:bg-emerald-400/70",
-    ctaClass: "bg-emerald-600 hover:bg-emerald-700",
-    activeRing: "ring-emerald-500/30 dark:ring-emerald-400/30",
-  },
-  {
-    id: "upload",
-    label: "File Uploads",
-    title: (
-      <>
-        <span className="bg-linear-to-r from-cyan-600 to-sky-500 bg-clip-text text-transparent dark:from-cyan-400 dark:to-sky-300">
-          File
-        </span>{" "}
-        Uploads
-      </>
-    ),
-    titlePlain: "File Uploads",
-    summary: "Uploads, metadata, and access hooks.",
-    description: "Upload flows, metadata storage, and client hooks for files.",
-    installCommand: "npm install @fragno-dev/upload",
-    details: [],
-    href: "/fragments/upload",
-    docsHref: "/docs/upload/overview",
-    cta: "Uploads Overview",
-    glowClass: "bg-cyan-500/10 dark:bg-cyan-400/15",
-    dotClass: "bg-cyan-500/70 dark:bg-cyan-400/70",
-    ctaClass: "bg-cyan-600 hover:bg-cyan-700",
-    activeRing: "ring-cyan-500/30 dark:ring-cyan-400/30",
-  },
-];
-
-function FragmentShowcase() {
-  const [activeId, setActiveId] = useState<ShowcaseItem["id"]>(showcaseItems[0].id);
-  const activeItem = showcaseItems.find((item) => item.id === activeId) ?? showcaseItems[0];
-
-  return (
-    <section className="w-full max-w-6xl space-y-8">
-      <div className="space-y-3 text-center">
-        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">First Party Fragments</h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Production-ready integrations you can drop into your app today.
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 md:p-10 dark:bg-slate-950/60 dark:ring-white/10">
-          <span
-            className={`absolute inset-x-6 -top-16 h-28 rounded-full opacity-80 blur-3xl ${activeItem.glowClass}`}
-          />
-          <div className="relative flex h-full flex-col justify-between gap-6">
-            <div className="space-y-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-fd-muted-foreground text-sm font-medium">{activeItem.label}</p>
-                {activeItem.comingSoon && (
-                  <span className="rounded-full border border-amber-400/30 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
-                    Coming soon
-                  </span>
-                )}
-              </div>
-              <h3 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-                {activeItem.title}
-              </h3>
-              <p className="text-fd-muted-foreground max-w-xl text-lg">{activeItem.description}</p>
-              <div className="space-y-2">
-                <ul className="grid gap-2 text-sm text-slate-600 dark:text-slate-300">
-                  {activeItem.details.map((detail) => (
-                    <li key={detail} className="flex gap-2">
-                      <span
-                        aria-hidden
-                        className="mt-2 inline-flex h-1.5 w-1.5 rounded-full bg-slate-400/70 dark:bg-slate-500/70"
-                      />
-                      <span>{detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="space-y-2 pt-2">
-                <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                  Install
-                </p>
+          <div className="space-y-5">
+            {activeTab.snippets.map((snippet) => (
+              <div key={snippet.label} className="space-y-2">
+                <div
+                  className="text-xs font-bold tracking-[0.14em] uppercase"
+                  style={{ color: accentVar }}
+                >
+                  {snippet.label}
+                </div>
                 <FragnoCodeBlock
-                  lang="bash"
-                  code={activeItem.installCommand}
+                  lang={snippet.lang}
+                  code={snippet.code}
+                  syntaxTheme="editorial-triad"
+                  className="bg-[color-mix(in_srgb,var(--editorial-surface-low)_88%,var(--editorial-ink)_4%)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] dark:bg-[var(--editorial-surface-low)]!"
                   allowCopy
-                  className="rounded-xl"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
+        {figcaption}
+      </figcaption>
+    </figure>
+  );
+}
+
+function BackofficeScreenshotFigure() {
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!fullscreenOpen) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setFullscreenOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [fullscreenOpen]);
+
+  const overlay =
+    fullscreenOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="fixed inset-0 z-200 flex items-center justify-center p-3 sm:p-6"
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-[rgb(15_23_42/0.88)] backdrop-blur-[2px] dark:bg-[rgb(2_6_23/0.94)]"
+              onClick={() => setFullscreenOpen(false)}
+              aria-label="Close fullscreen view"
+            />
+            <div className="relative z-10 flex max-h-[min(92dvh,92vh)] w-full max-w-6xl flex-col">
+              <div className="sr-only" id={titleId}>
+                Backoffice screenshot
+              </div>
+              <button
+                type="button"
+                onClick={() => setFullscreenOpen(false)}
+                className="absolute top-2 right-2 z-20 inline-flex size-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--editorial-surface)_92%,transparent)] text-(--editorial-ink) shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-surface)_88%,var(--editorial-ink)_6%)]"
+                aria-label="Close"
+              >
+                <X className="size-5" strokeWidth={2} aria-hidden />
+              </button>
+              <div className="overflow-auto rounded-lg shadow-[0_24px_80px_rgb(0_0_0/0.45)]">
+                <img
+                  src="/backoffice-resend-light.jpg"
+                  alt=""
+                  className="block max-h-[min(88dvh,88vh)] w-full object-contain object-top dark:hidden"
+                />
+                <img
+                  src="/backoffice-resend-dark.jpg"
+                  alt=""
+                  className="hidden max-h-[min(88dvh,88vh)] w-full object-contain object-top dark:block"
                 />
               </div>
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  to={activeItem.href}
-                  className={`group inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white shadow-sm transition-colors ${activeItem.ctaClass}`}
-                >
-                  {activeItem.cta}
-                </Link>
-                <Link
-                  to={activeItem.docsHref}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                >
-                  Docs
-                  <span aria-hidden>→</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
-        <div className="relative">
-          <div className="flex h-[420px] flex-col gap-3 overflow-y-auto pr-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {showcaseItems.map((item) => {
-              const isActive = item.id === activeId;
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveId(item.id)}
-                  aria-pressed={isActive}
-                  className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:outline-none dark:border-white/10 dark:bg-slate-950/60 ${
-                    isActive ? `ring-2 ring-inset ${item.activeRing}` : ""
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                          {item.label}
-                        </p>
-                        {item.comingSoon && (
-                          <span className="inline-flex rounded-full border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
-                            Coming soon
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {item.titlePlain}
-                      </p>
-                      <p className="text-fd-muted-foreground text-sm">{item.summary}</p>
-                    </div>
-                    <span
-                      className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full ${item.dotClass}`}
-                      aria-hidden
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-linear-to-b from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-linear-to-t from-white/95 via-white/70 to-transparent dark:from-slate-950/95 dark:via-slate-950/70"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute right-4 bottom-4 inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/80 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-slate-500 uppercase shadow-sm dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-300"
+  return (
+    <>
+      <figure className="space-y-6">
+        <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-md dark:shadow-[0_24px_48px_rgb(2_6_23/0.28)]">
+          <button
+            type="button"
+            onClick={() => setFullscreenOpen(true)}
+            className="group relative block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left"
+            aria-label="View backoffice screenshot fullscreen"
           >
-            Scroll
-          </div>
+            <img
+              src="/backoffice-resend-light.jpg"
+              alt="Backoffice UI using Fragno fragments (light)"
+              className="block w-full dark:hidden"
+            />
+            <img
+              src="/backoffice-resend-dark.jpg"
+              alt="Backoffice UI using Fragno fragments (dark)"
+              className="hidden w-full dark:block"
+            />
+            <span
+              className="pointer-events-none absolute inset-0 bg-[rgb(15_23_42/0)] transition-colors group-hover:bg-[rgb(15_23_42/0.06)] group-focus-visible:bg-[rgb(15_23_42/0.08)] group-focus-visible:ring-2 group-focus-visible:ring-(--editorial-primary) group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] dark:group-hover:bg-[rgb(2_6_23/0.2)] dark:group-focus-visible:ring-offset-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)]"
+              aria-hidden
+            />
+          </button>
         </div>
-      </div>
-    </section>
+        <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
+          Fig. First-party fragments (pictured: Resend) in our own Claw backoffice.
+        </figcaption>
+      </figure>
+      {overlay}
+    </>
   );
 }
 
-function AuthorCta() {
+function EssayHeader() {
   return (
-    <section className="w-full max-w-5xl">
-      <div className="relative overflow-hidden rounded-3xl bg-slate-900 px-8 py-10 text-white shadow-xl">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute top-0 -left-10 h-40 w-40 rounded-full bg-blue-500/30 blur-3xl" />
-          <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-purple-500/30 blur-3xl" />
-        </div>
-        <div className="relative flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <p className="text-sm font-semibold tracking-wide text-blue-200 uppercase">
-              Building fragments?
-            </p>
-            <h2 className="text-3xl font-bold">Create portable full-stack libraries</h2>
-            <p className="text-blue-100">
-              Learn how to ship full-stack libraries with routes, hooks, and database schemas.
-            </p>
-          </div>
-          <Link
-            to="/authors"
-            className="rounded-lg bg-white px-6 py-3 font-semibold text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
-          >
-            Author Overview
-          </Link>
-        </div>
+    <header className="mb-18 max-w-4xl">
+      <div className="mb-6 text-base font-bold tracking-[0.14em] text-[var(--editorial-primary)] uppercase">
+        Volume 01 // Vertical Encapsulation
       </div>
-    </section>
+      <h1 className="text-5xl leading-[0.96] font-bold tracking-[-0.045em] md:text-7xl">
+        Fragno: full-stack encapsulation
+      </h1>
+      <div className="mt-8 flex items-center gap-4 text-base tracking-[0.15em] text-[var(--editorial-muted)] uppercase">
+        <span className="text-[var(--editorial-ink)]">Wilco Kruijer</span>
+        <span className="h-px w-6 bg-[var(--editorial-ghost-border)]" aria-hidden />
+        <span>ReJot Founder</span>
+      </div>
+    </header>
   );
 }
 
 export default function HomePage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
-  return (
-    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-10 md:px-8 md:py-12">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="mx-auto -mt-20 h-[520px] w-[1000px] bg-linear-to-br from-blue-500 via-sky-400 to-purple-500 opacity-4 blur-3xl dark:opacity-15" />
-      </div>
+  const actionData = useActionData<HomeActionData | undefined>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  const newsletterActionData = actionData?.intent === "newsletter" ? actionData : undefined;
 
-      <Hero />
-      <FragmentShowcase />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <UserFlow />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <Frameworks />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <DatabaseSupport />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <CommunitySection turnstileSitekey={turnstileSitekey} />
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <AuthorCta />
+  return (
+    <main className="relative mx-auto w-full max-w-7xl px-4 pt-12 pb-20 sm:px-6 md:pt-18 md:pb-28 lg:px-8">
+      <article className="relative mx-auto w-full max-w-4xl">
+        <EssayHeader />
+        <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+          Some say that abstractions are no longer needed. I say that abstraction compresses moving
+          parts into precise concepts so we can reason about them. AI can generate code faster, but
+          without strong abstractions this <AccentText>leads to ensloppification</AccentText>.
+        </p>
+        <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+          One of the strongest forms of abstraction is{" "}
+          <AccentText color="secondary">encapsulation</AccentText>. This is the reason why we have
+          libraries.
+        </p>
+        <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+          But libraries are limited. They integrate on only one side of the boundary, frontend or
+          backend. Not to even mention the data layer.{" "}
+          <AccentText color="tertiary">Fragno is changing that.</AccentText>
+        </p>
+        <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+          But before we explain that, please tell me what you'd like to know about:
+        </p>
+        <PerspectiveControls>
+          <section className="mb-20 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <h3 className="mb-8 text-base font-bold tracking-[0.14em] text-[var(--editorial-ink)] uppercase">
+                What is full-stack library made of?
+              </h3>
+              <div className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                <ul className="my-6 ml-5 list-disc">
+                  <li>
+                    <AccentText color="primary" mark>
+                      Server-side API routes
+                    </AccentText>
+                    <PerspectiveFocus
+                      audience="both"
+                      minimumTime="high"
+                      className="inline"
+                      as="span"
+                    >
+                      <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                        - Handle secure operations, API keys, and network orchestration close to the
+                        backend.
+                      </span>
+                    </PerspectiveFocus>
+                  </li>
+                  <li>
+                    <AccentText color="secondary" mark>
+                      Client-side reactive hooks
+                    </AccentText>
+                    <PerspectiveFocus
+                      audience="both"
+                      minimumTime="high"
+                      className="inline"
+                      as="span"
+                    >
+                      <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                        - Expose stateful UI primitives that keep the integration ergonomic in the
+                        app shell.
+                      </span>
+                    </PerspectiveFocus>
+                  </li>
+                  <li>
+                    <AccentText color="tertiary" mark>
+                      A database schema
+                    </AccentText>
+                    <PerspectiveFocus
+                      audience="both"
+                      minimumTime="high"
+                      className="inline"
+                      as="span"
+                    >
+                      <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                        - Persist durable feature data so behavior survives sessions and
+                        deployments.
+                      </span>
+                    </PerspectiveFocus>
+                  </li>
+                </ul>
+              </div>
+            </PerspectiveFocus>
+
+            <PerspectiveFocus audience="authors" minimumTime="low">
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                These three components make it so that a library can do much more: it can now
+                dictate the entire user experience, a real vertical slice. This gives the author the
+                opportunity to embed <AccentText colored>taste</AccentText> into the library.
+              </p>
+              <p className="leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Compare this to traditional libraries that only provide backend functions. The
+                integrator still needs to create routes, define hooks, wire them up, and store data
+                if needed.
+              </p>
+            </PerspectiveFocus>
+
+            <PerspectiveFocus audience="both" minimumTime="medium">
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Take as an <strong>example</strong> Vercel's{" "}
+                <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">aisdk</code>
+                . A clear example of a library that has to span both the frontend and the backend.
+                The user interaction on the frontend is the heart of the experience, while the
+                backend holds API keys and handles function calling. Contrast that to the
+                <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">
+                  openai
+                </code>{" "}
+                library, which only provides the backend functionality and leaves the user to do the
+                rest.
+              </p>
+              <p className="leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                But even the{" "}
+                <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">aisdk</code>{" "}
+                library is limited. It provides backend and frontend, but does not include the data
+                layer. As such, they don't provide a way to store conversations, or have persistent
+                LLM memory.
+              </p>
+            </PerspectiveFocus>
+
+            <PerspectiveFocus audience="both" minimumTime="high">
+              <p className="leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Fragno proposes a different unit of composition: the{" "}
+                <strong>
+                  <AccentText>Fragment</AccentText>
+                </strong>
+                . A Fragment is a portable full-stack library slice that carries its own transport
+                surface, optional schema, and client integration. Instead of teaching the developer
+                to rebuild the same feature boundary in three places, it treats that boundary as one
+                authored object.
+              </p>
+            </PerspectiveFocus>
+          </section>
+
+          <section className="mb-24 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="space-y-4">
+                <div className="text-base font-bold tracking-[0.14em] uppercase">
+                  What can be built with Fragno?
+                </div>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Well, anything. But these are some examples from the Fragno ecosystem.
+                </p>
+              </div>
+            </PerspectiveFocus>
+            <div className="grid gap-4 md:grid-cols-3">
+              <PerspectiveFocus audience="both" minimumTime="low">
+                <article className="flex h-full flex-col space-y-3 bg-[var(--editorial-surface-low)] p-5">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-primary)] uppercase">
+                    Pi Agents
+                  </h3>
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Pi is the minimal agent runtime. With our fragment, you get durable agent
+                    sessions with easy tool calling and session management from the frontend.
+                  </p>
+                  <Link
+                    to="/fragments/pi"
+                    className="mt-auto inline-flex pt-2 text-xs tracking-[0.08em] text-[color-mix(in_srgb,var(--editorial-ink)_55%,white)] uppercase transition-colors hover:text-[var(--editorial-primary)]"
+                  >
+                    View fragment
+                  </Link>
+                </article>
+              </PerspectiveFocus>
+              <PerspectiveFocus audience="both" minimumTime="low">
+                <article className="flex h-full flex-col space-y-3 bg-[var(--editorial-surface-low)] p-5">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-secondary)] uppercase">
+                    Forms
+                  </h3>
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Create forms using the form builder, and track submissions from your own
+                    backoffice or database.
+                  </p>
+                  <Link
+                    to="/fragments/forms"
+                    className="mt-auto inline-flex pt-2 text-xs tracking-[0.08em] text-[color-mix(in_srgb,var(--editorial-ink)_55%,white)] uppercase transition-colors hover:text-[var(--editorial-secondary)]"
+                  >
+                    View fragment
+                  </Link>
+                </article>
+              </PerspectiveFocus>
+              <PerspectiveFocus audience="both" minimumTime="low">
+                <article className="flex h-full flex-col space-y-3 bg-[var(--editorial-surface-low)] p-5">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-tertiary)] uppercase">
+                    Workflows
+                  </h3>
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Package long-running orchestration with routes, durable state, and client
+                    controls together, so workflow behavior stays consistent across frameworks.
+                  </p>
+                  <Link
+                    to="/fragments/workflows"
+                    className="mt-auto inline-flex pt-2 text-xs tracking-[0.08em] text-[color-mix(in_srgb,var(--editorial-ink)_55%,white)] uppercase transition-colors hover:text-[var(--editorial-tertiary)]"
+                  >
+                    View fragment
+                  </Link>
+                </article>
+              </PerspectiveFocus>
+            </div>
+            <PerspectiveFocus audience="users" minimumTime="low">
+              <div>
+                <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  But that is not all, we have fragments for:{" "}
+                  <Link
+                    to="/fragments/stripe"
+                    className="underline decoration-red-500 decoration-2 underline-offset-4"
+                  >
+                    Stripe Billing
+                  </Link>
+                  ,{" "}
+                  <Link
+                    to="/fragments/telegram"
+                    className="underline decoration-blue-500 decoration-2 underline-offset-4"
+                  >
+                    Telegram Bots
+                  </Link>
+                  ,{" "}
+                  <Link
+                    to="/fragments/resend"
+                    className="underline decoration-yellow-500 decoration-2 underline-offset-4"
+                  >
+                    Resend Email
+                  </Link>
+                  ,{" "}
+                  <Link
+                    to="/fragments/github"
+                    className="underline decoration-red-500 decoration-2 underline-offset-4"
+                  >
+                    GitHub Apps
+                  </Link>
+                  , and{" "}
+                  <Link
+                    to="/fragments/upload"
+                    className="underline decoration-blue-500 decoration-2 underline-offset-4"
+                  >
+                    S3 Uploads
+                  </Link>
+                  .
+                </p>
+                <Link
+                  to="/fragments"
+                  className="inline-flex text-sm tracking-[0.08em] text-[color-mix(in_srgb,var(--editorial-ink)_62%,white)] uppercase transition-colors hover:text-[var(--editorial-secondary)]"
+                >
+                  View all fragments
+                </Link>
+              </div>
+            </PerspectiveFocus>
+          </section>
+
+          <PerspectiveFocus audience="both" minimumTime="low">
+            <div className="mb-6 text-base font-bold tracking-[0.14em] uppercase">
+              How does it work?
+            </div>
+            <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+              Fragno is a full set of primitives: it contains handlers for all popular full-stack
+              frameworks, as well as database integrations for popular ORMs and SQL databases.
+            </p>
+          </PerspectiveFocus>
+
+          <PerspectiveFocus audience="both" minimumTime="medium">
+            <p className="my-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+              Below you'll find some examples of how fragments are constructed and used in
+              production.
+            </p>
+            <TabbedCodeFigure
+              tabs={showcaseTabs}
+              figcaption="Fig. Production Fragno fragments in the wild: Pi agent sessions, Forms on Durable Objects, and Telegram bots."
+              ariaLabel="Fragment examples"
+            />
+          </PerspectiveFocus>
+
+          <PerspectiveFocus audience="users" minimumTime="low">
+            <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+              For users, integration should be as frictionless as possible. For a library that spans
+              the backend and frontend, the following is enough:
+            </p>
+            <figure className="mb-12 space-y-6">
+              <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-[12px] dark:shadow-[0_24px_48px_rgb(2_6_23_/_0.28)]">
+                <div className="p-6 md:p-10">
+                  <FragnoCodeBlock
+                    lang="ts"
+                    code={mountSnippet}
+                    syntaxTheme="editorial-triad"
+                    className="bg-[color-mix(in_srgb,var(--editorial-surface-low)_88%,var(--editorial-ink)_4%)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] dark:bg-[var(--editorial-surface-low)]!"
+                    allowCopy
+                  />
+                </div>
+              </div>
+              <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
+                Fig. Mounting a fragment, the combination of loader and action makes sure all HTTP
+                verbs are covered.
+              </figcaption>
+            </figure>
+            <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+              Fragments that use the optional database layer require slightly more boilerplate. By
+              default, Fragno will use a local SQLite file to store the data. However, you can use
+              any SQL database by providing a{" "}
+              <AccentText color="secondary">database adapter</AccentText>.
+            </p>
+            <PerspectiveFocus audience="users" minimumTime="medium">
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Users decide how they want to integrate. They can use Fragno directly to migrate
+                their database, or alternatively the Fragno CLI can be used to generate a database
+                schema in the user's preferred ORM.
+              </p>
+            </PerspectiveFocus>
+          </PerspectiveFocus>
+          <section className="mb-24 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="space-y-3">
+                <div className="text-base font-bold tracking-[0.14em] uppercase">
+                  Framework support
+                </div>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Mount the same fragment across modern full-stack frameworks with shared server and
+                  client contracts.
+                </p>
+              </div>
+            </PerspectiveFocus>
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <figure className="space-y-6">
+                <Frameworks variant="editorial" className="max-w-none" />
+                <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
+                  Fig. Framework portability: web-standard objects are used to enable portability
+                  across frameworks.
+                </figcaption>
+              </figure>
+            </PerspectiveFocus>
+          </section>
+
+          <section className="mb-24 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="authors" minimumTime="low">
+              <div className="space-y-4">
+                <div className="text-base font-bold tracking-[0.14em] text-(--editorial-primary) uppercase">
+                  For authors
+                </div>
+                <h2 className="text-3xl leading-[1.05] font-bold tracking-[-0.03em] md:text-5xl">
+                  Authoring libraries on top of Fragno
+                </h2>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Fragno takes inspiration from industry-leading frameworks such as Hono to provide
+                  features typically expected from a backend router framework.
+                </p>
+              </div>
+            </PerspectiveFocus>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <article className="space-y-2 bg-[var(--editorial-surface-low)] p-5">
+                <PerspectiveFocus audience="authors" minimumTime="low">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-primary)] uppercase">
+                    End-to-end type safety
+                  </h3>
+                </PerspectiveFocus>
+                <PerspectiveFocus audience="authors" minimumTime="high">
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Keep input, output, client hooks, and database schema typed from route handlers
+                    to UI usage.
+                  </p>
+                </PerspectiveFocus>
+              </article>
+              <article className="space-y-2 bg-[var(--editorial-surface-low)] p-5">
+                <PerspectiveFocus audience="authors" minimumTime="low">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-secondary)] uppercase">
+                    Frontend state management
+                  </h3>
+                </PerspectiveFocus>
+                <PerspectiveFocus audience="authors" minimumTime="high">
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Compose reactive stores and invalidation behavior as part of your library so
+                    users get ergonomic state. Based on Nano Stores.
+                  </p>
+                </PerspectiveFocus>
+              </article>
+              <article className="space-y-2 bg-[var(--editorial-surface-low)] p-5">
+                <PerspectiveFocus audience="authors" minimumTime="low">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-tertiary)] uppercase">
+                    Streaming support
+                  </h3>
+                </PerspectiveFocus>
+                <PerspectiveFocus audience="authors" minimumTime="high">
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Model long-running and incremental responses with NDJSON streams while
+                    preserving typed client-side consumption.
+                  </p>
+                </PerspectiveFocus>
+              </article>
+              <article className="space-y-2 bg-[var(--editorial-surface-low)] p-5">
+                <PerspectiveFocus audience="authors" minimumTime="low">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-[var(--editorial-primary)] uppercase">
+                    Middleware support
+                  </h3>
+                </PerspectiveFocus>
+                <PerspectiveFocus audience="authors" minimumTime="high">
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Let integrators add auth and cross-cutting behavior while preserving your
+                    fragment contract and runtime semantics.
+                  </p>
+                </PerspectiveFocus>
+              </article>
+            </div>
+          </section>
+
+          <section className="mb-12 max-w-4xl space-y-6">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="mb-6 font-bold tracking-[0.14em] uppercase">
+                What does the data layer look like?
+              </div>
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Letting third-party libraries write to an app's database is a{" "}
+                <AccentText color="tertiary" colored>
+                  delicate thing
+                </AccentText>
+                . Fragno's data layer is very opinionated. This makes it slightly more complicated
+                for authors, but this gives users the safety they need.
+              </p>
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Things that are{" "}
+                <AccentText color="primary" mark>
+                  not supported
+                </AccentText>
+                :
+                <ul className="my-6 ml-5 list-disc text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  <li>
+                    <strong>Interactive transactions</strong>
+                    <PerspectiveFocus
+                      audience="both"
+                      minimumTime="high"
+                      className="inline"
+                      as="span"
+                    >
+                      <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                        - Long-lived, interactive transactions can hold locks unpredictably in
+                        user-owned environments, so Fragno has two-phased transactions with
+                        optimistic concurrency control instead.
+                      </span>
+                    </PerspectiveFocus>
+                  </li>
+                  <li>
+                    <strong>Arbitrary joins</strong>
+                    <PerspectiveFocus
+                      audience="both"
+                      minimumTime="high"
+                      className="inline"
+                      as="span"
+                    >
+                      <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                        - Arbitrary joins make query performance characteristics unpredictable, so
+                        Fragno only supports simple left joins.
+                      </span>
+                    </PerspectiveFocus>
+                  </li>
+                </ul>
+              </p>
+            </PerspectiveFocus>
+
+            <PerspectiveFocus audience="authors" minimumTime="medium">
+              <p className="leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                In some way, Fragno is the most opinionated ORM. This is necessary to provide
+                safety, consistency, and compatibility with several ORMs and databases. These are
+                some features that Fragno <em>does</em> support:
+              </p>
+              <ul className="my-6 ml-5 list-disc text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                <li>
+                  <AccentText color="primary" mark>
+                    Atomicity
+                  </AccentText>
+                  <PerspectiveFocus
+                    audience="authors"
+                    minimumTime="high"
+                    className="inline"
+                    as="span"
+                  >
+                    <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                      - Reads and writes run as one retryable unit using optimistic concurrency
+                      checks instead of lock-heavy interactive transactions.
+                    </span>
+                  </PerspectiveFocus>
+                </li>
+                <li>
+                  <AccentText color="secondary" mark>
+                    Durable Hooks
+                  </AccentText>
+                  <PerspectiveFocus
+                    audience="authors"
+                    minimumTime="high"
+                    className="inline"
+                    as="span"
+                  >
+                    <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                      - Side effects are persisted in-transaction and dispatched after commit with
+                      retries and scheduled execution support. This makes interacting with
+                      third-party services reliable as well as ingesting webhooks from external
+                      systems.
+                    </span>
+                  </PerspectiveFocus>
+                </li>
+                <li>
+                  <AccentText color="tertiary" mark>
+                    Cursor-based pagination
+                  </AccentText>
+                  <PerspectiveFocus
+                    audience="authors"
+                    minimumTime="high"
+                    className="inline"
+                    as="span"
+                  >
+                    <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                      - List endpoints page through stable index cursors, keeping large datasets
+                      efficient without offset drift. This works great with client-side state
+                      management. Pages are kept in memory to make pagination feel seamless.
+                    </span>
+                  </PerspectiveFocus>
+                </li>
+                <li>
+                  <AccentText color="primary" mark>
+                    Testing with real database
+                  </AccentText>
+                  <PerspectiveFocus
+                    audience="authors"
+                    minimumTime="high"
+                    className="inline"
+                    as="span"
+                  >
+                    <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                      - Fragment tests run against real adapters so schema behavior, migrations, and
+                      hooks are validated end-to-end.
+                    </span>
+                  </PerspectiveFocus>
+                </li>
+              </ul>
+            </PerspectiveFocus>
+            <PerspectiveFocus audience="authors" minimumTime="high">
+              <TabbedCodeFigure
+                tabs={dataLayerTabs}
+                figcaption="Fig. Fragno's data layer: schema definitions, OCC transactions, and durable hooks for reliable side effects."
+                ariaLabel="Data layer examples"
+              />
+            </PerspectiveFocus>
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="space-y-3">
+                <div className="text-base font-bold tracking-[0.14em] uppercase">
+                  Database &amp; ORM support
+                </div>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Fragments that use the data layer work with the ORMs and databases your app
+                  already relies on.
+                </p>
+              </div>
+            </PerspectiveFocus>
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <figure className="space-y-6">
+                <DatabaseSupport />
+                <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
+                  Fig. Database portability: fragments declare a schema once; the user picks which
+                  ORM and engine runs it.
+                </figcaption>
+              </figure>
+            </PerspectiveFocus>
+
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="mb-8 space-y-4">
+                <div className="text-base font-bold tracking-[0.14em] text-(--editorial-tertiary) uppercase">
+                  Conclusion
+                </div>
+                <h2 className="text-3xl leading-[1.05] font-bold tracking-[-0.03em] md:text-5xl">
+                  Why all of this matters
+                </h2>
+              </div>
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Before Fragno, libraries did the bare minimum.
+              </p>
+              <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                Now, developers of platforms such as Stripe, Telegram, and Resend can build
+                opinionated, tasteful {""}
+                <AccentText color="primary">integration libraries</AccentText> that are not just
+                wrappers around the API, but own the entire integration surface. The developers that
+                know the platform best can ship libraries that{" "}
+                <AccentText color="secondary">own the entire integration surface</AccentText>:
+                webhook ingestion, state persistence, and surfacing information to the end user.
+              </p>
+            </PerspectiveFocus>
+          </section>
+
+          <section className="mb-24 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="space-y-4">
+                <div className="text-base font-bold tracking-[0.14em] text-(--editorial-primary) uppercase">
+                  Get started
+                </div>
+                <h2 className="text-3xl leading-[1.05] font-bold tracking-[-0.03em] md:text-5xl">
+                  Start building using agent skills
+                </h2>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Fragno ships Agent Skills that teach your AI coding assistant how to integrate or
+                  author fragments. Install a skill once and your agent knows the conventions, APIs,
+                  and best practices.
+                </p>
+              </div>
+            </PerspectiveFocus>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <PerspectiveFocus audience="users" minimumTime="low">
+                <article className="flex h-full flex-col space-y-4 bg-(--editorial-surface-low) p-6">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-(--editorial-secondary) uppercase">
+                    For users
+                  </h3>
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Integrate existing fragments into your app. The skill includes a list of
+                    first-party fragments, to make installing them easy.
+                  </p>
+                  <div className="mt-auto pt-2">
+                    <FragnoCodeBlock
+                      lang="bash"
+                      code={`npx skills add https://github.com/rejot-dev/fragno --skill fragno`}
+                      syntaxTheme="editorial-triad"
+                      className="bg-[color-mix(in_srgb,var(--editorial-surface-low)_88%,var(--editorial-ink)_4%)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] dark:bg-[var(--editorial-surface-low)]!"
+                      allowCopy
+                    />
+                  </div>
+                </article>
+              </PerspectiveFocus>
+
+              <PerspectiveFocus audience="authors" minimumTime="low">
+                <article className="flex h-full flex-col space-y-4 bg-(--editorial-surface-low) p-6">
+                  <h3 className="text-base font-bold tracking-[0.08em] text-(--editorial-tertiary) uppercase">
+                    For authors
+                  </h3>
+                  <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                    Build your own fragments. The skill teaches your agent how to scaffold a
+                    package, define routes and hooks, set up code-splitting, and export framework
+                    clients.
+                  </p>
+                  <div className="mt-auto pt-2">
+                    <FragnoCodeBlock
+                      lang="bash"
+                      code={`npx skills add https://github.com/rejot-dev/fragno --skill fragno-author`}
+                      syntaxTheme="editorial-triad"
+                      className="bg-[color-mix(in_srgb,var(--editorial-surface-low)_88%,var(--editorial-ink)_4%)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] dark:bg-[var(--editorial-surface-low)]!"
+                      allowCopy
+                    />
+                  </div>
+                </article>
+              </PerspectiveFocus>
+            </div>
+          </section>
+
+          <section className="mb-24 max-w-4xl space-y-8">
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <div className="space-y-4">
+                <div className="text-base font-bold tracking-[0.14em] text-(--editorial-secondary) uppercase">
+                  What we built
+                </div>
+                <h2 className="text-3xl leading-[1.05] font-bold tracking-[-0.03em] md:text-5xl">
+                  Our Fragno Claw-like agent
+                </h2>
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  This site and our internal Claw-like agent tooling run on the same fragment
+                  primitives outlined on this page. We believe that the only way to build truly good
+                  software is by dogfooding it every day.
+                </p>
+                <p className="mt-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Stay tuned for more updates on our "Claw".
+                </p>
+              </div>
+            </PerspectiveFocus>
+            <PerspectiveFocus audience="both" minimumTime="low">
+              <BackofficeScreenshotFigure />
+            </PerspectiveFocus>
+          </section>
+
+          <section className="mb-12 max-w-4xl space-y-10">
+            <div className="space-y-4">
+              <PerspectiveFocus audience="both" minimumTime="medium">
+                <div className="text-base font-bold tracking-[0.14em] text-(--editorial-muted) uppercase">
+                  Further reading
+                </div>
+              </PerspectiveFocus>
+              <PerspectiveFocus audience="authors" minimumTime="medium">
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  This website contains the full documentation for Fragno, including the user and
+                  author guides, reference, and API documentation.
+                </p>
+              </PerspectiveFocus>
+              <PerspectiveFocus audience="both" minimumTime="medium">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Link
+                    to="/docs/fragno/for-library-authors/getting-started"
+                    className="text-primary-foreground inline-flex items-center justify-center bg-(--editorial-primary) px-4 py-2.5 text-sm font-medium tracking-[0.08em] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-primary)_88%,black)]"
+                  >
+                    Author docs
+                  </Link>
+                  <Link
+                    to="/docs/fragno/user-quick-start"
+                    className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium tracking-[0.08em] text-(--editorial-secondary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-secondary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-secondary)_10%,transparent)]"
+                  >
+                    User quick start
+                  </Link>
+                </div>
+              </PerspectiveFocus>
+            </div>
+
+            <div className="space-y-6 border-t border-(--editorial-ghost-border) pt-10">
+              <PerspectiveFocus audience="both" minimumTime="medium">
+                <div className="space-y-4">
+                  <div className="text-base font-bold tracking-[0.14em] uppercase">Connect</div>
+                  <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                    Occasional email for new essays and releases. Source and chat live below.
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <a
+                      href="https://github.com/rejot-dev/fragno"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium tracking-[0.08em] text-(--editorial-primary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-primary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-primary)_10%,transparent)]"
+                    >
+                      GitHub
+                    </a>
+                    <a
+                      href="https://discord.gg/jdXZxyGCnC"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium tracking-[0.08em] text-(--editorial-secondary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-secondary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-secondary)_10%,transparent)]"
+                    >
+                      Discord
+                    </a>
+                    <a
+                      href="https://x.com/wilcokr"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium tracking-[0.08em] text-(--editorial-tertiary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-tertiary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-tertiary)_10%,transparent)]"
+                    >
+                      @wilcokr on X
+                    </a>
+                  </div>
+                </div>
+              </PerspectiveFocus>
+
+              <Form method="post" className="space-y-4">
+                <input type="hidden" name="intent" value="newsletter" />
+                <label className="sr-only" htmlFor="email">
+                  Email address
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    placeholder="you@company.com"
+                    required
+                    disabled={isSubmitting}
+                    autoComplete="email"
+                    className="min-h-11 flex-1 bg-[color-mix(in_srgb,var(--editorial-surface)_92%,transparent)] px-3 py-2.5 text-base shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] outline-none focus:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-ink)_22%,transparent),0_0_0_2px_color-mix(in_srgb,var(--editorial-ink)_6%,transparent)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="text-primary-foreground inline-flex min-h-11 shrink-0 items-center justify-center bg-(--editorial-primary) px-4 py-2.5 text-sm font-medium tracking-[0.08em] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-primary)_88%,black)] disabled:opacity-60"
+                  >
+                    {isSubmitting ? "Subscribing…" : "Subscribe"}
+                  </button>
+                </div>
+                {newsletterActionData?.message && (
+                  <p
+                    className={`text-base font-medium ${newsletterActionData.success ? "text-[#0d6b3d]" : "text-[#a12b30]"}`}
+                  >
+                    {newsletterActionData.message}
+                  </p>
+                )}
+                <Turnstile
+                  siteKey={turnstileSitekey}
+                  options={{ appearance: "interaction-only" }}
+                />
+              </Form>
+            </div>
+          </section>
+        </PerspectiveControls>
+      </article>
     </main>
   );
 }

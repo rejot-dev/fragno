@@ -1,7 +1,15 @@
-import { ArrowRight, Activity, Route as RouteIcon, RotateCcw, Terminal, Timer } from "lucide-react";
+import { Activity, ArrowRight, Route as RouteIcon, RotateCcw, Terminal, Timer } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router";
 
+import {
+  FragmentActionLink,
+  FragmentEyebrow,
+  FragmentHero,
+  FragmentMetric,
+  FragmentPageShell,
+  FragmentPanel,
+  FragmentSection,
+} from "@/components/fragment-editorial";
 import { FragmentSubnav } from "@/components/fragment-subnav";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
@@ -15,25 +23,9 @@ export function meta() {
   ];
 }
 
-type Feature = {
-  title: string;
-  description: string;
-  icon: ReactNode;
-};
-
-type Step = {
-  title: string;
-  description: string;
-  lang: "bash" | "ts";
-  code: string;
-};
-
-type WorkflowExample = {
-  id: string;
-  title: string;
-  summary: string;
-  code: string;
-};
+type Feature = { title: string; description: string; icon: ReactNode };
+type Step = { title: string; description: string; lang: "bash" | "ts"; code: string };
+type WorkflowExample = { id: string; title: string; summary: string; code: string };
 
 const features: Feature[] = [
   {
@@ -130,7 +122,6 @@ const workflowExamples: WorkflowExample[] = [
   { name: "pause-boundary-workflow" },
   async (_event, step) => {
     await step.do("pause-boundary", () => new Promise((resolve) => {
-      // Resume from an external signal
       resolve({ ok: true });
     }));
 
@@ -162,13 +153,13 @@ fragno-wf instances send-event -b https://host.example.com/api/workflows -w appr
 
 const usageSnippet = `const baseUrl = "/api/workflows";
 
-await fetch(\`\${baseUrl}/workflows/approval/instances\`, {
+await fetch(\`${"${baseUrl}"}/workflows/approval/instances\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ requestId: "req_123", amount: 200 }),
 });
 
-await fetch(\`\${baseUrl}/workflows/approval/instances/inst_123/events\`, {
+await fetch(\`${"${baseUrl}"}/workflows/approval/instances/inst_123/events\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ type: "approval", approved: true }),
@@ -195,239 +186,172 @@ export default function WorkflowsPage() {
     workflowExamples.find((example) => example.id === activeExample) ?? workflowExamples[0];
 
   return (
-    <main className="relative min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-14 px-4 py-16 md:px-8">
-        <FragmentSubnav current="workflows" />
-        <section className="space-y-5 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl lg:text-6xl">
-            Durable Workflows
-          </h1>
-          <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg md:text-xl">
-            Define long-running processes with steps, timers, events, and retries.
-          </p>
-          <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
-            <Link
-              to="/docs/workflows"
-              className="rounded-lg bg-amber-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-amber-700"
-            >
-              Workflows Docs
-            </Link>
-          </div>
-          <div className="mx-auto max-w-xl space-y-2 pt-4 text-left">
-            <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              Install
-            </p>
-            <FragnoCodeBlock
-              lang="bash"
-              code="npm install @fragno-dev/workflows @fragno-dev/db"
-              allowCopy
-              className="rounded-xl"
+    <FragmentPageShell>
+      <FragmentSubnav current="workflows" />
+
+      <FragmentHero
+        eyebrow={<FragmentEyebrow>Workflows</FragmentEyebrow>}
+        title={<>Durable Workflows</>}
+        description={
+          <>
+            Durable workflows with retries, timers, waits, and resumable state right from your own
+            database. Inspired by Cloudflare Workflows, but usable anywhere.
+          </>
+        }
+        aside={
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+            <FragmentMetric
+              label="Runtime"
+              value="Steps + events + timers"
+              accentClass="text-[var(--editorial-muted)] text-lg md:text-2xl"
+            />
+            <FragmentMetric
+              label="Best for"
+              value="Durable orchestration"
+              accentClass="text-[var(--editorial-muted)] text-lg md:text-2xl"
             />
           </div>
-        </section>
+        }
+      >
+        <div className="flex flex-wrap gap-3 pt-2">
+          <FragmentActionLink to="/docs/workflows">Workflows docs</FragmentActionLink>
+        </div>
+        <div className="max-w-xl space-y-2 pt-3">
+          <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+            Install
+          </p>
+          <FragnoCodeBlock
+            lang="bash"
+            code="npm install @fragno-dev/workflows @fragno-dev/db"
+            allowCopy
+            syntaxTheme="editorial-triad"
+            className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+          />
+        </div>
+      </FragmentHero>
 
-        <section className="grid gap-6 md:grid-cols-3">
+      <FragmentSection eyebrow={<FragmentEyebrow>Capabilities</FragmentEyebrow>}>
+        <div className="grid gap-5 md:grid-cols-3">
           {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/30 text-amber-600 dark:text-amber-300">
-                  {feature.icon}
-                </span>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {feature.title}
-                  </h3>
-                  <p className="text-fd-muted-foreground mt-1 text-sm">{feature.description}</p>
-                </div>
+            <FragmentPanel key={feature.title} className="space-y-4">
+              <div className="flex items-center gap-3 text-[var(--editorial-muted)]">
+                {feature.icon}
+                <h3 className="text-xl font-bold tracking-[-0.03em] text-[var(--editorial-ink)]">
+                  {feature.title}
+                </h3>
               </div>
-            </div>
+              <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                {feature.description}
+              </p>
+            </FragmentPanel>
           ))}
-        </section>
+        </div>
+      </FragmentSection>
 
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/30 text-amber-600 dark:text-amber-300">
-              <Timer className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
-                Setup blueprint
-              </h2>
-              <p className="text-fd-muted-foreground text-sm">
-                Define workflows, wire the fragment, and start processing.
+      <FragmentSection
+        eyebrow={<FragmentEyebrow>Blueprint</FragmentEyebrow>}
+        title={<>Define the workflow, mount the fragment, start the durable processor.</>}
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          {setupSteps.map((step) => (
+            <FragmentPanel key={step.title} className="space-y-3">
+              <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+                {step.title}
               </p>
-            </div>
-          </div>
+              <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                {step.description}
+              </p>
+              <FragnoCodeBlock
+                lang={step.lang}
+                code={step.code}
+                allowCopy
+                syntaxTheme="editorial-triad"
+                className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+              />
+            </FragmentPanel>
+          ))}
+        </div>
+      </FragmentSection>
 
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-6">
-              {setupSteps.map((step) => (
-                <div
-                  key={step.title}
-                  className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
+      <FragmentSection eyebrow={<FragmentEyebrow>Examples</FragmentEyebrow>}>
+        <div className="grid gap-5 lg:grid-cols-[0.46fr_0.54fr]">
+          <FragmentPanel className="space-y-3">
+            {workflowExamples.map((example) => {
+              const isActive = example.id === selectedExample.id;
+              return (
+                <button
+                  key={example.id}
+                  type="button"
+                  onClick={() => setActiveExample(example.id)}
+                  className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors ${isActive ? "bg-[var(--editorial-surface-low)] text-[var(--editorial-ink)]" : "bg-transparent text-[var(--editorial-muted)] hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)]"}`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {step.title}
-                  </h3>
-                  <p className="text-fd-muted-foreground mt-1 text-sm">{step.description}</p>
-                  <div className="mt-4">
-                    <FragnoCodeBlock
-                      lang={step.lang}
-                      code={step.code}
-                      allowCopy
-                      className="rounded-xl"
-                    />
+                  <div>
+                    <p className="text-sm font-bold tracking-[0.12em] uppercase">{example.title}</p>
+                    <p className="mt-1 text-sm leading-[1.7]">{example.summary}</p>
                   </div>
-                </div>
-              ))}
+                  <ArrowRight className="size-4 shrink-0" />
+                </button>
+              );
+            })}
+          </FragmentPanel>
+          <FragmentPanel className="space-y-3">
+            <p className="text-sm font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+              {selectedExample.title}
+            </p>
+            <FragnoCodeBlock
+              lang="ts"
+              code={selectedExample.code}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+        </div>
+      </FragmentSection>
+
+      <FragmentSection eyebrow={<FragmentEyebrow>Use it</FragmentEyebrow>}>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <FragmentPanel className="space-y-3">
+            <div className="flex items-center gap-2 text-[var(--editorial-muted)]">
+              <Terminal className="size-4" />
+              <p className="text-sm font-bold tracking-[0.14em] uppercase">CLI</p>
             </div>
-
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Trigger runs
-                </h3>
-                <p className="text-fd-muted-foreground mt-1 text-sm">
-                  Use the HTTP API to create instances and send events.
-                </p>
-                <div className="mt-4">
-                  <FragnoCodeBlock lang="ts" code={usageSnippet} allowCopy className="rounded-xl" />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Next steps</h3>
-                <p className="text-fd-muted-foreground mt-2 text-sm">
-                  Explore the HTTP surface and runner/dispatcher options.
-                </p>
-                <div className="mt-4 flex flex-col gap-2">
-                  <Link
-                    to="/docs/workflows/routes"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200"
-                  >
-                    API routes reference
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  <Link
-                    to="/docs/workflows/runner-dispatcher"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200"
-                  >
-                    Runner + dispatcher
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  <Link
-                    to="/docs/workflows/debugging"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200"
-                  >
-                    Debugging workflows
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </div>
-              </div>
+            <FragnoCodeBlock
+              lang="bash"
+              code={cliSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+          <FragmentPanel className="space-y-3">
+            <div className="flex items-center gap-2 text-[var(--editorial-muted)]">
+              <Timer className="size-4" />
+              <p className="text-sm font-bold tracking-[0.14em] uppercase">HTTP</p>
             </div>
-          </div>
-        </section>
+            <FragnoCodeBlock
+              lang="ts"
+              code={usageSnippet}
+              allowCopy
+              syntaxTheme="editorial-triad"
+              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+            />
+          </FragmentPanel>
+        </div>
+      </FragmentSection>
 
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/30 text-amber-600 dark:text-amber-300">
-              <RotateCcw className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
-                Workflow gallery
-              </h2>
-              <p className="text-fd-muted-foreground text-sm">
-                Real examples inspired by the workflow runner tests.
+      <FragmentSection eyebrow={<FragmentEyebrow>Use cases</FragmentEyebrow>}>
+        <div className="grid gap-5 md:grid-cols-3">
+          {useCases.map((useCase) => (
+            <FragmentPanel key={useCase.title} className="space-y-3">
+              <p className="text-lg font-bold tracking-[-0.03em]">{useCase.title}</p>
+              <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                {useCase.description}
               </p>
-            </div>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="space-y-3">
-              {workflowExamples.map((example) => {
-                const isActive = example.id === selectedExample.id;
-                return (
-                  <button
-                    key={example.id}
-                    type="button"
-                    onClick={() => setActiveExample(example.id)}
-                    className={`w-full rounded-2xl border px-4 py-4 text-left transition-all ${
-                      isActive
-                        ? "border-amber-400/50 bg-amber-50 text-amber-700 dark:border-amber-400/40 dark:bg-amber-950/30 dark:text-amber-200"
-                        : "border-black/5 bg-white text-slate-600 hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-300"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold tracking-wide uppercase">{example.title}</p>
-                    <p className="mt-1 text-sm opacity-80">{example.summary}</p>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {selectedExample.title}
-              </h3>
-              <p className="text-fd-muted-foreground mt-1 text-sm">{selectedExample.summary}</p>
-              <div className="mt-4">
-                <FragnoCodeBlock
-                  lang="ts"
-                  code={selectedExample.code}
-                  allowCopy
-                  className="rounded-xl"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/30 text-amber-600 dark:text-amber-300">
-              <Terminal className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">CLI control</h2>
-              <p className="text-fd-muted-foreground text-sm">
-                Inspect workflows and send events without building custom dashboards.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-            <FragnoCodeBlock lang="bash" code={cliSnippet} allowCopy className="rounded-xl" />
-            <div className="mt-4 flex flex-col gap-2">
-              <Link
-                to="/docs/workflows/cli"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200"
-              >
-                Full CLI reference
-                <ArrowRight className="size-4" />
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Use cases</h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            {useCases.map((useCase) => (
-              <div
-                key={useCase.title}
-                className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
-              >
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {useCase.title}
-                </h3>
-                <p className="text-fd-muted-foreground mt-2 text-sm">{useCase.description}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    </main>
+            </FragmentPanel>
+          ))}
+        </div>
+      </FragmentSection>
+    </FragmentPageShell>
   );
 }

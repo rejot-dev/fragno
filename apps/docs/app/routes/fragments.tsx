@@ -1,6 +1,13 @@
-import { Package, ArrowRight } from "lucide-react";
+import { ArrowRight, Package } from "lucide-react";
 import { Link } from "react-router";
 
+import {
+  FragmentActionLink,
+  FragmentEyebrow,
+  FragmentHero,
+  FragmentPageShell,
+  FragmentPanel,
+} from "@/components/fragment-editorial";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
@@ -9,7 +16,7 @@ export function meta() {
     {
       name: "description",
       content:
-        "Explore Fragno first-party fragments for billing, forms, workflows, messaging, uploads, and more.",
+        "Explore Fragno first-party fragments for billing, forms, workflows, AI, email, GitHub, messaging, uploads, and more.",
     },
   ];
 }
@@ -17,7 +24,16 @@ export function meta() {
 type FragmentStatus = "available" | "coming";
 
 type FragmentCard = {
-  id: "stripe" | "forms" | "workflows" | "upload" | "auth" | "telegram";
+  id:
+    | "stripe"
+    | "forms"
+    | "workflows"
+    | "upload"
+    | "auth"
+    | "telegram"
+    | "pi"
+    | "resend"
+    | "github";
   name: string;
   category: string;
   description: string;
@@ -28,6 +44,7 @@ type FragmentCard = {
   highlights?: string[];
   accentText: string;
   accentDot: string;
+  accentPanel: string;
 };
 
 const fragments: FragmentCard[] = [
@@ -45,8 +62,9 @@ const fragments: FragmentCard[] = [
       "Webhook handling + subscription sync",
       "Database-backed subscription state",
     ],
-    accentText: "text-violet-600 dark:text-violet-300",
+    accentText: "text-violet-700 dark:text-violet-300",
     accentDot: "bg-violet-500/80 dark:bg-violet-400/80",
+    accentPanel: "border-l-2 border-l-violet-400/70",
   },
   {
     id: "telegram",
@@ -62,8 +80,9 @@ const fragments: FragmentCard[] = [
       "Chat, member, and message persistence",
       "Typed hooks for sending messages",
     ],
-    accentText: "text-teal-600 dark:text-teal-300",
-    accentDot: "bg-teal-500/80 dark:bg-teal-400/80",
+    accentText: "text-cyan-700 dark:text-cyan-300",
+    accentDot: "bg-cyan-500/80 dark:bg-cyan-400/80",
+    accentPanel: "border-l-2 border-l-cyan-400/70",
   },
   {
     id: "forms",
@@ -79,8 +98,9 @@ const fragments: FragmentCard[] = [
       "Form builder and admin APIs",
       "Typed hooks for public forms",
     ],
-    accentText: "text-sky-600 dark:text-sky-300",
+    accentText: "text-sky-700 dark:text-sky-300",
     accentDot: "bg-sky-500/80 dark:bg-sky-400/80",
+    accentPanel: "border-l-2 border-l-sky-400/70",
   },
   {
     id: "workflows",
@@ -96,8 +116,60 @@ const fragments: FragmentCard[] = [
       "HTTP API for instances + history",
       "Runner + dispatcher architecture",
     ],
-    accentText: "text-amber-600 dark:text-amber-300",
+    accentText: "text-amber-700 dark:text-amber-300",
     accentDot: "bg-amber-500/80 dark:bg-amber-400/80",
+    accentPanel: "border-l-2 border-l-amber-400/70",
+  },
+  {
+    id: "pi",
+    name: "Pi",
+    category: "AI Agents",
+    description: "Workflow-backed AI agents with durable sessions, tool replay, and typed clients.",
+    status: "available",
+    href: "/fragments/pi",
+    install: "npm install @fragno-dev/pi-fragment @fragno-dev/workflows @fragno-dev/db",
+    highlights: [
+      "Durable agent sessions",
+      "Deterministic tool replay",
+      "Typed session + message APIs",
+    ],
+    accentText: "text-fuchsia-700 dark:text-fuchsia-300",
+    accentDot: "bg-fuchsia-500/80 dark:bg-fuchsia-400/80",
+    accentPanel: "border-l-2 border-l-fuchsia-400/70",
+  },
+  {
+    id: "resend",
+    name: "Resend",
+    category: "Email",
+    description: "Send, receive, and thread email with one local source of truth.",
+    status: "available",
+    href: "/fragments/resend",
+    install: "npm install @fragno-dev/resend-fragment @fragno-dev/db",
+    highlights: [
+      "Outbound + inbound email",
+      "Canonical thread history",
+      "Typed hooks for domains, threads, and replies",
+    ],
+    accentText: "text-rose-700 dark:text-rose-300",
+    accentDot: "bg-rose-500/80 dark:bg-rose-400/80",
+    accentPanel: "border-l-2 border-l-rose-400/70",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    category: "Developer Tools",
+    description: "GitHub App integration for installs, repos, webhooks, and pull requests.",
+    status: "available",
+    href: "/fragments/github",
+    install: "npm install @fragno-dev/github-app-fragment @fragno-dev/db",
+    highlights: [
+      "App auth handled for you",
+      "Webhook-driven install + repo sync",
+      "Pull request actions via typed routes",
+    ],
+    accentText: "text-slate-700 dark:text-slate-200",
+    accentDot: "bg-slate-500/80 dark:bg-slate-300/80",
+    accentPanel: "border-l-2 border-l-slate-400/70",
   },
   {
     id: "upload",
@@ -113,8 +185,9 @@ const fragments: FragmentCard[] = [
       "S3/R2 + filesystem adapters",
       "Client helpers with progress",
     ],
-    accentText: "text-cyan-600 dark:text-cyan-300",
+    accentText: "text-cyan-700 dark:text-cyan-300",
     accentDot: "bg-cyan-500/80 dark:bg-cyan-400/80",
+    accentPanel: "border-l-2 border-l-cyan-400/70",
   },
   {
     id: "auth",
@@ -125,116 +198,115 @@ const fragments: FragmentCard[] = [
     href: "/fragments/auth",
     docsHref: "/docs/auth",
     install: "npm install @fragno-dev/auth",
-    accentText: "text-emerald-600 dark:text-emerald-300",
+    accentText: "text-emerald-700 dark:text-emerald-300",
     accentDot: "bg-emerald-500/80 dark:bg-emerald-400/80",
+    accentPanel: "border-l-2 border-l-emerald-400/70",
   },
 ];
 
-function StatusBadge({ status }: { status: FragmentStatus }) {
-  if (status === "available") {
-    return (
-      <span className="rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:border-emerald-400/30 dark:text-emerald-300">
-        Available
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full border border-amber-400/30 px-3 py-1 text-xs font-semibold tracking-wide text-amber-700 uppercase dark:border-amber-400/30 dark:text-amber-300">
-      Coming soon
-    </span>
-  );
-}
-
 export default function FragmentsPage() {
   return (
-    <main className="relative min-h-screen">
-      <div className="mx-auto max-w-6xl space-y-12 px-4 py-16 md:px-8">
-        <section className="space-y-4 text-center">
-          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1 text-xs font-semibold tracking-wide text-slate-600 uppercase dark:border-white/10 dark:text-slate-300">
-            <Package className="size-4" />
-            First Party Fragments
-          </p>
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl lg:text-6xl">
-            Ready-made fragments for your product stack
-          </h1>
-          <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg md:text-xl">
-            Pick a fragment, follow the quickstart, and ship full-stack features without wiring the
-            server, database, and client glue yourself.
-          </p>
-        </section>
+    <FragmentPageShell>
+      <FragmentHero
+        eyebrow={
+          <FragmentEyebrow>
+            <span className="inline-flex items-center gap-2">
+              <Package className="size-4" />
+              Fragment catalogue
+            </span>
+          </FragmentEyebrow>
+        }
+        title={<>First-party Fragments</>}
+        description={
+          <>
+            Fragno fragments bundle routes, hooks, and optional data models into one authored slice.
+            Use these libraries to get up and running quickly!
+          </>
+        }
+        aside={undefined}
+      >
+        <div className="flex flex-wrap gap-3 pt-2">
+          <FragmentActionLink to="/docs/fragno/user-quick-start">
+            Start integrating
+          </FragmentActionLink>
+          <FragmentActionLink
+            to="/docs/fragno/for-library-authors/getting-started"
+            variant="secondary"
+          >
+            Build your own fragment
+          </FragmentActionLink>
+        </div>
+      </FragmentHero>
 
-        <section className="grid gap-6 md:grid-cols-2">
-          {fragments.map((fragment) => (
-            <article
-              key={fragment.id}
-              className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/60"
-            >
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p
-                      className={`text-xs font-semibold tracking-wide uppercase ${fragment.accentText}`}
-                    >
-                      {fragment.category}
-                    </p>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                      {fragment.name}
-                    </h2>
-                  </div>
-                  <StatusBadge status={fragment.status} />
-                </div>
-                <p className="text-fd-muted-foreground text-sm">{fragment.description}</p>
-
-                {fragment.highlights && fragment.highlights.length > 0 && (
-                  <ul className="text-fd-muted-foreground grid gap-2 text-sm">
-                    {fragment.highlights.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span
-                          aria-hidden
-                          className={`mt-2 inline-flex h-1.5 w-1.5 rounded-full ${fragment.accentDot}`}
-                        />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {fragment.install && (
-                  <div className="space-y-2">
-                    <p className="text-fd-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Install
-                    </p>
-                    <FragnoCodeBlock
-                      lang="bash"
-                      code={fragment.install}
-                      allowCopy
-                      className="rounded-xl"
-                    />
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <Link
-                    to={fragment.href}
-                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-                  >
-                    Overview
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  {fragment.docsHref && (
-                    <Link
-                      to={fragment.docsHref}
-                      className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:border-white/15 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      Docs
-                    </Link>
-                  )}
-                </div>
+      <div className="grid gap-5 md:grid-cols-2">
+        {fragments.map((fragment, index) => (
+          <FragmentPanel key={fragment.id} className={`space-y-5 ${fragment.accentPanel}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <p
+                  className={`text-sm font-bold tracking-[0.16em] uppercase ${fragment.accentText}`}
+                >
+                  {String(index + 1).padStart(2, "0")} // {fragment.category}
+                </p>
+                <h2 className="text-3xl leading-none font-bold tracking-[-0.04em]">
+                  {fragment.name}
+                </h2>
               </div>
-            </article>
-          ))}
-        </section>
+            </div>
+
+            <p className="max-w-xl text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+              {fragment.description}
+            </p>
+
+            {fragment.highlights && fragment.highlights.length > 0 ? (
+              <ul className="grid gap-2 text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
+                {fragment.highlights.map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <span
+                      aria-hidden
+                      className={`mt-2 inline-flex h-1.5 w-1.5 rounded-full ${fragment.accentDot}`}
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {fragment.install ? (
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
+                  Install
+                </p>
+                <FragnoCodeBlock
+                  lang="bash"
+                  code={fragment.install}
+                  allowCopy
+                  syntaxTheme="editorial-triad"
+                  className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
+                />
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Link
+                to={fragment.href}
+                className="inline-flex items-center gap-2 bg-[var(--editorial-ink)] px-4 py-2 text-sm font-bold tracking-[0.12em] text-[var(--editorial-paper)] uppercase transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_88%,black)]"
+              >
+                Overview
+                <ArrowRight className="size-4" />
+              </Link>
+              {fragment.docsHref ? (
+                <Link
+                  to={fragment.docsHref}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold tracking-[0.12em] text-[var(--editorial-ink)] uppercase shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)]"
+                >
+                  Docs
+                </Link>
+              ) : null}
+            </div>
+          </FragmentPanel>
+        ))}
       </div>
-    </main>
+    </FragmentPageShell>
   );
 }

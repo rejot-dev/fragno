@@ -17,8 +17,10 @@ Fragno is a framework-agnostic, type-safe full-stack TypeScript toolkit that ena
 portable full-stack libraries called "fragments". Fragments include backend routes, (optional)
 client hooks and (optional) database integration.
 
-Important: Before integrating any first-party fragment, always fetch its docs with `curl`. Use the
-same search endpoint to find the right page, then fetch the full Markdown docs:
+Important: Before integrating any first-party fragment, fetch the published docs with `curl` when
+they exist. Use the search endpoint to find the right page, then fetch the full Markdown docs. For
+fragments that do not yet have published Markdown docs (currently Pi, Resend, and GitHub App), use
+this skill's local reference files plus the package README and repo examples.
 
 - `curl -s "https://fragno.dev/api/search?query=forms"`
 - `curl -L "https://fragno.dev/docs/forms/quickstart" -H "accept: text/markdown"`
@@ -152,7 +154,10 @@ application.
 ## First-party Fragments (FP)
 
 Use these fragments when you need their domain-specific features. Always `curl` the fragment docs
-before wiring anything.
+when published before wiring anything.
+
+Current catalogue covered by this skill: Auth, Forms, GitHub App, Pi, Resend, Stripe, Telegram,
+Upload, and Workflows.
 
 ### Auth (`@fragno-dev/auth`)
 
@@ -176,6 +181,51 @@ Reference: `./references/first-party-fragments/forms.md`.
 
 Docs: `curl -L "https://fragno.dev/docs/forms/quickstart" -H "accept: text/markdown"`.
 
+### GitHub App (`@fragno-dev/github-app-fragment`)
+
+Definition: GitHub App integration for installations, repositories, webhooks, and pull-request
+operations.
+
+Use when: your product needs repo-aware features, GitHub App auth, installation sync, or PR review
+actions.
+
+Reference: `./references/first-party-fragments/github.md`.
+
+Docs: no published Markdown docs yet; use local references:
+
+- `packages/github-app-fragment/README.md`
+- `apps/docs/app/routes/github.tsx`
+
+### Pi (`@fragno-dev/pi-fragment`)
+
+Definition: Durable AI agents with workflow-backed sessions, deterministic tool replay, and typed
+session/message clients.
+
+Use when: you want product-embedded agents whose sessions survive retries/restarts and whose tools
+must replay safely.
+
+Reference: `./references/first-party-fragments/pi.md`.
+
+Docs: no published Markdown docs yet; use local references:
+
+- `packages/pi-fragment/README.md`
+- `packages/pi-fragment/CLI.md`
+- `apps/docs/app/routes/pi.tsx`
+
+### Resend (`@fragno-dev/resend-fragment`)
+
+Definition: Send, receive, and thread email with a canonical local message store and typed hooks.
+
+Use when: your app needs outbound email, inbound email webhooks, owned thread history, or support /
+workflow inbox features.
+
+Reference: `./references/first-party-fragments/resend.md`.
+
+Docs: no published Markdown docs yet; use local references:
+
+- `packages/resend-fragment/README.md`
+- `apps/docs/app/routes/resend.tsx`
+
 ### Stripe (`@fragno-dev/stripe`)
 
 Definition: Stripe subscription management with webhook-backed local state and client mutators.
@@ -187,16 +237,20 @@ Reference: `./references/first-party-fragments/stripe.md`.
 
 Docs: `curl -L "https://fragno.dev/docs/stripe/quickstart" -H "accept: text/markdown"`.
 
-### Workflows (`@fragno-dev/workflows`)
+### Telegram (`@fragno-dev/telegram-fragment`)
 
-Definition: Durable, long-running workflows with steps, timers, retries, and event waits backed by
-your database.
+Definition: Telegram bot runtime with durable webhook intake, command registry, stored chat state,
+and typed client hooks.
 
-Use when: you need reliable multi-step processes and an HTTP API/CLI to manage instances.
+Use when: you need a Telegram bot that is part of your product, with commands, persisted chats, and
+message send/reply flows.
 
-Reference: `./references/first-party-fragments/workflows.md`.
+Reference: `./references/first-party-fragments/telegram.md`.
 
-Docs: `curl -L "https://fragno.dev/docs/workflows/quickstart" -H "accept: text/markdown"`.
+Docs:
+
+- `curl -s "https://fragno.dev/api/search?query=telegram%20fragment"`
+- `curl -L "https://fragno.dev/docs/telegram/quickstart" -H "accept: text/markdown"`
 
 ### Upload (`@fragno-dev/upload`)
 
@@ -208,6 +262,17 @@ Use when: you need file uploads with progress tracking and storage-backed file m
 Reference: `./references/first-party-fragments/upload.md`.
 
 Docs: `curl -L "https://fragno.dev/docs/upload/quickstart" -H "accept: text/markdown"`.
+
+### Workflows (`@fragno-dev/workflows`)
+
+Definition: Durable, long-running workflows with steps, timers, retries, and event waits backed by
+your database.
+
+Use when: you need reliable multi-step processes and an HTTP API/CLI to manage instances.
+
+Reference: `./references/first-party-fragments/workflows.md`.
+
+Docs: `curl -L "https://fragno.dev/docs/workflows/quickstart" -H "accept: text/markdown"`.
 
 ## Integration Guides
 
@@ -263,6 +328,10 @@ relative to this skill file.
 | `integrations/drizzle-schema-integration.md` | Merge Fragno-generated Drizzle schemas with app schemas and configure Drizzle Kit               |
 | `first-party-fragments/auth.md`              | Auth fragment one-pager (install, routes, client, migrations)                                   |
 | `first-party-fragments/forms.md`             | Forms fragment one-pager (schemas, hooks, admin routes, migrations)                             |
+| `first-party-fragments/github.md`            | GitHub App fragment one-pager (app auth, webhooks, sync routes, client, migrations)             |
+| `first-party-fragments/pi.md`                | Pi fragment one-pager (agents, workflows dependency, sessions, client, migrations)              |
+| `first-party-fragments/resend.md`            | Resend fragment one-pager (outbound/inbound email, threads, hooks, migrations)                  |
 | `first-party-fragments/stripe.md`            | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
-| `first-party-fragments/workflows.md`         | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
+| `first-party-fragments/telegram.md`          | Telegram fragment one-pager (webhook, commands, chats/messages, hooks, migrations)              |
 | `first-party-fragments/upload.md`            | Upload fragment one-pager (storage adapters, helpers, routes)                                   |
+| `first-party-fragments/workflows.md`         | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
