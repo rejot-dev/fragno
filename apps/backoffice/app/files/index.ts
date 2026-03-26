@@ -80,6 +80,11 @@ export {
   staticFileMount,
 } from "./contributors/static";
 export {
+  automationHooksFileContributor,
+  createDurableHooksFileContributor,
+} from "./contributors/durable-hooks";
+export type { DurableHooksContributorOptions } from "./contributors/durable-hooks";
+export {
   UPLOAD_FILE_CONTRIBUTOR_ID,
   UPLOAD_FILE_MOUNT_ID,
   UPLOAD_FILE_MOUNT_POINT,

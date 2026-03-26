@@ -138,6 +138,7 @@ describe("upload file contributor", () => {
       "system",
       "workspace",
       "resend",
+      "durable-hooks-automation",
     ]);
   });
 

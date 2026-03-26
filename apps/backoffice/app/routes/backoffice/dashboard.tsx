@@ -1,8 +1,9 @@
 import { Link, redirect, useOutletContext } from "react-router";
 
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { createMasterFileSystem } from "@/files";
+import { automationHooksFileContributor, createMasterFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createBashHost } from "@/fragno/bash-runtime/bash-host";
 import { createPiBashCommandContext } from "@/fragno/pi/pi";
@@ -126,6 +127,16 @@ export async function action({ request, context }: Route.ActionArgs) {
       uploadConfig: configState,
       request,
       routerContext: context,
+      durableHooksRuntimes: [
+        {
+          contributorId: automationHooksFileContributor.id,
+          getHookQueue: (opts) =>
+            getAutomationsDurableObject(context, activeOrg.id).getHookQueue({
+              ...opts,
+              fragment: "automation",
+            }),
+        },
+      ],
     });
 
     const env = context.get(CloudflareContext).env;

@@ -1,4 +1,5 @@
 import { getRegisteredFileContributors, registerFileContributor } from "../registry";
+import { automationHooksFileContributor } from "./durable-hooks";
 import { resendFileContributor } from "./resend";
 import { starterFileContributor } from "./starter";
 import { staticFileContributor } from "./static";
@@ -7,6 +8,7 @@ const BUILT_IN_FILE_CONTRIBUTORS = [
   staticFileContributor,
   starterFileContributor,
   resendFileContributor,
+  automationHooksFileContributor,
 ] as const;
 
 export const ensureBuiltInFileContributorsRegistered = (): void => {
