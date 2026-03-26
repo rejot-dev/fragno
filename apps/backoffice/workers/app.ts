@@ -10,6 +10,7 @@ import { GitHub } from "./github.do";
 import { Otp } from "./otp.do";
 import { Pi } from "./pi.do";
 import { Resend } from "./resend.do";
+import { Reson8 } from "./reson8.do";
 import { SandboxRegistry } from "./sandbox-registry.do";
 import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
@@ -28,6 +29,7 @@ export { GitHub };
 export { GitHubWebhookRouter };
 export { Pi };
 export { Otp };
+export { Reson8 };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),

@@ -84,6 +84,10 @@
         "class_name": "Resend",
       },
       {
+        "name": "RESON8",
+        "class_name": "Reson8",
+      },
+      {
         "name": "OTP",
         "class_name": "Otp",
       },
@@ -173,6 +177,10 @@
     {
       "tag": "v14",
       "new_sqlite_classes": ["Automations"],
+    },
+    {
+      "tag": "v15",
+      "new_sqlite_classes": ["Reson8"],
     },
   ],
   "rules": [
