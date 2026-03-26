@@ -187,28 +187,48 @@ const getStoreDisposer = (value: object): (() => void) | undefined => {
   return typeof disposer === "function" ? disposer.bind(value) : undefined;
 };
 
+const createReactStoreObjectView = <T extends object>(
+  value: T,
+  getAtomValue: (store: Store<unknown>) => unknown,
+): FragnoReactStoreValue<T> => {
+  const atomValues = new Map<Store<unknown>, unknown>();
+  const boundMethods = new Map<PropertyKey, unknown>();
+
+  return new Proxy(value, {
+    get(target, property, _receiver) {
+      const propertyValue = Reflect.get(target, property, target);
+
+      if (isReadableAtom(propertyValue)) {
+        if (atomValues.has(propertyValue)) {
+          return atomValues.get(propertyValue);
+        }
+
+        const atomValue = getAtomValue(propertyValue);
+        atomValues.set(propertyValue, atomValue);
+        return atomValue;
+      }
+
+      if (typeof propertyValue === "function") {
+        if (boundMethods.has(property)) {
+          return boundMethods.get(property);
+        }
+
+        const boundMethod = propertyValue.bind(target);
+        boundMethods.set(property, boundMethod);
+        return boundMethod;
+      }
+
+      return propertyValue;
+    },
+  }) as FragnoReactStoreValue<T>;
+};
+
 function unwrapReactStoreValueOnServer<T extends object>(value: T): FragnoReactStoreValue<T> {
   if (isReadableAtom(value)) {
     return value.get() as FragnoReactStoreValue<T>;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: any = {};
-
-  for (const key in value) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
-      continue;
-    }
-
-    const fieldValue = value[key];
-    if (isReadableAtom(fieldValue)) {
-      result[key] = fieldValue.get();
-    } else {
-      result[key] = fieldValue;
-    }
-  }
-
-  return result as FragnoReactStoreValue<T>;
+  return createReactStoreObjectView(value, (store) => store.get());
 }
 
 function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T> {
@@ -251,21 +271,14 @@ function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValu
     getSnapshot,
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: any = {};
-  let atomIndex = 0;
-
-  for (const key of keys) {
-    const fieldValue = value[key as keyof T];
-    if (isReadableAtom(fieldValue)) {
-      result[key] = atomValues[atomIndex];
-      atomIndex += 1;
-    } else {
-      result[key] = fieldValue;
-    }
-  }
-
-  return result as FragnoReactStoreValue<T>;
+  return useMemo(
+    () =>
+      createReactStoreObjectView(value, (store) => {
+        const atomIndex = atomEntries.findIndex(([, entryStore]) => entryStore === store);
+        return atomIndex === -1 ? store.get() : atomValues[atomIndex];
+      }),
+    [value, atomEntries, atomValues],
+  );
 }
 
 function createReactStore<const T extends object, const TArgs extends unknown[]>(
