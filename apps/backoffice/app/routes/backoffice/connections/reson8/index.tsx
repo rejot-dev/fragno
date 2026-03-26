@@ -1,0 +1,115 @@
+import { Link, redirect, useOutletContext } from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
+
+import { BackofficePageHeader } from "@/components/backoffice";
+import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+
+import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { formatTimestamp } from "./shared";
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    const url = new URL(request.url);
+    return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
+  }
+
+  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
+  if (activeOrganizationId) {
+    return redirect(`/backoffice/connections/reson8/${activeOrganizationId}`);
+  }
+
+  return null;
+}
+
+export function meta() {
+  return [
+    { title: "Reson8 Connection" },
+    { name: "description", content: "Manage Reson8 connections by organisation." },
+  ];
+}
+
+export default function BackofficeConnectionsReson8() {
+  const { me } = useOutletContext<BackofficeLayoutContext>();
+  const organizations = me.organizations ?? [];
+  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
+
+  return (
+    <div className="space-y-4">
+      <BackofficePageHeader
+        breadcrumbs={[
+          { label: "Backoffice", to: "/backoffice" },
+          { label: "Connections", to: "/backoffice/connections" },
+          { label: "Reson8" },
+        ]}
+        eyebrow="Connections"
+        title="Reson8 connection workspace."
+        description="Pick an organisation to configure Reson8 credentials, custom models, and transcription workflows."
+        actions={
+          <Link
+            to="/backoffice/connections"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          >
+            Back to connections
+          </Link>
+        }
+      />
+
+      {organizations.length === 0 ? (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+          No organisations are linked to this account yet.
+        </div>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2">
+          {organizations.map(({ organization, member }) => (
+            <div
+              key={organization.id}
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                    {organization.slug}
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
+                    {organization.name}
+                  </h2>
+                </div>
+                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+                  {activeOrganizationId === organization.id ? "Active" : "Idle"}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
+                <p className="flex items-center justify-between">
+                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                    Roles
+                  </span>
+                  <span className="font-semibold text-[var(--bo-fg)]">
+                    {member.roles.join(", ") || "Member"}
+                  </span>
+                </p>
+                <p className="flex items-center justify-between">
+                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                    Created
+                  </span>
+                  <span>{formatTimestamp(organization.createdAt)}</span>
+                </p>
+              </div>
+
+              <div className="mt-4">
+                <Link
+                  to={`/backoffice/connections/reson8/${organization.id}`}
+                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                >
+                  Manage Reson8
+                </Link>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}

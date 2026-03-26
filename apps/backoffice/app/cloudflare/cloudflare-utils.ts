@@ -7,6 +7,7 @@ import type { GitHub } from "workers/github.do";
 import type { Otp } from "workers/otp.do";
 import type { Pi } from "workers/pi.do";
 import type { Resend } from "workers/resend.do";
+import type { Reson8 } from "workers/reson8.do";
 import type { SandboxRegistry } from "workers/sandbox-registry.do";
 import type { Telegram } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
@@ -79,6 +80,19 @@ export function getResendDurableObject(
   const { env } = context.get(CloudflareContext);
 
   return env.RESEND.get(env.RESEND.idFromName(orgId));
+}
+
+/**
+ * Helper to get the Reson8 Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getReson8DurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Reson8> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.RESON8.get(env.RESON8.idFromName(orgId));
 }
 
 /**

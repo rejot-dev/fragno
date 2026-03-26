@@ -23,6 +23,12 @@ const CONNECTIONS = [
     status: "Available",
   },
   {
+    id: "reson8",
+    name: "Reson8",
+    description: "Transcribe recorded audio, capture realtime speech, and manage custom models.",
+    status: "Available",
+  },
+  {
     id: "slack",
     name: "Slack",
     description: "Sync workspace activity and notify channel subscribers.",
@@ -59,6 +65,9 @@ export default function BackofficeConnections() {
   const uploadTarget = activeOrganizationId
     ? `/backoffice/connections/upload/${activeOrganizationId}`
     : null;
+  const reson8Target = activeOrganizationId
+    ? `/backoffice/connections/reson8/${activeOrganizationId}`
+    : null;
 
   return (
     <div className="space-y-4">
@@ -86,7 +95,9 @@ export default function BackofficeConnections() {
                   ? githubTarget
                   : connection.id === "upload"
                     ? uploadTarget
-                    : null;
+                    : connection.id === "reson8"
+                      ? reson8Target
+                      : null;
           const isAvailable = Boolean(connectionLink);
           return (
             <div

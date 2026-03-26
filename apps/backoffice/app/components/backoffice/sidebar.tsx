@@ -30,6 +30,7 @@ function createNavItems(): NavItem[] {
       children: [
         { label: "Telegram", to: "/backoffice/connections/telegram" },
         { label: "Resend", to: "/backoffice/connections/resend" },
+        { label: "Reson8", to: "/backoffice/connections/reson8" },
         { label: "GitHub", to: "/backoffice/connections/github" },
         { label: "Upload", to: "/backoffice/connections/upload" },
       ],

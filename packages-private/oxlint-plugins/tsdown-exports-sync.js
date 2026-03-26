@@ -157,7 +157,7 @@ const rule = {
                 continue;
               }
 
-              const base = item.replace(/\.js$/, "");
+              const base = item.replace(/\.(?:mjs|cjs|js)$/, "");
               for (const ext of extensions) {
                 for (const prefix of prefixes) {
                   candidates.add(`${prefix}${base}${ext}`);
