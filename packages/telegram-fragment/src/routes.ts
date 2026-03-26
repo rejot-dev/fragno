@@ -7,11 +7,15 @@ import { ExponentialBackoffRetryPolicy } from "@fragno-dev/db";
 import { telegramFragmentDefinition } from "./definition";
 import { telegramSchema } from "./schema";
 import { createTelegramApi } from "./telegram-api";
-import { DEFAULT_COMMAND_SCOPES, parseCommandBindings } from "./telegram-utils";
 import {
+  DEFAULT_COMMAND_SCOPES,
+  normalizeTelegramUpdate,
+  parseCommandBindings,
+} from "./telegram-utils";
+import {
+  telegramAttachmentSchema,
   telegramChatTypeSchema,
   telegramCommandBindingsSchema,
-  telegramUpdateSchema,
 } from "./types";
 import type { TelegramCommandScope, TelegramHooksMap } from "./types";
 
@@ -57,6 +61,7 @@ const messageSummarySchema = z.object({
   replyToMessageId: z.string().nullable(),
   messageType: z.enum(["message", "edited_message", "channel_post"]),
   text: z.string().nullable(),
+  attachments: z.array(telegramAttachmentSchema),
   payload: z.unknown().nullable(),
   sentAt: z.date(),
   editedAt: z.date().nullable(),
@@ -155,16 +160,22 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
       defineRoute({
         method: "POST",
         path: "/telegram/webhook",
-        inputSchema: telegramUpdateSchema,
+        inputSchema: z.unknown(),
         outputSchema: webhookOutputSchema,
-        errorCodes: ["UNAUTHORIZED"] as const,
+        errorCodes: ["UNAUTHORIZED", "INVALID_UPDATE"] as const,
         handler: async function ({ headers, input }, { json, error }) {
           const secret = headers.get("x-telegram-bot-api-secret-token");
           if (!secret || secret !== config.webhookSecretToken) {
             return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
           }
 
-          const update = await input.valid();
+          const rawUpdate = await input.valid();
+          let update;
+          try {
+            update = normalizeTelegramUpdate(rawUpdate);
+          } catch {
+            return error({ message: "Invalid Telegram update", code: "INVALID_UPDATE" }, 400);
+          }
 
           try {
             await this.handlerTx()
@@ -173,7 +184,7 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
                 uow.triggerHook(
                   "internalProcessUpdate",
                   { update },
-                  { id: String(update.update_id) },
+                  { id: String(update.updateId) },
                 );
               })
               .execute();
@@ -401,7 +412,7 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
         handler: async function ({ pathParams, input }, { json, error }) {
           const { action } = await input.valid();
           const result = await api.sendChatAction({
-            chat_id: pathParams.chatId,
+            chatId: pathParams.chatId,
             action,
           });
 
@@ -430,11 +441,11 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
               uow.triggerHook("internalOutgoingMessage", {
                 action: "sendMessage",
                 payload: filterUndefined({
-                  chat_id: pathParams.chatId,
+                  chatId: pathParams.chatId,
                   text: payload.text,
-                  parse_mode: payload.parseMode,
-                  disable_web_page_preview: payload.disableWebPagePreview,
-                  reply_to_message_id: payload.replyToMessageId,
+                  parseMode: payload.parseMode,
+                  disableWebPagePreview: payload.disableWebPagePreview,
+                  replyToMessageId: payload.replyToMessageId,
                 }),
               });
             })
@@ -464,11 +475,11 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
               uow.triggerHook("internalOutgoingMessage", {
                 action: "editMessageText",
                 payload: filterUndefined({
-                  chat_id: pathParams.chatId,
-                  message_id: messageId,
+                  chatId: pathParams.chatId,
+                  messageId,
                   text: payload.text,
-                  parse_mode: payload.parseMode,
-                  disable_web_page_preview: payload.disableWebPagePreview,
+                  parseMode: payload.parseMode,
+                  disableWebPagePreview: payload.disableWebPagePreview,
                 }),
               });
             })

@@ -15,9 +15,9 @@ globalThis.fetch = vi.fn();
 const webhookSecret = "secret-token";
 
 const baseUpdate: TelegramUpdate = {
-  update_id: 100,
+  updateId: 100,
   message: {
-    message_id: 50,
+    messageId: 50,
     date: 1_710_000_000,
     text: "/ping hello",
     entities: [{ type: "bot_command", offset: 0, length: 5 }],
@@ -28,16 +28,16 @@ const baseUpdate: TelegramUpdate = {
     },
     from: {
       id: 42,
-      is_bot: false,
-      first_name: "Alice",
-      last_name: "Doe",
+      isBot: false,
+      firstName: "Alice",
+      lastName: "Doe",
       username: "alice",
     },
-    new_chat_members: [
+    newChatMembers: [
       {
         id: 43,
-        is_bot: false,
-        first_name: "Bob",
+        isBot: false,
+        firstName: "Bob",
       },
     ],
   },
@@ -73,7 +73,7 @@ describe("telegram-fragment", async () => {
           if (editOnCommand) {
             await ctx.api.editMessageText({
               chat_id: ctx.chat.id,
-              message_id: 60,
+              messageId: 60,
               text: "edited",
             });
           }
@@ -138,20 +138,357 @@ describe("telegram-fragment", async () => {
     expect(messages[0]?.commandName).toBe("ping");
   });
 
+  test("normalizes raw Telegram webhook payloads at the boundary", async () => {
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: {
+        update_id: 110,
+        message: {
+          message_id: 55,
+          date: 1_710_000_010,
+          text: "/ping raw",
+          entities: [{ type: "bot_command", offset: 0, length: 5 }],
+          chat: {
+            id: 123,
+            type: "private",
+          },
+          from: {
+            id: 42,
+            is_bot: false,
+            first_name: "Alice",
+            username: "alice",
+          },
+          voice: {
+            file_id: "voice-file-raw-1",
+            file_unique_id: "voice-unique-raw-1",
+            duration: 4,
+          },
+        },
+      },
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    expect(onMessageReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            kind: "voice",
+            fileId: "voice-file-raw-1",
+            fileUniqueId: "voice-unique-raw-1",
+            duration: 4,
+          },
+        ],
+      }),
+    );
+    expect(commandHandler).toHaveBeenCalledWith("ping");
+  });
+
+  test("includes minimal attachments in message hooks and message summaries", async () => {
+    const voiceUpdate: TelegramUpdate = {
+      updateId: 101,
+      message: {
+        messageId: 51,
+        date: 1_710_000_001,
+        chat: {
+          id: 123,
+          type: "private",
+        },
+        from: {
+          id: 42,
+          isBot: false,
+          firstName: "Alice",
+        },
+        voice: {
+          fileId: "voice-file-1",
+          fileUniqueId: "voice-unique-1",
+          duration: 3,
+        },
+      },
+    };
+
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: voiceUpdate,
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    expect(onMessageReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: null,
+        attachments: [
+          {
+            kind: "voice",
+            fileId: "voice-file-1",
+            fileUniqueId: "voice-unique-1",
+            duration: 3,
+          },
+        ],
+      }),
+    );
+
+    const messages = await fragment.callRoute("GET", "/chats/:chatId/messages", {
+      pathParams: { chatId: "123" },
+    });
+
+    expect(messages.type).toBe("json");
+    if (messages.type === "json") {
+      expect(messages.data.messages[0]?.attachments).toEqual([
+        {
+          kind: "voice",
+          fileId: "voice-file-1",
+          fileUniqueId: "voice-unique-1",
+          duration: 3,
+        },
+      ]);
+    }
+  });
+
+  test("preserves rich attachment metadata in hooks and message summaries", async () => {
+    const richAttachmentUpdate: TelegramUpdate = {
+      updateId: 102,
+      message: {
+        messageId: 52,
+        date: 1_710_000_002,
+        chat: {
+          id: 123,
+          type: "private",
+        },
+        from: {
+          id: 42,
+          isBot: false,
+          firstName: "Alice",
+        },
+        photo: [
+          {
+            fileId: "photo-small-1",
+            fileUniqueId: "photo-small-unique-1",
+            fileSize: 256,
+            width: 90,
+            height: 90,
+          },
+          {
+            fileId: "photo-large-1",
+            fileUniqueId: "photo-large-unique-1",
+            fileSize: 4096,
+            width: 1280,
+            height: 960,
+          },
+        ],
+        audio: {
+          fileId: "audio-file-1",
+          fileUniqueId: "audio-unique-1",
+          fileSize: 8192,
+          duration: 91,
+          performer: "Alice",
+          title: "Voice memo",
+          fileName: "voice-memo.mp3",
+          mimeType: "audio/mpeg",
+          thumbnail: {
+            fileId: "audio-thumb-1",
+            fileUniqueId: "audio-thumb-unique-1",
+            fileSize: 128,
+            width: 120,
+            height: 120,
+          },
+        },
+        document: {
+          fileId: "document-file-1",
+          fileUniqueId: "document-unique-1",
+          fileSize: 2048,
+          fileName: "invoice.pdf",
+          mimeType: "application/pdf",
+          thumbnail: {
+            fileId: "document-thumb-1",
+            fileUniqueId: "document-thumb-unique-1",
+            fileSize: 256,
+            width: 128,
+            height: 180,
+          },
+        },
+      },
+    };
+
+    const response = await fragment.callRoute("POST", "/telegram/webhook", {
+      body: richAttachmentUpdate,
+      headers: {
+        "x-telegram-bot-api-secret-token": webhookSecret,
+      },
+    });
+
+    expect(response.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    expect(onMessageReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            kind: "photo",
+            fileId: "photo-large-1",
+            fileUniqueId: "photo-large-unique-1",
+            fileSize: 4096,
+            width: 1280,
+            height: 960,
+            thumbnail: {
+              fileId: "photo-small-1",
+              fileUniqueId: "photo-small-unique-1",
+              fileSize: 256,
+              width: 90,
+              height: 90,
+            },
+            sizes: [
+              {
+                fileId: "photo-small-1",
+                fileUniqueId: "photo-small-unique-1",
+                fileSize: 256,
+                width: 90,
+                height: 90,
+              },
+              {
+                fileId: "photo-large-1",
+                fileUniqueId: "photo-large-unique-1",
+                fileSize: 4096,
+                width: 1280,
+                height: 960,
+              },
+            ],
+          },
+          {
+            kind: "audio",
+            fileId: "audio-file-1",
+            fileUniqueId: "audio-unique-1",
+            fileSize: 8192,
+            duration: 91,
+            performer: "Alice",
+            title: "Voice memo",
+            fileName: "voice-memo.mp3",
+            mimeType: "audio/mpeg",
+            thumbnail: {
+              fileId: "audio-thumb-1",
+              fileUniqueId: "audio-thumb-unique-1",
+              fileSize: 128,
+              width: 120,
+              height: 120,
+            },
+          },
+          {
+            kind: "document",
+            fileId: "document-file-1",
+            fileUniqueId: "document-unique-1",
+            fileSize: 2048,
+            fileName: "invoice.pdf",
+            mimeType: "application/pdf",
+            thumbnail: {
+              fileId: "document-thumb-1",
+              fileUniqueId: "document-thumb-unique-1",
+              fileSize: 256,
+              width: 128,
+              height: 180,
+            },
+          },
+        ],
+      }),
+    );
+
+    const messages = await fragment.callRoute("GET", "/chats/:chatId/messages", {
+      pathParams: { chatId: "123" },
+    });
+
+    expect(messages.type).toBe("json");
+    if (messages.type === "json") {
+      expect(messages.data.messages[0]?.attachments).toEqual([
+        {
+          kind: "photo",
+          fileId: "photo-large-1",
+          fileUniqueId: "photo-large-unique-1",
+          fileSize: 4096,
+          width: 1280,
+          height: 960,
+          thumbnail: {
+            fileId: "photo-small-1",
+            fileUniqueId: "photo-small-unique-1",
+            fileSize: 256,
+            width: 90,
+            height: 90,
+          },
+          sizes: [
+            {
+              fileId: "photo-small-1",
+              fileUniqueId: "photo-small-unique-1",
+              fileSize: 256,
+              width: 90,
+              height: 90,
+            },
+            {
+              fileId: "photo-large-1",
+              fileUniqueId: "photo-large-unique-1",
+              fileSize: 4096,
+              width: 1280,
+              height: 960,
+            },
+          ],
+        },
+        {
+          kind: "audio",
+          fileId: "audio-file-1",
+          fileUniqueId: "audio-unique-1",
+          fileSize: 8192,
+          duration: 91,
+          performer: "Alice",
+          title: "Voice memo",
+          fileName: "voice-memo.mp3",
+          mimeType: "audio/mpeg",
+          thumbnail: {
+            fileId: "audio-thumb-1",
+            fileUniqueId: "audio-thumb-unique-1",
+            fileSize: 128,
+            width: 120,
+            height: 120,
+          },
+        },
+        {
+          kind: "document",
+          fileId: "document-file-1",
+          fileUniqueId: "document-unique-1",
+          fileSize: 2048,
+          fileName: "invoice.pdf",
+          mimeType: "application/pdf",
+          thumbnail: {
+            fileId: "document-thumb-1",
+            fileUniqueId: "document-thumb-unique-1",
+            fileSize: 256,
+            width: 128,
+            height: 180,
+          },
+        },
+      ]);
+    }
+  });
+
   test("dedupes chat and user upserts for duplicate update entities", async () => {
     const duplicateUser = baseUpdate.message!.from!;
-    const duplicateMember = baseUpdate.message!.new_chat_members![0]!;
+    const duplicateMember = baseUpdate.message!.newChatMembers![0]!;
     const duplicateUpdate: TelegramUpdate = {
       ...baseUpdate,
-      update_id: 200,
+      updateId: 200,
       message: {
         ...baseUpdate.message!,
-        message_id: 70,
-        sender_chat: {
+        messageId: 70,
+        senderChat: {
           ...baseUpdate.message!.chat,
         },
-        new_chat_members: [duplicateUser, duplicateMember, duplicateMember],
-        left_chat_member: duplicateUser,
+        newChatMembers: [duplicateUser, duplicateMember, duplicateMember],
+        leftChatMember: duplicateUser,
       },
     };
 
@@ -243,10 +580,10 @@ describe("telegram-fragment", async () => {
 
     const secondUpdate: TelegramUpdate = {
       ...baseUpdate,
-      update_id: 101,
+      updateId: 101,
       message: {
         ...baseUpdate.message!,
-        message_id: 51,
+        messageId: 51,
       },
     };
 
@@ -298,6 +635,17 @@ describe("telegram-fragment", async () => {
 
     await drainDurableHooks(fragment);
 
+    const sendRequest = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
+    const sendRequestBody =
+      sendRequest && typeof sendRequest === "object" && "body" in sendRequest
+        ? JSON.parse(String(sendRequest.body))
+        : null;
+    expect(sendRequestBody).toMatchObject({
+      chat_id: "123",
+      text: "Hello from bot",
+    });
+    expect(sendRequestBody).not.toHaveProperty("chatId");
+
     const storedAfterSend = await fragments.telegram.db.find("message", (b) =>
       b.whereIndex("primary"),
     );
@@ -332,6 +680,19 @@ describe("telegram-fragment", async () => {
     }
 
     await drainDurableHooks(fragment);
+
+    const editRequest = vi.mocked(globalThis.fetch).mock.calls[1]?.[1];
+    const editRequestBody =
+      editRequest && typeof editRequest === "object" && "body" in editRequest
+        ? JSON.parse(String(editRequest.body))
+        : null;
+    expect(editRequestBody).toMatchObject({
+      chat_id: "123",
+      message_id: 60,
+      text: "Edited text",
+    });
+    expect(editRequestBody).not.toHaveProperty("chatId");
+    expect(editRequestBody).not.toHaveProperty("messageId");
 
     const storedAfterEdit = await fragments.telegram.db.find("message", (b) =>
       b.whereIndex("primary"),

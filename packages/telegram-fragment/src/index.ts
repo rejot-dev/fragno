@@ -39,10 +39,18 @@ export function createTelegramFragmentClients(fragnoConfig: FragnoPublicClientCo
 export { telegramFragmentDefinition } from "./definition";
 export { telegramRoutesFactory } from "./routes";
 export { telegramSchema } from "./schema";
-export { createTelegram, defineCommand } from "./types";
+export {
+  createTelegram,
+  defineCommand,
+  telegramAttachmentKindSchema,
+  telegramAttachmentSchema,
+} from "./types";
 export type {
   TelegramApi,
   TelegramApiResult,
+  TelegramAttachment,
+  TelegramAttachmentKind,
+  TelegramAttachmentPhotoSize,
   TelegramCommandApi,
   TelegramCommandApiResult,
   TelegramChatMemberHookPayload,

@@ -2,93 +2,328 @@ import { z } from "zod";
 
 import type { HookFn, HookHandlerTx } from "@fragno-dev/db";
 
+const telegramIntegerSchema = z.number().int();
+
 export const telegramChatTypeSchema = z.enum(["private", "group", "supergroup", "channel"]);
 export type TelegramChatType = z.infer<typeof telegramChatTypeSchema>;
 export type TelegramCommandScope = TelegramChatType;
 
-export const telegramMessageEntitySchema = z
-  .object({
-    type: z.string(),
-    offset: z.number(),
-    length: z.number(),
-  })
-  .loose();
+export const telegramPhotoSizeSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  fileSize: telegramIntegerSchema.optional(),
+});
+export type TelegramPhotoSize = z.infer<typeof telegramPhotoSizeSchema>;
+
+export const telegramVoiceSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  duration: telegramIntegerSchema,
+  mimeType: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+});
+export type TelegramVoice = z.infer<typeof telegramVoiceSchema>;
+
+export const telegramAudioSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  duration: telegramIntegerSchema,
+  performer: z.string().optional(),
+  title: z.string().optional(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+});
+export type TelegramAudio = z.infer<typeof telegramAudioSchema>;
+
+export const telegramDocumentSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+});
+export type TelegramDocument = z.infer<typeof telegramDocumentSchema>;
+
+export const telegramVideoSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+});
+export type TelegramVideo = z.infer<typeof telegramVideoSchema>;
+
+export const telegramVideoNoteSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  length: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  fileSize: telegramIntegerSchema.optional(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+});
+export type TelegramVideoNote = z.infer<typeof telegramVideoNoteSchema>;
+
+export const telegramStickerTypeSchema = z.enum(["regular", "mask", "custom_emoji"]);
+export type TelegramStickerType = z.infer<typeof telegramStickerTypeSchema>;
+
+export const telegramStickerSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  type: telegramStickerTypeSchema,
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  isAnimated: z.boolean(),
+  isVideo: z.boolean(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+  emoji: z.string().optional(),
+  setName: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+});
+export type TelegramSticker = z.infer<typeof telegramStickerSchema>;
+
+export const telegramAnimationSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileSize: telegramIntegerSchema.optional(),
+  thumbnail: telegramPhotoSizeSchema.optional(),
+});
+export type TelegramAnimation = z.infer<typeof telegramAnimationSchema>;
+
+export const telegramAttachmentKindSchema = z.enum([
+  "photo",
+  "voice",
+  "audio",
+  "document",
+  "video",
+  "video_note",
+  "sticker",
+  "animation",
+]);
+export type TelegramAttachmentKind = z.infer<typeof telegramAttachmentKindSchema>;
+
+export const telegramAttachmentPhotoSizeSchema = z.object({
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+});
+export type TelegramAttachmentPhotoSize = z.infer<typeof telegramAttachmentPhotoSizeSchema>;
+
+const telegramPhotoAttachmentSchema = z.object({
+  kind: z.literal("photo"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+  sizes: z.array(telegramAttachmentPhotoSizeSchema).min(1),
+});
+
+const telegramVoiceAttachmentSchema = z.object({
+  kind: z.literal("voice"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  duration: telegramIntegerSchema,
+  mimeType: z.string().optional(),
+});
+
+const telegramAudioAttachmentSchema = z.object({
+  kind: z.literal("audio"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  duration: telegramIntegerSchema,
+  performer: z.string().optional(),
+  title: z.string().optional(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+const telegramDocumentAttachmentSchema = z.object({
+  kind: z.literal("document"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+const telegramVideoAttachmentSchema = z.object({
+  kind: z.literal("video"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+const telegramVideoNoteAttachmentSchema = z.object({
+  kind: z.literal("video_note"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  length: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+const telegramStickerAttachmentSchema = z.object({
+  kind: z.literal("sticker"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  emoji: z.string().optional(),
+  setName: z.string().optional(),
+  isAnimated: z.boolean(),
+  isVideo: z.boolean(),
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+const telegramAnimationAttachmentSchema = z.object({
+  kind: z.literal("animation"),
+  fileId: z.string(),
+  fileUniqueId: z.string(),
+  fileSize: telegramIntegerSchema.optional(),
+  width: telegramIntegerSchema,
+  height: telegramIntegerSchema,
+  duration: telegramIntegerSchema,
+  fileName: z.string().optional(),
+  mimeType: z.string().optional(),
+  thumbnail: telegramAttachmentPhotoSizeSchema.optional(),
+});
+
+export const telegramAttachmentSchema = z.discriminatedUnion("kind", [
+  telegramPhotoAttachmentSchema,
+  telegramVoiceAttachmentSchema,
+  telegramAudioAttachmentSchema,
+  telegramDocumentAttachmentSchema,
+  telegramVideoAttachmentSchema,
+  telegramVideoNoteAttachmentSchema,
+  telegramStickerAttachmentSchema,
+  telegramAnimationAttachmentSchema,
+]);
+export type TelegramAttachment = z.infer<typeof telegramAttachmentSchema>;
+
+export const telegramMessageEntitySchema = z.object({
+  type: z.string(),
+  offset: telegramIntegerSchema,
+  length: telegramIntegerSchema,
+});
 export type TelegramMessageEntity = z.infer<typeof telegramMessageEntitySchema>;
 
-export const telegramUserSchema = z
-  .object({
-    id: z.number(),
-    is_bot: z.boolean().optional(),
-    first_name: z.string(),
-    last_name: z.string().optional(),
-    username: z.string().optional(),
-    language_code: z.string().optional(),
-  })
-  .loose();
+export const telegramUserSchema = z.object({
+  id: telegramIntegerSchema,
+  isBot: z.boolean(),
+  firstName: z.string(),
+  lastName: z.string().optional(),
+  username: z.string().optional(),
+  languageCode: z.string().optional(),
+});
 export type TelegramUser = z.infer<typeof telegramUserSchema>;
 
-export const telegramChatSchema = z
-  .object({
-    id: z.number(),
-    type: telegramChatTypeSchema,
-    title: z.string().optional(),
-    username: z.string().optional(),
-    is_forum: z.boolean().optional(),
-  })
-  .loose();
+export const telegramChatSchema = z.object({
+  id: telegramIntegerSchema,
+  type: telegramChatTypeSchema,
+  title: z.string().optional(),
+  username: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  isForum: z.boolean().optional(),
+});
 export type TelegramChat = z.infer<typeof telegramChatSchema>;
 
 export interface TelegramMessage {
-  message_id: number;
+  messageId: number;
   date: number;
-  edit_date?: number;
+  editDate?: number;
   text?: string;
   from?: TelegramUser;
-  sender_chat?: TelegramChat;
+  senderChat?: TelegramChat;
   chat: TelegramChat;
-  reply_to_message?: TelegramMessage;
-  new_chat_members?: TelegramUser[];
-  left_chat_member?: TelegramUser;
+  replyToMessage?: TelegramMessage;
+  newChatMembers?: TelegramUser[];
+  leftChatMember?: TelegramUser;
   entities?: TelegramMessageEntity[];
-  [key: string]: unknown;
+  mediaGroupId?: string;
+  photo?: TelegramPhotoSize[];
+  voice?: TelegramVoice;
+  audio?: TelegramAudio;
+  document?: TelegramDocument;
+  video?: TelegramVideo;
+  videoNote?: TelegramVideoNote;
+  sticker?: TelegramSticker;
+  animation?: TelegramAnimation;
 }
 
 export const telegramMessageSchema: z.ZodType<TelegramMessage> = z.lazy(() =>
-  z
-    .object({
-      message_id: z.number(),
-      date: z.number(),
-      edit_date: z.number().optional(),
-      text: z.string().optional(),
-      from: telegramUserSchema.optional(),
-      sender_chat: telegramChatSchema.optional(),
-      chat: telegramChatSchema,
-      reply_to_message: telegramMessageSchema.optional(),
-      new_chat_members: z.array(telegramUserSchema).optional(),
-      left_chat_member: telegramUserSchema.optional(),
-      entities: z.array(telegramMessageEntitySchema).optional(),
-    })
-    .loose(),
+  z.object({
+    messageId: telegramIntegerSchema,
+    date: telegramIntegerSchema,
+    editDate: telegramIntegerSchema.optional(),
+    text: z.string().optional(),
+    from: telegramUserSchema.optional(),
+    senderChat: telegramChatSchema.optional(),
+    chat: telegramChatSchema,
+    replyToMessage: telegramMessageSchema.optional(),
+    newChatMembers: z.array(telegramUserSchema).optional(),
+    leftChatMember: telegramUserSchema.optional(),
+    entities: z.array(telegramMessageEntitySchema).optional(),
+    mediaGroupId: z.string().optional(),
+    photo: z.array(telegramPhotoSizeSchema).optional(),
+    voice: telegramVoiceSchema.optional(),
+    audio: telegramAudioSchema.optional(),
+    document: telegramDocumentSchema.optional(),
+    video: telegramVideoSchema.optional(),
+    videoNote: telegramVideoNoteSchema.optional(),
+    sticker: telegramStickerSchema.optional(),
+    animation: telegramAnimationSchema.optional(),
+  }),
 );
 
-export const telegramUpdateSchema = z
-  .object({
-    update_id: z.number(),
-    message: telegramMessageSchema.optional(),
-    edited_message: telegramMessageSchema.optional(),
-    channel_post: telegramMessageSchema.optional(),
-  })
-  .loose();
-export type TelegramUpdate = z.infer<typeof telegramUpdateSchema>;
+export interface TelegramUpdate {
+  updateId: number;
+  message?: TelegramMessage;
+  editedMessage?: TelegramMessage;
+  channelPost?: TelegramMessage;
+}
 
+export const telegramUpdateSchema: z.ZodType<TelegramUpdate> = z.object({
+  updateId: telegramIntegerSchema,
+  message: telegramMessageSchema.optional(),
+  editedMessage: telegramMessageSchema.optional(),
+  channelPost: telegramMessageSchema.optional(),
+});
 export type TelegramUpdateType = "message" | "edited_message" | "channel_post";
 
-export const telegramCommandBindingSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    scopes: z.array(telegramChatTypeSchema).optional(),
-  })
-  .loose();
+export const telegramCommandBindingSchema = z.object({
+  enabled: z.boolean().optional(),
+  scopes: z.array(telegramChatTypeSchema).optional(),
+});
 export type TelegramCommandBinding = z.infer<typeof telegramCommandBindingSchema>;
 
 export const telegramCommandBindingsSchema = z.record(z.string(), telegramCommandBindingSchema);
@@ -136,6 +371,7 @@ export interface TelegramMessageSummary {
   replyToMessageId: string | null;
   messageType: TelegramUpdateType;
   text: string | null;
+  attachments: TelegramAttachment[];
   payload: unknown | null;
   sentAt: Date;
   editedAt: Date | null;
@@ -150,6 +386,7 @@ export interface TelegramMessageHookPayload {
   chatId: string;
   fromUserId: string | null;
   text: string | null;
+  attachments: TelegramAttachment[];
   commandName: string | null;
   sentAt: Date;
   editedAt: Date | null;
@@ -202,7 +439,7 @@ export type TelegramHooksMap = {
 
 export type TelegramApiResult<T> =
   | { ok: true; result: T }
-  | { ok: false; error_code?: number; description?: string };
+  | { ok: false; errorCode?: number; description?: string };
 
 export interface TelegramApi {
   call<T>(method: string, payload: Record<string, unknown>): Promise<TelegramApiResult<T>>;
@@ -213,7 +450,7 @@ export interface TelegramApi {
 
 export type TelegramQueuedResult =
   | { ok: true; queued: true }
-  | { ok: false; error_code?: number; description?: string };
+  | { ok: false; errorCode?: number; description?: string };
 
 export type TelegramCommandApiResult<T> = TelegramApiResult<T> | TelegramQueuedResult;
 
