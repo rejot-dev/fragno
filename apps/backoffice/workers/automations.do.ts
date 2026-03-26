@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
 
-import { createMasterFileSystem } from "@/files";
+import { automationHooksFileContributor, createMasterFileSystem } from "@/files";
 import type { AutomationEvent, AutomationIngestResult } from "@/fragno/automation";
 import {
   buildNotConfiguredResponse,
@@ -95,12 +95,21 @@ export class Automations extends DurableObject<CloudflareEnv> {
 
   async #createAutomationFileSystem(orgId?: string) {
     const normalizedOrgId = orgId?.trim();
+    const durableHooksRuntimes = [
+      {
+        contributorId: automationHooksFileContributor.id,
+        getHookQueue: (opts?: DurableHookQueueOptions) =>
+          this.getHookQueue({ ...opts, fragment: "automation" as const }),
+      },
+    ];
+
     if (!normalizedOrgId || !this.#env.UPLOAD) {
       return createMasterFileSystem({
         orgId: normalizedOrgId || "automation-default-org",
         origin: "https://automations.internal",
         backend: "pi",
         uploadConfig: null,
+        durableHooksRuntimes,
       });
     }
 
@@ -116,6 +125,7 @@ export class Automations extends DurableObject<CloudflareEnv> {
         baseUrl: "https://automations.internal",
         fetch: uploadDo.fetch.bind(uploadDo),
       },
+      durableHooksRuntimes,
     });
   }
 

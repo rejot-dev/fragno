@@ -1,6 +1,8 @@
 import type { RouterContextProvider } from "react-router";
 
+import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import {
+  automationHooksFileContributor,
   createMasterFileSystem,
   getFilesNodeDetail,
   listFilesChildren,
@@ -48,6 +50,16 @@ export async function createBackofficeFilesFileSystem({
     uploadConfig,
     request,
     routerContext: context,
+    durableHooksRuntimes: [
+      {
+        contributorId: automationHooksFileContributor.id,
+        getHookQueue: (opts) =>
+          getAutomationsDurableObject(context, orgId).getHookQueue({
+            ...opts,
+            fragment: "automation",
+          }),
+      },
+    ],
   });
 }
 

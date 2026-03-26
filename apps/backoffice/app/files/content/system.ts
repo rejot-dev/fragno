@@ -26,9 +26,10 @@ Workflow and automation definitions are located in:
 
 - /workspace/automations/scripts/
 
-Some connections also provide file-oriented views of their data. A key example is email thread files in:
+Some connections also provide file-oriented views of their data:
 
-- /resend
+- /resend — email thread snapshots (one Markdown file per thread)
+- /events — completed and failed automation hook events, organized by day
 
 ## Available utilities
 
