@@ -8,12 +8,13 @@ import {
   DEFAULT_COMMAND_SCOPES,
   buildChatMemberId,
   buildMessageId,
+  extractTelegramAttachments,
   parseCommand,
   parseCommandBindings,
   parseTelegramUpdate,
+  safeNormalizeTelegramMessage,
 } from "./telegram-utils";
 import {
-  telegramMessageSchema,
   type TelegramMessage,
   type TelegramChatMemberHookPayload,
   type TelegramChatMemberSummary,
@@ -110,10 +111,7 @@ const parseMessageCompositeId = (value: RecordId) => {
   };
 };
 
-const parseTelegramMessagePayload = (payload: unknown) => {
-  const result = telegramMessageSchema.safeParse(payload);
-  return result.success ? result.data : null;
-};
+const parseTelegramMessagePayload = (payload: unknown) => safeNormalizeTelegramMessage(payload);
 
 const toUserSummary = (user: TelegramUserRecord): TelegramUserSummary => ({
   id: String(user.id.valueOf()),
@@ -165,10 +163,11 @@ const toMessageSummary = (message: TelegramMessageRecord): TelegramMessageSummar
     : message.messageAuthor
       ? String(message.messageAuthor.id.valueOf())
       : null;
-  const senderChatId = payload?.sender_chat ? String(payload.sender_chat.id) : null;
-  const replyToMessageId = payload?.reply_to_message
-    ? buildMessageId(chatId, payload.reply_to_message.message_id)
+  const senderChatId = payload?.senderChat ? String(payload.senderChat.id) : null;
+  const replyToMessageId = payload?.replyToMessage
+    ? buildMessageId(chatId, payload.replyToMessage.messageId)
     : null;
+  const attachments = payload ? extractTelegramAttachments(payload) : [];
 
   return {
     id: String(message.id.valueOf()),
@@ -178,6 +177,7 @@ const toMessageSummary = (message: TelegramMessageRecord): TelegramMessageSummar
     replyToMessageId,
     messageType: message.messageType as TelegramMessageSummary["messageType"],
     text: message.text,
+    attachments,
     payload: message.payload,
     sentAt: message.sentAt,
     editedAt: message.editedAt,
@@ -275,32 +275,33 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
     if (!parsed) {
       return {
         kind: "ignored",
-        updateId: update.update_id,
+        updateId: update.updateId,
       };
     }
 
     const { message, type, updateId } = parsed;
     const chatId = String(message.chat.id);
-    const messageId = buildMessageId(chatId, message.message_id);
+    const messageId = buildMessageId(chatId, message.messageId);
     const sentAt = new Date(message.date * 1000);
-    const editedAt = message.edit_date ? new Date(message.edit_date * 1000) : null;
+    const editedAt = message.editDate ? new Date(message.editDate * 1000) : null;
     const fromUser = message.from ?? null;
     const fromUserId = fromUser ? String(fromUser.id) : null;
-    const senderChat = message.sender_chat ?? null;
+    const senderChat = message.senderChat ?? null;
     const senderChatId = senderChat ? String(senderChat.id) : null;
-    const replyToMessageId = message.reply_to_message
-      ? buildMessageId(chatId, message.reply_to_message.message_id)
+    const replyToMessageId = message.replyToMessage
+      ? buildMessageId(chatId, message.replyToMessage.messageId)
       : null;
 
     const commandMatch = parseCommand(message, botUsername);
     const commandName = commandMatch?.name ?? null;
+    const attachments = extractTelegramAttachments(message);
 
     const membershipMap = new Map<
       string,
       { status: string; joinedAt: Date | null; leftAt: Date | null; notify: boolean }
     >();
 
-    const newMembers = message.new_chat_members ?? [];
+    const newMembers = message.newChatMembers ?? [];
     for (const member of newMembers) {
       membershipMap.set(String(member.id), {
         status: "member",
@@ -310,8 +311,8 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
       });
     }
 
-    if (message.left_chat_member) {
-      membershipMap.set(String(message.left_chat_member.id), {
+    if (message.leftChatMember) {
+      membershipMap.set(String(message.leftChatMember.id), {
         status: "left",
         joinedAt: null,
         leftAt: sentAt,
@@ -337,7 +338,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
         [
           fromUserId,
           ...newMembers.map((member) => String(member.id)),
-          message.left_chat_member ? String(message.left_chat_member.id) : null,
+          message.leftChatMember ? String(message.leftChatMember.id) : null,
         ].filter(Boolean) as string[],
       ),
     );
@@ -362,7 +363,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
 
     const usersForUpsert: Array<NonNullable<typeof fromUser>> = [];
     const seenUserIds = new Set<string>();
-    for (const user of [fromUser, ...newMembers, message.left_chat_member]) {
+    for (const user of [fromUser, ...newMembers, message.leftChatMember]) {
       if (!user) {
         continue;
       }
@@ -413,7 +414,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
               type: chat.type,
               title: chat.title ?? null,
               username: chat.username ?? null,
-              isForum: chat.is_forum ?? false,
+              isForum: chat.isForum ?? false,
               commandBindings: null,
               createdAt: now,
               updatedAt: now,
@@ -424,7 +425,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
               type: chat.type,
               title: chat.title ?? null,
               username: chat.username ?? null,
-              isForum: chat.is_forum ?? false,
+              isForum: chat.isForum ?? false,
               commandBindings: null,
               createdAt: now,
               updatedAt: now,
@@ -436,7 +437,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
                   type: chat.type,
                   title: chat.title ?? null,
                   username: chat.username ?? null,
-                  isForum: chat.is_forum ?? false,
+                  isForum: chat.isForum ?? false,
                   updatedAt: now,
                 })
                 .check(),
@@ -447,7 +448,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
               type: chat.type,
               title: chat.title ?? null,
               username: chat.username ?? null,
-              isForum: chat.is_forum ?? false,
+              isForum: chat.isForum ?? false,
               updatedAt: now,
             });
           }
@@ -461,10 +462,10 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             uow.create("user", {
               id,
               username: user.username ?? null,
-              firstName: user.first_name,
-              lastName: user.last_name ?? null,
-              isBot: user.is_bot ?? false,
-              languageCode: user.language_code ?? null,
+              firstName: user.firstName,
+              lastName: user.lastName ?? null,
+              isBot: user.isBot ?? false,
+              languageCode: user.languageCode ?? null,
               createdAt: now,
               updatedAt: now,
             });
@@ -472,10 +473,10 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             userSummaries.set(id, {
               id,
               username: user.username ?? null,
-              firstName: user.first_name,
-              lastName: user.last_name ?? null,
-              isBot: user.is_bot ?? false,
-              languageCode: user.language_code ?? null,
+              firstName: user.firstName,
+              lastName: user.lastName ?? null,
+              isBot: user.isBot ?? false,
+              languageCode: user.languageCode ?? null,
               createdAt: now,
               updatedAt: now,
             });
@@ -484,10 +485,10 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
               b
                 .set({
                   username: user.username ?? null,
-                  firstName: user.first_name,
-                  lastName: user.last_name ?? null,
-                  isBot: user.is_bot ?? false,
-                  languageCode: user.language_code ?? null,
+                  firstName: user.firstName,
+                  lastName: user.lastName ?? null,
+                  isBot: user.isBot ?? false,
+                  languageCode: user.languageCode ?? null,
                   updatedAt: now,
                 })
                 .check(),
@@ -496,10 +497,10 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             userSummaries.set(id, {
               ...toUserSummary(existing),
               username: user.username ?? null,
-              firstName: user.first_name,
-              lastName: user.last_name ?? null,
-              isBot: user.is_bot ?? false,
-              languageCode: user.language_code ?? null,
+              firstName: user.firstName,
+              lastName: user.lastName ?? null,
+              isBot: user.isBot ?? false,
+              languageCode: user.languageCode ?? null,
               updatedAt: now,
             });
           }
@@ -601,6 +602,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             replyToMessageId,
             messageType: type,
             text: message.text ?? null,
+            attachments,
             payload: message,
             sentAt,
             editedAt,
@@ -643,6 +645,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
               : null,
             messageType: type,
             text: message.text ?? existingMessage.text,
+            attachments,
             payload: message,
             sentAt: existingMessage.sentAt,
             editedAt: editedAt ?? existingMessage.editedAt,
@@ -660,7 +663,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
                 type: message.chat.type,
                 title: message.chat.title ?? null,
                 username: message.chat.username ?? null,
-                isForum: message.chat.is_forum ?? false,
+                isForum: message.chat.isForum ?? false,
                 commandBindings: null,
                 createdAt: now,
                 updatedAt: now,
@@ -712,6 +715,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             chatId,
             fromUserId,
             text: message.text ?? null,
+            attachments,
             commandName,
             sentAt: messageSummary.sentAt,
             editedAt: messageSummary.editedAt,
@@ -752,15 +756,15 @@ export const createUpsertOutgoingMessageOps = (input: {
 }): UpsertOutgoingMessageOps => {
   const { message, messageType } = input;
   const chatId = String(message.chat.id);
-  const senderChatId = message.sender_chat ? String(message.sender_chat.id) : null;
+  const senderChatId = message.senderChat ? String(message.senderChat.id) : null;
   const fromUser = message.from ?? null;
   const fromUserId = fromUser ? String(fromUser.id) : null;
-  const messageId = buildMessageId(chatId, message.message_id);
-  const replyToMessageId = message.reply_to_message
-    ? buildMessageId(chatId, message.reply_to_message.message_id)
+  const messageId = buildMessageId(chatId, message.messageId);
+  const replyToMessageId = message.replyToMessage
+    ? buildMessageId(chatId, message.replyToMessage.messageId)
     : null;
   const sentAt = new Date(message.date * 1000);
-  const editedAt = message.edit_date ? new Date(message.edit_date * 1000) : null;
+  const editedAt = message.editDate ? new Date(message.editDate * 1000) : null;
 
   const chatIds = Array.from(new Set([chatId, senderChatId].filter(Boolean) as string[]));
 
@@ -779,7 +783,7 @@ export const createUpsertOutgoingMessageOps = (input: {
       const chatById = new Map(existingChats.map((chat) => [chat.id.valueOf(), chat] as const));
       const userById = new Map(existingUsers.map((user) => [user.id.valueOf(), user] as const));
 
-      const chatsForUpsert = [message.chat, message.sender_chat].filter(Boolean) as Array<
+      const chatsForUpsert = [message.chat, message.senderChat].filter(Boolean) as Array<
         typeof message.chat
       >;
       for (const chat of chatsForUpsert) {
@@ -791,7 +795,7 @@ export const createUpsertOutgoingMessageOps = (input: {
             type: chat.type,
             title: chat.title ?? null,
             username: chat.username ?? null,
-            isForum: chat.is_forum ?? false,
+            isForum: chat.isForum ?? false,
             commandBindings: null,
             createdAt: now,
             updatedAt: now,
@@ -803,7 +807,7 @@ export const createUpsertOutgoingMessageOps = (input: {
                 type: chat.type,
                 title: chat.title ?? null,
                 username: chat.username ?? null,
-                isForum: chat.is_forum ?? false,
+                isForum: chat.isForum ?? false,
                 updatedAt: now,
               })
               .check(),
@@ -818,10 +822,10 @@ export const createUpsertOutgoingMessageOps = (input: {
           uow.create("user", {
             id,
             username: fromUser.username ?? null,
-            firstName: fromUser.first_name,
-            lastName: fromUser.last_name ?? null,
-            isBot: fromUser.is_bot ?? false,
-            languageCode: fromUser.language_code ?? null,
+            firstName: fromUser.firstName,
+            lastName: fromUser.lastName ?? null,
+            isBot: fromUser.isBot ?? false,
+            languageCode: fromUser.languageCode ?? null,
             createdAt: now,
             updatedAt: now,
           });
@@ -830,10 +834,10 @@ export const createUpsertOutgoingMessageOps = (input: {
             b
               .set({
                 username: fromUser.username ?? null,
-                firstName: fromUser.first_name,
-                lastName: fromUser.last_name ?? null,
-                isBot: fromUser.is_bot ?? false,
-                languageCode: fromUser.language_code ?? null,
+                firstName: fromUser.firstName,
+                lastName: fromUser.lastName ?? null,
+                isBot: fromUser.isBot ?? false,
+                languageCode: fromUser.languageCode ?? null,
                 updatedAt: now,
               })
               .check(),
