@@ -50,7 +50,11 @@ type ConversationEntry = {
   source: "prerecorded" | "realtime";
   title?: string;
   text: string;
-  createdAt: string;
+  /** Wall-clock time when a live segment was finalized (realtime only). */
+  createdAt?: string;
+  /** Offset into the uploaded file, when the API returns timing (prerecorded only). */
+  clipStartMs?: number;
+  clipDurationMs?: number;
 };
 
 type RealtimeRecordingDownload = {
@@ -67,6 +71,32 @@ const DEFAULT_PRERECORDED_FORM_STATE: PrerecordedFormState = {
 const createConversationEntryId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `conversation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const formatMsAsClipClock = (ms: number) => {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
+/** Label for prerecorded entries: time span inside the recording, not local wall clock. */
+const formatPrerecordedClipTimeLabel = (startMs?: number, durationMs?: number) => {
+  if (startMs == null && durationMs == null) {
+    return null;
+  }
+  if (startMs != null && durationMs != null) {
+    const endMs = startMs + durationMs;
+    return `${formatMsAsClipClock(startMs)} – ${formatMsAsClipClock(endMs)}`;
+  }
+  if (startMs != null) {
+    return formatMsAsClipClock(startMs);
+  }
+  return formatMsAsClipClock(durationMs!);
+};
 
 const getErrorMessage = (value: unknown) => {
   if (!value) {
@@ -181,6 +211,7 @@ function RealtimeSpeechSection({
   onInterimTranscriptChange,
   onRecordedAudioChange,
   clearConversationVersion,
+  onClearConversationIfPrerecorded,
 }: {
   orgId: string;
   models: Reson8CustomModel[];
@@ -190,6 +221,8 @@ function RealtimeSpeechSection({
   onInterimTranscriptChange: (value: string | null) => void;
   onRecordedAudioChange: (value: RealtimeRecordingDownload | null) => void;
   clearConversationVersion: number;
+  /** Clears the panel when it still shows a file transcription, before live capture begins. */
+  onClearConversationIfPrerecorded: () => void;
 }) {
   const [realtimeModelId, setRealtimeModelId] = useState("");
   const [realtimeControlError, setRealtimeControlError] = useState<string | null>(null);
@@ -270,6 +303,7 @@ function RealtimeSpeechSection({
   const startRealtime = async () => {
     setRealtimeControlError(null);
     try {
+      onClearConversationIfPrerecorded();
       await realtime.start();
     } catch (error) {
       setRealtimeControlError(
@@ -305,7 +339,7 @@ function RealtimeSpeechSection({
     <FormContainer
       title="Realtime speech"
       eyebrow="Live microphone"
-      description="Capture microphone audio in the browser, stream it to Reson8, and append final segments to the same conversation."
+      description="Capture microphone audio in the browser, stream it to Reson8, and add final segments to the conversation (starting clears a file-only transcript)."
     >
       <FormField label="Realtime custom model" hint="Optional vocabulary boost for live speech.">
         <select
@@ -409,7 +443,7 @@ function RealtimeSpeechSectionFallback() {
     <FormContainer
       title="Realtime speech"
       eyebrow="Live microphone"
-      description="Capture microphone audio in the browser, stream it to Reson8, and append final segments to the same conversation."
+      description="Capture microphone audio in the browser, stream it to Reson8, and add final segments to the conversation (starting clears a file-only transcript)."
     >
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
         Realtime microphone capture is only available after this page hydrates in the browser.
@@ -456,14 +490,17 @@ export default function BackofficeOrganisationReson8Transcribe() {
     }
 
     lastProcessedActionIdRef.current = actionData.resultId;
-    setConversationEntries((entries) => [
-      ...entries,
+    setRealtimeInterimTranscript(null);
+    setRealtimeRecordingDownload(null);
+    setClearConversationVersion((value) => value + 1);
+    setConversationEntries([
       {
         id: actionData.resultId,
         source: "prerecorded",
         title: actionData.fileName,
         text: actionData.transcription.text,
-        createdAt: new Date().toISOString(),
+        clipStartMs: actionData.transcription.start_ms,
+        clipDurationMs: actionData.transcription.duration_ms,
       },
     ]);
     setPrerecordedForm((prev) => ({
@@ -505,7 +542,7 @@ export default function BackofficeOrganisationReson8Transcribe() {
           <FormContainer
             title="Prerecorded transcription"
             eyebrow="Upload audio"
-            description="Submit an existing audio file and append the result to the shared conversation timeline."
+            description="Submit an audio file; each run replaces the conversation panel with this transcription."
           >
             <Form
               method="post"
@@ -604,6 +641,11 @@ export default function BackofficeOrganisationReson8Transcribe() {
               onInterimTranscriptChange={setRealtimeInterimTranscript}
               onRecordedAudioChange={setRealtimeRecordingDownload}
               clearConversationVersion={clearConversationVersion}
+              onClearConversationIfPrerecorded={() => {
+                if (conversationEntries.some((e) => e.source === "prerecorded")) {
+                  clearConversation();
+                }
+              }}
             />
           ) : (
             <RealtimeSpeechSectionFallback />
@@ -614,7 +656,7 @@ export default function BackofficeOrganisationReson8Transcribe() {
           <FormContainer
             title="Current conversation"
             eyebrow="Shared output"
-            description="Prerecorded uploads and live speech both append to the same running transcript."
+            description="New file transcriptions replace the panel. Live segments add on until you clear or upload again. Starting live recording clears a file-only transcript."
             actions={
               <div className="flex flex-wrap items-center gap-2">
                 {realtimeRecordingDownload ? (
@@ -672,8 +714,22 @@ export default function BackofficeOrganisationReson8Transcribe() {
                           </h3>
                         ) : null}
                       </div>
-                      <span className="text-xs text-[var(--bo-muted-2)]">
-                        {new Date(entry.createdAt).toLocaleTimeString()}
+                      <span
+                        className="text-xs text-[var(--bo-muted-2)]"
+                        title={
+                          entry.source === "prerecorded"
+                            ? "Time in recording"
+                            : "Local time when segment finalized"
+                        }
+                      >
+                        {entry.source === "prerecorded"
+                          ? (formatPrerecordedClipTimeLabel(
+                              entry.clipStartMs,
+                              entry.clipDurationMs,
+                            ) ?? "—")
+                          : entry.createdAt
+                            ? new Date(entry.createdAt).toLocaleTimeString()
+                            : "—"}
                       </span>
                     </div>
 

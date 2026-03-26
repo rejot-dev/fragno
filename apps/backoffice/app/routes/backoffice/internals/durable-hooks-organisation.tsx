@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, Outlet, useLoaderData, useLocation } from "react-router";
+import { useEffect } from "react";
+import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from "react-router";
 
 import {
   getCloudflareWorkersDurableObject,
@@ -30,7 +30,6 @@ import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
 export type DurableHooksOrgOutletContext = {
   hooks: DurableHookQueueEntry[];
   selectedHookId: string | null;
-  onSelectHook: (hookId: string | null) => void;
 };
 
 type DurableHooksOrgLoaderData = DurableHookQueueResponse & {
@@ -91,48 +90,54 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     const queueData = await (async (): Promise<DurableHookQueueResponse> => {
       switch (fragment) {
         case "cloudflare":
-          return (await getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
+          return await getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
             orgId: params.orgId,
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "telegram":
-          return (await getTelegramDurableObject(context, params.orgId).getHookQueue({
+          return await getTelegramDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "otp":
-          return (await getOtpDurableObject(context, params.orgId).getHookQueue({
+          return await getOtpDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "resend":
-          return (await getResendDurableObject(context, params.orgId).getHookQueue({
+          return await getResendDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "github":
-          return (await getGitHubDurableObject(context, params.orgId).getHookQueue({
+          return await getGitHubDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "upload":
-          return (await getUploadDurableObject(context, params.orgId).getHookQueue({
+          return await getUploadDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-          })) as DurableHookQueueResponse;
+          });
         case "automations":
-          return (await getAutomationsDurableObject(context, params.orgId).getHookQueue({
+          return await getAutomationsDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
             fragment: "automation",
-          })) as DurableHookQueueResponse;
+          });
         case "pi":
-          return (await getPiDurableObject(context, params.orgId).getHookQueue({
+          return await getPiDurableObject(context, params.orgId).getHookQueue({
             cursor,
             pageSize,
-            fragment,
-          })) as DurableHookQueueResponse;
+            fragment: "pi",
+          });
+        case "pi-workflows":
+          return await getPiDurableObject(context, params.orgId).getHookQueue({
+            cursor,
+            pageSize,
+            fragment: "workflows",
+          });
       }
     })();
 
@@ -187,7 +192,9 @@ export default function BackofficeDurableHooksOrganisation() {
     fragment,
   } = useLoaderData<typeof loader>();
   const location = useLocation();
-  const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const params = useParams();
+  const selectedHookId = params.hookId ?? null;
   const baseScopePath = `/backoffice/internals/durable-hooks/${orgId}`;
   const fragmentBasePath = `${baseScopePath}/${fragment}`;
   const searchParams = new URLSearchParams(location.search);
@@ -228,18 +235,14 @@ export default function BackofficeDurableHooksOrganisation() {
   }));
 
   useEffect(() => {
-    setSelectedHookId(null);
-  }, [fragment, orgId]);
-
-  useEffect(() => {
     if (!selectedHookId) {
       return;
     }
     const stillVisible = items.some((item) => item.id === selectedHookId);
     if (!stillVisible) {
-      setSelectedHookId(null);
+      navigate(`${fragmentBasePath}${location.search}`, { replace: true });
     }
-  }, [items, selectedHookId]);
+  }, [items, selectedHookId, fragmentBasePath, location.search, navigate]);
 
   return (
     <div className="space-y-4">
@@ -389,17 +392,18 @@ export default function BackofficeDurableHooksOrganisation() {
                     <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                       {items.map((hook) => {
                         const isSelected = hook.id === selectedHookId;
+                        const detailHref = `${fragmentBasePath}/${encodeURIComponent(hook.id)}${location.search}`;
                         return (
                           <tr
                             key={hook.id}
                             role="button"
                             tabIndex={0}
                             aria-label={`View durable hook ${hook.hookName}`}
-                            onClick={() => setSelectedHookId(hook.id)}
+                            onClick={() => navigate(detailHref)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                setSelectedHookId(hook.id);
+                                navigate(detailHref);
                               }
                             }}
                             className={
@@ -448,7 +452,9 @@ export default function BackofficeDurableHooksOrganisation() {
                             </td>
                             <td className="px-3 py-2">{formatTimestamp(hook.createdAt) || "-"}</td>
                             <td className="px-3 py-2 text-right">
-                              <span
+                              <Link
+                                to={detailHref}
+                                onClick={(event) => event.stopPropagation()}
                                 className={
                                   isSelected
                                     ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
@@ -456,7 +462,7 @@ export default function BackofficeDurableHooksOrganisation() {
                                 }
                               >
                                 View
-                              </span>
+                              </Link>
                             </td>
                           </tr>
                         );
@@ -499,7 +505,6 @@ export default function BackofficeDurableHooksOrganisation() {
             context={{
               hooks: items,
               selectedHookId,
-              onSelectHook: setSelectedHookId,
             }}
           />
         </div>

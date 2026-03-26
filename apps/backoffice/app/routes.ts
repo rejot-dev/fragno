@@ -73,6 +73,10 @@ export default [
         ],
       ),
       route(
+        "connections/telegram/:orgId/attachment-download",
+        "routes/backoffice/connections/telegram/attachment-download.ts",
+      ),
+      route(
         "connections/telegram/:orgId",
         "routes/backoffice/connections/telegram/organisation-layout.tsx",
         [
@@ -129,7 +133,10 @@ export default [
       route(
         "internals/durable-hooks/singletons",
         "routes/backoffice/internals/durable-hooks-singletons.tsx",
-        [index("routes/backoffice/internals/durable-hooks-singletons-index.tsx")],
+        [
+          index("routes/backoffice/internals/durable-hooks-singletons-index.tsx"),
+          route(":hookId", "routes/backoffice/internals/durable-hooks-singletons-detail.tsx"),
+        ],
       ),
       route(
         "internals/durable-hooks/:orgId",
@@ -138,7 +145,10 @@ export default [
       route(
         "internals/durable-hooks/:orgId/:fragment",
         "routes/backoffice/internals/durable-hooks-organisation.tsx",
-        [index("routes/backoffice/internals/durable-hooks-organisation-index.tsx")],
+        [
+          index("routes/backoffice/internals/durable-hooks-organisation-index.tsx"),
+          route(":hookId", "routes/backoffice/internals/durable-hooks-organisation-detail.tsx"),
+        ],
       ),
       route(
         "internals/workflows/:orgId",

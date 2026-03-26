@@ -38,6 +38,7 @@ const normalizeScripts = (
       path: script.path,
       absolutePath: script.absolutePath,
       version: script.version,
+      scriptLoadError: script.scriptLoadError ?? null,
       bindingIds: script.bindingIds,
       bindingCount: script.bindingCount,
       enabledBindingCount: script.enabledBindingCount,
@@ -65,6 +66,7 @@ const normalizeTriggerBindings = (
       scriptEngine: binding.scriptEngine,
       scriptEnv: binding.scriptEnv,
       enabled: binding.enabled,
+      scriptLoadError: binding.scriptLoadError ?? null,
       triggerOrder: binding.triggerOrder,
     }))
     .sort((left, right) => {

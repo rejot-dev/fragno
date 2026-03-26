@@ -1,10 +1,10 @@
 import { useOutletContext } from "react-router";
 
 import type { DurableHooksOrgOutletContext } from "./durable-hooks-organisation";
-import DurableHookDetailPanel from "./durable-hooks-organisation-detail";
+import { DurableHookDetailPanel } from "./durable-hooks-organisation-detail";
 
 export default function BackofficeDurableHooksIndex() {
-  const { hooks, selectedHookId, onSelectHook } = useOutletContext<DurableHooksOrgOutletContext>();
+  const { hooks, selectedHookId } = useOutletContext<DurableHooksOrgOutletContext>();
   const hook = hooks.find((item) => item.id === selectedHookId) ?? null;
 
   if (!hook) {
@@ -15,5 +15,5 @@ export default function BackofficeDurableHooksIndex() {
     );
   }
 
-  return <DurableHookDetailPanel hook={hook} onBack={() => onSelectHook(null)} />;
+  return <DurableHookDetailPanel hook={hook} />;
 }

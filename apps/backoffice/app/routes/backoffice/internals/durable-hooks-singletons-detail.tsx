@@ -1,24 +1,38 @@
 import type { ReactNode } from "react";
+import { Link, useLocation, useOutletContext, useParams } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 
 import { formatPayload, formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
+import type { DurableHooksSingletonOutletContext } from "./durable-hooks-singletons";
 
-export type DurableHookDetailProps = {
-  hook: DurableHookQueueEntry;
-  onBack?: () => void;
-};
+export default function BackofficeDurableHooksSingletonDetailRoute() {
+  const { hooks } = useOutletContext<DurableHooksSingletonOutletContext>();
+  const params = useParams();
+  const location = useLocation();
+  const selectedHookId = params.hookId ?? null;
+  const hook = hooks.find((item) => item.id === selectedHookId) ?? null;
 
-export default function DurableHookDetailPanel({ hook, onBack }: DurableHookDetailProps) {
-  return <DurableHookDetailView hook={hook} onBack={onBack} />;
+  if (!hook) {
+    return (
+      <div className="text-sm text-[var(--bo-muted)]">
+        Select a durable hook to review its payload and error details.
+      </div>
+    );
+  }
+
+  const basePath = "/backoffice/internals/durable-hooks/singletons";
+  const backToListHref = `${basePath}${location.search}`;
+
+  return <DurableHookDetailPanel hook={hook} backToListHref={backToListHref} />;
 }
 
-function DurableHookDetailView({
+export function DurableHookDetailPanel({
   hook,
-  onBack,
+  backToListHref,
 }: {
   hook: DurableHookQueueEntry;
-  onBack?: () => void;
+  backToListHref?: string;
 }) {
   const payloadText = formatPayload(hook.payload);
 
@@ -32,14 +46,13 @@ function DurableHookDetailView({
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{hook.hookName}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Hook ID: {hook.id}</p>
         </div>
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
+        {backToListHref ? (
+          <Link
+            to={backToListHref}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
           >
             Back to queue
-          </button>
+          </Link>
         ) : null}
       </div>
 
