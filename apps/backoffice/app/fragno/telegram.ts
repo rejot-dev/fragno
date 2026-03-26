@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   createTelegram,
   createTelegramFragment,
+  telegramAttachmentSchema,
   type TelegramFragmentConfig,
   type TelegramMessageHookPayload,
 } from "@fragno-dev/telegram-fragment";
@@ -31,6 +32,7 @@ export const telegramMessageReceivedPayloadSchema = z.object({
   chatId: z.string().min(1),
   fromUserId: z.string().min(1).nullable(),
   text: z.string().nullable(),
+  attachments: z.array(telegramAttachmentSchema).optional(),
 });
 
 type SerializableTelegramMessageHookPayload = Omit<
@@ -68,6 +70,7 @@ export const buildTelegramAutomationEvent = (
     chatId: payload.chatId,
     fromUserId: payload.fromUserId,
     text: payload.text,
+    ...(payload.attachments.length > 0 ? { attachments: payload.attachments } : {}),
   },
   actor: {
     type: "external",
@@ -83,16 +86,6 @@ export const createTelegramSourceAdapter = (
   source: AUTOMATION_SOURCES.telegram,
   eventSchemas: {
     [AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived]: telegramMessageReceivedPayloadSchema,
-  },
-  toBashEnv: (event) => {
-    const payload = telegramMessageReceivedPayloadSchema.parse(event.payload);
-
-    return {
-      AUTOMATION_TELEGRAM_MESSAGE_ID: payload.messageId,
-      AUTOMATION_TELEGRAM_CHAT_ID: payload.chatId,
-      AUTOMATION_TELEGRAM_FROM_USER_ID: payload.fromUserId ?? undefined,
-      AUTOMATION_TELEGRAM_TEXT: payload.text ?? undefined,
-    };
   },
   ...(options.reply ? { reply: options.reply } : {}),
 });

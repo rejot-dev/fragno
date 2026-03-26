@@ -24,13 +24,17 @@ import {
   createRouteBackedAutomationsBashRuntime,
   type AutomationsBashRuntime,
 } from "../bash-runtime/automations-bash-runtime";
-import { createBashHost } from "../bash-runtime/bash-host";
+import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "../bash-runtime/bash-host";
 import { createOtpBashRuntime, type OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 import { createPiRouteBashRuntime, type PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import {
   createResendRouteBashRuntime,
   type ResendBashRuntime,
 } from "../bash-runtime/resend-bash-runtime";
+import {
+  createTelegramBashRuntime,
+  type TelegramBashRuntime,
+} from "../bash-runtime/telegram-bash-runtime";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
@@ -49,17 +53,21 @@ export type PiRuntimeFragments = {
 };
 
 export type PiBashCommandContext = {
-  pi: {
-    runtime: PiBashRuntime;
-  };
+  automation: null;
   automations: {
     runtime: AutomationsBashRuntime;
   };
   otp: {
     runtime: OtpBashRuntime;
   };
+  pi: {
+    runtime: PiBashRuntime;
+  };
   resend: {
     runtime: ResendBashRuntime;
+  };
+  telegram: {
+    runtime: TelegramBashRuntime;
   };
 };
 
@@ -108,7 +116,7 @@ const createBashTool = (
     const { bash, commandCallsResult } = createBashHost({
       fs,
       sessionId,
-      context: bashCommandContext ?? ({} as PiBashCommandContext),
+      context: bashCommandContext ?? EMPTY_BASH_HOST_CONTEXT,
     });
     let result: Awaited<ReturnType<typeof bash.exec>>;
     try {
@@ -266,36 +274,24 @@ export const createPiBashCommandContext = ({
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): PiBashCommandContext => {
-  const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
-
-  return {
-    pi: {
-      runtime: createPiRouteBashRuntime({
-        env,
-        orgId,
-      }),
-    },
-    automations: {
-      runtime: createRouteBackedAutomationsBashRuntime({
-        env,
-        orgId,
-      }),
-    },
-    otp: {
-      runtime: createOtpBashRuntime({
-        env,
-        orgId,
-      }),
-    },
-    resend: {
-      runtime: createResendRouteBashRuntime({
-        baseUrl: "https://resend.do",
-        fetch: resendDo.fetch.bind(resendDo),
-      }),
-    },
-  };
-};
+}): PiBashCommandContext => ({
+  automation: null,
+  automations: {
+    runtime: createRouteBackedAutomationsBashRuntime({ env, orgId }),
+  },
+  otp: {
+    runtime: createOtpBashRuntime({ env, orgId }),
+  },
+  pi: {
+    runtime: createPiRouteBashRuntime({ env, orgId }),
+  },
+  resend: {
+    runtime: createResendRouteBashRuntime({ env, orgId }),
+  },
+  telegram: {
+    runtime: createTelegramBashRuntime({ env, orgId }),
+  },
+});
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;

@@ -10,7 +10,7 @@ This workspace is the editable side of the combined Files system.
 
 1. Capture inputs and constraints in \`input/notes.md\`.
 2. Draft prompts, plans, or scratch output in the folders below.
-3. Manage automation defaults in \`automations/bindings.json\` and \`automations/scripts/*.sh\`.
+3. Manage automation defaults in \`automations/bindings.json\` (with absolute \`/workspace/automations/...\` script paths) and \`automations/scripts/*.sh\`.
 4. Use \`automations/simulator/\` for scenario files that run the real automation workspace against mocked commands.
 5. When Upload is configured, persistent files can override these starter files at the same path.
 

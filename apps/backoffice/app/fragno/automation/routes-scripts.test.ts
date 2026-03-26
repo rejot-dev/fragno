@@ -100,4 +100,89 @@ describe("automation routes /scripts", () => {
       expect(response.error.message).toContain("not valid JSON");
     }
   });
+
+  test("loads scripts list even when one script is missing", async () => {
+    const manifest = {
+      version: 1,
+      bindings: [
+        {
+          id: "present-script",
+          source: "telegram",
+          eventType: "messageReceived",
+          enabled: true,
+          script: {
+            key: "present-script",
+            name: "Present script",
+            engine: "bash",
+            path: "scripts/present.sh",
+            version: 1,
+            agent: null,
+            env: {},
+          },
+        },
+        {
+          id: "missing-script",
+          source: "telegram",
+          eventType: "messageReceived",
+          enabled: true,
+          script: {
+            key: "missing-script",
+            name: "Missing script",
+            engine: "bash",
+            path: "scripts/missing.sh",
+            version: 1,
+            agent: null,
+            env: {},
+          },
+        },
+      ],
+    } as const;
+
+    const readFile = async (path: string) => {
+      if (path === AUTOMATION_BINDINGS_MANIFEST_PATH) {
+        return JSON.stringify(manifest);
+      }
+
+      if (path === "/workspace/automations/scripts/present.sh") {
+        return "#!/usr/bin/env bash\necho ok";
+      }
+
+      throw new Error(`Unexpected path: ${path}`);
+    };
+
+    const fileSystem = {
+      readFile,
+      async readFileBuffer(path: string) {
+        return new TextEncoder().encode(await readFile(path));
+      },
+      getAllPaths() {
+        return [AUTOMATION_BINDINGS_MANIFEST_PATH, "/workspace/automations/scripts/present.sh"];
+      },
+    } as Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+
+    const partialFragment = createAutomation({
+      automationFileSystem: fileSystem,
+    });
+
+    const response = await partialFragment.callRoute("GET", "/scripts");
+
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.data.length).toBe(2);
+      expect(response.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "present-script",
+            scriptLoadError: null,
+          }),
+          expect.objectContaining({
+            key: "missing-script",
+            scriptLoadError: expect.stringContaining(
+              "Automation script for binding 'missing-script'",
+            ),
+          }),
+        ]),
+      );
+    }
+  });
 });

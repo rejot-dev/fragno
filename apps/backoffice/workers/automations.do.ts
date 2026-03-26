@@ -146,13 +146,8 @@ export class Automations extends DurableObject<CloudflareEnv> {
     }
 
     return {
-      runtime: createPiRouteBashRuntime({
-        env: this.#env,
-        orgId,
-      }),
-      bashEnv: {
-        AUTOMATION_PI_DEFAULT_AGENT: defaultAgent,
-      },
+      runtime: createPiRouteBashRuntime({ env: this.#env, orgId }),
+      defaultAgent,
     };
   }
 

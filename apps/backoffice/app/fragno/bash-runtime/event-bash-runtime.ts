@@ -38,10 +38,6 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
   runtime: EventBashRuntime;
 };
 
-export type EventBashRegistryContext = {
-  automation?: RegisteredEventBashCommandContext;
-};
-
 export type CreateEventBashRuntimeOptions = {
   env?: CloudflareEnv;
   event: AutomationEvent;
@@ -62,8 +58,8 @@ const eventCommandHandlers: EventCommandHandlers<RegisteredEventBashCommandConte
   },
 };
 
-export const createEventBashCommands = <TContext>(input: BashCommandFactoryInput<TContext>) => {
-  const automationContext = (input.context as EventBashRegistryContext).automation;
+export const createEventBashCommands = (input: BashCommandFactoryInput) => {
+  const automationContext = input.context.automation;
   if (!automationContext) {
     return [];
   }

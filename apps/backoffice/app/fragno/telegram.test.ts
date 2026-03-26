@@ -11,6 +11,7 @@ describe("buildTelegramAutomationEvent", () => {
       chatId: "chat-1",
       fromUserId: "user-1",
       text: "/start",
+      attachments: [],
       commandName: "start",
       sentAt: "2026-03-17T14:30:29.074Z",
       editedAt: null,
@@ -32,6 +33,43 @@ describe("buildTelegramAutomationEvent", () => {
         type: "external",
         externalId: "chat-1",
       },
+    });
+  });
+
+  test("includes attachments when present", () => {
+    const event = buildTelegramAutomationEvent("org-1", {
+      updateId: 43,
+      updateType: "message",
+      messageId: "chat-1:11",
+      chatId: "chat-1",
+      fromUserId: "user-1",
+      text: null,
+      attachments: [
+        {
+          kind: "voice",
+          fileId: "voice-file-1",
+          fileUniqueId: "voice-unique-1",
+          duration: 3,
+        },
+      ],
+      commandName: null,
+      sentAt: "2026-03-17T14:30:29.074Z",
+      editedAt: null,
+    });
+
+    expect(event.payload).toEqual({
+      messageId: "chat-1:11",
+      chatId: "chat-1",
+      fromUserId: "user-1",
+      text: null,
+      attachments: [
+        {
+          kind: "voice",
+          fileId: "voice-file-1",
+          fileUniqueId: "voice-unique-1",
+          duration: 3,
+        },
+      ],
     });
   });
 });

@@ -143,7 +143,8 @@ describe("automation scenario simulator", () => {
         },
       ]),
       "automations/scripts/pi-turn.sh": [
-        'assistant_text="$(pi.session.turn --session-id session-1 --text "$AUTOMATION_TELEGRAM_TEXT" --print assistantText)"',
+        'text="$(jq -r \'.payload.text // ""\' /context/event.json)"',
+        'assistant_text="$(pi.session.turn --session-id session-1 --text "$text" --print assistantText)"',
         'event.reply --text "$assistant_text"',
       ].join("\n"),
     });

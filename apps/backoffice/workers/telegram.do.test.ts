@@ -88,13 +88,44 @@ describe("Telegram Durable Object", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ ok: true, description: "Webhook registered." }), {
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes("/setWebhook")) {
+          return new Response(JSON.stringify({ ok: true, description: "Webhook registered." }), {
             status: 200,
             headers: { "content-type": "application/json" },
-          }),
-      ),
+          });
+        }
+
+        if (url.includes("/getFile")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              result: {
+                file_id: "telegram-file-1",
+                file_unique_id: "unique-file-1",
+                file_path: "voice/telegram-file-1.ogg",
+                file_size: 4,
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+
+        if (url.includes("/file/bot123456:telegram-bot-token/voice/telegram-file-1.ogg")) {
+          return new Response(new Uint8Array([0, 255, 1, 2]), {
+            status: 200,
+            headers: { "content-type": "application/octet-stream" },
+          });
+        }
+
+        return new Response("Not Found", { status: 404 });
+      }),
     );
   });
 
@@ -170,5 +201,33 @@ describe("Telegram Durable Object", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "NOT_CONFIGURED",
     });
+  });
+
+  test("resolves normalized automation file metadata through Telegram getFile", async () => {
+    const { state } = createState();
+    const telegram = new Telegram(state, {} as CloudflareEnv);
+
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+
+    await expect(telegram.getAutomationFile({ fileId: "telegram-file-1" })).resolves.toEqual({
+      fileId: "telegram-file-1",
+      fileUniqueId: "unique-file-1",
+      filePath: "voice/telegram-file-1.ogg",
+      fileSize: 4,
+    });
+  });
+
+  test("downloads raw automation file bytes through Telegram file endpoint", async () => {
+    const { state } = createState();
+    const telegram = new Telegram(state, {} as CloudflareEnv);
+
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+
+    const response = await telegram.downloadAutomationFile({ fileId: "telegram-file-1" });
+    expect(response).toBeInstanceOf(Response);
+    expect(response.ok).toBe(true);
+    await expect(response.arrayBuffer().then((buf) => new Uint8Array(buf))).resolves.toEqual(
+      new Uint8Array([0, 255, 1, 2]),
+    );
   });
 });

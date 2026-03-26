@@ -85,7 +85,7 @@ describe("starter automation scenario: telegram-claim-linking.complete.sh", () =
     expect(result.transcript.steps[0]?.bindingRuns[0]).toMatchObject({
       bindingId: "telegram-claim-linking-complete",
       exitCode: 1,
-      stderr: expect.stringContaining("Missing AUTOMATION_SUBJECT_USER_ID"),
+      stderr: expect.stringContaining("Missing subject.userId in event"),
     });
     expect(result.finalState.replies.map((reply) => reply.text)).toEqual([
       "We couldn't link your Telegram chat. Please try again.",

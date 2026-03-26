@@ -2,6 +2,16 @@ import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "@/fragno/bash-runtime/bash-host";
 import type { PiBashRuntime } from "@/fragno/bash-runtime/pi-bash-runtime";
+import {
+  createResendRouteBashRuntime,
+  createUnavailableResendBashRuntime,
+  type ResendBashRuntime,
+} from "@/fragno/bash-runtime/resend-bash-runtime";
+import {
+  createTelegramBashRuntime,
+  createUnavailableTelegramBashRuntime,
+  type TelegramBashRuntime,
+} from "@/fragno/bash-runtime/telegram-bash-runtime";
 
 import {
   createStorageBackedAutomationsBashRuntime,
@@ -30,13 +40,12 @@ import type {
   AutomationEvent,
   AutomationSourceAdapterRegistry,
 } from "../contracts";
-import { AUTOMATION_TRIGGER_ORDER_LAST } from "../schema";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
 export type AutomationPiBashContext = {
   runtime: PiBashRuntime;
-  bashEnv: AutomationBashEnvironment;
+  defaultAgent?: string;
 };
 
 export type BashAutomationRunResult = {
@@ -62,8 +71,14 @@ export type AutomationBashHostContext = {
   otp: {
     runtime: OtpBashRuntime;
   };
-  pi?: {
+  pi: {
     runtime: PiBashRuntime;
+  } | null;
+  resend: {
+    runtime: ResendBashRuntime;
+  };
+  telegram: {
+    runtime: TelegramBashRuntime;
   };
 };
 
@@ -121,53 +136,32 @@ export const createAutomationBashCommandContext = ({
   binding,
   idempotencyKey,
   runtime,
-  sourceAdapter,
+  env,
   pi,
 }: {
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
   runtime: AutomationBashRuntime;
-  sourceAdapter: AnyAutomationSourceAdapter | undefined;
-  pi?: AutomationPiBashContext;
+  env?: CloudflareEnv;
+  pi: AutomationPiBashContext | null;
 }): AutomationBashHostContext => {
   const normalizedEvent: AutomationEvent = {
     ...event,
     orgId: normalizeOrgId(event.orgId),
   };
 
+  const orgId = normalizedEvent.orgId;
+
   const bashEnv: AutomationBashEnvironment = {
     ...binding.scriptEnv,
-    AUTOMATION_EVENT_ID: normalizedEvent.id,
-    AUTOMATION_ORG_ID: normalizedEvent.orgId,
-    AUTOMATION_SOURCE: normalizedEvent.source,
-    AUTOMATION_EVENT_TYPE: normalizedEvent.eventType,
-    AUTOMATION_OCCURRED_AT: normalizedEvent.occurredAt,
-    AUTOMATION_ACTOR_TYPE: normalizedEvent.actor?.type,
-    AUTOMATION_EXTERNAL_ACTOR_ID: normalizedEvent.actor?.externalId,
-    AUTOMATION_SUBJECT_USER_ID: normalizedEvent.subject?.userId,
-    AUTOMATION_BINDING_ID: binding.id,
-    AUTOMATION_SCRIPT_ID: binding.scriptId,
-    AUTOMATION_SCRIPT_KEY: binding.scriptKey,
-    AUTOMATION_SCRIPT_NAME: binding.scriptName,
-    AUTOMATION_SCRIPT_PATH: binding.scriptPath,
-    AUTOMATION_SCRIPT_VERSION:
-      binding.scriptVersion != null ? String(binding.scriptVersion) : undefined,
-    AUTOMATION_TRIGGER_ORDER:
-      binding.triggerOrder != null &&
-      Number.isFinite(binding.triggerOrder) &&
-      binding.triggerOrder !== AUTOMATION_TRIGGER_ORDER_LAST
-        ? String(binding.triggerOrder)
-        : undefined,
-    AUTOMATION_IDEMPOTENCY_KEY: idempotencyKey,
-    ...sourceAdapter?.toBashEnv(normalizedEvent),
-    ...pi?.bashEnv,
+    ...(pi?.defaultAgent ? { PI_DEFAULT_AGENT: pi.defaultAgent } : {}),
   };
 
   return {
     automation: {
       event: normalizedEvent,
-      orgId: normalizedEvent.orgId,
+      orgId,
       binding,
       idempotencyKey,
       bashEnv,
@@ -179,13 +173,15 @@ export const createAutomationBashCommandContext = ({
     otp: {
       runtime,
     },
-    ...(pi
-      ? {
-          pi: {
-            runtime: pi.runtime,
-          },
-        }
-      : {}),
+    pi: pi ? { runtime: pi.runtime } : null,
+    resend:
+      env && orgId
+        ? { runtime: createResendRouteBashRuntime({ env, orgId }) }
+        : { runtime: createUnavailableResendBashRuntime() },
+    telegram:
+      env && orgId
+        ? { runtime: createTelegramBashRuntime({ env, orgId }) }
+        : { runtime: createUnavailableTelegramBashRuntime() },
   };
 };
 
@@ -198,12 +194,7 @@ export const executeBashAutomation = async ({
 }): Promise<BashAutomationRunResult> => {
   const fs = new InMemoryFs();
   await fs.mkdir("/context", { recursive: true });
-  await Promise.all([
-    fs.writeFile("/context/event.json", JSON.stringify(context.automation.event)),
-    fs.writeFile("/context/payload.json", JSON.stringify(context.automation.event.payload ?? {})),
-    fs.writeFile("/context/actor.json", JSON.stringify(context.automation.event.actor ?? null)),
-    fs.writeFile("/context/subject.json", JSON.stringify(context.automation.event.subject ?? null)),
-  ]);
+  await fs.writeFile("/context/event.json", JSON.stringify(context.automation.event));
 
   const { bash, commandCallsResult } = createBashHost({
     fs,

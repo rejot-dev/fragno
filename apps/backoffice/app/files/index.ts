@@ -103,8 +103,6 @@ export {
   STARTER_AUTOMATION_SIMULATOR_PATHS,
   STARTER_AUTOMATION_SIMULATOR_ROOT,
   starterAutomationSimulatorReadme,
-  starterTelegramClaimLinkingCompleteScript,
-  starterTelegramClaimLinkingStartScript,
 } from "./content/automations";
 export { SYSTEM_FILE_CONTENT, SYSTEM_FILE_ROOT_DESCRIPTION } from "./content/system";
 export { normalizeMountedFileSystem } from "./mounted-file-system";

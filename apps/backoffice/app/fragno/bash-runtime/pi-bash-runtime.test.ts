@@ -186,12 +186,16 @@ const createPiHost = (piRuntime: PiBashRuntime = createPiRuntime()) => {
     fs: new InMemoryFs(),
     sessionId: "session-host",
     context: {
-      pi: {
-        runtime: piRuntime,
-      },
+      automation: null,
       automations: {
         runtime: createAutomationsRuntime(),
       },
+      otp: null,
+      pi: {
+        runtime: piRuntime,
+      },
+      resend: null,
+      telegram: null,
     },
   });
 };

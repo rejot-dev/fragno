@@ -12,6 +12,7 @@ export type AutomationCommandExecutionResult<TData = unknown> = {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
+  stdoutEncoding?: "binary";
 };
 
 export const AUTOMATIONS_COMMANDS = [

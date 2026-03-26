@@ -12,7 +12,6 @@ const createTelegramAdapter = (
   eventSchemas: {
     "message.received": z.object({}),
   },
-  toBashEnv: () => ({}),
   reply,
 });
 
@@ -23,7 +22,6 @@ const createOtpAdapter = (
   eventSchemas: {
     "identity.claim.completed": z.object({}),
   },
-  toBashEnv: () => ({}),
   reply,
 });
 
