@@ -17,6 +17,7 @@ export type AutomationScriptItem = {
   path: string;
   absolutePath: string;
   version: number;
+  scriptLoadError?: string | null;
   bindingIds: string[];
   bindingCount: number;
   enabledBindingCount: number;
@@ -36,6 +37,7 @@ export type AutomationTriggerItem = {
   scriptEngine: string;
   scriptEnv: Record<string, string>;
   enabled: boolean;
+  scriptLoadError?: string | null;
   triggerOrder?: number | null;
 };
 
@@ -296,19 +298,146 @@ export function AutomationNotice({
   );
 }
 
+const MISSING_SCRIPT_ERROR_RE =
+  /^Automation script for binding '([^']+)' '([^']+)' was not found in the automation workspace:\s*(.+)$/;
+
+const AUTOMATION_WORKSPACE_PREFIX = "/workspace/";
+
+export type AutomationLoadErrorDetails =
+  | {
+      kind: "missing-script";
+      bindingId: string;
+      scriptPath: string;
+      cause: string;
+    }
+  | {
+      kind: "generic";
+      message: string;
+    };
+
+export const parseAutomationLoadError = (error: string): AutomationLoadErrorDetails => {
+  const match = error.match(MISSING_SCRIPT_ERROR_RE);
+  if (match) {
+    return {
+      kind: "missing-script",
+      bindingId: match[1],
+      scriptPath: match[2],
+      cause: match[3]?.trim() || "File not found.",
+    };
+  }
+
+  return {
+    kind: "generic",
+    message: error,
+  };
+};
+
+const toWorkspaceRelativePath = (value: string) =>
+  value.startsWith(AUTOMATION_WORKSPACE_PREFIX)
+    ? value.slice(AUTOMATION_WORKSPACE_PREFIX.length)
+    : value.replace(/^\/+/, "");
+
+const folderPathFromWorkspaceFile = (path: string) => {
+  const relativePath = toWorkspaceRelativePath(path).replace(/\/+$/, "");
+
+  if (!relativePath) {
+    return "automations";
+  }
+
+  const separatorIndex = relativePath.lastIndexOf("/");
+  if (separatorIndex <= 0) {
+    return "automations";
+  }
+
+  return relativePath.slice(0, separatorIndex);
+};
+
+export function AutomationWorkspaceLoadError({
+  title,
+  error,
+  orgId,
+}: {
+  title: string;
+  error: string;
+  orgId: string;
+}) {
+  const details = parseAutomationLoadError(error);
+  const normalizedTitle = title.trim() || "Script loading issue";
+
+  if (details.kind === "missing-script") {
+    const scriptFolderPath = folderPathFromWorkspaceFile(details.scriptPath);
+    const scriptBrowserPath = `/backoffice/files/${orgId}?path=${encodeURIComponent(scriptFolderPath)}`;
+    const workspaceRootPath = `/backoffice/files/${orgId}?path=automations`;
+
+    return (
+      <AutomationNotice tone="error">
+        <p className="text-[10px] tracking-[0.22em] uppercase">{normalizedTitle}</p>
+        <p className="mt-2 text-xs text-red-700/90 dark:text-red-200/90">
+          A workspace binding references a missing script.
+        </p>
+
+        <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+          <div>
+            <dt className="text-[9px] tracking-[0.22em] text-red-700/80 uppercase dark:text-red-200/80">
+              Binding
+            </dt>
+            <dd className="mt-1 font-mono text-[11px] break-all text-[var(--bo-fg)]">
+              {details.bindingId}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[9px] tracking-[0.22em] text-red-700/80 uppercase dark:text-red-200/80">
+              Missing script
+            </dt>
+            <dd className="mt-1 font-mono text-[11px] break-all text-[var(--bo-fg)]">
+              {details.scriptPath}
+            </dd>
+          </div>
+        </dl>
+
+        <p className="mt-3 text-xs text-[var(--bo-fg)]">{details.cause}</p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            to={scriptBrowserPath}
+            className="border border-red-400/40 bg-red-500/8 px-3 py-1.5 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400/60 hover:bg-red-500/12 dark:text-red-200"
+          >
+            Open script folder
+          </Link>
+          <Link
+            to={workspaceRootPath}
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-1.5 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)]"
+          >
+            Open automations workspace
+          </Link>
+        </div>
+      </AutomationNotice>
+    );
+  }
+
+  return (
+    <AutomationNotice tone="error">
+      <p className="text-[10px] tracking-[0.22em] uppercase">{normalizedTitle}</p>
+      <p className="mt-2 text-xs">{details.message}</p>
+    </AutomationNotice>
+  );
+}
+
 export function AutomationBadge({
   children,
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "accent" | "success";
+  tone?: "neutral" | "accent" | "success" | "error";
 }) {
   const className =
     tone === "accent"
       ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
       : tone === "success"
         ? "border-emerald-400/40 bg-emerald-500/12 text-emerald-700 dark:text-emerald-200"
-        : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
+        : tone === "error"
+          ? "border-red-400/50 bg-red-500/12 text-red-700 dark:text-red-200"
+          : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
 
   return (
     <span className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${className}`}>

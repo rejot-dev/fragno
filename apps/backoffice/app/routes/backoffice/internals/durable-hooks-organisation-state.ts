@@ -6,7 +6,8 @@ export type DurableHooksOrgFragment =
   | "github"
   | "upload"
   | "automations"
-  | "pi";
+  | "pi"
+  | "pi-workflows";
 
 export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "cloudflare",
@@ -17,6 +18,7 @@ export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "upload",
   "automations",
   "pi",
+  "pi-workflows",
 ] as const satisfies DurableHooksOrgFragment[];
 
 export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
@@ -27,6 +29,7 @@ export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
   github: "GitHub",
   upload: "Upload",
   pi: "Pi",
+  "pi-workflows": "Pi · Workflows",
   automations: "Automations",
 };
 
@@ -62,6 +65,10 @@ export const FRAGMENT_CONFIGURE_META: Record<
     label: "Configure Upload",
   },
   pi: {
+    path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
+    label: "Configure Pi",
+  },
+  "pi-workflows": {
     path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
     label: "Configure Pi",
   },

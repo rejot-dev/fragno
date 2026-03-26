@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, Outlet, useLoaderData, useLocation } from "react-router";
+import { useEffect } from "react";
+import { Link, Outlet, useLocation, useLoaderData, useNavigate, useParams } from "react-router";
 
 import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader } from "@/components/backoffice";
@@ -11,7 +11,6 @@ import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
 export type DurableHooksSingletonOutletContext = {
   hooks: DurableHookQueueEntry[];
   selectedHookId: string | null;
-  onSelectHook: (hookId: string | null) => void;
 };
 
 type DurableHooksSingletonLoaderData = DurableHookQueueResponse & {
@@ -78,7 +77,9 @@ export default function BackofficeDurableHooksSingletons() {
   const { items, configured, hooksEnabled, namespace, error, cursor, hasNextPage } =
     useLoaderData<typeof loader>();
   const location = useLocation();
-  const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { hookId } = useParams();
+  const selectedHookId = hookId ?? null;
   const basePath = "/backoffice/internals/durable-hooks/singletons";
   const searchParams = new URLSearchParams(location.search);
   const currentCursor = searchParams.get("cursor");
@@ -107,9 +108,9 @@ export default function BackofficeDurableHooksSingletons() {
     }
     const stillVisible = items.some((item) => item.id === selectedHookId);
     if (!stillVisible) {
-      setSelectedHookId(null);
+      navigate(`${basePath}${location.search}`, { replace: true });
     }
-  }, [items, selectedHookId]);
+  }, [items, selectedHookId, basePath, location.search, navigate]);
 
   return (
     <div className="space-y-4">
@@ -243,17 +244,18 @@ export default function BackofficeDurableHooksSingletons() {
                     <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                       {items.map((hook) => {
                         const isSelected = hook.id === selectedHookId;
+                        const detailHref = `${basePath}/${encodeURIComponent(hook.id)}${location.search}`;
                         return (
                           <tr
                             key={hook.id}
                             role="button"
                             tabIndex={0}
                             aria-label={`View durable hook ${hook.hookName}`}
-                            onClick={() => setSelectedHookId(hook.id)}
+                            onClick={() => navigate(detailHref)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                setSelectedHookId(hook.id);
+                                navigate(detailHref);
                               }
                             }}
                             className={
@@ -302,7 +304,9 @@ export default function BackofficeDurableHooksSingletons() {
                             </td>
                             <td className="px-3 py-2">{formatTimestamp(hook.createdAt) || "-"}</td>
                             <td className="px-3 py-2 text-right">
-                              <span
+                              <Link
+                                to={detailHref}
+                                onClick={(event) => event.stopPropagation()}
                                 className={
                                   isSelected
                                     ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
@@ -310,7 +314,7 @@ export default function BackofficeDurableHooksSingletons() {
                                 }
                               >
                                 View
-                              </span>
+                              </Link>
                             </td>
                           </tr>
                         );
@@ -353,7 +357,6 @@ export default function BackofficeDurableHooksSingletons() {
             context={{
               hooks: items,
               selectedHookId,
-              onSelectHook: setSelectedHookId,
             }}
           />
         </div>

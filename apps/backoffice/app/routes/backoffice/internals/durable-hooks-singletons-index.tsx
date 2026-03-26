@@ -1,11 +1,10 @@
 import { useOutletContext } from "react-router";
 
 import type { DurableHooksSingletonOutletContext } from "./durable-hooks-singletons";
-import DurableHookDetailPanel from "./durable-hooks-singletons-detail";
+import { DurableHookDetailPanel } from "./durable-hooks-singletons-detail";
 
 export default function BackofficeDurableHooksSingletonsIndex() {
-  const { hooks, selectedHookId, onSelectHook } =
-    useOutletContext<DurableHooksSingletonOutletContext>();
+  const { hooks, selectedHookId } = useOutletContext<DurableHooksSingletonOutletContext>();
   const hook = hooks.find((item) => item.id === selectedHookId) ?? null;
 
   if (!hook) {
@@ -16,5 +15,5 @@ export default function BackofficeDurableHooksSingletonsIndex() {
     );
   }
 
-  return <DurableHookDetailPanel hook={hook} onBack={() => onSelectHook(null)} />;
+  return <DurableHookDetailPanel hook={hook} />;
 }

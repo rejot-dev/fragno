@@ -1,24 +1,49 @@
 import type { ReactNode } from "react";
+import { Link, useLocation, useOutletContext, useParams } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 
+import type { DurableHooksOrgOutletContext } from "./durable-hooks-organisation";
 import { formatPayload, formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
 
-export type DurableHookDetailProps = {
-  hook: DurableHookQueueEntry;
-  onBack?: () => void;
-};
+export default function BackofficeDurableHooksOrganisationDetailRoute() {
+  const { hooks } = useOutletContext<DurableHooksOrgOutletContext>();
+  const params = useParams();
+  const location = useLocation();
+  const selectedHookId = params.hookId ?? null;
 
-export default function DurableHookDetailPanel({ hook, onBack }: DurableHookDetailProps) {
-  return <DurableHookDetailView hook={hook} onBack={onBack} />;
+  const hook = hooks.find((item) => item.id === selectedHookId) ?? null;
+
+  if (!hook || !params.orgId || !params.fragment) {
+    return (
+      <div className="text-sm text-[var(--bo-muted)]">
+        Select a durable hook to review its payload and error details.
+      </div>
+    );
+  }
+
+  const basePath = `/backoffice/internals/durable-hooks/${params.orgId}/${params.fragment}`;
+  const backToListHref = `${basePath}${location.search}`;
+
+  return <DurableHookDetailView hook={hook} onBackHref={backToListHref} />;
+}
+
+export function DurableHookDetailPanel({
+  hook,
+  backToListHref,
+}: {
+  hook: DurableHookQueueEntry;
+  backToListHref?: string;
+}) {
+  return <DurableHookDetailView hook={hook} onBackHref={backToListHref} />;
 }
 
 function DurableHookDetailView({
   hook,
-  onBack,
+  onBackHref,
 }: {
   hook: DurableHookQueueEntry;
-  onBack?: () => void;
+  onBackHref?: string;
 }) {
   const payloadText = formatPayload(hook.payload);
 
@@ -32,14 +57,13 @@ function DurableHookDetailView({
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{hook.hookName}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Hook ID: {hook.id}</p>
         </div>
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
+        {onBackHref ? (
+          <Link
+            to={onBackHref}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
           >
             Back to queue
-          </button>
+          </Link>
         ) : null}
       </div>
 

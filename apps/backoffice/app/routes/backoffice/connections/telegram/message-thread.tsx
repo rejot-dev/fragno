@@ -10,9 +10,14 @@ import {
   useParams,
 } from "react-router";
 
-import type { TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
+import type { TelegramAttachment, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
 import type { Route } from "./+types/message-thread";
+import {
+  buildTelegramAttachmentDownloadPath,
+  buildTelegramAttachmentInlinePath,
+  buildTelegramAttachmentPath,
+} from "./attachment-paths";
 import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
 import type { TelegramMessagesOutletContext } from "./messages";
 import { formatTimestamp } from "./shared";
@@ -82,7 +87,7 @@ export default function BackofficeOrganisationTelegramMessageThread() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const { chats, basePath } = useOutletContext<TelegramMessagesOutletContext>();
-  const { chatId } = useParams();
+  const { chatId, orgId } = useParams();
   const isSending = navigation.state === "submitting";
   const selectedChat = chats.find((chat) => chat.id === chatId) ?? null;
   const chatTitle =
@@ -90,6 +95,7 @@ export default function BackofficeOrganisationTelegramMessageThread() {
 
   return (
     <ChatMessages
+      orgId={orgId ?? ""}
       chatId={chatId ?? ""}
       chatTitle={chatTitle}
       messages={messages}
@@ -101,7 +107,249 @@ export default function BackofficeOrganisationTelegramMessageThread() {
   );
 }
 
+const buildTelegramInlineFilePath = (
+  orgId: string,
+  fileId: string,
+  kind: TelegramAttachment["kind"],
+): string =>
+  buildTelegramAttachmentPath(orgId, {
+    fileId,
+    kind,
+    disposition: "inline",
+  });
+
+const formatAttachmentKind = (kind: TelegramAttachment["kind"]): string => kind.replace(/_/g, " ");
+
+const formatFileSize = (fileSize: number | undefined): string | null => {
+  if (typeof fileSize !== "number" || !Number.isFinite(fileSize) || fileSize <= 0) {
+    return null;
+  }
+
+  if (fileSize < 1024) {
+    return `${fileSize} B`;
+  }
+
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = fileSize / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
+};
+
+const formatDuration = (duration: number | undefined): string | null => {
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) {
+    return null;
+  }
+
+  const minutes = Math.floor(duration / 60);
+  const seconds = Math.floor(duration % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+};
+
+const describeAttachment = (attachment: TelegramAttachment): string[] => {
+  const details: string[] = [];
+  const fileSize = formatFileSize(attachment.fileSize);
+  if (fileSize) {
+    details.push(fileSize);
+  }
+
+  switch (attachment.kind) {
+    case "photo": {
+      if (attachment.width && attachment.height) {
+        details.push(`${attachment.width}×${attachment.height}`);
+      }
+      details.push(
+        `${attachment.sizes.length} size variant${attachment.sizes.length === 1 ? "" : "s"}`,
+      );
+      break;
+    }
+    case "voice": {
+      const duration = formatDuration(attachment.duration);
+      if (duration) {
+        details.push(duration);
+      }
+      if (attachment.mimeType) {
+        details.push(attachment.mimeType);
+      }
+      break;
+    }
+    case "audio": {
+      const duration = formatDuration(attachment.duration);
+      if (duration) {
+        details.push(duration);
+      }
+      if (attachment.performer) {
+        details.push(attachment.performer);
+      }
+      if (attachment.mimeType) {
+        details.push(attachment.mimeType);
+      }
+      break;
+    }
+    case "document": {
+      if (attachment.mimeType) {
+        details.push(attachment.mimeType);
+      }
+      break;
+    }
+    case "video": {
+      const duration = formatDuration(attachment.duration);
+      if (duration) {
+        details.push(duration);
+      }
+      if (attachment.width && attachment.height) {
+        details.push(`${attachment.width}×${attachment.height}`);
+      }
+      if (attachment.mimeType) {
+        details.push(attachment.mimeType);
+      }
+      break;
+    }
+    case "video_note": {
+      const duration = formatDuration(attachment.duration);
+      if (duration) {
+        details.push(duration);
+      }
+      if (attachment.length) {
+        details.push(`${attachment.length}px`);
+      }
+      break;
+    }
+    case "sticker": {
+      if (attachment.emoji) {
+        details.push(attachment.emoji);
+      }
+      if (attachment.width && attachment.height) {
+        details.push(`${attachment.width}×${attachment.height}`);
+      }
+      if (attachment.isAnimated) {
+        details.push("animated");
+      }
+      if (attachment.isVideo) {
+        details.push("video");
+      }
+      break;
+    }
+    case "animation": {
+      const duration = formatDuration(attachment.duration);
+      if (duration) {
+        details.push(duration);
+      }
+      if (attachment.width && attachment.height) {
+        details.push(`${attachment.width}×${attachment.height}`);
+      }
+      if (attachment.mimeType) {
+        details.push(attachment.mimeType);
+      }
+      break;
+    }
+  }
+
+  return details;
+};
+
+const getAttachmentTitle = (attachment: TelegramAttachment): string => {
+  switch (attachment.kind) {
+    case "audio":
+      return attachment.title ?? attachment.fileName ?? formatAttachmentKind(attachment.kind);
+    case "document":
+    case "video":
+    case "animation":
+      return attachment.fileName ?? formatAttachmentKind(attachment.kind);
+    case "sticker":
+      return attachment.setName ?? formatAttachmentKind(attachment.kind);
+    default:
+      return formatAttachmentKind(attachment.kind);
+  }
+};
+
+const getAttachmentThumbnail = (attachment: TelegramAttachment) => {
+  switch (attachment.kind) {
+    case "photo":
+      return attachment.sizes[0] ?? attachment.thumbnail;
+    case "audio":
+    case "document":
+    case "video":
+    case "video_note":
+    case "sticker":
+    case "animation":
+      return attachment.thumbnail;
+    default:
+      return undefined;
+  }
+};
+
+function TelegramAttachmentCard({
+  orgId,
+  messageId,
+  attachment,
+}: {
+  orgId: string;
+  messageId: string;
+  attachment: TelegramAttachment;
+}) {
+  const details = describeAttachment(attachment);
+  const thumbnail = getAttachmentThumbnail(attachment);
+  const thumbnailUrl = thumbnail
+    ? buildTelegramInlineFilePath(orgId, thumbnail.fileId, "photo")
+    : null;
+  const audioUrl =
+    attachment.kind === "audio" || attachment.kind === "voice"
+      ? buildTelegramAttachmentInlinePath(orgId, attachment)
+      : null;
+
+  return (
+    <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium text-[var(--bo-fg)] capitalize">
+            {getAttachmentTitle(attachment)}
+          </p>
+          <p className="text-[11px] text-[var(--bo-muted-2)] capitalize">
+            {formatAttachmentKind(attachment.kind)}
+          </p>
+          {details.length > 0 ? (
+            <p className="text-[11px] text-[var(--bo-muted-2)]">{details.join(" • ")}</p>
+          ) : null}
+          <p className="text-[11px] break-all text-[var(--bo-muted-2)]">{attachment.fileId}</p>
+        </div>
+        <a
+          href={buildTelegramAttachmentDownloadPath(orgId, attachment)}
+          download
+          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+        >
+          Download
+        </a>
+      </div>
+
+      {thumbnailUrl ? (
+        <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+          <img
+            src={thumbnailUrl}
+            alt={`${getAttachmentTitle(attachment)} preview for ${messageId}`}
+            loading="lazy"
+            className="max-h-48 w-auto max-w-full object-contain"
+          />
+        </div>
+      ) : null}
+
+      {audioUrl ? (
+        <audio controls preload="none" src={audioUrl} className="w-full">
+          Your browser does not support audio playback.
+        </audio>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatMessages({
+  orgId,
   chatId,
   chatTitle,
   messages,
@@ -110,6 +358,7 @@ function ChatMessages({
   actionData,
   isSending,
 }: {
+  orgId: string;
   chatId: string;
   chatTitle: string;
   messages: TelegramMessageSummary[];
@@ -178,22 +427,48 @@ function ChatMessages({
                   message.fromUser?.id ||
                   "Unknown";
                 const content = message.text ?? "(Non-text message)";
+                const hasAttachments = message.attachments.length > 0;
                 return (
                   <div
                     key={message.id}
                     className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold text-[var(--bo-fg)]">{author}</p>
                       <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                         {formatTimestamp(message.sentAt)}
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-[var(--bo-muted)]">{content}</p>
-                    {message.commandName ? (
-                      <span className="mt-2 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                        /{message.commandName}
-                      </span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {message.commandName ? (
+                        <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+                          /{message.commandName}
+                        </span>
+                      ) : null}
+                      {hasAttachments ? (
+                        <span className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[9px] tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase">
+                          {message.attachments.length} attachment
+                          {message.attachments.length === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                    </div>
+                    {hasAttachments ? (
+                      <div className="mt-3 space-y-2 border-t border-[color:var(--bo-border)] pt-3">
+                        <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                          Attachments
+                        </p>
+                        <div className="space-y-2">
+                          {message.attachments.map((attachment) => (
+                            <TelegramAttachmentCard
+                              key={`${message.id}:${attachment.fileId}`}
+                              orgId={orgId}
+                              messageId={message.id}
+                              attachment={attachment}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 );
