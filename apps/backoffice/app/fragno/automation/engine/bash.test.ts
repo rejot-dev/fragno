@@ -55,15 +55,7 @@ const createTestCommandContext = (overrides: Partial<TestContext> = {}): TestCon
   },
   orgId: "org-ctx",
   idempotencyKey: "idempotency-ctx",
-  bashEnv: {
-    AUTOMATION_EVENT_ID: "test-event",
-    AUTOMATION_ORG_ID: "org-ctx",
-    AUTOMATION_SOURCE: "telegram",
-    AUTOMATION_EVENT_TYPE: "message.received",
-    AUTOMATION_OCCURRED_AT: "2026-01-01T00:00:00.000Z",
-    AUTOMATION_SCRIPT_ID: "script-ctx",
-    AUTOMATION_IDEMPOTENCY_KEY: "idempotency-ctx",
-  },
+  bashEnv: {},
   ...overrides,
 });
 
@@ -524,6 +516,9 @@ describe("bash command runner", () => {
             createClaim: runtime.createClaim,
           },
         },
+        pi: null,
+        resend: null,
+        telegram: null,
       },
     });
 
@@ -554,15 +549,7 @@ describe("bash command runner", () => {
         eventType: "message.received",
         scriptId: "script-shared",
       },
-      bashEnv: {
-        AUTOMATION_EVENT_ID: "event-shared",
-        AUTOMATION_ORG_ID: "org-shared",
-        AUTOMATION_SOURCE: "telegram",
-        AUTOMATION_EVENT_TYPE: "message.received",
-        AUTOMATION_OCCURRED_AT: "2026-01-01T00:00:00.000Z",
-        AUTOMATION_SCRIPT_ID: "script-shared",
-        AUTOMATION_IDEMPOTENCY_KEY: "idem-shared",
-      },
+      bashEnv: {},
     });
 
     let observedContext: {
@@ -571,7 +558,6 @@ describe("bash command runner", () => {
       idempotencyKey: string;
       binding: string;
       scriptId: string;
-      bashEventId: string | undefined;
     } | null = null;
 
     const handlers: TestAutomationCommandHandlers = {
@@ -582,7 +568,6 @@ describe("bash command runner", () => {
           idempotencyKey: commandContext.idempotencyKey,
           binding: commandContext.binding.source,
           scriptId: commandContext.binding.scriptId,
-          bashEventId: commandContext.bashEnv.AUTOMATION_EVENT_ID,
         };
 
         return {
@@ -642,7 +627,6 @@ describe("bash command runner", () => {
       idempotencyKey: "idem-shared",
       binding: "telegram",
       scriptId: "script-shared",
-      bashEventId: "event-shared",
     });
     expect(commandCallsResult).toEqual([
       {
@@ -700,9 +684,7 @@ describe("bash command runner", () => {
         },
         idempotencyKey: "idempotency-otp-1",
         runtime: automationRuntime,
-        sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
         pi: {
-          bashEnv: {},
           runtime: {
             createSession: async () => {
               throw new Error("pi automation context not configured for this test");
@@ -730,7 +712,7 @@ describe("bash command runner", () => {
     ]);
   });
 
-  it("projects canonical env vars and context files for automation runs", async () => {
+  it("provides /context/event.json for automation runs", async () => {
     const sourceAdapters = {
       telegram: createTelegramSourceAdapter(),
     };
@@ -767,13 +749,7 @@ describe("bash command runner", () => {
       sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
     });
     const result = await executeBashAutomation({
-      script: [
-        'printf "env=%s\\n" "$AUTOMATION_EVENT_ID|$AUTOMATION_ORG_ID|$AUTOMATION_SOURCE|$AUTOMATION_EVENT_TYPE|$AUTOMATION_OCCURRED_AT|$AUTOMATION_ACTOR_TYPE|$AUTOMATION_EXTERNAL_ACTOR_ID|$AUTOMATION_SUBJECT_USER_ID|$AUTOMATION_SCRIPT_ID|$AUTOMATION_IDEMPOTENCY_KEY|$AUTOMATION_TELEGRAM_CHAT_ID|$AUTOMATION_TELEGRAM_TEXT"',
-        'printf "event=%s\\n" "$(cat /context/event.json)"',
-        'printf "payload=%s\\n" "$(cat /context/payload.json)"',
-        'printf "actor=%s\\n" "$(cat /context/actor.json)"',
-        'printf "subject=%s\\n" "$(cat /context/subject.json)"',
-      ].join("\n"),
+      script: 'printf "event=%s\\n" "$(cat /context/event.json)"',
       context: createAutomationBashCommandContext({
         event,
         binding: {
@@ -783,34 +759,13 @@ describe("bash command runner", () => {
         },
         idempotencyKey: "idempotency-1",
         runtime: automationRuntime,
-        sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
-        pi: {
-          bashEnv: {},
-          runtime: {
-            createSession: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            getSession: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            listSessions: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            runTurn: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-          },
-        },
+        pi: null,
       }),
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim().split("\n")).toEqual([
-      "env=event-123|org-1|telegram|message.received|2026-01-01T00:00:00.000Z|external|chat-1|user-1|script-1|idempotency-1|chat-1|/start",
+    expect(result.stdout.trim()).toBe(
       'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"type":"external","externalId":"chat-1"},"subject":{"userId":"user-1"}}',
-      'payload={"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"}',
-      'actor={"type":"external","externalId":"chat-1"}',
-      'subject={"userId":"user-1"}',
-    ]);
+    );
   });
 });

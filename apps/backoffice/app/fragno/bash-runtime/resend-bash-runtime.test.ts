@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost } from "./bash-host";
+import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "./bash-host";
 import { createRouteBackedResendRuntime, type ResendBashRuntime } from "./resend-bash-runtime";
 
 const now = new Date("2026-01-02T12:00:00.000Z");
@@ -136,6 +136,7 @@ describe("resend bash runtime", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         resend: {
           runtime: createResendRuntime(),
         },
@@ -159,6 +160,7 @@ describe("resend bash runtime", () => {
     const { bash } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         resend: {
           runtime: createResendRuntime(),
         },
@@ -182,6 +184,7 @@ describe("resend bash runtime", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         resend: {
           runtime: createResendRuntime({
             listThreads: async () => ({
@@ -232,6 +235,7 @@ describe("resend bash runtime", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         resend: {
           runtime: createResendRuntime(),
         },

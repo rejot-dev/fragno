@@ -19,10 +19,6 @@ export type RegisteredOtpBashCommandContext = {
   runtime: OtpBashRuntime;
 };
 
-export type OtpBashRegistryContext = {
-  otp?: RegisteredOtpBashCommandContext;
-};
-
 const otpCommandHandlers: OtpCommandHandlers<RegisteredOtpBashCommandContext> = {
   "otp.identity.create-claim": async (command, context) => {
     return {
@@ -31,8 +27,8 @@ const otpCommandHandlers: OtpCommandHandlers<RegisteredOtpBashCommandContext> = 
   },
 };
 
-export const createOtpBashCommands = <TContext>(input: BashCommandFactoryInput<TContext>) => {
-  const otpContext = (input.context as OtpBashRegistryContext).otp;
+export const createOtpBashCommands = (input: BashCommandFactoryInput) => {
+  const otpContext = input.context.otp;
   if (!otpContext) {
     return [];
   }

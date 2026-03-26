@@ -8,6 +8,7 @@ import { migrate } from "@fragno-dev/db";
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 import type { TelegramMessageHookPayload } from "@fragno-dev/telegram-fragment";
 
+import type { TelegramAutomationFileMetadata } from "@/fragno/bash-runtime/telegram-bash-runtime";
 import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
@@ -45,6 +46,7 @@ type ConfigResponse = {
 };
 
 const CONFIG_KEY = "telegram-config";
+const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -154,6 +156,49 @@ const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
   const trimmed = resolvedOrigin.replace(/\/+$/, "");
   return `${trimmed}/api/telegram/${orgId}/telegram/webhook`;
+};
+
+const normalizeTelegramApiBaseUrl = (apiBaseUrl?: string | null) =>
+  (apiBaseUrl ?? DEFAULT_TELEGRAM_API_BASE_URL).replace(/\/+$/, "");
+
+const resolveTelegramFileDownloadUrl = (
+  config: Pick<TelegramConfig, "botToken" | "apiBaseUrl">,
+  filePath: string,
+) => {
+  const normalizedPath = filePath.trim().replace(/^\/+/, "");
+  if (!normalizedPath) {
+    throw new Error("Telegram file metadata did not include a file path.");
+  }
+
+  return `${normalizeTelegramApiBaseUrl(config.apiBaseUrl)}/file/bot${config.botToken}/${normalizedPath}`;
+};
+
+const normalizeTelegramAutomationFile = (
+  fileId: string,
+  payload: unknown,
+): TelegramAutomationFileMetadata => {
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const normalizedFileId =
+    typeof record.file_id === "string" && record.file_id.trim() ? record.file_id.trim() : fileId;
+  const fileUniqueId =
+    typeof record.file_unique_id === "string" && record.file_unique_id.trim()
+      ? record.file_unique_id.trim()
+      : null;
+  const filePath =
+    typeof record.file_path === "string" && record.file_path.trim()
+      ? record.file_path.trim()
+      : null;
+  const fileSize =
+    typeof record.file_size === "number" && Number.isFinite(record.file_size)
+      ? record.file_size
+      : null;
+
+  return {
+    fileId: normalizedFileId,
+    fileUniqueId,
+    filePath,
+    fileSize,
+  };
 };
 
 const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string, orgId: string) => {
@@ -344,6 +389,99 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     }
 
     return this.#fragment;
+  }
+
+  async #getAutomationConfig() {
+    const stored = await this.#loadConfig();
+    if (!stored || !this.#getStoredOrgId(stored)) {
+      throw new Error("Telegram is unavailable.");
+    }
+
+    return this.#extractFragmentConfig(stored);
+  }
+
+  async getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata> {
+    const config = await this.#getAutomationConfig();
+    const fileId = input.fileId.trim();
+    if (!fileId) {
+      throw new Error("Telegram automation file access requires a non-empty fileId.");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(
+        `${normalizeTelegramApiBaseUrl(config.apiBaseUrl)}/bot${config.botToken}/getFile`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ file_id: fileId }),
+          signal: controller.signal,
+        },
+      );
+
+      let payload: { ok?: boolean; result?: unknown; description?: string } | null = null;
+      try {
+        payload = (await response.json()) as {
+          ok?: boolean;
+          result?: unknown;
+          description?: string;
+        };
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.description ?? `Telegram API rejected getFile (${response.status}).`,
+        );
+      }
+
+      return normalizeTelegramAutomationFile(fileId, payload.result);
+    } catch (error) {
+      if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
+        throw new Error("Telegram API request timed out while resolving file metadata.");
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
+    const config = await this.#getAutomationConfig();
+    const metadata = await this.getAutomationFile(input);
+    if (!metadata.filePath) {
+      throw new Error("Telegram file metadata did not include a file path.");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const response = await fetch(resolveTelegramFileDownloadUrl(config, metadata.filePath), {
+        method: "GET",
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Telegram file download failed with status ${response.status}.`);
+      }
+
+      return response;
+    } catch (error) {
+      if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
+        throw new Error("Telegram API request timed out while downloading file bytes.");
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async alarm() {

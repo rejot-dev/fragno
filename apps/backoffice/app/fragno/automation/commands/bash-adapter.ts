@@ -55,10 +55,11 @@ const executeAutomationCommand = async <
     const stdout = formatCommandStdout(command.output, result);
     const stderr = typeof result.stderr === "string" ? result.stderr : "";
     const exitCode = typeof result.exitCode === "number" ? result.exitCode : 0;
+    const stdoutEncoding = result.stdoutEncoding;
 
     commandCallsResult.push({
       command: spec.name,
-      output: stdout.replace(/\n$/, ""),
+      output: stdoutEncoding === "binary" ? "<binary>" : stdout.replace(/\n$/, ""),
       exitCode,
     });
 
@@ -66,6 +67,7 @@ const executeAutomationCommand = async <
       stdout,
       stderr,
       exitCode,
+      ...(stdoutEncoding ? { stdoutEncoding } : {}),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

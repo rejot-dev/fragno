@@ -1065,56 +1065,73 @@ const toFsStat = (entry: FileEntryDescriptor, readOnly: boolean): FsStat => ({
       : UNKNOWN_MTIME,
 });
 
+const inferUploadContentTypeFromFileKey = (fileKey: string): string | null => {
+  if (/\.jpe?g$/i.test(fileKey)) {
+    return "image/jpeg";
+  }
+  if (/\.png$/i.test(fileKey)) {
+    return "image/png";
+  }
+  if (/\.gif$/i.test(fileKey)) {
+    return "image/gif";
+  }
+  if (/\.webp$/i.test(fileKey)) {
+    return "image/webp";
+  }
+  if (/\.svg$/i.test(fileKey)) {
+    return "image/svg+xml";
+  }
+  if (/\.json$/i.test(fileKey)) {
+    return "application/json";
+  }
+  if (/\.(md|mdx)$/i.test(fileKey)) {
+    return "text/markdown";
+  }
+  if (/\.(txt|log)$/i.test(fileKey)) {
+    return "text/plain";
+  }
+  if (/\.(ts|tsx)$/i.test(fileKey)) {
+    return "text/typescript";
+  }
+  if (/\.js$/i.test(fileKey)) {
+    return "text/javascript";
+  }
+  if (/\.html?$/i.test(fileKey)) {
+    return "text/html";
+  }
+  if (/\.css$/i.test(fileKey)) {
+    return "text/css";
+  }
+  if (/\.ya?ml$/i.test(fileKey)) {
+    return "application/yaml";
+  }
+  if (/\.sh$/i.test(fileKey)) {
+    return "text/x-shellscript";
+  }
+
+  return null;
+};
+
+const isGenericBinaryContentType = (contentType: string | null | undefined): boolean => {
+  const normalizedContentType = contentType?.trim().toLowerCase() ?? "";
+  return (
+    normalizedContentType === "application/octet-stream" ||
+    normalizedContentType === "binary/octet-stream"
+  );
+};
+
 const resolveUploadContentType = (
   file: Pick<UploadFileRecord, "fileKey"> & {
     contentType: string | null | undefined;
   },
 ): string | null => {
-  if (file.contentType) {
+  const inferredContentType = inferUploadContentTypeFromFileKey(file.fileKey);
+
+  if (file.contentType && !isGenericBinaryContentType(file.contentType)) {
     return file.contentType;
   }
 
-  if (/\.jpe?g$/i.test(file.fileKey)) {
-    return "image/jpeg";
-  }
-  if (/\.png$/i.test(file.fileKey)) {
-    return "image/png";
-  }
-  if (/\.gif$/i.test(file.fileKey)) {
-    return "image/gif";
-  }
-  if (/\.webp$/i.test(file.fileKey)) {
-    return "image/webp";
-  }
-  if (/\.svg$/i.test(file.fileKey)) {
-    return "image/svg+xml";
-  }
-  if (/\.json$/i.test(file.fileKey)) {
-    return "application/json";
-  }
-  if (/\.(md|mdx)$/i.test(file.fileKey)) {
-    return "text/markdown";
-  }
-  if (/\.(txt|log)$/i.test(file.fileKey)) {
-    return "text/plain";
-  }
-  if (/\.(ts|tsx)$/i.test(file.fileKey)) {
-    return "text/typescript";
-  }
-  if (/\.js$/i.test(file.fileKey)) {
-    return "text/javascript";
-  }
-  if (/\.html?$/i.test(file.fileKey)) {
-    return "text/html";
-  }
-  if (/\.css$/i.test(file.fileKey)) {
-    return "text/css";
-  }
-  if (/\.ya?ml$/i.test(file.fileKey)) {
-    return "application/yaml";
-  }
-
-  return null;
+  return inferredContentType ?? file.contentType ?? null;
 };
 
 const toRelativeUploadPath = (

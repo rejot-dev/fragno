@@ -92,7 +92,6 @@ export type AutomationCreateIdentityClaimResult = {
 export interface AutomationSourceAdapter<S extends AutomationSource> {
   source: S;
   eventSchemas: AutomationSourceEventCatalog<S>;
-  toBashEnv: (event: AutomationEvent) => AutomationBashEnvironment;
   reply?: (input: AutomationSourceReplyInput) => Promise<void>;
 }
 

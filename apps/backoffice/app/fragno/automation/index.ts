@@ -92,7 +92,6 @@ export type {
   AutomationScenarioCommandName,
   AutomationScenarioDefinition,
   AutomationScenarioMockResult,
-  AutomationScenarioSourceEnvProjector,
   AutomationScenarioStep,
   AutomationSimulationBindingTranscript,
   AutomationSimulationClaim,
@@ -116,6 +115,10 @@ export {
 export { createEventBashRuntime } from "../bash-runtime/event-bash-runtime";
 export { createOtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 export {
+  createTelegramBashRuntime,
+  createUnavailableTelegramBashRuntime,
+} from "../bash-runtime/telegram-bash-runtime";
+export {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
   executeBashAutomation,
@@ -130,3 +133,7 @@ export type {
 export type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
 export type { AutomationReplyResult, EventBashRuntime } from "../bash-runtime/event-bash-runtime";
 export type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
+export type {
+  TelegramAutomationFileMetadata,
+  TelegramBashRuntime,
+} from "../bash-runtime/telegram-bash-runtime";

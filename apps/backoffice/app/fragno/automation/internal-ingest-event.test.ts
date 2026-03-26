@@ -19,7 +19,6 @@ import {
 } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
-import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import type { AutomationEvent, AutomationSourceAdapterRegistry } from "./contracts";
 import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
 import { automationFragmentRoutes } from "./routes";
@@ -31,12 +30,61 @@ const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActor
   code: "123456",
   type: "otp",
 }));
+const telegramGetFileMock = vi.fn(async ({ fileId }: { fileId: string }) => ({
+  fileId,
+  fileUniqueId: `unique-${fileId}`,
+  filePath: `voice/${fileId}.ogg`,
+  fileSize: 4,
+}));
+const telegramDownloadFileMock = vi.fn(async () => new Response(new Uint8Array([0, 255, 1, 2])));
 const automationEnv = {
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   OTP: {
     idFromName: vi.fn((orgId: string) => `otp:${orgId}`),
     get: vi.fn(() => ({
       issueIdentityClaim: issueIdentityClaimMock,
+    })),
+  },
+  TELEGRAM: {
+    idFromName: vi.fn((orgId: string) => `telegram:${orgId}`),
+    get: vi.fn(() => ({
+      getAutomationFile: telegramGetFileMock,
+      downloadAutomationFile: telegramDownloadFileMock,
+      sendAutomationReply: vi.fn(),
+    })),
+  },
+  PI: {
+    idFromName: vi.fn((orgId: string) => `pi:${orgId}`),
+    get: vi.fn(() => ({
+      getAdminConfig: vi.fn(async () => ({ configured: false })),
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+            status: 400,
+          }),
+      ),
+    })),
+  },
+  RESEND: {
+    idFromName: vi.fn((orgId: string) => `resend:${orgId}`),
+    get: vi.fn(() => ({
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+            status: 400,
+          }),
+      ),
+    })),
+  },
+  AUTOMATIONS: {
+    idFromName: vi.fn((orgId: string) => `automations:${orgId}`),
+    get: vi.fn(() => ({
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+            status: 400,
+          }),
+      ),
     })),
   },
 } as unknown as CloudflareEnv;
@@ -57,14 +105,16 @@ const sourceAdapter = {
     "message.received": z.object({
       text: z.string().optional(),
       chatId: z.string().optional(),
+      attachments: z
+        .array(
+          z.object({
+            kind: z.string(),
+            fileId: z.string(),
+          }),
+        )
+        .optional(),
     }),
   },
-  toBashEnv: (event) => ({
-    AUTOMATION_TELEGRAM_TEXT:
-      typeof event.payload.text === "string" ? event.payload.text : undefined,
-    AUTOMATION_TELEGRAM_CHAT_ID:
-      typeof event.payload.chatId === "string" ? event.payload.chatId : undefined,
-  }),
   reply: vi.fn(async ({ text }: { text: string }) => {
     replyCalls.push(text);
   }),
@@ -565,10 +615,8 @@ describe("automation internalIngestEvent", () => {
           throw new Error("unused in test");
         }),
         runTurn: runTurnMock,
-      } satisfies PiBashRuntime,
-      bashEnv: {
-        AUTOMATION_PI_DEFAULT_AGENT: "default::openai::gpt-5-mini",
       },
+      defaultAgent: "default::openai::gpt-5-mini",
     }));
 
     const starterContext = await buildAutomationTestContext({
@@ -686,11 +734,91 @@ describe("automation internalIngestEvent", () => {
     }
   });
 
+  test("lets Telegram-triggered scripts resolve attachment metadata and download binary bytes", async () => {
+    telegramGetFileMock.mockImplementation(async ({ fileId }: { fileId: string }) => ({
+      fileId,
+      fileUniqueId: `unique-${fileId}`,
+      filePath: "voice/attachment.ogg",
+      fileSize: 4,
+    }));
+    telegramDownloadFileMock.mockImplementation(
+      async () => new Response(new Uint8Array([0, 255, 1, 2])),
+    );
+    const telegramAttachmentContext = await buildAutomationTestContext();
+
+    try {
+      await setAutomationOverlay({
+        [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([
+          {
+            id: "telegram-attachment-download",
+            source: "telegram",
+            eventType: "message.received",
+            script: {
+              key: "telegram-attachment-download",
+              name: "telegram-attachment-download",
+              path: "scripts/telegram-attachment-download.sh",
+            },
+          },
+        ]),
+        "automations/scripts/telegram-attachment-download.sh": `file_id="$(jq -r '.payload.attachments[0].fileId // ""' /context/event.json)"
+if [ -z "$file_id" ]; then
+  echo "Missing attachment fileId in /context/event.json" >&2
+  exit 1
+fi
+
+telegram.file.get --file-id "$file_id" --print filePath > /workspace/telegram-file-path.txt
+telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
+`,
+      });
+
+      const telegramAttachmentFragment = telegramAttachmentContext.fragments.automation;
+      const result = await telegramAttachmentFragment.fragment.callServices(() =>
+        telegramAttachmentFragment.services.ingestEvent({
+          id: "telegram-attachment-event-1",
+          orgId: "org-1",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+          payload: {
+            text: null,
+            chatId: "chat-1",
+            attachments: [
+              {
+                kind: "voice",
+                fileId: "telegram-file-1",
+              },
+            ],
+          },
+          actor: {
+            type: "external",
+            externalId: "chat-1",
+          },
+        }),
+      );
+
+      await drainDurableHooks(telegramAttachmentFragment.fragment);
+
+      expect(result).toEqual({
+        accepted: true,
+        eventId: "telegram-attachment-event-1",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+      });
+      expect(telegramGetFileMock).toHaveBeenCalledWith({ fileId: "telegram-file-1" });
+      expect(telegramDownloadFileMock).toHaveBeenCalledWith({ fileId: "telegram-file-1" });
+    } finally {
+      await telegramAttachmentContext.test.cleanup();
+    }
+  });
+
   test("fails loudly when the starter linking script cannot issue identity claims", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const noBaseUrlContext = await buildAutomationTestContext({
       env: {
         OTP: automationEnv.OTP,
+        TELEGRAM: automationEnv.TELEGRAM,
+        RESEND: automationEnv.RESEND,
       } as unknown as CloudflareEnv,
     });
 

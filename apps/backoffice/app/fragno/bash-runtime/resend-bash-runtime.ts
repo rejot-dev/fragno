@@ -129,10 +129,6 @@ export type RegisteredResendBashCommandContext = {
   runtime: ResendBashRuntime;
 };
 
-export type ResendBashRegistryContext = {
-  resend?: RegisteredResendBashCommandContext;
-};
-
 type CreateRouteBackedResendRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
@@ -385,8 +381,8 @@ const resendCommandHandlers: ResendCommandHandlers<RegisteredResendBashCommandCo
   },
 };
 
-export const createResendBashCommands = <TContext>(input: BashCommandFactoryInput<TContext>) => {
-  const resendContext = (input.context as ResendBashRegistryContext).resend;
+export const createResendBashCommands = (input: BashCommandFactoryInput) => {
+  const resendContext = input.context.resend;
   if (!resendContext) {
     return [];
   }
@@ -607,7 +603,41 @@ export const createRouteBackedResendRuntime = (
   };
 };
 
-export const createResendRouteBashRuntime = createRouteBackedResendRuntime;
+export const createResendRouteBashRuntime = ({
+  env,
+  orgId,
+}: {
+  env: CloudflareEnv;
+  orgId: string;
+}): ResendBashRuntime => {
+  const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
+  return createRouteBackedResendRuntime({
+    baseUrl: "https://resend.do",
+    fetch: resendDo.fetch.bind(resendDo),
+  });
+};
+
+const RESEND_NOT_CONFIGURED = "Resend is not configured for this organisation.";
+
+export const createUnavailableResendBashRuntime = (
+  message = RESEND_NOT_CONFIGURED,
+): ResendBashRuntime => ({
+  listThreads: async () => {
+    throw new Error(message);
+  },
+  getThread: async () => {
+    throw new Error(message);
+  },
+  listThreadMessages: async () => {
+    throw new Error(message);
+  },
+  getThreadSnapshot: async () => {
+    throw new Error(message);
+  },
+  replyToThread: async () => {
+    throw new Error(message);
+  },
+});
 
 const inferReplyRecipients = (messages: ResendThreadMessage[]): string[] => {
   const latestInbound = messages.find((message) => message.direction === "inbound") ?? null;

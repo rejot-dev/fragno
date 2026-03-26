@@ -55,6 +55,9 @@ describe("starter file contributor", () => {
     );
     expect(readme).toContain("Workspace starter pack");
     expect(bindingsManifest).toContain('"bindings"');
+    expect(bindingsManifest).toContain(
+      '"path": "/workspace/automations/scripts/telegram-claim-linking.start.sh"',
+    );
     expect(simulatorReadme).toContain("Automation simulator");
     expect(scenarioExample).toContain('"steps"');
   });

@@ -38,10 +38,6 @@ export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationsBashRuntime;
 };
 
-export type AutomationsBashRegistryContext = {
-  automations?: RegisteredAutomationsBashCommandContext;
-};
-
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
 
 const automationsCommandHandlers: AutomationsCommandHandlers<RegisteredAutomationsBashCommandContext> =
@@ -65,10 +61,8 @@ const automationsCommandHandlers: AutomationsCommandHandlers<RegisteredAutomatio
     },
   };
 
-export const createAutomationsBashCommands = <TContext>(
-  input: BashCommandFactoryInput<TContext>,
-) => {
-  const automationsContext = (input.context as AutomationsBashRegistryContext).automations;
+export const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
+  const automationsContext = input.context.automations;
   if (!automationsContext) {
     return [];
   }

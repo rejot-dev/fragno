@@ -91,12 +91,8 @@ export type PiBashRuntime = {
   runTurn: (args: PiSessionTurnArgs) => Promise<PiSessionTurnResult>;
 };
 
-type RegisteredPiBashCommandContext = {
+export type RegisteredPiBashCommandContext = {
   runtime: PiBashRuntime;
-};
-
-type PiBashRegistryContext = {
-  pi?: RegisteredPiBashCommandContext;
 };
 
 const parseStringArrayOption = (parsed: ReturnType<typeof parseCliTokens>["options"]) => {
@@ -413,8 +409,8 @@ const piCommandHandlers: PiCommandHandlers<RegisteredPiBashCommandContext> = {
   },
 };
 
-export const createPiBashCommands = <TContext>(input: BashCommandFactoryInput<TContext>) => {
-  const piContext = (input.context as PiBashRegistryContext).pi;
+export const createPiBashCommands = (input: BashCommandFactoryInput) => {
+  const piContext = input.context.pi;
   if (!piContext) {
     return [];
   }

@@ -215,20 +215,14 @@ export type AutomationSimulationResult = {
   finalState: AutomationSimulationState;
 };
 
-export type AutomationScenarioSourceEnvProjector = (
-  event: AutomationEvent,
-) => Record<string, string | undefined>;
-
 export type SimulateAutomationScenarioOptions = {
   fileSystem: IFileSystem;
   scenario: AutomationScenarioDefinition;
-  sourceEnvProjectors?: Partial<Record<string, AutomationScenarioSourceEnvProjector>>;
 };
 
 export type RunAutomationScenarioFileOptions = {
   fileSystem: IFileSystem;
   path: string;
-  sourceEnvProjectors?: Partial<Record<string, AutomationScenarioSourceEnvProjector>>;
 };
 
 type ScenarioParsedCommandByName = ParsedCommandByName & PiParsedCommandByName;
@@ -1122,56 +1116,18 @@ const executeBuiltinCommand = async (
   }
 };
 
-const projectDefaultSourceEnv = (event: AutomationEvent): Record<string, string | undefined> => {
-  if (event.source === "telegram") {
-    return {
-      AUTOMATION_TELEGRAM_TEXT:
-        typeof event.payload.text === "string" ? event.payload.text : undefined,
-      AUTOMATION_TELEGRAM_CHAT_ID:
-        typeof event.payload.chatId === "string" ? event.payload.chatId : undefined,
-    };
-  }
-
-  return {};
-};
-
 const buildBashEnv = ({
   scenario,
   step,
-  event,
   binding,
-  sourceEnvProjectors,
 }: {
   scenario: AutomationScenarioDefinition;
   step: AutomationScenarioStep;
-  event: AutomationEvent;
   binding: AutomationBindingCatalogEntry;
-  sourceEnvProjectors: Partial<Record<string, AutomationScenarioSourceEnvProjector>>;
 }) => {
-  const projectSourceEnv = sourceEnvProjectors[event.source] ?? projectDefaultSourceEnv;
-  const triggerOrder = binding.triggerOrder;
-
   return Object.fromEntries(
     Object.entries({
-      AUTOMATION_EVENT_ID: event.id,
-      AUTOMATION_ORG_ID: event.orgId,
-      AUTOMATION_SOURCE: event.source,
-      AUTOMATION_EVENT_TYPE: event.eventType,
-      AUTOMATION_OCCURRED_AT: event.occurredAt,
-      AUTOMATION_ACTOR_TYPE: event.actor?.type,
-      AUTOMATION_EXTERNAL_ACTOR_ID: event.actor?.externalId,
-      AUTOMATION_SUBJECT_USER_ID: event.subject?.userId,
-      AUTOMATION_BINDING_ID: binding.id,
-      AUTOMATION_SCRIPT_ID: binding.scriptId,
-      AUTOMATION_SCRIPT_KEY: binding.scriptKey,
-      AUTOMATION_SCRIPT_NAME: binding.scriptName,
-      AUTOMATION_SCRIPT_PATH: binding.scriptPath,
-      AUTOMATION_SCRIPT_VERSION:
-        binding.scriptVersion != null ? String(binding.scriptVersion) : undefined,
-      AUTOMATION_TRIGGER_ORDER:
-        triggerOrder != null && Number.isFinite(triggerOrder) ? String(triggerOrder) : undefined,
       ...binding.scriptEnv,
-      ...projectSourceEnv(event),
       ...scenario.env,
       ...step.env,
     }).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -1180,12 +1136,7 @@ const buildBashEnv = ({
 
 const createContextFiles = async (fs: InMemoryFs, event: AutomationEvent) => {
   await fs.mkdir("/context", { recursive: true });
-  await Promise.all([
-    fs.writeFile("/context/event.json", JSON.stringify(event)),
-    fs.writeFile("/context/payload.json", JSON.stringify(event.payload ?? {})),
-    fs.writeFile("/context/actor.json", JSON.stringify(event.actor ?? null)),
-    fs.writeFile("/context/subject.json", JSON.stringify(event.subject ?? null)),
-  ]);
+  await fs.writeFile("/context/event.json", JSON.stringify(event));
 };
 
 const createScenarioCommands = ({
@@ -1308,7 +1259,6 @@ const executeBinding = async ({
   state,
   commandMocks,
   mockCursorState,
-  sourceEnvProjectors,
 }: {
   scenario: AutomationScenarioDefinition;
   step: AutomationScenarioStep;
@@ -1317,7 +1267,6 @@ const executeBinding = async ({
   state: AutomationSimulationState;
   commandMocks: AutomationScenarioDefinition["commandMocks"];
   mockCursorState: MockCursorState;
-  sourceEnvProjectors: Partial<Record<string, AutomationScenarioSourceEnvProjector>>;
 }): Promise<AutomationSimulationBindingTranscript> => {
   const fs = new InMemoryFs();
   await createContextFiles(fs, event);
@@ -1328,9 +1277,7 @@ const executeBinding = async ({
     env: buildBashEnv({
       scenario,
       step,
-      event,
       binding,
-      sourceEnvProjectors,
     }),
     customCommands: createScenarioCommands({
       context: {
@@ -1343,6 +1290,21 @@ const executeBinding = async ({
       commands,
     }),
   });
+
+  if (binding.scriptLoadError) {
+    return {
+      index: 0,
+      bindingId: binding.id,
+      scriptId: binding.scriptId,
+      scriptPath: binding.scriptPath,
+      triggerOrder: binding.triggerOrder,
+      status: "failed",
+      exitCode: 1,
+      stdout: "",
+      stderr: binding.scriptLoadError,
+      commands,
+    };
+  }
 
   const result = await bash.exec(binding.scriptBody);
 
@@ -1491,7 +1453,6 @@ export const listAutomationScenarios = async (
 export const simulateAutomationScenario = async ({
   fileSystem,
   scenario,
-  sourceEnvProjectors = {},
 }: SimulateAutomationScenarioOptions): Promise<AutomationSimulationResult> => {
   const parsedScenario = parseScenario(scenario);
   const catalog = await loadAutomationCatalog(fileSystem);
@@ -1525,7 +1486,6 @@ export const simulateAutomationScenario = async ({
         state,
         commandMocks: parsedScenario.commandMocks,
         mockCursorState,
-        sourceEnvProjectors,
       });
 
       bindingRuns.push({
@@ -1577,12 +1537,10 @@ export const simulateAutomationScenario = async ({
 export const runAutomationScenarioFile = async ({
   fileSystem,
   path,
-  sourceEnvProjectors,
 }: RunAutomationScenarioFileOptions) => {
   const scenario = await loadAutomationScenarioFile(fileSystem, path);
   return simulateAutomationScenario({
     fileSystem,
     scenario,
-    sourceEnvProjectors,
   });
 };

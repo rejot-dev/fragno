@@ -54,6 +54,17 @@ The host exposes command families only when the matching runtime context is conf
   - Requires DOCS_PUBLIC_BASE_URL and org context.
   - Returns an object with url, externalId, code, and optional type.
 
+### telegram.* (Telegram attachment tools)
+
+- telegram.file.get --file-id <file-id>
+  - Resolves normalized Telegram attachment metadata for a file id.
+  - Returns structured output with fields like fileId, filePath, fileSize, and fileUniqueId.
+  - Keeps Telegram bot credentials inside the Telegram durable object boundary.
+
+- telegram.file.download --file-id <file-id>
+  - Streams raw Telegram file bytes to stdout for shell redirection or pipelines.
+  - Use with > file or a binary-aware pipe target instead of shell variable capture.
+
 ### pi.* (Pi session tools)
 
 - pi.session.create --agent <agent> [--name ...] [--tag ...] [--metadata-json ...]

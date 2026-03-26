@@ -182,7 +182,7 @@ describe("automation catalog", () => {
     );
   });
 
-  test("rejects missing script files referenced by the manifest", async () => {
+  test("collects missing-script bindings with script load errors", async () => {
     const fileSystem = await createAutomationFileSystem({
       [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify(
         {
@@ -197,7 +197,7 @@ describe("automation catalog", () => {
                 key: "missing-script",
                 name: "Missing script",
                 engine: "bash",
-                path: "scripts/missing.sh",
+                path: `${AUTOMATION_WORKSPACE_ROOT}/scripts/missing.sh`,
                 version: 1,
                 agent: null,
                 env: {},
@@ -210,9 +210,21 @@ describe("automation catalog", () => {
       ),
     });
 
-    await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow(
-      "Automation script for binding 'missing-script' '/workspace/automations/scripts/missing.sh' was not found",
-    );
+    const catalog = await loadAutomationCatalog(fileSystem);
+
+    expect(catalog.bindings).toHaveLength(1);
+    expect(catalog.bindings[0]).toMatchObject({
+      id: "missing-script",
+      scriptPath: "scripts/missing.sh",
+      absoluteScriptPath: `${AUTOMATION_WORKSPACE_ROOT}/scripts/missing.sh`,
+      scriptLoadError: expect.stringContaining("Automation script for binding 'missing-script'"),
+    });
+    expect(catalog.scripts).toHaveLength(1);
+    expect(catalog.scripts[0]).toMatchObject({
+      id: "script:missing-script@1:scripts/missing.sh",
+      scriptLoadError: expect.stringContaining("Automation script for binding 'missing-script'"),
+      body: "",
+    });
   });
 
   test("rejects script path traversal and non-scripts paths", async () => {

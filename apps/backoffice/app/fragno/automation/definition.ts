@@ -103,6 +103,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         });
 
         for (const binding of matchingBindings) {
+          if (binding.scriptLoadError) {
+            throw new Error(binding.scriptLoadError);
+          }
+
           const result = await executeBashAutomation({
             script: binding.scriptBody,
             context: createAutomationBashCommandContext({
@@ -121,8 +125,8 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               },
               idempotencyKey: this.idempotencyKey,
               runtime,
-              sourceAdapter,
-              pi,
+              env: config.env,
+              pi: pi ?? null,
             }),
           });
 

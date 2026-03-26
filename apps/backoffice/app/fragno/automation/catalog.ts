@@ -14,6 +14,9 @@ export const AUTOMATION_BINDINGS_MANIFEST_PATH = `${AUTOMATION_WORKSPACE_ROOT}/b
 export const AUTOMATION_SCRIPTS_ROOT = `${AUTOMATION_WORKSPACE_ROOT}/scripts`;
 export const AUTOMATION_SCRIPT_AGENT_ENV_KEY = "AUTOMATION_SCRIPT_AGENT";
 
+const AUTOMATION_WORKSPACE_ROOT_RELATIVE = AUTOMATION_WORKSPACE_ROOT.slice(1);
+const AUTOMATION_SCRIPTS_ROOT_RELATIVE = AUTOMATION_SCRIPTS_ROOT.slice(1);
+
 export type AutomationFileSystemResolvePurpose = "route" | "runtime";
 
 export type AutomationFileSystemResolverInput = {
@@ -66,6 +69,7 @@ export type AutomationScriptCatalogEntry = {
   absolutePath: string;
   version: number;
   body: string;
+  scriptLoadError?: string | null;
   bindingIds: string[];
   bindingCount: number;
   enabledBindingCount: number;
@@ -87,6 +91,7 @@ export type AutomationBindingCatalogEntry = {
   scriptEngine: "bash";
   scriptEnv: Record<string, string>;
   scriptBody: string;
+  scriptLoadError?: string | null;
 };
 
 export type AutomationCatalog = {
@@ -104,10 +109,24 @@ const normalizeScriptRelativePath = (value: string, bindingId: string): string =
   if (!trimmed) {
     throw new Error(`Automation binding '${bindingId}' is missing script.path.`);
   }
+
   if (trimmed.startsWith("/")) {
-    throw new Error(
-      `Automation binding '${bindingId}' has invalid script path '${value}'. Paths must be relative to ${AUTOMATION_WORKSPACE_ROOT}.`,
-    );
+    let normalizedAbsolutePath: string;
+    try {
+      normalizedAbsolutePath = normalizeRelativePath(trimmed.slice(1));
+    } catch (error) {
+      throw new Error(
+        `Automation binding '${bindingId}' has invalid script path '${value}': ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (!normalizedAbsolutePath.startsWith(`${AUTOMATION_SCRIPTS_ROOT_RELATIVE}/`)) {
+      throw new Error(
+        `Automation binding '${bindingId}' has invalid script path '${value}'. Absolute paths must stay under ${AUTOMATION_SCRIPTS_ROOT}.`,
+      );
+    }
+
+    return normalizedAbsolutePath.slice(`${AUTOMATION_WORKSPACE_ROOT_RELATIVE}/`.length);
   }
 
   let normalized: string;
@@ -121,7 +140,7 @@ const normalizeScriptRelativePath = (value: string, bindingId: string): string =
 
   if (!normalized.startsWith("scripts/")) {
     throw new Error(
-      `Automation binding '${bindingId}' has invalid script path '${value}'. Paths must stay under scripts/.`,
+      `Automation binding '${bindingId}' has invalid script path '${value}'. Relative paths must stay under scripts/ or use an absolute path under ${AUTOMATION_SCRIPTS_ROOT}.`,
     );
   }
 
@@ -302,30 +321,18 @@ export const loadAutomationCatalog = async (
 
     const scriptPath = normalizeScriptRelativePath(binding.script.path, binding.id);
     const absoluteScriptPath = toAbsoluteAutomationPath(scriptPath);
-    const scriptBody = await readRequiredFile(
-      fileSystem,
-      absoluteScriptPath,
-      `Automation script for binding '${binding.id}'`,
-    );
     const scriptId = createScriptId(binding, scriptPath);
     const scriptEnv = resolveBindingScriptEnv(binding);
 
-    const nextScript = {
-      id: scriptId,
-      key: binding.script.key,
-      name: binding.script.name,
-      engine: binding.script.engine,
-      path: scriptPath,
-      absolutePath: absoluteScriptPath,
-      version: binding.script.version,
-      body: scriptBody,
-    } satisfies Omit<
-      AutomationScriptCatalogEntry,
-      "bindingCount" | "bindingIds" | "enabledBindingCount" | "enabled"
-    >;
-
     const existingScript = scriptsById.get(scriptId);
+
+    let scriptBody: string;
+    let scriptLoadError: string | null = null;
+
     if (existingScript) {
+      scriptBody = existingScript.body;
+      scriptLoadError = existingScript.scriptLoadError ?? null;
+
       assertCompatibleScriptEntry(
         {
           ...existingScript,
@@ -334,11 +341,45 @@ export const loadAutomationCatalog = async (
           enabledBindingCount: 0,
           enabled: false,
         },
-        nextScript,
+        {
+          id: scriptId,
+          key: binding.script.key,
+          name: binding.script.name,
+          engine: binding.script.engine,
+          path: scriptPath,
+          absolutePath: absoluteScriptPath,
+          version: binding.script.version,
+          body: scriptBody,
+          scriptLoadError,
+        } satisfies Omit<
+          AutomationScriptCatalogEntry,
+          "bindingCount" | "bindingIds" | "enabledBindingCount" | "enabled"
+        >,
         binding.id,
       );
     } else {
-      scriptsById.set(scriptId, nextScript);
+      try {
+        scriptBody = await readRequiredFile(
+          fileSystem,
+          absoluteScriptPath,
+          `Automation script for binding '${binding.id}'`,
+        );
+      } catch (error) {
+        scriptBody = "";
+        scriptLoadError = error instanceof Error ? error.message : "Failed to read script file.";
+      }
+
+      scriptsById.set(scriptId, {
+        id: scriptId,
+        key: binding.script.key,
+        name: binding.script.name,
+        engine: binding.script.engine,
+        path: scriptPath,
+        absolutePath: absoluteScriptPath,
+        version: binding.script.version,
+        body: scriptBody,
+        scriptLoadError,
+      });
     }
 
     const bindingsForScript = scriptBindingIds.get(scriptId) ?? [];
@@ -364,6 +405,7 @@ export const loadAutomationCatalog = async (
       scriptEngine: binding.script.engine,
       scriptEnv,
       scriptBody,
+      scriptLoadError,
     });
   }
 

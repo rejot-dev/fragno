@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "./bash-host";
+import type { OtpBashRuntime } from "./otp-bash-runtime";
+import type { PiBashRuntime } from "./pi-bash-runtime";
+import type { ResendBashRuntime } from "./resend-bash-runtime";
 
 const createAutomationsRuntime = () => ({
   lookupBinding: async () => ({
@@ -19,20 +22,20 @@ const createAutomationsRuntime = () => ({
   }),
 });
 
-const createOtpRuntime = () => ({
-  createClaim: async ({ source, externalActorId }: Record<string, string>) => ({
+const createOtpRuntime = (): OtpBashRuntime => ({
+  createClaim: async ({ source, externalActorId }) => ({
     url: `https://example.com/${source}/${externalActorId}`,
     externalId: externalActorId,
     code: "123456",
   }),
 });
 
-const createResendRuntime = () => ({
+const createResendRuntime = (): ResendBashRuntime => ({
   listThreads: async () => ({
     threads: [],
     hasNextPage: false,
   }),
-  getThread: async ({ threadId }: { threadId: string }) => ({
+  getThread: async ({ threadId }) => ({
     id: threadId,
     subject: "Invoice Update",
     normalizedSubject: "invoice update",
@@ -50,7 +53,7 @@ const createResendRuntime = () => ({
     messages: [],
     hasNextPage: false,
   }),
-  getThreadSnapshot: async ({ threadId }: { threadId: string }) => ({
+  getThreadSnapshot: async ({ threadId }) => ({
     thread: {
       id: threadId,
       subject: "Invoice Update",
@@ -69,15 +72,7 @@ const createResendRuntime = () => ({
     hasNextPage: false,
     markdown: "# Invoice Update\n",
   }),
-  replyToThread: async ({
-    threadId,
-    subject,
-    body,
-  }: {
-    threadId: string;
-    subject?: string;
-    body: string;
-  }) => ({
+  replyToThread: async ({ threadId, subject, body }) => ({
     thread: {
       id: threadId,
       subject: subject ?? "Invoice Update",
@@ -126,11 +121,11 @@ const createResendRuntime = () => ({
   }),
 });
 
-const createPiRuntime = () => ({
+const createPiRuntime = (): PiBashRuntime => ({
   createSession: async () => ({
     id: "session-1",
     agent: "assistant",
-    status: "waiting",
+    status: "waiting" as const,
     name: null,
     steeringMode: "one-at-a-time" as const,
     metadata: null,
@@ -138,43 +133,42 @@ const createPiRuntime = () => ({
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   }),
-  getSession: async ({ sessionId }: { sessionId: string }) => ({
+  getSession: async ({ sessionId }) => ({
     id: sessionId,
     agent: "assistant",
-    status: "waiting",
+    status: "waiting" as const,
     name: null,
     steeringMode: "one-at-a-time" as const,
     metadata: null,
     tags: [],
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    workflow: { status: "waiting" },
+    workflow: { status: "waiting" as const },
     messages: [],
     events: [],
     trace: [],
     summaries: [],
     turn: 0,
-    phase: "waiting-for-user",
+    phase: "waiting-for-user" as const,
     waitingFor: null,
   }),
-  listSessions: async () =>
-    Promise.resolve([
-      {
-        id: "session-1",
-        name: null,
-        status: "waiting",
-        agent: "assistant",
-        steeringMode: "one-at-a-time",
-        metadata: null,
-        tags: [],
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      },
-    ]),
-  runTurn: async ({ sessionId, text }: { sessionId: string; text: string }) => ({
+  listSessions: async () => [
+    {
+      id: "session-1",
+      name: null,
+      status: "waiting" as const,
+      agent: "assistant",
+      steeringMode: "one-at-a-time" as const,
+      metadata: null,
+      tags: [],
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  ],
+  runTurn: async ({ sessionId, text }) => ({
     id: sessionId,
     agent: "assistant",
-    status: "waiting",
+    status: "waiting" as const,
     name: null,
     steeringMode: "one-at-a-time" as const,
     metadata: null,
@@ -226,6 +220,16 @@ const createPiRuntime = () => ({
   }),
 });
 
+const createTelegramRuntime = () => ({
+  getFile: async ({ fileId }: { fileId: string }) => ({
+    fileId,
+    fileUniqueId: `unique-${fileId}`,
+    filePath: `voice/${fileId}.ogg`,
+    fileSize: 4,
+  }),
+  downloadFile: async () => new Response(new Uint8Array([0, 255, 1, 2])),
+});
+
 const createAutomationContext = () => ({
   event: {
     id: "event-1",
@@ -241,15 +245,7 @@ const createAutomationContext = () => ({
     scriptId: "script-1",
   },
   idempotencyKey: "idem-1",
-  bashEnv: {
-    AUTOMATION_EVENT_ID: "event-1",
-    AUTOMATION_ORG_ID: "org-1",
-    AUTOMATION_SOURCE: "telegram",
-    AUTOMATION_EVENT_TYPE: "message.received",
-    AUTOMATION_OCCURRED_AT: "2026-01-01T00:00:00.000Z",
-    AUTOMATION_SCRIPT_ID: "script-1",
-    AUTOMATION_IDEMPOTENCY_KEY: "idem-1",
-  },
+  bashEnv: {},
   runtime: {
     reply: async () => ({ ok: true as const }),
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
@@ -267,18 +263,20 @@ describe("bash host command assembly", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
-        pi: {
-          runtime: createPiRuntime(),
-        },
+        automation: null,
         automations: {
           runtime: createAutomationsRuntime(),
         },
         otp: {
           runtime: createOtpRuntime(),
         },
+        pi: {
+          runtime: createPiRuntime(),
+        },
         resend: {
           runtime: createResendRuntime(),
         },
+        telegram: null,
       },
     });
 
@@ -343,6 +341,11 @@ describe("bash host command assembly", () => {
       fs: new InMemoryFs(),
       context: {
         automation: createAutomationContext(),
+        automations: null,
+        otp: null,
+        pi: null,
+        resend: null,
+        telegram: null,
       },
     });
 
@@ -357,6 +360,37 @@ describe("bash host command assembly", () => {
       {
         command: "event.reply",
         output: expect.stringContaining("event.reply"),
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("loads telegram file commands only when telegram context is provided", async () => {
+    const { bash, commandCallsResult } = createBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        automation: null,
+        automations: null,
+        otp: null,
+        pi: null,
+        resend: null,
+        telegram: {
+          runtime: createTelegramRuntime(),
+        },
+      },
+    });
+
+    const telegramHelp = await bash.exec("telegram.file.get --help");
+    const missingPi = await bash.exec("pi.session.create --agent assistant");
+
+    expect(telegramHelp.exitCode).toBe(0);
+    expect(telegramHelp.stdout).toContain("telegram.file.get");
+    expect(missingPi.exitCode).toBe(127);
+    expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
+    expect(commandCallsResult).toEqual([
+      {
+        command: "telegram.file.get",
+        output: expect.stringContaining("telegram.file.get"),
         exitCode: 0,
       },
     ]);

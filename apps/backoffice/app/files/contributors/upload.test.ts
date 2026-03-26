@@ -225,6 +225,24 @@ describe("upload file contributor", () => {
     await expect(fs.readFile?.("/workspace/output/generated.txt")).resolves.toBe("hello");
   });
 
+  test("treats shell scripts with octet-stream content types as text files", async () => {
+    const { fs } = createUploadFs({
+      "automations/scripts/telegram-file-store.sh": {
+        content: 'echo "hello"',
+        contentType: "application/octet-stream",
+      },
+    });
+
+    await expect(
+      fs.readFile?.("/uploads/automations/scripts/telegram-file-store.sh"),
+    ).resolves.toBe('echo "hello"');
+    await expect(
+      fs.describeEntry?.("/uploads/automations/scripts/telegram-file-store.sh"),
+    ).resolves.toMatchObject({
+      contentType: "text/x-shellscript",
+    });
+  });
+
   test("binds each mounted upload filesystem to a single provider", async () => {
     const uploadConfig = createUploadConfig({
       defaultProvider: UPLOAD_PROVIDER_R2,
