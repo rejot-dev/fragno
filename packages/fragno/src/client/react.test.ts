@@ -1011,6 +1011,40 @@ describe("useFragno - createStore", () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
+  test("createStore preserves class methods that rely on private fields", () => {
+    const builder = createClientBuilder(
+      defineFragment("test-fragment-private-store"),
+      clientConfig,
+      [],
+    );
+
+    class SessionStore {
+      sessionId = atom("initial");
+      #prefix: string;
+
+      constructor(sessionId: string) {
+        this.sessionId.set(sessionId);
+        this.#prefix = `session:${sessionId}`;
+      }
+
+      start() {
+        return `${this.#prefix}:start`;
+      }
+    }
+
+    const client = {
+      useSession: builder.createStore(
+        ({ path }: { path: { sessionId: string } }) => new SessionStore(path.sessionId),
+      ),
+    };
+
+    const { useSession } = useFragno(client);
+    const { result } = renderHook(() => useSession({ path: { sessionId: "abc" } }));
+
+    expect(result.current.sessionId).toBe("abc");
+    expect(result.current.start()).toBe("session:abc:start");
+  });
+
   test("Derived from streaming route", async () => {
     const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
