@@ -47,16 +47,19 @@ export function createRouteCaller<TFragment extends FragmentLike>(
     inputOptions?: RouteHandlerInputOptions<TPath, StandardSchemaV1 | undefined>,
   ): Promise<FragnoResponse<unknown>> => {
     const headers = baseHeaders ? new Headers(baseHeaders) : new Headers();
+    const explicitHeaders = inputOptions?.headers
+      ? inputOptions.headers instanceof Headers
+        ? inputOptions.headers
+        : new Headers(inputOptions.headers)
+      : null;
 
-    if (inputOptions?.headers) {
-      const extra =
-        inputOptions.headers instanceof Headers
-          ? inputOptions.headers
-          : new Headers(inputOptions.headers);
-      for (const [key, value] of extra.entries()) {
+    if (explicitHeaders) {
+      for (const [key, value] of explicitHeaders.entries()) {
         headers.set(key, value);
       }
     }
+
+    const hasExplicitContentType = explicitHeaders?.has("content-type") ?? false;
 
     const searchParams =
       inputOptions?.query instanceof URLSearchParams
@@ -82,15 +85,27 @@ export function createRouteCaller<TFragment extends FragmentLike>(
 
       if (rawBody instanceof FormData || rawBody instanceof Blob) {
         body = rawBody;
+        if (!hasExplicitContentType) {
+          headers.delete("content-type");
+        }
       } else if (rawBody instanceof ReadableStream) {
         body = rawBody;
+        if (!hasExplicitContentType) {
+          headers.delete("content-type");
+        }
       } else if (rawBody instanceof ArrayBuffer) {
         body = rawBody;
+        if (!hasExplicitContentType) {
+          headers.delete("content-type");
+        }
       } else if (isArrayBufferView(rawBody)) {
         body = rawBody;
+        if (!hasExplicitContentType) {
+          headers.delete("content-type");
+        }
       } else if (rawBody !== undefined) {
         body = JSON.stringify(rawBody);
-        if (!headers.has("content-type")) {
+        if (!hasExplicitContentType) {
           headers.set("content-type", "application/json");
         }
       }
