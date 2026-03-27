@@ -39,6 +39,7 @@ describe("createMasterFileSystem", () => {
       "/workspace",
       "/docs",
       "/examples",
+      "/tmp",
     ]);
   });
 
@@ -48,7 +49,11 @@ describe("createMasterFileSystem", () => {
     );
 
     const resolved = await createMasterFileSystem({ ...context, orgId: "  org_123  " });
-    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual(["/system", "/workspace"]);
+    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
+      "/system",
+      "/workspace",
+      "/tmp",
+    ]);
   });
 
   test("rejects duplicate mount points", async () => {

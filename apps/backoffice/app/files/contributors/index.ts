@@ -3,10 +3,12 @@ import { automationHooksFileContributor } from "./durable-hooks";
 import { resendFileContributor } from "./resend";
 import { starterFileContributor } from "./starter";
 import { staticFileContributor } from "./static";
+import { tmpFileContributor } from "./tmp";
 
 const BUILT_IN_FILE_CONTRIBUTORS = [
   staticFileContributor,
   starterFileContributor,
+  tmpFileContributor,
   resendFileContributor,
   automationHooksFileContributor,
 ] as const;

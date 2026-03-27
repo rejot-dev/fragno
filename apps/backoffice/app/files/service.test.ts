@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 describe("files service", () => {
-  test("lists only /system and /workspace in deterministic order", async () => {
+  test("lists mounts in deterministic order", async () => {
     const runtime = createUploadRuntime();
     const master = await createMasterFileSystem({
       orgId: "org_123",
@@ -56,6 +56,7 @@ describe("files service", () => {
     ).toEqual([
       ["/system", "system", null],
       ["/workspace", "workspace", UPLOAD_PROVIDER_R2],
+      ["/tmp", "tmp", null],
     ]);
   });
 
@@ -71,7 +72,7 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace"]);
+    expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace", "/tmp"]);
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
