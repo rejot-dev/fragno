@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fetchUploadConfigMock } = vi.hoisted(() => ({
-  fetchUploadConfigMock: vi.fn(),
+const { createOrgFileSystemMock } = vi.hoisted(() => ({
+  createOrgFileSystemMock: vi.fn(),
 }));
 
-vi.mock("@/routes/backoffice/connections/upload/data", () => ({
-  fetchUploadConfig: fetchUploadConfigMock,
-}));
+vi.mock("@/files", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/files")>();
+  return {
+    ...actual,
+    createOrgFileSystem: createOrgFileSystemMock,
+  };
+});
 
 import {
+  createMasterFileSystem,
   registerFileContributor,
   resetFileContributorsForTest,
   type FileContributor,
@@ -17,24 +22,25 @@ import {
 
 import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
 
+const mockContext = { get: () => ({ env: {} }) } as never;
+
 beforeEach(() => {
   resetFileContributorsForTest();
-  fetchUploadConfigMock.mockReset();
-  fetchUploadConfigMock.mockResolvedValue({
-    configState: null,
-    configError: null,
-  });
+  createOrgFileSystemMock.mockReset();
+  createOrgFileSystemMock.mockImplementation(() =>
+    createMasterFileSystem({ orgId: "acme-org", uploadConfig: null }),
+  );
 });
 
 describe("files explorer route data", () => {
   test("falls back to the first mount when the requested path cannot be found", async () => {
     const result = await loadFilesExplorerData({
       request: new Request("https://docs.example.test/backoffice/files?path=/missing"),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
 
-    expect(result.tree.map((root) => root.path)).toEqual(["/system", "/workspace", "/events"]);
+    expect(result.tree.map((root) => root.path)).toEqual(["/system", "/workspace"]);
     expect(result.selectedPath).toBe("/system");
     expect(result.selectedDetail?.node.path).toBe("/system");
     expect(result.loadError).toBe("Path '/missing' could not be found.");
@@ -50,7 +56,7 @@ describe("files explorer route data", () => {
         method: "POST",
         body: formData,
       }),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
 
@@ -75,7 +81,7 @@ describe("files explorer route data", () => {
         method: "POST",
         body: formData,
       }),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
 
@@ -103,7 +109,7 @@ describe("files explorer route data", () => {
 
     const result = await loadFilesExplorerData({
       request: new Request("https://docs.example.test/backoffice/files?path=/project/hello/world/"),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
 
@@ -145,7 +151,7 @@ describe("files explorer route data", () => {
 
     const initial = await loadFilesExplorerData({
       request: new Request("https://docs.example.test/backoffice/files?path=/project"),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
     const initialProjectRoot = initial.tree.find((node) => node.path === "/project");
@@ -192,7 +198,7 @@ describe("files explorer route data", () => {
 
     const expanded = await loadFilesExplorerData({
       request: new Request("https://docs.example.test/backoffice/files?path=/project/hello/"),
-      context: {} as never,
+      context: mockContext,
       orgId: "acme-org",
     });
     const expandedProjectRoot = expanded.tree.find((node) => node.path === "/project");

@@ -7,9 +7,82 @@ import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/da
 
 import {
   createPiToolRegistry,
-  type PiSessionResendRuntime,
-  type PiSessionUploadRuntime,
+  type PiBashCommandContext,
+  type PiSessionFileSystemContext,
 } from "./pi";
+
+const createMockEnv = () =>
+  ({
+    UPLOAD: { idFromName: () => "stub", get: () => ({}) },
+    RESEND: { idFromName: () => "stub", get: () => ({}) },
+    AUTOMATIONS: { idFromName: () => "stub", get: () => ({}) },
+  }) as unknown as CloudflareEnv;
+
+const createMockBashContext = (): PiBashCommandContext => ({
+  automation: null,
+  automations: {
+    runtime: {
+      lookupBinding: async () => {
+        throw new Error("not available in test");
+      },
+      bindActor: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
+  otp: {
+    runtime: {
+      createClaim: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
+  pi: {
+    runtime: {
+      createSession: async () => {
+        throw new Error("not available in test");
+      },
+      getSession: async () => {
+        throw new Error("not available in test");
+      },
+      listSessions: async () => {
+        throw new Error("not available in test");
+      },
+      runTurn: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
+  resend: {
+    runtime: {
+      listThreads: async () => {
+        throw new Error("not available in test");
+      },
+      getThread: async () => {
+        throw new Error("not available in test");
+      },
+      listThreadMessages: async () => {
+        throw new Error("not available in test");
+      },
+      getThreadSnapshot: async () => {
+        throw new Error("not available in test");
+      },
+      replyToThread: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
+  telegram: {
+    runtime: {
+      getFile: async () => {
+        throw new Error("not available in test");
+      },
+      downloadFile: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
+});
 
 describe("Pi bash tool", () => {
   beforeEach(() => {
@@ -17,9 +90,11 @@ describe("Pi bash tool", () => {
   });
 
   test("defaults just-bash to the shared filesystem root so pwd and ls work without an explicit cwd", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime(),
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -52,15 +127,19 @@ describe("Pi bash tool", () => {
       exitCode: 0,
     });
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
+      "events",
+      "resend",
       "system",
       "workspace",
     ]);
   });
 
   test("respects an explicit cwd inside the shared Pi filesystem", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime(),
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -94,9 +173,11 @@ describe("Pi bash tool", () => {
   });
 
   test("exposes starter automation files inside the shared Pi filesystem", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime(),
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -125,10 +206,11 @@ describe("Pi bash tool", () => {
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime(),
-      resendRuntime: createResendRuntime(),
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext({ resend: true }),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -164,11 +246,13 @@ describe("Pi bash tool", () => {
   });
 
   test("uses the shared workspace overlay for reads and writes", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime({
-        "README.md": "custom workspace readme",
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext({
+        uploadSeed: { "README.md": "custom workspace readme" },
       }),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -212,14 +296,15 @@ describe("Pi bash tool", () => {
   });
 
   test("reports deleted upload-backed paths as missing for exact ls lookups", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime({
-        "output/result.txt": {
-          content: "stale",
-          status: "deleted",
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext({
+        uploadSeed: {
+          "output/result.txt": { content: "stale", status: "deleted" },
         },
       }),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -257,9 +342,11 @@ describe("Pi bash tool", () => {
   });
 
   test("surfaces read-only filesystem errors for touch", async () => {
-    const tools = createPiToolRegistry(new Map(), {
-      orgId: "acme-org",
-      uploadRuntime: createUploadRuntime(),
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
     });
 
     const bashFactory = tools["bash"];
@@ -286,25 +373,27 @@ describe("Pi bash tool", () => {
   });
 
   test("deduplicates concurrent session filesystem initialization", async () => {
-    const createMasterFileSystem = files.createMasterFileSystem;
+    const createOrgFileSystem = files.createOrgFileSystem;
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
 
-    const createMasterFileSystemSpy = vi
-      .spyOn(files, "createMasterFileSystem")
+    const createOrgFileSystemSpy = vi
+      .spyOn(files, "createOrgFileSystem")
       .mockImplementation(async (options) => {
         await gate;
-        return createMasterFileSystem(options);
+        return createOrgFileSystem(options);
       });
 
     try {
-      const tools = createPiToolRegistry(new Map(), {
-        orgId: "acme-org",
-        uploadRuntime: createUploadRuntime({
-          "README.md": "custom workspace readme",
+      const tools = createPiToolRegistry({
+        sessionFileSystems: new Map(),
+        sessionFileSystemContext: createContext({
+          uploadSeed: { "README.md": "custom workspace readme" },
         }),
+        env: createMockEnv(),
+        bashCommandContext: createMockBashContext(),
       });
 
       const bashFactory = tools["bash"];
@@ -324,7 +413,7 @@ describe("Pi bash tool", () => {
       const secondToolPromise = bashFactory(toolContext);
 
       await Promise.resolve();
-      expect(createMasterFileSystemSpy).toHaveBeenCalledTimes(1);
+      expect(createOrgFileSystemSpy).toHaveBeenCalledTimes(1);
 
       release();
 
@@ -347,9 +436,60 @@ describe("Pi bash tool", () => {
         exitCode: 0,
       });
     } finally {
-      createMasterFileSystemSpy.mockRestore();
+      createOrgFileSystemSpy.mockRestore();
     }
   });
+});
+
+type UploadSeed = Record<
+  string,
+  | string
+  | Uint8Array
+  | {
+      content: string | Uint8Array;
+      contentType?: string;
+      metadata?: Record<string, unknown> | null;
+      status?: UploadFileRecord["status"];
+    }
+>;
+
+const createContext = (
+  options: { uploadSeed?: UploadSeed; resend?: boolean } = {},
+): PiSessionFileSystemContext => {
+  const upload = createUploadStub(options.uploadSeed ?? {});
+  const resend = options.resend ? createResendStub() : createEmptyStub();
+  const automations = createEmptyStub();
+
+  return {
+    orgId: "acme-org",
+    env: {
+      UPLOAD: {
+        idFromName: () => "upload-id",
+        get: () => upload,
+      },
+      RESEND: {
+        idFromName: () => "resend-id",
+        get: () => resend,
+      },
+      AUTOMATIONS: {
+        idFromName: () => "automations-id",
+        get: () => automations,
+      },
+    } as unknown as PiSessionFileSystemContext["env"],
+  };
+};
+
+const createEmptyStub = () => ({
+  fetch: async () => new Response("Not Found", { status: 404 }),
+  getHookQueue: async () => ({
+    configured: false,
+    hooksEnabled: false,
+    namespace: null,
+    items: [],
+    cursor: undefined,
+    hasNextPage: false,
+  }),
+  getAdminConfig: async () => null,
 });
 
 const createUploadConfig = (): UploadAdminConfigResponse => ({
@@ -368,19 +508,7 @@ const createUploadConfig = (): UploadAdminConfigResponse => ({
   },
 });
 
-const createUploadRuntime = (
-  seed: Record<
-    string,
-    | string
-    | Uint8Array
-    | {
-        content: string | Uint8Array;
-        contentType?: string;
-        metadata?: Record<string, unknown> | null;
-        status?: UploadFileRecord["status"];
-      }
-  > = {},
-): PiSessionUploadRuntime => {
+const createUploadStub = (seed: UploadSeed) => {
   const now = new Date("2026-03-18T12:00:00.000Z").toISOString();
   const files = new Map<string, UploadFileRecord>();
   const contents = new Map<string, Uint8Array>();
@@ -422,9 +550,8 @@ const createUploadRuntime = (
   }
 
   return {
-    baseUrl: "https://pi.internal",
-    uploadConfig: Object.keys(seed).length > 0 ? createUploadConfig() : null,
-    async fetch(request) {
+    getAdminConfig: async () => (Object.keys(seed).length > 0 ? createUploadConfig() : null),
+    async fetch(request: Request) {
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
@@ -518,9 +645,8 @@ const createUploadRuntime = (
   };
 };
 
-const createResendRuntime = (): PiSessionResendRuntime => ({
-  baseUrl: "https://pi.internal",
-  async fetch(request) {
+const createResendStub = () => ({
+  async fetch(request: Request) {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/api/resend/threads") {

@@ -1,19 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getAuthMeMock, fetchUploadConfigMock } = vi.hoisted(() => ({
+const { getAuthMeMock, createOrgFileSystemMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
-  fetchUploadConfigMock: vi.fn(),
+  createOrgFileSystemMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({
   getAuthMe: getAuthMeMock,
 }));
 
-vi.mock("@/routes/backoffice/connections/upload/data", () => ({
-  fetchUploadConfig: fetchUploadConfigMock,
-}));
+vi.mock("@/files", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/files")>();
+  return {
+    ...actual,
+    createOrgFileSystem: createOrgFileSystemMock,
+  };
+});
 
 import {
+  createMasterFileSystem,
   registerFileContributor,
   resetFileContributorsForTest,
   type FileContributor,
@@ -27,11 +32,10 @@ describe("backoffice files download route", () => {
   beforeEach(() => {
     resetFileContributorsForTest();
     getAuthMeMock.mockReset();
-    fetchUploadConfigMock.mockReset();
-    fetchUploadConfigMock.mockResolvedValue({
-      configState: null,
-      configError: null,
-    });
+    createOrgFileSystemMock.mockReset();
+    createOrgFileSystemMock.mockImplementation(() =>
+      createMasterFileSystem({ orgId: "org_123", uploadConfig: null }),
+    );
   });
 
   afterEach(() => {
@@ -197,7 +201,7 @@ describe("backoffice files download route", () => {
 const createLoaderArgs = (url: string) =>
   ({
     request: new Request(url),
-    context: {} as never,
+    context: { get: () => ({ env: {} }) } as never,
     params: { orgId: "org_123" },
   }) as unknown as Parameters<typeof loader>[0];
 
