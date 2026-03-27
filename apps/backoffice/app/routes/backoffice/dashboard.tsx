@@ -1,14 +1,12 @@
 import { Link, redirect, useOutletContext } from "react-router";
 
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { automationHooksFileContributor, createMasterFileSystem } from "@/files";
+import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { createBashHost } from "@/fragno/bash-runtime/bash-host";
+import { createInteractiveBashHost } from "@/fragno/bash-runtime/bash-host";
 import { createPiBashCommandContext } from "@/fragno/pi/pi";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
-import { fetchUploadConfig } from "@/routes/backoffice/connections/upload/data";
 
 import type { Route } from "./+types/dashboard";
 import {
@@ -106,43 +104,13 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const { configState, configError } = await fetchUploadConfig(context, activeOrg.id);
-    if (configError) {
-      return {
-        intent: "run-command",
-        ok: false,
-        command,
-        cwd,
-        nextCwd: cwd,
-        output: `Unable to initialize filesystem: ${configError}`,
-        exitCode: 1,
-        durationMs: 0,
-      } satisfies DashboardCommandResult;
-    }
-
-    const fileSystem = await createMasterFileSystem({
-      orgId: activeOrg.id,
-      origin: new URL(request.url).origin,
-      backend: "pi",
-      uploadConfig: configState,
-      request,
-      routerContext: context,
-      durableHooksRuntimes: [
-        {
-          contributorId: automationHooksFileContributor.id,
-          getHookQueue: (opts) =>
-            getAutomationsDurableObject(context, activeOrg.id).getHookQueue({
-              ...opts,
-              fragment: "automation",
-            }),
-        },
-      ],
-    });
-
     const env = context.get(CloudflareContext).env;
+    const fileSystem = await createOrgFileSystem({ orgId: activeOrg.id, env });
     const piContext = createPiBashCommandContext({ env, orgId: activeOrg.id });
-    const { bash } = createBashHost({
+    const { bash } = createInteractiveBashHost({
       fs: fileSystem,
+      env,
+      orgId: activeOrg.id,
       context: piContext,
     });
 

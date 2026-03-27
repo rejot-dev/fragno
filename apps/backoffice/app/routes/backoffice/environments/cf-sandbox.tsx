@@ -1,10 +1,11 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
 import {
-  createMasterFileSystem,
+  createOrgFileSystem,
   prepareSandboxFileSystem,
   resolveUploadMountConfig,
   type ResolveUploadMount,
@@ -249,6 +250,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         throw new Error(`Sandbox "${instance.id}" started but handle was unavailable.`);
       }
 
+      const { env } = context.get(CloudflareContext);
       const uploadDo = getUploadDurableObject(context, organizationId);
       const uploadConfig = await uploadDo.getAdminConfig();
 
@@ -262,14 +264,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         });
       };
 
-      const fileSystem = await createMasterFileSystem({
-        orgId: organizationId,
-        origin: new URL(request.url).origin,
-        backend: "sandbox",
-        uploadConfig,
-        request,
-        routerContext: context,
-      });
+      const fileSystem = await createOrgFileSystem({ orgId: organizationId, env });
 
       await prepareSandboxFileSystem({
         orgId: organizationId,

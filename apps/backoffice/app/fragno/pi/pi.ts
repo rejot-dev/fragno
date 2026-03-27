@@ -17,14 +17,13 @@ import { createWorkflowsFragment, type WorkflowLiveStateStore } from "@fragno-de
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
 
-import { createMasterFileSystem, type FilesContext, type MasterFileSystem } from "@/files";
-import type { UploadAdminConfigResponse } from "@/fragno/upload";
+import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
 import {
   createRouteBackedAutomationsBashRuntime,
   type AutomationsBashRuntime,
 } from "../bash-runtime/automations-bash-runtime";
-import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "../bash-runtime/bash-host";
+import { createInteractiveBashHost } from "../bash-runtime/bash-host";
 import { createOtpBashRuntime, type OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 import { createPiRouteBashRuntime, type PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import {
@@ -71,16 +70,9 @@ export type PiBashCommandContext = {
   };
 };
 
-export type PiSessionUploadRuntime = NonNullable<FilesContext["uploadRuntime"]> & {
-  uploadConfig: UploadAdminConfigResponse | null;
-};
-
-export type PiSessionResendRuntime = NonNullable<FilesContext["resendRuntime"]>;
-
 export type PiSessionFileSystemContext = {
   orgId: string;
-  uploadRuntime: PiSessionUploadRuntime;
-  resendRuntime?: PiSessionResendRuntime;
+  env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
 };
 
 function createPiAdapter(state: DurableObjectState) {
@@ -93,7 +85,9 @@ function createPiAdapter(state: DurableObjectState) {
 const createBashTool = (
   fs: MasterFileSystem,
   sessionId: string,
-  bashCommandContext?: PiBashCommandContext,
+  context: PiBashCommandContext,
+  env: CloudflareEnv,
+  orgId: string,
 ): AgentTool => ({
   name: "bash",
   label: "Bash",
@@ -113,10 +107,12 @@ const createBashTool = (
       preview: scriptPreview,
     });
 
-    const { bash, commandCallsResult } = createBashHost({
+    const { bash, commandCallsResult } = createInteractiveBashHost({
       fs,
+      env,
+      orgId,
       sessionId,
-      context: bashCommandContext ?? EMPTY_BASH_HOST_CONTEXT,
+      context,
     });
     let result: Awaited<ReturnType<typeof bash.exec>>;
     try {
@@ -166,13 +162,9 @@ const getSessionFs = async (
     return existing;
   }
 
-  const pendingFileSystem = createMasterFileSystem({
+  const pendingFileSystem = createOrgFileSystem({
     orgId: context.orgId,
-    origin: context.uploadRuntime.baseUrl,
-    backend: "pi",
-    uploadConfig: context.uploadRuntime.uploadConfig,
-    uploadRuntime: context.uploadRuntime,
-    resendRuntime: context.resendRuntime,
+    env: context.env,
   });
 
   cache.set(sessionId, pendingFileSystem);
@@ -185,14 +177,26 @@ const getSessionFs = async (
   }
 };
 
-export const createPiToolRegistry = (
-  sessionFileSystems: Map<string, Promise<MasterFileSystem>>,
-  sessionFileSystemContext: PiSessionFileSystemContext,
-  bashCommandContext?: PiBashCommandContext,
-): PiToolRegistry => ({
+export const createPiToolRegistry = ({
+  sessionFileSystems,
+  sessionFileSystemContext,
+  env,
+  bashCommandContext,
+}: {
+  sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+  sessionFileSystemContext: PiSessionFileSystemContext;
+  env: CloudflareEnv;
+  bashCommandContext: PiBashCommandContext;
+}): PiToolRegistry => ({
   bash: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createBashTool(fileSystem, session.id, bashCommandContext);
+    return createBashTool(
+      fileSystem,
+      session.id,
+      bashCommandContext,
+      env,
+      sessionFileSystemContext.orgId,
+    );
   },
 });
 
@@ -303,11 +307,12 @@ export const createPiRuntime = (options: {
   bashCommandContext: PiBashCommandContext;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
-  const tools = createPiToolRegistry(
-    options.sessionFileSystems,
-    options.sessionFileSystemContext,
-    options.bashCommandContext,
-  );
+  const tools = createPiToolRegistry({
+    sessionFileSystems: options.sessionFileSystems,
+    sessionFileSystemContext: options.sessionFileSystemContext,
+    env: options.env,
+    bashCommandContext: options.bashCommandContext,
+  });
   const pi = buildPiRuntime(options.config, tools);
 
   const workflowsFragment = createWorkflowsFragment(
