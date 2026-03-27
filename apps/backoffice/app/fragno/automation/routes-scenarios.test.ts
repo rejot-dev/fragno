@@ -5,13 +5,13 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 import type { AutomationWorkflowsService } from "./definition";
 import {
   createAutomationFragment,
-  createDefaultAutomationFileSystem,
+  createMinimalFileSystem,
   type AutomationScenarioCatalogEntry,
   type AutomationSimulationResult,
 } from "./index";
 
 const createAutomation = (options?: {
-  automationFileSystem?: Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+  automationFileSystem?: Awaited<ReturnType<typeof createMinimalFileSystem>>;
 }) => {
   const services = {
     workflows: {
@@ -41,7 +41,7 @@ describe("automation routes /scenarios", () => {
 
   beforeEach(async () => {
     fragment = createAutomation({
-      automationFileSystem: await createDefaultAutomationFileSystem("org_123"),
+      automationFileSystem: await createMinimalFileSystem("org_123"),
     });
   });
 

@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import { STARTER_AUTOMATION_SIMULATOR_PATHS, STARTER_FILE_MOUNT_POINT } from "@/files";
 
-import { createDefaultAutomationFileSystem, runAutomationScenarioFile } from "./index";
+import { createMinimalFileSystem, runAutomationScenarioFile } from "./index";
 
 describe("starter automation scenario: telegram-pi-session.ensure.sh", () => {
   test("runs the starter Telegram Pi scenario file, bootstraps a session, and keeps later messages in the original Pi conversation", async () => {
-    const fileSystem = await createDefaultAutomationFileSystem("org-1");
+    const fileSystem = await createMinimalFileSystem("org-1");
 
     const result = await runAutomationScenarioFile({
       fileSystem,

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { STARTER_AUTOMATION_SIMULATOR_PATHS, STARTER_FILE_MOUNT_POINT } from "@/files";
 
 import {
-  createDefaultAutomationFileSystem,
+  createMinimalFileSystem,
   defineAutomationScenario,
   runAutomationScenarioFile,
   simulateAutomationScenario,
@@ -12,7 +12,7 @@ import { createTelegramMessageEvent } from "./scenario-test-utils";
 
 describe("starter automation scenario: telegram-claim-linking.start.sh", () => {
   test("runs the starter claim-linking scenario file against the real workspace automation files", async () => {
-    const fileSystem = await createDefaultAutomationFileSystem("org-1");
+    const fileSystem = await createMinimalFileSystem("org-1");
 
     const result = await runAutomationScenarioFile({
       fileSystem,
@@ -39,7 +39,7 @@ describe("starter automation scenario: telegram-claim-linking.start.sh", () => {
   });
 
   test("creates a claim-link reply on /start when the Telegram chat is not linked", async () => {
-    const fileSystem = await createDefaultAutomationFileSystem("org-1");
+    const fileSystem = await createMinimalFileSystem("org-1");
 
     const result = await simulateAutomationScenario({
       fileSystem,

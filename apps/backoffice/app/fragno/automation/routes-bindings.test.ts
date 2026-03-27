@@ -6,11 +6,11 @@ import type { AutomationWorkflowsService } from "./definition";
 import {
   bindAutomationIdentityActor,
   createAutomationFragment,
-  createDefaultAutomationFileSystem,
+  createMinimalFileSystem,
 } from "./index";
 
 const createAutomation = (options?: {
-  automationFileSystem?: Awaited<ReturnType<typeof createDefaultAutomationFileSystem>>;
+  automationFileSystem?: Awaited<ReturnType<typeof createMinimalFileSystem>>;
 }) => {
   const services = {
     workflows: {
@@ -63,7 +63,7 @@ describe("automation routes /bindings", () => {
 
   beforeEach(async () => {
     fragment = createAutomation({
-      automationFileSystem: await createDefaultAutomationFileSystem("org_123"),
+      automationFileSystem: await createMinimalFileSystem("org_123"),
     });
   });
 
