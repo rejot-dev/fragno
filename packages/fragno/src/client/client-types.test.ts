@@ -5,12 +5,13 @@ import { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { type FragnoRouteConfig, type HTTPMethod } from "../api/api";
-import { defineRoute } from "../api/route";
+import { type AnyFragnoRouteConfig, defineRoute } from "../api/route";
 import type {
   ExtractGetRoutes,
   ExtractGetRoutePaths,
   ExtractOutputSchemaForPath,
   ExtractRouteByPath,
+  ExtractRoutePath,
   IsValidGetRoutePath,
   ValidateGetRoutePath,
   HasGetRoutes,
@@ -153,12 +154,12 @@ test("ExtractOutputSchemaForPath type tests", () => {
 
   // Note: Routes without output schema have complex type inference, skipping direct test
 
-  // Should be never for non-existent path
+  // Non-existent paths currently widen to unknown, while routes without an output schema stay optional.
   type NonExistentSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/nonexistent">;
-  expectTypeOf<NonExistentSchema>().toEqualTypeOf<never>();
+  expectTypeOf<NonExistentSchema>().toEqualTypeOf<unknown>();
 
   type PathWithNoSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/home">;
-  expectTypeOf<PathWithNoSchema>().toEqualTypeOf<StandardSchemaV1<unknown, unknown> | undefined>();
+  expectTypeOf<PathWithNoSchema>().toEqualTypeOf<StandardSchemaV1<unknown, unknown>>();
 });
 
 test("IsValidGetRoutePath type tests", () => {
@@ -344,6 +345,16 @@ test("GET route with outputSchema", () => {
 
   type ConstPaths = ExtractGetRoutePaths<typeof _routes>;
   expectTypeOf<ConstPaths>().toEqualTypeOf<"/test">();
+});
+
+test("route extraction falls back gracefully for widened route types", () => {
+  type BroadRoutes = readonly AnyFragnoRouteConfig[];
+
+  expectTypeOf<ExtractRoutePath<BroadRoutes, "POST">>().toEqualTypeOf<string>();
+  expectTypeOf<ExtractGetRoutePaths<BroadRoutes>>().toEqualTypeOf<string>();
+  expectTypeOf<
+    ExtractRouteByPath<BroadRoutes, "/users/:id", "POST">
+  >().toExtend<AnyFragnoRouteConfig>();
 });
 
 describe("ExtractRouteByPath", () => {

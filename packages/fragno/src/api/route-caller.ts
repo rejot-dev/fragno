@@ -1,9 +1,12 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
+import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
+import type { InferOrUnknown } from "../util/types-util";
 import type { HTTPMethod } from "./api";
 import type { FragnoResponse } from "./fragno-response";
 import { parseFragnoResponse } from "./fragno-response";
 import { buildPath, type ExtractPathParams } from "./internal/path";
+import type { AnyFragnoRouteConfig } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 
 export type RouteCallerConfig = {
@@ -15,6 +18,45 @@ export type RouteCallerConfig = {
 };
 
 type ArrayBufferViewOfArrayBuffer = ArrayBufferView & { buffer: ArrayBuffer };
+
+type FragmentLike = {
+  routes?: readonly AnyFragnoRouteConfig[];
+  callRoute?: (...args: never[]) => Promise<unknown>;
+};
+
+type RouteCallerPath<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+> = [ExtractRoutePath<TRoutes, TMethod>] extends [never]
+  ? string
+  : ExtractRoutePath<TRoutes, TMethod>;
+
+type RouteCallerMatch<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+  TPath extends string,
+> = [ExtractRouteByPath<TRoutes, TPath, TMethod>] extends [never]
+  ? AnyFragnoRouteConfig
+  : ExtractRouteByPath<TRoutes, TPath, TMethod>;
+
+export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment extends {
+  routes: infer TRoutes extends readonly AnyFragnoRouteConfig[];
+}
+  ? <TMethod extends HTTPMethod, TPath extends RouteCallerPath<TRoutes, TMethod>>(
+      method: TMethod,
+      path: TPath,
+      inputOptions?: RouteHandlerInputOptions<
+        TPath,
+        RouteCallerMatch<TRoutes, TMethod, TPath>["inputSchema"]
+      >,
+    ) => Promise<
+      FragnoResponse<
+        InferOrUnknown<NonNullable<RouteCallerMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
+      >
+    >
+  : TFragment extends { callRoute: (...args: never[]) => Promise<unknown> }
+    ? TFragment["callRoute"]
+    : never;
 
 function isArrayBufferView(value: unknown): value is ArrayBufferViewOfArrayBuffer {
   return ArrayBuffer.isView(value) && value.buffer instanceof ArrayBuffer;
@@ -31,11 +73,9 @@ function buildMountedPath(mountRoute: string, pathname: string): string {
   return `${mountPart}${pathPart}`;
 }
 
-type FragmentLike = { callRoute: (...args: never[]) => Promise<unknown> };
-
 export function createRouteCaller<TFragment extends FragmentLike>(
   config: RouteCallerConfig,
-): TFragment["callRoute"] {
+): RouteCallerForFragment<TFragment> {
   const { baseUrl, fetch } = config;
   const mountRoute = config.mountRoute ?? "";
   const baseHeaders = config.baseHeaders ? new Headers(config.baseHeaders) : undefined;
@@ -123,5 +163,5 @@ export function createRouteCaller<TFragment extends FragmentLike>(
     return parseFragnoResponse(response);
   };
 
-  return callRoute as TFragment["callRoute"];
+  return callRoute as RouteCallerForFragment<TFragment>;
 }

@@ -34,6 +34,20 @@ import type { FragnoPublicConfig } from "./shared-types";
 // Re-export types needed by consumers
 export type { BoundServices };
 
+type CallRoutePath<TRoutes extends readonly AnyFragnoRouteConfig[], TMethod extends HTTPMethod> = [
+  ExtractRoutePath<TRoutes, TMethod>,
+] extends [never]
+  ? string
+  : ExtractRoutePath<TRoutes, TMethod>;
+
+type CallRouteMatch<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+  TPath extends string,
+> = [ExtractRouteByPath<TRoutes, TPath, TMethod>] extends [never]
+  ? AnyFragnoRouteConfig
+  : ExtractRouteByPath<TRoutes, TPath, TMethod>;
+
 const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
 const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
@@ -716,16 +730,16 @@ export class FragnoInstantiatedFragment<
    * Call a route directly with typed inputs and outputs.
    * Useful for testing and server-side route calls.
    */
-  async callRoute<TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+  async callRoute<TMethod extends HTTPMethod, TPath extends CallRoutePath<TRoutes, TMethod>>(
     method: TMethod,
     path: TPath,
     inputOptions?: RouteHandlerInputOptions<
       TPath,
-      ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
+      CallRouteMatch<TRoutes, TMethod, TPath>["inputSchema"]
     >,
   ): Promise<
     FragnoResponse<
-      InferOrUnknown<NonNullable<ExtractRouteByPath<TRoutes, TPath, TMethod>["outputSchema"]>>
+      InferOrUnknown<NonNullable<CallRouteMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
     >
   > {
     const response = await this.callRouteRaw(method, path, inputOptions);
@@ -736,12 +750,12 @@ export class FragnoInstantiatedFragment<
    * Call a route directly and get the raw Response object.
    * Useful for testing and server-side route calls.
    */
-  async callRouteRaw<TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+  async callRouteRaw<TMethod extends HTTPMethod, TPath extends CallRoutePath<TRoutes, TMethod>>(
     method: TMethod,
     path: TPath,
     inputOptions?: RouteHandlerInputOptions<
       TPath,
-      ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
+      CallRouteMatch<TRoutes, TMethod, TPath>["inputSchema"]
     >,
   ): Promise<Response> {
     // Find route in this.#routes
@@ -757,7 +771,8 @@ export class FragnoInstantiatedFragment<
       );
     }
 
-    const { pathParams = {}, body, query, headers } = inputOptions || {};
+    const { pathParams = {}, query, headers } = inputOptions || {};
+    const body = inputOptions && "body" in inputOptions ? inputOptions.body : undefined;
 
     // Convert query to URLSearchParams if needed
     const searchParams =
