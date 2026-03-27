@@ -10,7 +10,7 @@ import {
   STARTER_AUTOMATION_SCRIPT_PATHS,
   createMasterFileSystem,
   type FilesContext,
-  type IIFileSystem,
+  type IFileSystem,
 } from "@/files";
 import {
   UPLOAD_PROVIDER_R2,
@@ -209,6 +209,41 @@ const createUploadRuntime = (
         });
       }
 
+      if (request.method === "DELETE" && url.pathname === "/api/upload/files/by-key") {
+        const provider = url.searchParams.get("provider") ?? "";
+        const key = url.searchParams.get("key") ?? "";
+        const storageKey = composeStorageKey(provider, key);
+        files.delete(storageKey);
+        contents.delete(storageKey);
+        return Response.json({ ok: true });
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/upload/files") {
+        const form = await request.formData();
+        const provider = form.get("provider")?.toString() ?? UPLOAD_PROVIDER_R2;
+        const fileKey = form.get("fileKey")?.toString() ?? "";
+        const filename = form.get("filename")?.toString() ?? fileKey.split("/").at(-1) ?? fileKey;
+        const uploadedFile = form.get("file") as File | null;
+        const bytes = uploadedFile
+          ? new Uint8Array(await uploadedFile.arrayBuffer())
+          : new Uint8Array(0);
+        const contentType = uploadedFile?.type || guessContentType(fileKey);
+
+        setFile(fileKey, { provider, content: bytes, contentType });
+        const record = files.get(composeStorageKey(provider, fileKey));
+        return Response.json(record ?? { provider, fileKey, filename, status: "ready" });
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/upload/files/by-key") {
+        const provider = url.searchParams.get("provider") ?? "";
+        const key = url.searchParams.get("key") ?? "";
+        const file = files.get(composeStorageKey(provider, key));
+        if (!file) {
+          return Response.json({ message: "File not found." }, { status: 404 });
+        }
+        return Response.json(file);
+      }
+
       return new Response("Not Found", { status: 404 });
     },
   } satisfies NonNullable<FilesContext["uploadRuntime"]> & {
@@ -218,7 +253,7 @@ const createUploadRuntime = (
 
 const createAutomationFileSystem = async (
   overlay: Record<string, string> = {},
-): Promise<IIFileSystem> => {
+): Promise<IFileSystem> => {
   if (Object.keys(overlay).length === 0) {
     return createMasterFileSystem({
       orgId: "org_123",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  createDefaultAutomationFileSystem,
+  createMinimalFileSystem,
   defineAutomationScenario,
   simulateAutomationScenario,
 } from "./index";
@@ -9,7 +9,7 @@ import { createOtpClaimCompletedEvent } from "./scenario-test-utils";
 
 describe("starter automation scenario: telegram-claim-linking.complete.sh", () => {
   test("binds the Telegram actor and replies when OTP claim completion arrives", async () => {
-    const fileSystem = await createDefaultAutomationFileSystem("org-1");
+    const fileSystem = await createMinimalFileSystem("org-1");
 
     const result = await simulateAutomationScenario({
       fileSystem,
@@ -63,7 +63,7 @@ describe("starter automation scenario: telegram-claim-linking.complete.sh", () =
   });
 
   test("records a failure transcript and fallback reply when the subject user is missing", async () => {
-    const fileSystem = await createDefaultAutomationFileSystem("org-1");
+    const fileSystem = await createMinimalFileSystem("org-1");
 
     const result = await simulateAutomationScenario({
       fileSystem,
