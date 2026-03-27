@@ -55,7 +55,10 @@ function HeaderTitle() {
 export default function Layout({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation();
   const isDocsPage = pathname === "/docs" || pathname.startsWith("/docs/");
-  const showPageRoad = pathname === "/" || /^\/blog\/[^/]+\/?$/.test(pathname);
+  const showPageRoad =
+    pathname === "/" ||
+    pathname === "/fragments/resend/essay" ||
+    /^\/blog\/[^/]+\/?$/.test(pathname);
 
   return (
     <HomeLayoutWithFooter isDocsPage={isDocsPage} showPageRoad={showPageRoad}>
@@ -219,8 +222,8 @@ export function Footer({ isDocsPage }: { isDocsPage: boolean }) {
           <p>© 2026 ReJot </p>
           <div className="flex gap-2" aria-hidden>
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--editorial-primary)]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--editorial-tertiary)]" />
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--editorial-secondary)]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--editorial-tertiary)]" />
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ export default [
     route("fragments/workflows", "routes/workflows.tsx"),
     route("fragments/pi", "routes/pi.tsx"),
     route("fragments/resend", "routes/resend.tsx"),
+    route("fragments/resend/essay", "routes/fragments/resend/essay.tsx"),
     route("fragments/github", "routes/github.tsx"),
     route("fragments/upload", "routes/upload.tsx"),
     route("fragments/auth", "routes/auth.tsx"),

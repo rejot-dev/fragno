@@ -2,6 +2,7 @@ import { Activity, Database, Mail, Route as RouteIcon, Send } from "lucide-react
 import type { ReactNode } from "react";
 
 import {
+  FragmentActionLink,
   FragmentEyebrow,
   FragmentHero,
   FragmentMetric,
@@ -124,7 +125,13 @@ export default function ResendPage() {
           </div>
         }
       >
-        <div className="max-w-xl space-y-2 pt-2">
+        <div className="max-w-xl space-y-4 pt-2">
+          <p className="leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+            Want the full story behind threading and the canonical store?
+          </p>
+          <div className="mb-6 flex flex-wrap gap-3 pt-2">
+            <FragmentActionLink to="/fragments/resend/essay">Read essay</FragmentActionLink>
+          </div>
           <p className="text-[11px] font-bold tracking-[0.14em] text-[var(--editorial-muted)] uppercase">
             Install
           </p>

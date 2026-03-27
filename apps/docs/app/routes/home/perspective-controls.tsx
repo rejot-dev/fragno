@@ -120,14 +120,13 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
           <input type="hidden" name="intent" value="perspective" />
 
           <fieldset className="space-y-6 border-none p-0">
-            <legend className="mb-8 text-base font-bold tracking-[0.14em] text-[var(--editorial-ink)] uppercase">
+            <legend className="mb-8 text-base font-bold tracking-[0.14em] text-(--editorial-ink) uppercase">
               What are you here to learn about?
             </legend>
             {[
               {
                 value: "authors",
-                label:
-                  "Building full-stack libraries that give your users a better integration experience",
+                label: "Building full-stack libraries",
                 accent: "var(--editorial-primary)",
                 keycap: "a.",
               },

@@ -1,6 +1,3 @@
-import { X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
-import { createPortal } from "react-dom";
 import { Form, Link, useActionData, useNavigation } from "react-router";
 
 import { Turnstile } from "@marsidev/react-turnstile";
@@ -8,15 +5,17 @@ import { Turnstile } from "@marsidev/react-turnstile";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
+import { BackofficeScreenshotFigure } from "@/components/backoffice-screenshot-figure";
 import DatabaseSupport from "@/components/database-support";
+import { EssayHeader, TabbedCodeFigure } from "@/components/essay-components";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import Frameworks from "@/components/frameworks";
+import { Cake } from "@/components/logos/cakes";
 
 import type { Route } from "./+types/home";
 import { AccentText, PerspectiveFocus } from "./home/essay-primitives";
 import { PerspectiveControls } from "./home/perspective-controls";
 import { dataLayerTabs, mountSnippet, showcaseTabs } from "./home/snippets";
-import type { ShowcaseTab } from "./home/snippets";
 import { defaultPerspective } from "./home/types";
 import type {
   HomeActionData,
@@ -128,217 +127,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 }
 
-const TAB_COLOR_VAR: Record<ShowcaseTab["color"], string> = {
-  primary: "var(--editorial-primary)",
-  secondary: "var(--editorial-secondary)",
-  tertiary: "var(--editorial-tertiary)",
-};
-
-function TabbedCodeFigure({
-  tabs,
-  figcaption,
-  ariaLabel,
-}: {
-  tabs: ShowcaseTab[];
-  figcaption: string;
-  ariaLabel: string;
-}) {
-  const [activeTabId, setActiveTabId] = useState(tabs[0].id);
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
-  const accentVar = TAB_COLOR_VAR[activeTab.color];
-
-  return (
-    <figure className="mb-12 max-w-4xl space-y-6">
-      <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-[12px] dark:shadow-[0_24px_48px_rgb(2_6_23_/_0.28)]">
-        <div
-          className="flex flex-wrap gap-4 bg-[color-mix(in_srgb,var(--editorial-surface-low)_92%,transparent)] px-6 py-4 text-base font-bold tracking-[0.14em] uppercase md:px-10"
-          role="tablist"
-          aria-label={ariaLabel}
-        >
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setActiveTabId(tab.id)}
-                className={`transition-colors ${
-                  isActive
-                    ? `text-[${TAB_COLOR_VAR[tab.color]}] underline decoration-2 underline-offset-[0.65rem]`
-                    : "text-(--editorial-muted) hover:text-(--editorial-ink)"
-                }`}
-                style={isActive ? { color: TAB_COLOR_VAR[tab.color] } : undefined}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="space-y-6 p-6 md:p-10">
-          <div className="max-w-4xl space-y-4">
-            <div
-              className="text-base font-bold tracking-[0.14em] uppercase"
-              style={{ color: accentVar }}
-            >
-              {activeTab.headline}
-            </div>
-            <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-              {activeTab.description}
-            </p>
-          </div>
-
-          <div className="space-y-5">
-            {activeTab.snippets.map((snippet) => (
-              <div key={snippet.label} className="space-y-2">
-                <div
-                  className="text-xs font-bold tracking-[0.14em] uppercase"
-                  style={{ color: accentVar }}
-                >
-                  {snippet.label}
-                </div>
-                <FragnoCodeBlock
-                  lang={snippet.lang}
-                  code={snippet.code}
-                  syntaxTheme="editorial-triad"
-                  className="bg-[color-mix(in_srgb,var(--editorial-surface-low)_88%,var(--editorial-ink)_4%)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] dark:bg-[var(--editorial-surface-low)]!"
-                  allowCopy
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
-        {figcaption}
-      </figcaption>
-    </figure>
-  );
-}
-
-function BackofficeScreenshotFigure() {
-  const [fullscreenOpen, setFullscreenOpen] = useState(false);
-  const titleId = useId();
-
-  useEffect(() => {
-    if (!fullscreenOpen) {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setFullscreenOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [fullscreenOpen]);
-
-  const overlay =
-    fullscreenOpen && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            className="fixed inset-0 z-200 flex items-center justify-center p-3 sm:p-6"
-          >
-            <button
-              type="button"
-              className="absolute inset-0 bg-[rgb(15_23_42/0.88)] backdrop-blur-[2px] dark:bg-[rgb(2_6_23/0.94)]"
-              onClick={() => setFullscreenOpen(false)}
-              aria-label="Close fullscreen view"
-            />
-            <div className="relative z-10 flex max-h-[min(92dvh,92vh)] w-full max-w-6xl flex-col">
-              <div className="sr-only" id={titleId}>
-                Backoffice screenshot
-              </div>
-              <button
-                type="button"
-                onClick={() => setFullscreenOpen(false)}
-                className="absolute top-2 right-2 z-20 inline-flex size-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--editorial-surface)_92%,transparent)] text-(--editorial-ink) shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-surface)_88%,var(--editorial-ink)_6%)]"
-                aria-label="Close"
-              >
-                <X className="size-5" strokeWidth={2} aria-hidden />
-              </button>
-              <div className="overflow-auto rounded-lg shadow-[0_24px_80px_rgb(0_0_0/0.45)]">
-                <img
-                  src="/backoffice-resend-light.jpg"
-                  alt=""
-                  className="block max-h-[min(88dvh,88vh)] w-full object-contain object-top dark:hidden"
-                />
-                <img
-                  src="/backoffice-resend-dark.jpg"
-                  alt=""
-                  className="hidden max-h-[min(88dvh,88vh)] w-full object-contain object-top dark:block"
-                />
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
-
-  return (
-    <>
-      <figure className="space-y-6">
-        <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-md dark:shadow-[0_24px_48px_rgb(2_6_23/0.28)]">
-          <button
-            type="button"
-            onClick={() => setFullscreenOpen(true)}
-            className="group relative block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left"
-            aria-label="View backoffice screenshot fullscreen"
-          >
-            <img
-              src="/backoffice-resend-light.jpg"
-              alt="Backoffice UI using Fragno fragments (light)"
-              className="block w-full dark:hidden"
-            />
-            <img
-              src="/backoffice-resend-dark.jpg"
-              alt="Backoffice UI using Fragno fragments (dark)"
-              className="hidden w-full dark:block"
-            />
-            <span
-              className="pointer-events-none absolute inset-0 bg-[rgb(15_23_42/0)] transition-colors group-hover:bg-[rgb(15_23_42/0.06)] group-focus-visible:bg-[rgb(15_23_42/0.08)] group-focus-visible:ring-2 group-focus-visible:ring-(--editorial-primary) group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] dark:group-hover:bg-[rgb(2_6_23/0.2)] dark:group-focus-visible:ring-offset-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)]"
-              aria-hidden
-            />
-          </button>
-        </div>
-        <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
-          Fig. First-party fragments (pictured: Resend) in our own Claw backoffice.
-        </figcaption>
-      </figure>
-      {overlay}
-    </>
-  );
-}
-
-function EssayHeader() {
-  return (
-    <header className="mb-18 max-w-4xl">
-      <div className="mb-6 text-base font-bold tracking-[0.14em] text-[var(--editorial-primary)] uppercase">
-        Volume 01 // Vertical Encapsulation
-      </div>
-      <h1 className="text-5xl leading-[0.96] font-bold tracking-[-0.045em] md:text-7xl">
-        Fragno: full-stack encapsulation
-      </h1>
-      <div className="mt-8 flex items-center gap-4 text-base tracking-[0.15em] text-[var(--editorial-muted)] uppercase">
-        <span className="text-[var(--editorial-ink)]">Wilco Kruijer</span>
-        <span className="h-px w-6 bg-[var(--editorial-ghost-border)]" aria-hidden />
-        <span>ReJot Founder</span>
-      </div>
-    </header>
-  );
-}
-
 export default function HomePage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   const actionData = useActionData<HomeActionData | undefined>();
@@ -349,30 +137,39 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
   return (
     <main className="relative mx-auto w-full max-w-7xl px-4 pt-12 pb-20 sm:px-6 md:pt-18 md:pb-28 lg:px-8">
       <article className="relative mx-auto w-full max-w-4xl">
-        <EssayHeader />
+        <div className="grid items-start gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,224px)]">
+          <div>
+            <EssayHeader
+              volumeLine="Volume 01 // Vertical Encapsulation"
+              title="Fragno: full-stack encapsulation"
+              author="Wilco Kruijer"
+              authorMeta="ReJot Founder"
+            />
+          </div>
+          <aside className="pt-2 md:pt-10">
+            <Cake variant="cake-full" className="mx-auto h-auto max-w-56" />
+          </aside>
+        </div>
         <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-          Some say that abstractions are no longer needed. I say that abstraction compresses moving
-          parts into precise concepts so we can reason about them. AI can generate code faster, but
-          without strong abstractions this <AccentText>leads to ensloppification</AccentText>.
+          <AccentText>Ensloppification</AccentText> is what happens when you let AI generate code
+          without strong abstractions. By designing vertical slices of functionality, agents can
+          work on many modules concurrently.
         </p>
         <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-          One of the strongest forms of abstraction is{" "}
-          <AccentText color="secondary">encapsulation</AccentText>. This is the reason why we have
-          libraries.
+          Libraries are the best form of abstraction we have because they provide{" "}
+          <AccentText color="secondary">encapsulation</AccentText>. But libraries are limited.
+          They're only one layer of the slice: frontend or backend. Not to mention the data layer.{" "}
+          <em>Fragno</em> is changing that by providing the primitives to build{" "}
+          <AccentText color="tertiary">full-stack libraries</AccentText>.
         </p>
         <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-          But libraries are limited. They integrate on only one side of the boundary, frontend or
-          backend. Not to even mention the data layer.{" "}
-          <AccentText color="tertiary">Fragno is changing that.</AccentText>
-        </p>
-        <p className="mb-6 max-w-4xl text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-          But before we explain that, please tell me what you'd like to know about:
+          But before I explain that, tell me what you'd like to learn:
         </p>
         <PerspectiveControls>
           <section className="mb-20 max-w-4xl space-y-8">
             <PerspectiveFocus audience="both" minimumTime="low">
-              <h3 className="mb-8 text-base font-bold tracking-[0.14em] text-[var(--editorial-ink)] uppercase">
-                What is full-stack library made of?
+              <h3 className="mb-8 text-base font-bold tracking-[0.14em] text-(--editorial-ink) uppercase">
+                What is a full-stack library made of?
               </h3>
               <div className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
                 <ul className="my-6 ml-5 list-disc">
@@ -443,11 +240,12 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
 
             <PerspectiveFocus audience="both" minimumTime="medium">
               <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-                Take as an <strong>example</strong> Vercel's{" "}
+                Take Vercel's{" "}
                 <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">aisdk</code>
-                . A clear example of a library that has to span both the frontend and the backend.
-                The user interaction on the frontend is the heart of the experience, while the
-                backend holds API keys and handles function calling. Contrast that to the
+                , a clear <strong>example</strong> of a library that has to span both the frontend
+                and the backend. The user interaction on the frontend is the heart of the
+                experience, while the backend holds API keys and handles function calling. Contrast
+                that to the
                 <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">
                   openai
                 </code>{" "}
@@ -458,7 +256,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                 But even the{" "}
                 <code className="rounded-sm bg-(--editorial-surface-low) p-1 font-mono">aisdk</code>{" "}
                 library is limited. It provides backend and frontend, but does not include the data
-                layer. As such, they don't provide a way to store conversations, or have persistent
+                layer. As such, it doesn't provide a way to store conversations, or have persistent
                 LLM memory.
               </p>
             </PerspectiveFocus>
@@ -644,8 +442,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
             <PerspectiveFocus audience="users" minimumTime="medium">
               <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
                 Users decide how they want to integrate. They can use Fragno directly to migrate
-                their database, or alternatively the Fragno CLI can be used to generate a database
-                schema in the user's preferred ORM.
+                their database, or use the Fragno CLI to generate a schema in their preferred ORM.
               </p>
             </PerspectiveFocus>
           </PerspectiveFocus>
@@ -755,7 +552,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                   delicate thing
                 </AccentText>
                 . Fragno's data layer is very opinionated. This makes it slightly more complicated
-                for authors, but this gives users the safety they need.
+                for authors but gives users the safety they need.
               </p>
               <p className="mb-6 leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
                 Things that are{" "}
@@ -832,9 +629,8 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                   >
                     <span className="ml-2 text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
                       - Side effects are persisted in-transaction and dispatched after commit with
-                      retries and scheduled execution support. This makes interacting with
-                      third-party services reliable as well as ingesting webhooks from external
-                      systems.
+                      retries and scheduled execution support. This makes interactions with
+                      third-party services and webhook ingestion from external systems reliable.
                     </span>
                   </PerspectiveFocus>
                 </li>
@@ -857,7 +653,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                 </li>
                 <li>
                   <AccentText color="primary" mark>
-                    Testing with real database
+                    Testing with a real database
                   </AccentText>
                   <PerspectiveFocus
                     audience="authors"
@@ -917,8 +713,8 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                 Now, developers of platforms such as Stripe, Telegram, and Resend can build
                 opinionated, tasteful {""}
                 <AccentText color="primary">integration libraries</AccentText> that are not just
-                wrappers around the API, but own the entire integration surface. The developers that
-                know the platform best can ship libraries that{" "}
+                wrappers around the API. The developers that know the platform best can ship
+                libraries that{" "}
                 <AccentText color="secondary">own the entire integration surface</AccentText>:
                 webhook ingestion, state persistence, and surfacing information to the end user.
               </p>
@@ -950,7 +746,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                   </h3>
                   <p className="text-sm leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
                     Integrate existing fragments into your app. The skill includes a list of
-                    first-party fragments, to make installing them easy.
+                    first-party fragments to make installing them easy.
                   </p>
                   <div className="mt-auto pt-2">
                     <FragnoCodeBlock
@@ -1008,7 +804,13 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
               </div>
             </PerspectiveFocus>
             <PerspectiveFocus audience="both" minimumTime="low">
-              <BackofficeScreenshotFigure />
+              <BackofficeScreenshotFigure
+                screenshotUrl={{
+                  light: "/backoffice-resend-light.jpg",
+                  dark: "/backoffice-resend-dark.jpg",
+                }}
+                caption="Fig. First-party fragments (pictured: Resend) in our own Claw backoffice."
+              />
             </PerspectiveFocus>
           </section>
 
@@ -1039,6 +841,22 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                   >
                     User quick start
                   </Link>
+                  <Link
+                    to="/fragments/resend/essay"
+                    className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium tracking-[0.08em] text-(--editorial-tertiary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-tertiary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-tertiary)_10%,transparent)]"
+                  >
+                    Resend essay
+                  </Link>
+                </div>
+                <div className="mt-3 tracking-[0.08em] text-[color-mix(in_srgb,var(--editorial-ink)_58%,white)]">
+                  Or see Fragno in practice:{" "}
+                  <Link
+                    to="/fragments/resend/essay"
+                    className="text-(--editorial-primary) underline underline-offset-2"
+                  >
+                    the Resend full-stack library essay
+                  </Link>
+                  .
                 </div>
               </PerspectiveFocus>
             </div>
@@ -1047,9 +865,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
               <PerspectiveFocus audience="both" minimumTime="medium">
                 <div className="space-y-4">
                   <div className="text-base font-bold tracking-[0.14em] uppercase">Connect</div>
-                  <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
-                    Occasional email for new essays and releases. Source and chat live below.
-                  </p>
+
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <a
                       href="https://github.com/rejot-dev/fragno"
@@ -1080,6 +896,9 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
               </PerspectiveFocus>
 
               <Form method="post" className="space-y-4">
+                <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
+                  Occasional email for new essays and releases. Source and chat live below.
+                </p>
                 <input type="hidden" name="intent" value="newsletter" />
                 <label className="sr-only" htmlFor="email">
                   Email address

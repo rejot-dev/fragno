@@ -169,14 +169,8 @@ export default function StripePage() {
 
       <FragmentHero
         eyebrow={<FragmentEyebrow>Stripe</FragmentEyebrow>}
-        title={<>Billing is a product system, not just a checkout call.</>}
-        description={
-          <>
-            Stripe integrations usually sprawl across webhooks, checkout flows, customer mapping,
-            subscription state, and frontend actions. The Stripe fragment keeps that boundary whole,
-            so billing enters your app as one mountable surface instead of a trail of glue code.
-          </>
-        }
+        title={<>A full-stack library for Stripe subscriptions.</>}
+        description={<>Solving split brain integrations with a full-stack library.</>}
         aside={
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             <FragmentMetric

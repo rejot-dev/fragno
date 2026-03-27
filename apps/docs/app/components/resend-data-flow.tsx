@@ -1,10 +1,8 @@
 "use client";
 
-import { User } from "lucide-react";
+import { Mail, User } from "lucide-react";
 
-import { Stripe } from "./logos/stripe";
-
-export function StripeDataFlow({
+export function ResendDataFlow({
   mode = "with-fragment",
 }: {
   mode?: "with-fragment" | "without-fragment";
@@ -157,7 +155,7 @@ export function StripeDataFlow({
           <g transform="translate(-19.550766,16.370258)">
             {mode === "without-fragment" ? (
               <rect
-                className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+                className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
                 strokeWidth="0.5"
                 strokeLinejoin="round"
                 width="37.337727"
@@ -170,13 +168,13 @@ export function StripeDataFlow({
             ) : (
               <>
                 <path
-                  className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+                  className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
                   strokeWidth="0.5"
                   strokeLinejoin="round"
                   d="M 114.23689 32.666973 v -7.055126 a 1 1 0 0 1 1 -1 h 35.337727 a 1 1 0 0 1 1 1 v 7.055126 z"
                 />
                 <path
-                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  className="fill-[color-mix(in_srgb,var(--editorial-secondary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-secondary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-secondary)_14%,transparent)]"
                   strokeWidth="0.5"
                   strokeLinejoin="round"
                   d="M 114.23689 32.666973 h 37.337727 v 15.236961 a 1 1 0 0 1 -1 1 h -35.337727 a 1 1 0 0 1 -1 -1 z"
@@ -197,27 +195,27 @@ export function StripeDataFlow({
               <>
                 <text
                   xmlSpace="preserve"
-                  className="fill-fd-foreground dark:fill-blue-300"
+                  className="fill-fd-foreground"
                   style={{ fontSize: "2.82223px" }}
                   textAnchor="middle"
                   x="132.51332"
                   y="37.060215"
                 >
-                  Stripe Fragment Server
+                  Resend Routes
                 </text>
                 <text
                   xmlSpace="preserve"
-                  className="fill-fd-foreground font-mono dark:fill-blue-300"
+                  className="fill-fd-foreground font-mono"
                   style={{ fontSize: "2.5px" }}
                   textAnchor="middle"
                   x="132.83841"
                   y="42.156647"
                 >
                   <tspan x="132.83841" y="42.156647">
-                    /api/stripe/upgrade
+                    /resend/webhook
                   </tspan>
                   <tspan x="132.83841" y="45.684433">
-                    /api/stripe/webhook
+                    /email/received
                   </tspan>
                 </text>
               </>
@@ -237,7 +235,7 @@ export function StripeDataFlow({
           <g transform="translate(-80.261039,16.089625)">
             {mode === "without-fragment" ? (
               <rect
-                className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+                className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
                 strokeWidth="0.5"
                 strokeLinejoin="round"
                 width="37.337727"
@@ -250,13 +248,13 @@ export function StripeDataFlow({
             ) : (
               <>
                 <path
-                  className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+                  className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
                   strokeWidth="0.5"
                   strokeLinejoin="round"
                   d="M 114.23689 32.666973 v -7.055126 a 1 1 0 0 1 1 -1 h 35.337727 a 1 1 0 0 1 1 1 v 7.055126 z"
                 />
                 <path
-                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  className="fill-[color-mix(in_srgb,var(--editorial-secondary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-secondary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-secondary)_14%,transparent)]"
                   strokeWidth="0.5"
                   strokeLinejoin="round"
                   d="M 114.23689 32.666973 h 37.337727 v 15.236961 a 1 1 0 0 1 -1 1 h -35.337727 a 1 1 0 0 1 -1 -1 z"
@@ -277,37 +275,34 @@ export function StripeDataFlow({
               <>
                 <text
                   xmlSpace="preserve"
-                  className="fill-fd-foreground dark:fill-blue-300"
+                  className="fill-fd-foreground"
                   style={{ fontSize: "2.82223px" }}
                   textAnchor="middle"
                   x="132.51332"
                   y="37.060215"
                 >
-                  Stripe Fragment Client
+                  Client-side hooks
                 </text>
                 <text
                   xmlSpace="preserve"
-                  className="fill-fd-foreground font-mono dark:fill-blue-300"
+                  className="fill-fd-foreground font-mono"
                   style={{ fontSize: "2.5px" }}
                   textAnchor="middle"
                   x="132.83841"
                   y="42.156647"
                 >
                   <tspan x="132.83841" y="42.156647">
-                    upgradeSubscription()
-                  </tspan>
-                  <tspan x="132.83841" y="45.684433">
-                    cancelSubscription()
+                    useReceivedEmails()
                   </tspan>
                 </text>
               </>
             )}
           </g>
 
-          {/* Stripe API section */}
+          {/* Resend API section */}
           <g transform="translate(-40.852669,62.90349)">
             <rect
-              className="fill-purple-200 stroke-purple-400 dark:fill-purple-900/30"
+              className="fill-[color-mix(in_srgb,var(--editorial-tertiary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-tertiary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-tertiary)_14%,transparent)]"
               strokeWidth="0.5"
               strokeLinejoin="round"
               width="37.337723"
@@ -319,7 +314,7 @@ export function StripeDataFlow({
             />
             <foreignObject x="141" y="27.5" width="6" height="6">
               <div className="flex h-full w-full items-center justify-center">
-                <Stripe className="h-full w-full" />
+                <Mail className="text-fd-foreground h-full w-full" />
               </div>
             </foreignObject>
             <text
@@ -330,7 +325,7 @@ export function StripeDataFlow({
               x="158.5"
               y="31.447556"
             >
-              Stripe API
+              Resend API
             </text>
           </g>
 
@@ -338,7 +333,7 @@ export function StripeDataFlow({
           <g transform="matrix(0.78462349,0,0,0.78462349,32.48633,20.827496)">
             {mode === "with-fragment" && (
               <path
-                className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                className="fill-[color-mix(in_srgb,var(--editorial-secondary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-secondary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-secondary)_14%,transparent)]"
                 strokeWidth="0.6"
                 d="M 162.5245 34.962791 V 53.020162 A 15.522478 3.8694367 0 0 0 178.047 56.8895987 A 15.522478 3.8694367 0 0 0 193.56945 53.020162 V 34.962791 A 15.522478 3.8694367 0 0 1 178.047 38.8322277 A 15.522478 3.8694367 0 0 1 162.5245 34.962791 Z"
               />
@@ -353,12 +348,26 @@ export function StripeDataFlow({
               style={{ fontSize: "3px" }}
               textAnchor="middle"
               x="178.29018"
-              y="52.833584"
+              y="48.3"
             >
-              subscriptions
+              webhookEvents
+            </text>
+            <text
+              xmlSpace="preserve"
+              className={
+                mode === "with-fragment"
+                  ? "fill-fd-foreground font-mono dark:fill-blue-300"
+                  : "fill-fd-foreground font-mono"
+              }
+              style={{ fontSize: "3px" }}
+              textAnchor="middle"
+              x="178.29018"
+              y="52.3"
+            >
+              emailMessage
             </text>
             <path
-              className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+              className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
               strokeWidth="0.6"
               d={
                 mode === "with-fragment"
@@ -367,7 +376,7 @@ export function StripeDataFlow({
               }
             />
             <ellipse
-              className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+              className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
               strokeWidth="0.6"
               cx="178.047"
               cy="25.934101"
@@ -454,9 +463,9 @@ export function StripeDataFlow({
 
           {/* Legend */}
           <g transform="translate(27,80)">
-            {/* Green - Developer */}
+            {/* Primary - App */}
             <rect
-              className="fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+              className="fill-[color-mix(in_srgb,var(--editorial-primary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-primary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-primary)_14%,transparent)]"
               strokeWidth="0.5"
               width="4"
               height="3"
@@ -472,14 +481,14 @@ export function StripeDataFlow({
               x="5"
               y="2.2"
             >
-              Developer
+              Layer
             </text>
 
-            {/* Blue - Stripe Fragment */}
+            {/* Secondary - Resend fragment */}
             {mode === "with-fragment" && (
               <>
                 <rect
-                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  className="fill-[color-mix(in_srgb,var(--editorial-secondary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-secondary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-secondary)_14%,transparent)]"
                   strokeWidth="0.5"
                   width="4"
                   height="3"
@@ -495,14 +504,14 @@ export function StripeDataFlow({
                   x="5"
                   y="6.2"
                 >
-                  Stripe Fragment
+                  Resend integration
                 </text>
               </>
             )}
 
-            {/* Purple - Stripe */}
+            {/* Tertiary - Resend */}
             <rect
-              className="fill-purple-200 stroke-purple-400 dark:fill-purple-900/30"
+              className="fill-[color-mix(in_srgb,var(--editorial-tertiary)_18%,transparent)] stroke-[color-mix(in_srgb,var(--editorial-tertiary)_60%,transparent)] dark:fill-[color-mix(in_srgb,var(--editorial-tertiary)_14%,transparent)]"
               strokeWidth="0.5"
               width="4"
               height="3"
@@ -518,7 +527,7 @@ export function StripeDataFlow({
               x="5"
               y="10.2"
             >
-              Stripe
+              Resend
             </text>
           </g>
         </g>

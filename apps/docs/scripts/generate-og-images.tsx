@@ -11,6 +11,7 @@ import { Resvg } from "@resvg/resvg-js";
 
 const BLOG_DIR = join(import.meta.dirname, "../content/blog");
 const OUTPUT_DIR = join(import.meta.dirname, "../public/og");
+const PUBLIC_DIR = join(import.meta.dirname, "../public");
 
 /**
  * OG image aspect ratios:
@@ -33,32 +34,79 @@ interface BlogPost {
 }
 
 // ---------------------------------------------------------------------------
-// Fonts — Outfit: geometric, modern, distinctive
+// Page OG registry — arbitrary pages with custom titles and labels
+// ---------------------------------------------------------------------------
+
+interface PageOgEntry {
+  /** Output filename (without extension/ratio suffix), placed in public/og/ */
+  filename: string;
+  /** Large title rendered on the OG image */
+  title: string;
+  /** Small monospace label in the top-right, e.g. "Fragment // Resend" */
+  label: string;
+  /** Optional subtitle below the title */
+  subtitle?: string;
+}
+
+const PAGE_REGISTRY: PageOgEntry[] = [
+  {
+    filename: "resend-essay",
+    title: "Receiving Resend inbound email without webhooks",
+    label: "Full-stack library // Resend",
+    subtitle: "Inbound email as a full-stack library",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Editorial design tokens (dark mode)
+// ---------------------------------------------------------------------------
+
+const ED = {
+  paper: "#111827",
+  surface: "#162033",
+  surfaceLow: "#1c2942",
+  ink: "#e5eefb",
+  muted: "#9fb0c8",
+  primary: "#f66364",
+  secondary: "#5ba4f9",
+  tertiary: "#fcc433",
+  ghostBorder: "rgba(226, 232, 240, 0.12)",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Fonts — Space Grotesk (static woff, matches site) + JetBrains Mono (monospace labels)
+// Satori doesn't support variable fonts, so we fetch static instances from CDN.
 // ---------------------------------------------------------------------------
 
 async function loadFonts() {
-  const [regular, bold] = await Promise.all([
-    fetch("https://cdn.jsdelivr.net/fontsource/fonts/outfit@latest/latin-400-normal.woff").then(
-      (res) => {
-        if (!res.ok) {
-          throw new Error(`Failed to fetch Outfit 400: ${res.status}`);
-        }
-        return res.arrayBuffer();
-      },
+  const [sgRegular, sgBold, monoRegular, monoBold] = await Promise.all([
+    fetchFont(
+      "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-400-normal.woff",
     ),
-    fetch("https://cdn.jsdelivr.net/fontsource/fonts/outfit@latest/latin-700-normal.woff").then(
-      (res) => {
-        if (!res.ok) {
-          throw new Error(`Failed to fetch Outfit 700: ${res.status}`);
-        }
-        return res.arrayBuffer();
-      },
+    fetchFont(
+      "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-700-normal.woff",
+    ),
+    fetchFont(
+      "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-400-normal.woff",
+    ),
+    fetchFont(
+      "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-600-normal.woff",
     ),
   ]);
   return [
-    { name: "Outfit", data: regular, weight: 400 as const, style: "normal" as const },
-    { name: "Outfit", data: bold, weight: 700 as const, style: "normal" as const },
+    { name: "Space Grotesk", data: sgRegular, weight: 400 as const, style: "normal" as const },
+    { name: "Space Grotesk", data: sgBold, weight: 700 as const, style: "normal" as const },
+    { name: "JetBrains Mono", data: monoRegular, weight: 400 as const, style: "normal" as const },
+    { name: "JetBrains Mono", data: monoBold, weight: 600 as const, style: "normal" as const },
   ];
+}
+
+async function fetchFont(url: string): Promise<ArrayBuffer> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch font ${url}: ${res.status}`);
+  }
+  return res.arrayBuffer();
 }
 
 // ---------------------------------------------------------------------------
@@ -94,28 +142,117 @@ function outPath(slug: string, ratio: AspectRatioKey): string {
 }
 
 // ---------------------------------------------------------------------------
-// Adaptive title sizing — bigger now that description is removed
+// Adaptive title sizing
 // ---------------------------------------------------------------------------
 
 function titleFontSize(title: string): number {
   const len = title.length;
   if (len < 25) {
-    return 64;
+    return 62;
   }
   if (len < 45) {
-    return 58;
+    return 56;
   }
   if (len < 65) {
-    return 52;
+    return 50;
   }
   if (len < 85) {
-    return 46;
+    return 44;
   }
-  return 40;
+  return 38;
 }
 
 // ---------------------------------------------------------------------------
-// Template
+// Shared primitives
+// ---------------------------------------------------------------------------
+
+function PageRoad({ height }: { height: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        position: "absolute",
+        left: "0",
+        top: "0",
+        bottom: "0",
+        width: "3px",
+        height,
+        backgroundImage: `linear-gradient(to bottom, ${ED.primary} 15%, ${ED.tertiary} 45%, ${ED.secondary} 75%, ${ED.primary} 100%)`,
+      }}
+    />
+  );
+}
+
+function LogoMark() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        fontFamily: "JetBrains Mono",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          width: "8px",
+          height: "8px",
+          borderRadius: "50%",
+          backgroundColor: ED.primary,
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          fontSize: 15,
+          fontWeight: 600,
+          color: ED.ink,
+          letterSpacing: "0.04em",
+        }}
+      >
+        Fragno
+      </div>
+    </div>
+  );
+}
+
+function AccentDots() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      <div
+        style={{
+          display: "flex",
+          width: "7px",
+          height: "7px",
+          borderRadius: "50%",
+          backgroundColor: ED.primary,
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          width: "7px",
+          height: "7px",
+          borderRadius: "50%",
+          backgroundColor: ED.tertiary,
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          width: "7px",
+          height: "7px",
+          borderRadius: "50%",
+          backgroundColor: ED.secondary,
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blog post template
 // ---------------------------------------------------------------------------
 
 function createOgImage(post: BlogPost): ReactNode {
@@ -128,29 +265,20 @@ function createOgImage(post: BlogPost): ReactNode {
         flexDirection: "column",
         width: "100%",
         height: "100%",
-        backgroundColor: "#070b14",
-        fontFamily: "Outfit",
+        backgroundColor: ED.paper,
+        fontFamily: "Space Grotesk",
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {/* Top accent bar */}
-      <div
-        style={{
-          display: "flex",
-          width: "100%",
-          height: "5px",
-          backgroundColor: "#30c2e0",
-        }}
-      />
+      <PageRoad height="100%" />
 
-      {/* Content — three rows: header, title (centered), footer */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           flex: 1,
-          padding: "40px 72px 0",
+          padding: "44px 72px 0 32px",
           justifyContent: "space-between",
         }}
       >
@@ -162,105 +290,316 @@ function createOgImage(post: BlogPost): ReactNode {
             alignItems: "center",
           }}
         >
+          <LogoMark />
           <div
             style={{
               display: "flex",
-              fontSize: 18,
-              fontWeight: 700,
-              color: "#8898b0",
-              letterSpacing: "0.08em",
+              fontFamily: "JetBrains Mono",
+              fontSize: 13,
+              fontWeight: 600,
+              color: ED.muted,
+              letterSpacing: "0.14em",
               textTransform: "uppercase" as const,
             }}
           >
-            Fragno: full-stack library toolkit
-          </div>
-          <div
-            style={{
-              display: "flex",
-              fontSize: 16,
-              fontWeight: 400,
-              color: "#6b7a94",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase" as const,
-            }}
-          >
-            Blog Post
+            Blog
           </div>
         </div>
 
-        {/* Title — vertically centered between header and footer */}
-        <div style={{ display: "flex", flexDirection: "row", gap: "28px", alignItems: "center" }}>
-          {/* Vertical accent */}
-          <div
-            style={{
-              display: "flex",
-              width: "5px",
-              alignSelf: "stretch",
-              borderRadius: "3px",
-              backgroundColor: "#30c2e0",
-            }}
-          />
-          {/* Title text */}
-          <div
-            style={{
-              display: "flex",
-              fontSize,
-              fontWeight: 700,
-              color: "#ffffff",
-              lineHeight: 1.15,
-              letterSpacing: "-0.02em",
-              maxWidth: "960px",
-            }}
-          >
-            {post.title}
-          </div>
+        {/* Title */}
+        <div
+          style={{
+            display: "flex",
+            fontSize,
+            fontWeight: 700,
+            color: ED.ink,
+            lineHeight: 1.08,
+            letterSpacing: "-0.035em",
+            maxWidth: "980px",
+            paddingLeft: "12px",
+          }}
+        >
+          {post.title}
         </div>
 
-        {/* Footer — distinct background strip */}
+        {/* Footer */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            backgroundColor: "#131a28",
-            margin: "0 -72px",
-            padding: "20px 72px",
+            borderTop: `1px solid ${ED.ghostBorder}`,
+            padding: "22px 0 28px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div
-              style={{
-                display: "flex",
-                fontSize: 20,
-                fontWeight: 700,
-                color: "#d0d8e8",
-              }}
-            >
-              {post.author}
-            </div>
-            <div style={{ display: "flex", fontSize: 20, color: "#4a5568" }}>·</div>
-            <div
-              style={{
-                display: "flex",
-                fontSize: 20,
-                fontWeight: 400,
-                color: "#8898b0",
-              }}
-            >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+              fontFamily: "JetBrains Mono",
+              fontSize: 14,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase" as const,
+            }}
+          >
+            <div style={{ display: "flex", fontWeight: 600, color: ED.ink }}>{post.author}</div>
+            <div style={{ display: "flex", color: ED.muted }}>·</div>
+            <div style={{ display: "flex", fontWeight: 400, color: ED.muted }}>
               {formatDate(post.date)}
             </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "JetBrains Mono",
+                fontSize: 14,
+                fontWeight: 600,
+                color: ED.muted,
+                letterSpacing: "0.08em",
+              }}
+            >
+              fragno.dev
+            </div>
+            <AccentDots />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main site OG template (social.webp)
+// ---------------------------------------------------------------------------
+
+function createMainOgImage(): ReactNode {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        backgroundColor: ED.paper,
+        fontFamily: "Space Grotesk",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <PageRoad height="100%" />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          padding: "44px 72px 0 32px",
+          justifyContent: "space-between",
+        }}
+      >
+        {/* Header */}
+        <LogoMark />
+
+        {/* Title area */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            paddingLeft: "12px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "JetBrains Mono",
+              fontSize: 14,
+              fontWeight: 600,
+              color: ED.primary,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase" as const,
+            }}
+          >
+            Full-stack library toolkit
           </div>
           <div
             style={{
               display: "flex",
-              fontSize: 20,
+              fontSize: 72,
               fontWeight: 700,
-              color: "#8898b0",
+              color: ED.ink,
+              lineHeight: 0.96,
+              letterSpacing: "-0.045em",
+            }}
+          >
+            Build Full-Stack Libraries
+          </div>
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "JetBrains Mono",
+              fontSize: 16,
+              fontWeight: 400,
+              color: ED.muted,
               letterSpacing: "0.02em",
+              lineHeight: 1.7,
+              maxWidth: "680px",
+            }}
+          >
+            Type-safe TypeScript libraries that embed backend, frontend, and data layer in your
+            users' applications — across frameworks.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderTop: `1px solid ${ED.ghostBorder}`,
+            padding: "22px 0 28px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "JetBrains Mono",
+              fontSize: 14,
+              fontWeight: 600,
+              color: ED.muted,
+              letterSpacing: "0.08em",
             }}
           >
             fragno.dev
           </div>
+          <AccentDots />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page OG template (registry entries)
+// ---------------------------------------------------------------------------
+
+function createPageOgImage(entry: PageOgEntry): ReactNode {
+  const fontSize = titleFontSize(entry.title);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        backgroundColor: ED.paper,
+        fontFamily: "Space Grotesk",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <PageRoad height="100%" />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          padding: "44px 72px 0 32px",
+          justifyContent: "space-between",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <LogoMark />
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "JetBrains Mono",
+              fontSize: 13,
+              fontWeight: 600,
+              color: ED.muted,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase" as const,
+            }}
+          >
+            {entry.label}
+          </div>
+        </div>
+
+        {/* Title + optional subtitle */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "18px",
+            paddingLeft: "12px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontSize,
+              fontWeight: 700,
+              color: ED.ink,
+              lineHeight: 1.08,
+              letterSpacing: "-0.035em",
+              maxWidth: "980px",
+            }}
+          >
+            {entry.title}
+          </div>
+          {entry.subtitle ? (
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "JetBrains Mono",
+                fontSize: 16,
+                fontWeight: 400,
+                color: ED.muted,
+                letterSpacing: "0.02em",
+                lineHeight: 1.7,
+                maxWidth: "720px",
+              }}
+            >
+              {entry.subtitle}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderTop: `1px solid ${ED.ghostBorder}`,
+            padding: "22px 0 28px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "JetBrains Mono",
+              fontSize: 14,
+              fontWeight: 600,
+              color: ED.muted,
+              letterSpacing: "0.08em",
+            }}
+          >
+            fragno.dev
+          </div>
+          <AccentDots />
         </div>
       </div>
     </div>
@@ -289,18 +628,29 @@ async function renderToWebp(
 function runCheck(posts: BlogPost[]): boolean {
   let allGood = true;
 
-  for (const post of posts) {
+  for (const entry of PAGE_REGISTRY) {
     for (const ratio of RATIO_KEYS) {
-      const p = outPath(post.slug, ratio);
+      const p = outPath(entry.filename, ratio);
       if (!existsSync(p)) {
-        console.error(`Missing: ${post.slug}-${ratio}.webp`);
+        console.error(`Missing page: ${entry.filename}-${ratio}.webp`);
         allGood = false;
       }
     }
   }
 
+  for (const post of posts) {
+    for (const ratio of RATIO_KEYS) {
+      const p = outPath(post.slug, ratio);
+      if (!existsSync(p)) {
+        console.error(`Missing blog: ${post.slug}-${ratio}.webp`);
+        allGood = false;
+      }
+    }
+  }
+
+  const total = (PAGE_REGISTRY.length + posts.length) * RATIO_KEYS.length;
   if (allGood) {
-    console.log(`All ${posts.length * RATIO_KEYS.length} OG images present.`);
+    console.log(`All ${total} OG images present.`);
   }
   return allGood;
 }
@@ -312,6 +662,7 @@ function runCheck(posts: BlogPost[]): boolean {
 async function main() {
   const force = process.argv.includes("--force");
   const check = process.argv.includes("--check");
+  const mainOnly = process.argv.includes("--main");
   const filterSlug = process.argv.find((a) => a.startsWith("--slug="))?.split("=")[1];
 
   const allPosts = getBlogPosts();
@@ -322,6 +673,47 @@ async function main() {
   }
 
   mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  const fonts = await loadFonts();
+
+  // Generate main site OG image (social.webp)
+  const socialPath = join(PUBLIC_DIR, "social.webp");
+  if (mainOnly || force || !existsSync(socialPath)) {
+    console.log("Generating main site OG image (social.webp)...");
+    const mainElement = createMainOgImage();
+    const mainBuffer = await renderToWebp(mainElement, ASPECT_RATIOS.og, fonts);
+    writeFileSync(socialPath, mainBuffer);
+    console.log("  ✓ social.webp\n");
+  }
+
+  if (mainOnly) {
+    return;
+  }
+
+  // Generate page registry OG images
+  const pagesToGenerate = PAGE_REGISTRY.filter((entry) => {
+    if (force) {
+      return true;
+    }
+    return RATIO_KEYS.some((ratio) => !existsSync(outPath(entry.filename, ratio)));
+  });
+
+  if (pagesToGenerate.length > 0) {
+    console.log(`Generating OG images for ${pagesToGenerate.length} page(s)...`);
+    for (const entry of pagesToGenerate) {
+      const element = createPageOgImage(entry);
+      for (const ratio of RATIO_KEYS) {
+        const out = outPath(entry.filename, ratio);
+        if (!force && existsSync(out)) {
+          continue;
+        }
+        const webpBuffer = await renderToWebp(element, ASPECT_RATIOS[ratio], fonts);
+        writeFileSync(out, webpBuffer);
+      }
+      console.log(`  ✓ ${entry.filename}`);
+    }
+    console.log();
+  }
 
   const posts = filterSlug ? allPosts.filter((p) => p.slug === filterSlug) : allPosts;
 
@@ -348,8 +740,6 @@ async function main() {
     `Generating OG images for ${postsToGenerate.length}/${posts.length} post(s) ` +
       `(${RATIO_KEYS.map((k) => `${k}: ${ASPECT_RATIOS[k].width}×${ASPECT_RATIOS[k].height}`).join(", ")})\n`,
   );
-
-  const fonts = await loadFonts();
 
   for (const post of postsToGenerate) {
     const element = createOgImage(post);

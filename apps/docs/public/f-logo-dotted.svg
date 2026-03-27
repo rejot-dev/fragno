@@ -1,0 +1,19 @@
+<svg width="64" height="112" viewBox="0 0 64 112" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <!-- 
+    To generate the webp and ico files, run the following commands:
+    
+    1. Generate WebP (512x512 with transparent background and 32px padding):
+    npx sharp-cli@5.2.0 -i apps/docs/public/f-logo-dotted.svg -o apps/docs/public/f-logo-dotted.webp -density 2400 resize 448 448 -fit contain -background "rgba(0,0,0,0)" - extend 32 32 32 32 -background "rgba(0,0,0,0)"
+    
+    2. Generate ICO (32x32):
+    npx sharp-cli@5.2.0 -i apps/docs/public/f-logo-dotted.webp -o apps/docs/public/favicon.ico resize 32 32
+  -->
+  <circle cx="8" cy="8" r="8" fill="#f66364" />
+  <circle cx="32" cy="8" r="8" fill="#5ba4f9" />
+  <circle cx="56" cy="8" r="8" fill="#fcc433" />
+  <circle cx="8" cy="32" r="8" fill="#5ba4f9" />
+  <circle cx="8" cy="56" r="8" fill="#fcc433" />
+  <circle cx="32" cy="56" r="8" fill="#f66364" />
+  <circle cx="8" cy="80" r="8" fill="#f66364" />
+  <circle cx="8" cy="104" r="8" fill="#5ba4f9" />
+</svg>

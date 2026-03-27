@@ -1,61 +1,55 @@
-import { FragnoLogo } from "@/components/logos/fragno-logo";
-import { Astro } from "@/components/logos/frameworks/astro";
-import { Nextjs } from "@/components/logos/frameworks/nextjs";
-import { Nodejs } from "@/components/logos/frameworks/nodejs";
-import { Nuxt } from "@/components/logos/frameworks/nuxt";
-import { React as ReactLogo } from "@/components/logos/frameworks/react";
-import { Svelte } from "@/components/logos/frameworks/svelte";
-import { Vue } from "@/components/logos/frameworks/vue";
+const mono =
+  'font-mono [font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation_Mono",monospace]';
 
 export function BannerOgImage() {
   return (
-    <div className="relative flex h-[630px] w-[1200px] flex-col items-center justify-center overflow-hidden bg-white dark:bg-slate-900">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/15 via-sky-400/10 to-purple-500/15 dark:from-blue-500/25 dark:via-sky-400/15 dark:to-purple-500/25" />
+    <div className="relative flex h-[630px] w-[1200px] flex-col overflow-hidden bg-(--editorial-paper)">
+      {/* Page road */}
+      <div
+        className="absolute top-0 bottom-0 left-0 w-[3px]"
+        style={{
+          backgroundImage: `linear-gradient(to bottom, var(--editorial-primary) 15%, var(--editorial-tertiary) 45%, var(--editorial-secondary) 75%, var(--editorial-primary) 100%)`,
+        }}
+      />
 
-      {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center justify-center space-y-6 px-20 text-center">
-        {/* Logo */}
-        <div className="mb-4 flex justify-center">
-          <FragnoLogo className="h-64 w-80 dark:text-white" />
+      <div className="flex flex-1 flex-col justify-between py-[44px] pr-[72px] pl-[32px]">
+        {/* Header */}
+        <div className={`${mono} flex items-center gap-[10px]`}>
+          <span className="inline-block h-2 w-2 rounded-full bg-(--editorial-primary)" />
+          <span className="text-[15px] font-semibold tracking-[0.04em] text-(--editorial-ink)">
+            Fragno
+          </span>
         </div>
 
-        {/* Title */}
-        <h1 className="text-8xl leading-tight font-extrabold tracking-tight text-gray-900 dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-          Build Full-
-          <span className="relative inline-block text-gray-900 dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-            Stack
-            <span className="absolute -top-2 -right-12 inline-flex rotate-12 items-center">
-              <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-5 py-2 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute -inset-0.5 -z-10 rounded-full bg-gradient-to-r from-indigo-500/30 to-fuchsia-500/30 blur-md"
-                />
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/10"
-                />
-                <span className="text-sm font-semibold tracking-wider">Developer Beta</span>
-              </span>
-            </span>
-          </span>
-          <br />
-          Libraries
-        </h1>
+        {/* Title area */}
+        <div className="flex flex-col gap-5 pl-3">
+          <div
+            className={`${mono} text-[14px] font-semibold tracking-[0.14em] text-(--editorial-primary) uppercase`}
+          >
+            Full-stack library toolkit
+          </div>
+          <h1 className="text-[72px] leading-[0.96] font-bold tracking-[-0.045em] text-(--editorial-ink)">
+            Build Full-Stack Libraries
+          </h1>
+          <p
+            className={`${mono} max-w-[680px] text-[16px] leading-[1.7] font-normal tracking-[0.02em] text-(--editorial-muted)`}
+          >
+            Type-safe TypeScript libraries that embed backend, frontend, and data layer in your
+            users' applications — across frameworks.
+          </p>
+        </div>
 
-        {/* Framework logos */}
-        <div className="mt-8 flex flex-col items-center">
-          {/* <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-white/60">
-            Works with
-          </div> */}
-          <div className="flex flex-wrap items-center justify-center gap-4 text-slate-700 dark:text-white/70">
-            <ReactLogo className="size-8" />
-            <Nextjs className="size-8" />
-            <Vue className="size-8" />
-            <Svelte className="size-8" />
-            <Astro className="size-8" />
-            <Nuxt className="size-8" />
-            <Nodejs className="size-8" />
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-(--editorial-ghost-border) pt-[22px]">
+          <span
+            className={`${mono} text-[14px] font-semibold tracking-[0.08em] text-(--editorial-muted)`}
+          >
+            fragno.dev
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-primary)" />
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-tertiary)" />
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-secondary)" />
           </div>
         </div>
       </div>
