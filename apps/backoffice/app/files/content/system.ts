@@ -36,7 +36,7 @@ Some connections also provide file-oriented views of their data:
 Automation scripts run with a tiny Bash runtime built from the files in app/fragno/bash-runtime/*.
 The host exposes command families only when the matching runtime context is configured.
 
-### automations.* (Automation identity tools)
+### automations.* (Automation identity and script tools)
 
 - automations.identity.lookup-binding --source <source> --key <key>
   - Resolves the saved identity binding for a source/key.
@@ -47,6 +47,13 @@ The host exposes command families only when the matching runtime context is conf
 - automations.identity.bind-actor --source <source> --key <key> --value <value> [--description ...]
   - Creates or updates a binding record.
   - Normalizes and retries on duplicate insert conflicts to handle concurrent linking.
+
+- automations.script.run --script <path> --event <path>
+  - Runs an automation script against an event loaded from the filesystem.
+  - --script: path to the script (relative to /workspace/automations/ or absolute).
+  - --event: path to an event JSON file (e.g. /events/2026-03-25/...json).
+  - The sub-execution gets its own context and /context/event.json populated from the event file.
+  - Returns the execution result including exit code, stdout, stderr, and command calls.
 
 ### otp.* (Identity claim tool)
 

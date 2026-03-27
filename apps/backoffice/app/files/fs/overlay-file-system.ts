@@ -19,6 +19,8 @@ type OverlayWriteLayer = Pick<
   | "writeFile"
   | "mkdir"
   | "rm"
+  | "chmod"
+  | "utimes"
   | "getAllPaths"
 > & {
   exists: NonNullable<MountedFileSystem["exists"]>;
@@ -29,6 +31,8 @@ type OverlayWriteLayer = Pick<
   writeFile: NonNullable<MountedFileSystem["writeFile"]>;
   mkdir: NonNullable<MountedFileSystem["mkdir"]>;
   rm: NonNullable<MountedFileSystem["rm"]>;
+  chmod: NonNullable<MountedFileSystem["chmod"]>;
+  utimes: NonNullable<MountedFileSystem["utimes"]>;
   getAllPaths: NonNullable<MountedFileSystem["getAllPaths"]>;
 };
 
@@ -384,6 +388,12 @@ export const createOverlayMountedFileSystem = (
       }
 
       await writeLayer.rm(path, options);
+    },
+    async chmod(path, mode) {
+      await writeLayer.chmod(path, mode);
+    },
+    async utimes(path, atime, mtime) {
+      await writeLayer.utimes(path, atime, mtime);
     },
     resolvePath(base, path) {
       return resolvePath(base, path);
