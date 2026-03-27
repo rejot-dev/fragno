@@ -2,16 +2,12 @@ import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/auto
 
 import type { FileSystemArtifact } from "../types";
 
-export const STARTER_AUTOMATION_ROOT = "automations";
-export const STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH = `${STARTER_AUTOMATION_ROOT}/bindings.json`;
-
-export const STARTER_AUTOMATION_SIMULATOR_ROOT = `${STARTER_AUTOMATION_ROOT}/simulator`;
-export const STARTER_AUTOMATION_SCENARIO_ROOT = `${STARTER_AUTOMATION_SIMULATOR_ROOT}/scenarios`;
+export const STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH = "automations/bindings.json";
 
 export const STARTER_AUTOMATION_SIMULATOR_PATHS = {
-  readme: `${STARTER_AUTOMATION_SIMULATOR_ROOT}/README.md`,
-  telegramClaimLinking: `${STARTER_AUTOMATION_SCENARIO_ROOT}/telegram-claim-linking.json`,
-  telegramPiSession: `${STARTER_AUTOMATION_SCENARIO_ROOT}/telegram-pi-session.json`,
+  readme: "automations/simulator/README.md",
+  telegramClaimLinking: "automations/simulator/scenarios/telegram-claim-linking.json",
+  telegramPiSession: "automations/simulator/scenarios/telegram-pi-session.json",
 } as const;
 
 /**
@@ -50,7 +46,7 @@ linked_user="$(
 )"
 
 if [ -n "$linked_user" ]; then
-  event.reply --text "This Telegram chat is already linked."
+  telegram.chat.send -c "$external_actor_id" -t "This Telegram chat is already linked."
   exit 0
 fi
 
@@ -69,7 +65,7 @@ if [ -z "$claim_url" ]; then
   exit 1
 fi
 
-event.reply --text "Open this link to finish linking your Telegram account: $claim_url"
+telegram.chat.send -c "$external_actor_id" -t "Open this link to finish linking your Telegram account: $claim_url"
 `,
   },
   {
@@ -92,10 +88,7 @@ external_actor_id="$(jq -r '.payload.externalActorId // ""' /context/event.json)
 subject_user_id="$(jq -r '.subject.userId // ""' /context/event.json)"
 
 reply_linking_status() {
-  event.reply \
-    --source "$link_source" \
-    --external-actor-id "$external_actor_id" \
-    --text "$1"
+  telegram.chat.send -c "$external_actor_id" -t "$1"
 }
 
 if [ "$link_source" != "telegram" ]; then
@@ -199,7 +192,8 @@ if [ -z "$pi_session_id" ] || [ "$terminal_session" = "true" ]; then
       --name "$session_name" \
       --tag telegram \
       --tag auto-session \
-      --print id
+      --print id \\
+      --system-message "IMPORTANT:ALL non-tool call output will AUTOMATICALLY be forwarded to Telegram in Markdown parse mode."
   )"; then
     automations.identity.bind-actor \
       --source "$binding_source" \
@@ -211,7 +205,7 @@ if [ -z "$pi_session_id" ] || [ "$terminal_session" = "true" ]; then
     pi_session_id="$new_session_id"
 
     if [ "$text" = "/pi" ]; then
-      event.reply --text "Created Pi session: $new_session_id"
+      telegram.chat.send -c "\${chat_id:-$external_actor_id}" -t "Created Pi session: $new_session_id"
       exit 0
     fi
   else
@@ -227,6 +221,8 @@ if [ "$text" = "/pi" ]; then
   exit 0
 fi
 
+telegram.chat.actions -c "\${chat_id:-$external_actor_id}" --action typing
+
 assistant_text="$(
   pi.session.turn \
     --session-id "$pi_session_id" \
@@ -235,7 +231,7 @@ assistant_text="$(
 )" || exit 1
 
 if [ -n "$assistant_text" ]; then
-  event.reply --text "$assistant_text"
+  telegram.chat.send -c "\${chat_id:-$external_actor_id}" -t "$assistant_text"
 fi
 
 exit 0
@@ -286,7 +282,7 @@ Useful optional fields:
 
 - \`env\`: global bash env overrides applied to every step
 - \`initialState\`: starting identity bindings, claims, Pi sessions, replies, and emitted events
-- \`commandMocks\`: ordered mock results for custom commands like \`event.reply\`, \`otp.identity.create-claim\`, \`pi.session.create\`, \`pi.session.get\`, and \`pi.session.turn\`
+- \`commandMocks\`: ordered mock results for custom commands like \`otp.identity.create-claim\`, \`pi.session.create\`, \`pi.session.get\`, and \`pi.session.turn\`
 - \`expectations\`: documentation-only examples of the transcript or final state you expect
 
 The simulator keeps state across steps, records a normalized transcript, and stops a step when a binding exits non-zero.
@@ -309,7 +305,7 @@ assistant_text="$(
     --print assistantText
 )"
 
-event.reply --text "$assistant_text"
+telegram.chat.send -c "$chat_id" -t "$assistant_text"
 \`\`\`
 `;
 

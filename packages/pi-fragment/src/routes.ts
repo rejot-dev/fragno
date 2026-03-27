@@ -114,6 +114,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
         inputSchema: z.object({
           agent: z.string(),
           name: z.string().optional(),
+          systemMessage: z.string().optional(),
           metadata: z.any().optional(),
           tags: z.array(z.string()).optional(),
           steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
@@ -141,6 +142,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           const sessionId = createId();
 
           try {
+            const systemPrompt = [agent.systemPrompt, values.systemMessage]
+              .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+              .join("\n\n");
+
             await this.handlerTx()
               .withServiceCalls(
                 () =>
@@ -150,7 +155,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                       params: {
                         sessionId,
                         agentName,
-                        systemPrompt: agent.systemPrompt,
+                        systemPrompt,
                         initialMessages: [],
                       },
                     }),

@@ -194,6 +194,7 @@ const createPiHost = (piRuntime: PiBashRuntime = createPiRuntime()) => {
       pi: {
         runtime: piRuntime,
       },
+      reson8: null,
       resend: null,
       telegram: null,
     },

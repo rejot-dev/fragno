@@ -51,10 +51,9 @@ describe("starter automation scenario: telegram-claim-linking.complete.sh", () =
           },
         }),
         expect.objectContaining({
-          name: "event.reply",
+          name: "telegram.chat.send",
           args: {
-            source: "telegram",
-            externalActorId: "chat-1",
+            chatId: "chat-1",
             text: "Your Telegram chat is now linked.",
           },
         }),
