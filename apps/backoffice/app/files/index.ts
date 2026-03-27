@@ -27,7 +27,6 @@ export type {
   FsEntry,
   FsStat,
   IFileSystem,
-  IIFileSystem,
   InitialFiles,
   LazyFileEntry,
   LazyFileProvider,
@@ -113,6 +112,8 @@ export { SYSTEM_FILE_CONTENT, SYSTEM_FILE_ROOT_DESCRIPTION } from "./content/sys
 export { normalizeMountedFileSystem } from "./mounted-file-system";
 export type { NormalizeMountedFileSystemOptions } from "./mounted-file-system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
+export { createOrgFileSystem } from "./create-file-system";
+export type { CreateOrgFileSystemOptions } from "./create-file-system";
 export {
   getFilesNodeDetail,
   listFilesChildren,

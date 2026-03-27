@@ -1,4 +1,3 @@
-import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import {
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
@@ -958,20 +957,13 @@ const sortTree = (entries: FileEntryDescriptor[]): FileEntryDescriptor[] => {
 };
 
 const requireUploadRuntime = (ctx: FilesContext) => {
-  if (ctx.uploadRuntime) {
-    return ctx.uploadRuntime;
+  if (!ctx.uploadRuntime) {
+    throw new Error(
+      "Upload contributor requires uploadRuntime to be provided via createOrgFileSystem.",
+    );
   }
 
-  if (!ctx.request || !ctx.routerContext) {
-    throw new Error("Upload contributor requires either uploadRuntime or request/router context.");
-  }
-
-  const uploadDo = getUploadDurableObject(ctx.routerContext, ctx.orgId);
-  return {
-    baseUrl: ctx.request.url,
-    headers: ctx.request.headers,
-    fetch: uploadDo.fetch.bind(uploadDo),
-  };
+  return ctx.uploadRuntime;
 };
 
 const requestUpload = async (

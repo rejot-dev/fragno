@@ -1,5 +1,3 @@
-import type { RouterContextProvider } from "react-router";
-
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload";
 
@@ -55,7 +53,7 @@ export type FileEntryDescriptor = {
 export type FilesContext = {
   orgId: string;
   origin?: string;
-  backend: FilesBackend;
+  backend?: FilesBackend;
   uploadConfig?: UploadAdminConfigResponse | null;
   uploadRuntime?: {
     baseUrl?: string;
@@ -72,7 +70,6 @@ export type FilesContext = {
     getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse>;
   }>;
   request?: Request;
-  routerContext?: Readonly<RouterContextProvider>;
 };
 
 export type MountedFileSystemCapabilities = {

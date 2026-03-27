@@ -106,7 +106,7 @@ export interface CpOptions {
  * - Real filesystem (via node:fs)
  * - Custom implementations (e.g., remote storage, browser IndexedDB)
  */
-export interface IIFileSystem {
+export interface IFileSystem {
   // Note: Sync method are not supported and must not be added.
   /**
    * Read the contents of a file as a string (default: utf8)
@@ -280,8 +280,6 @@ export type LazyFileProvider = () => string | Uint8Array | Promise<string | Uint
  * Initial files can be simple content, extended options with metadata, or lazy providers
  */
 export type InitialFiles = Record<string, FileContent | FileInit | LazyFileProvider>;
-
-export type IFileSystem = IIFileSystem;
 
 /**
  * Factory function type for creating filesystem instances

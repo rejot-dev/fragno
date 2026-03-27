@@ -1,9 +1,8 @@
 import type { RouterContextProvider } from "react-router";
 
-import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import {
-  automationHooksFileContributor,
-  createMasterFileSystem,
+  createOrgFileSystem,
   getFilesNodeDetail,
   listFilesChildren,
   listFilesTree,
@@ -14,7 +13,6 @@ import {
   type FilesNodeDetail,
   type MasterFileSystem,
 } from "@/files";
-import { fetchUploadConfig } from "@/routes/backoffice/connections/upload/data";
 
 export type FilesExplorerLoaderData = {
   tree: FilesExplorerTreeNode[];
@@ -32,35 +30,15 @@ export type FilesExplorerActionResult =
     };
 
 export async function createBackofficeFilesFileSystem({
-  request,
   context,
   orgId,
 }: {
-  request: Request;
+  request?: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }): Promise<MasterFileSystem> {
-  const requestUrl = new URL(request.url);
-  const { configState: uploadConfig } = await fetchUploadConfig(context, orgId);
-
-  return createMasterFileSystem({
-    orgId,
-    origin: requestUrl.origin,
-    backend: "backoffice",
-    uploadConfig,
-    request,
-    routerContext: context,
-    durableHooksRuntimes: [
-      {
-        contributorId: automationHooksFileContributor.id,
-        getHookQueue: (opts) =>
-          getAutomationsDurableObject(context, orgId).getHookQueue({
-            ...opts,
-            fragment: "automation",
-          }),
-      },
-    ],
-  });
+  const { env } = context.get(CloudflareContext);
+  return createOrgFileSystem({ orgId, env });
 }
 
 export async function loadFilesExplorerData({
