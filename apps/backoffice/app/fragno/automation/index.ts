@@ -44,7 +44,7 @@ export {
   AUTOMATION_BINDINGS_MANIFEST_PATH,
   AUTOMATION_SCRIPTS_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
-  createDefaultAutomationFileSystem,
+  createMinimalFileSystem,
   getAutomationBindingsForEvent,
   loadAutomationCatalog,
   loadAutomationCatalogFromConfig,
@@ -118,11 +118,8 @@ export {
   createTelegramBashRuntime,
   createUnavailableTelegramBashRuntime,
 } from "../bash-runtime/telegram-bash-runtime";
-export {
-  createAutomationBashCommandContext,
-  createAutomationBashRuntime,
-  executeBashAutomation,
-} from "./engine/bash";
+export { createAutomationBashCommandContext, createAutomationBashRuntime } from "./engine/bash";
+export { executeBashAutomation } from "../bash-runtime/bash-host";
 export type {
   AutomationBashCommandContext,
   AutomationBashHostContext,

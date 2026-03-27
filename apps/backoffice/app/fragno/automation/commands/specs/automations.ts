@@ -5,11 +5,13 @@ import type {
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
   ParsedCommandByName,
+  ScriptRunArgs,
 } from "../types";
 
 const HELP: {
   lookupBinding: AutomationCommandHelp;
   bindActor: AutomationCommandHelp;
+  scriptRun: AutomationCommandHelp;
 } = {
   lookupBinding: {
     summary:
@@ -70,6 +72,31 @@ const HELP: {
       'automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
     ],
   },
+  scriptRun: {
+    summary:
+      "automations.script.run executes an automation script against an event loaded from the filesystem.",
+    options: [
+      {
+        name: "script",
+        required: true,
+        valueRequired: true,
+        valueName: "path",
+        description:
+          "Path to the script file. Relative paths resolve under /workspace/automations/; absolute paths resolve against the master filesystem",
+      },
+      {
+        name: "event",
+        required: true,
+        valueRequired: true,
+        valueName: "path",
+        description: "Path to an event JSON file (e.g. /events/2026-03-25/...json)",
+      },
+    ],
+    examples: [
+      "automations.script.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
+      "automations.script.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
+    ],
+  },
 };
 
 const parseAutomationsIdentityLookupBinding = (
@@ -108,6 +135,23 @@ const parseAutomationsIdentityBindActor = (
   };
 };
 
+const parseAutomationsScriptRun = (
+  args: string[],
+): ParsedCommandByName["automations.script.run"] => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "automations.script.run");
+
+  return {
+    name: "automations.script.run",
+    args: {
+      script: readStringOption(parsed, "script", true)!,
+      event: readStringOption(parsed, "event", true)!,
+    },
+    output: readOutputOptions(parsed),
+    rawArgs: args,
+  };
+};
+
 export const automationsCommandSpecs = {
   "automations.identity.lookup-binding": {
     name: "automations.identity.lookup-binding",
@@ -119,6 +163,11 @@ export const automationsCommandSpecs = {
     help: HELP.bindActor,
     parse: parseAutomationsIdentityBindActor,
   },
+  "automations.script.run": {
+    name: "automations.script.run",
+    help: HELP.scriptRun,
+    parse: parseAutomationsScriptRun,
+  },
 } satisfies {
   "automations.identity.lookup-binding": AutomationCommandSpec<
     "automations.identity.lookup-binding",
@@ -128,4 +177,5 @@ export const automationsCommandSpecs = {
     "automations.identity.bind-actor",
     IdentityBindActorArgs
   >;
+  "automations.script.run": AutomationCommandSpec<"automations.script.run", ScriptRunArgs>;
 };

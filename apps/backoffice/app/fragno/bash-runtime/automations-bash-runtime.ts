@@ -8,6 +8,7 @@ import type {
   AutomationsCommandHandlers,
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
+  ScriptRunnerRuntime,
 } from "../automation/commands/types";
 import type { createAutomationFragment } from "../automation/index";
 import { automationFragmentSchema } from "../automation/schema";
@@ -34,8 +35,11 @@ export type AutomationsBashRuntime = {
   bindActor: (input: IdentityBindActorArgs) => Promise<AutomationIdentityBindingRecord>;
 };
 
+export type { ScriptRunnerRuntime };
+
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationsBashRuntime;
+  scriptRunner?: ScriptRunnerRuntime;
 };
 
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
@@ -57,6 +61,34 @@ const automationsCommandHandlers: AutomationsCommandHandlers<RegisteredAutomatio
     "automations.identity.bind-actor": async (command, context) => {
       return {
         data: await context.runtime.bindActor(command.args),
+      };
+    },
+    "automations.script.run": async (command, context) => {
+      if (!context.scriptRunner) {
+        throw new Error("automations.script.run is not available in this execution context");
+      }
+
+      const result = await context.scriptRunner.runScript(command.args);
+      const hasExplicitFormat = command.output.format === "json" || !!command.output.print;
+      const data = {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        commandCalls: result.commandCalls,
+      };
+
+      if (result.exitCode !== 0) {
+        return {
+          data,
+          ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
+          stderr: result.stderr || `Script exited with code ${result.exitCode}`,
+          exitCode: result.exitCode,
+        };
+      }
+
+      return {
+        data,
+        ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
       };
     },
   };

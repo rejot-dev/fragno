@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { Bash, InMemoryFs } from "just-bash";
 
-import { createBashHost } from "../../bash-runtime/bash-host";
+import { MasterFileSystem } from "@/files/master-file-system";
+import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
+
+import { createBashHost, executeBashAutomation } from "../../bash-runtime/bash-host";
 import { createTelegramSourceAdapter } from "../../telegram";
 import { createAutomationCommands } from "../commands/bash-adapter";
 import {
@@ -21,7 +24,6 @@ import { getSourceAdapter, type AutomationEvent } from "../contracts";
 import {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
-  executeBashAutomation,
   type AutomationBashRuntime,
 } from "./bash";
 
@@ -139,6 +141,9 @@ describe("bash command runner", () => {
           },
         };
       },
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const fs = new InMemoryFs();
@@ -248,6 +253,9 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const bash = new Bash({
@@ -305,6 +313,9 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const bash = new Bash({
@@ -401,6 +412,9 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const bash = new Bash({
@@ -466,6 +480,9 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const bash = new Bash({
@@ -605,6 +622,9 @@ describe("bash command runner", () => {
           eventType: "message.received",
         },
       }),
+      "automations.script.run": async () => {
+        throw new Error("not available in test");
+      },
     };
 
     const bash = new Bash({
@@ -675,6 +695,7 @@ describe("bash command runner", () => {
     });
     const result = await executeBashAutomation({
       script: 'event.reply --source telegram --external-actor-id chat-1 --text "linked"',
+      masterFs: new MasterFileSystem({ mounts: [] }),
       context: createAutomationBashCommandContext({
         event,
         binding: {
@@ -710,6 +731,134 @@ describe("bash command runner", () => {
         text: "linked",
       },
     ]);
+  });
+
+  it("forwards sub-script stdout through automations.script.run", async () => {
+    const { bash, commandCallsResult } = createBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        automation: null,
+        automations: {
+          runtime: {
+            lookupBinding: runtime.lookupBinding,
+            bindActor: runtime.bindActor,
+          },
+          scriptRunner: {
+            runScript: async (args) => {
+              expect(args).toEqual({
+                script: "/automations/test.sh",
+                event: "/events/2026-03-26/evt-1.json",
+              });
+              return {
+                eventId: "evt-1",
+                scriptId: "manual:/automations/test.sh",
+                exitCode: 0,
+                stdout: "hello from sub-script\n",
+                stderr: "",
+                commandCalls: [],
+              };
+            },
+          },
+        },
+        otp: null,
+        pi: null,
+        resend: null,
+        telegram: null,
+      },
+    });
+
+    const result = await bash.exec(
+      "automations.script.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("hello from sub-script");
+    expect(commandCallsResult).toEqual([
+      {
+        command: "automations.script.run",
+        output: "hello from sub-script",
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("returns structured data with --format json for automations.script.run", async () => {
+    const { bash } = createBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        automation: null,
+        automations: {
+          runtime: {
+            lookupBinding: runtime.lookupBinding,
+            bindActor: runtime.bindActor,
+          },
+          scriptRunner: {
+            runScript: async () => ({
+              eventId: "evt-1",
+              scriptId: "manual:/automations/test.sh",
+              exitCode: 0,
+              stdout: "echoed output\n",
+              stderr: "",
+              commandCalls: [{ command: "event.reply", output: "", exitCode: 0 }],
+            }),
+          },
+        },
+        otp: null,
+        pi: null,
+        resend: null,
+        telegram: null,
+      },
+    });
+
+    const result = await bash.exec(
+      "automations.script.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json --format json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout!.trim());
+    expect(parsed).toEqual({
+      exitCode: 0,
+      stdout: "echoed output\n",
+      stderr: "",
+      commandCalls: [{ command: "event.reply", output: "", exitCode: 0 }],
+    });
+  });
+
+  it("forwards stderr and exit code for failed sub-scripts", async () => {
+    const { bash } = createBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        automation: null,
+        automations: {
+          runtime: {
+            lookupBinding: runtime.lookupBinding,
+            bindActor: runtime.bindActor,
+          },
+          scriptRunner: {
+            runScript: async () => ({
+              eventId: "evt-1",
+              scriptId: "manual:/automations/fail.sh",
+              exitCode: 1,
+              stdout: "partial output\n",
+              stderr: "something went wrong\n",
+              commandCalls: [],
+            }),
+          },
+        },
+        otp: null,
+        pi: null,
+        resend: null,
+        telegram: null,
+      },
+    });
+
+    const result = await bash.exec(
+      "automations.script.run --script /automations/fail.sh --event /events/2026-03-26/evt-1.json",
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("partial output");
+    expect(result.stderr).toContain("something went wrong");
   });
 
   it("provides /context/event.json for automation runs", async () => {
@@ -750,6 +899,7 @@ describe("bash command runner", () => {
     });
     const result = await executeBashAutomation({
       script: 'printf "event=%s\\n" "$(cat /context/event.json)"',
+      masterFs: new MasterFileSystem({ mounts: [] }),
       context: createAutomationBashCommandContext({
         event,
         binding: {
@@ -767,5 +917,144 @@ describe("bash command runner", () => {
     expect(result.stdout.trim()).toBe(
       'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"type":"external","externalId":"chat-1"},"subject":{"userId":"user-1"}}',
     );
+  });
+
+  it("mounts /dev/null so scripts can discard output", async () => {
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
+      },
+      event: {
+        id: "dev-null-event",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+      sourceAdapters: { telegram: createTelegramSourceAdapter() },
+      sourceAdapter: createTelegramSourceAdapter(),
+    });
+
+    const result = await executeBashAutomation({
+      script: 'echo "discarded" >/dev/null && echo "kept"',
+      masterFs: new MasterFileSystem({ mounts: [] }),
+      context: createAutomationBashCommandContext({
+        event: {
+          id: "dev-null-event",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          payload: {},
+        },
+        binding: { source: "telegram", eventType: "message.received", scriptId: "s-dev" },
+        idempotencyKey: "idem-dev",
+        runtime: automationRuntime,
+        pi: null,
+      }),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("kept");
+  });
+
+  it("unmounts /context and /dev after execution", async () => {
+    const masterFs = new MasterFileSystem({ mounts: [] });
+
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
+      },
+      event: {
+        id: "cleanup-event",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+      sourceAdapters: { telegram: createTelegramSourceAdapter() },
+      sourceAdapter: createTelegramSourceAdapter(),
+    });
+
+    await executeBashAutomation({
+      script: "echo ok",
+      masterFs,
+      context: createAutomationBashCommandContext({
+        event: {
+          id: "cleanup-event",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          payload: {},
+        },
+        binding: { source: "telegram", eventType: "message.received", scriptId: "s-cleanup" },
+        idempotencyKey: "idem-cleanup",
+        runtime: automationRuntime,
+        pi: null,
+      }),
+    });
+
+    expect(masterFs.mounts).toHaveLength(0);
+  });
+
+  it("skips /dev mount when one already exists on the master filesystem", async () => {
+    const masterFs = new MasterFileSystem({ mounts: [] });
+    masterFs.mount({
+      id: "existing-dev",
+      kind: "custom",
+      mountPoint: "/dev",
+      title: "Existing /dev",
+      readOnly: false,
+      persistence: "session",
+      fs: normalizeMountedFileSystem(
+        {
+          readFile: async () => "",
+          readdir: async () => [],
+          getAllPaths: () => ["/dev"],
+        },
+        { readOnly: false },
+      ),
+    });
+
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
+      },
+      event: {
+        id: "existing-dev-event",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      },
+      sourceAdapters: { telegram: createTelegramSourceAdapter() },
+      sourceAdapter: createTelegramSourceAdapter(),
+    });
+
+    await executeBashAutomation({
+      script: "echo ok",
+      masterFs,
+      context: createAutomationBashCommandContext({
+        event: {
+          id: "existing-dev-event",
+          source: "telegram",
+          eventType: "message.received",
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          payload: {},
+        },
+        binding: { source: "telegram", eventType: "message.received", scriptId: "s-edev" },
+        idempotencyKey: "idem-edev",
+        runtime: automationRuntime,
+        pi: null,
+      }),
+    });
+
+    expect(masterFs.mounts).toHaveLength(1);
+    expect(masterFs.mounts[0]!.id).toBe("existing-dev");
   });
 });
