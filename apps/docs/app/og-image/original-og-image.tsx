@@ -1,45 +1,60 @@
-import { FragnoLogo } from "@/components/logos/fragno-logo";
+const mono =
+  'font-mono [font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation_Mono",monospace]';
 
 export function OriginalOgImage() {
   return (
-    <div className="relative flex h-[630px] w-[1200px] flex-col items-center justify-center overflow-hidden bg-white dark:bg-slate-900">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/15 via-sky-400/10 to-purple-500/15 dark:from-blue-500/25 dark:via-sky-400/15 dark:to-purple-500/25" />
+    <div className="relative flex h-[630px] w-[1200px] flex-col overflow-hidden bg-(--editorial-paper)">
+      {/* Page road */}
+      <div
+        className="absolute top-0 bottom-0 left-0 w-[3px]"
+        style={{
+          backgroundImage: `linear-gradient(to bottom, var(--editorial-primary) 15%, var(--editorial-tertiary) 45%, var(--editorial-secondary) 75%, var(--editorial-primary) 100%)`,
+        }}
+      />
 
-      {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center justify-center space-y-6 px-20 text-center">
-        {/* Logo */}
-        <div className="mb-2 flex justify-center">
-          <FragnoLogo className="h-48 w-64 dark:text-white" />
+      <div className="flex flex-1 flex-col justify-between py-[44px] pr-[72px] pl-[32px]">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className={`${mono} flex items-center gap-[10px]`}>
+            <span className="inline-block h-2 w-2 rounded-full bg-(--editorial-primary)" />
+            <span className="text-[15px] font-semibold tracking-[0.04em] text-(--editorial-ink)">
+              Fragno
+            </span>
+          </div>
+          <span
+            className={`${mono} text-[13px] font-semibold tracking-[0.14em] text-(--editorial-muted) uppercase`}
+          >
+            Blog
+          </span>
         </div>
 
         {/* Title */}
-        <h1 className="text-6xl leading-tight font-extrabold tracking-tight text-gray-900 dark:text-white">
-          Build Full-
-          <span className="relative inline-block">
-            Stack
-            <span className="absolute -top-2 -right-3 inline-flex rotate-12 items-center">
-              <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-lg ring-1 ring-white/20">
-                <span className="text-xs font-semibold tracking-wider">Developer Beta</span>
-              </span>
-            </span>
-          </span>
-          <br />
-          Libraries
+        <h1 className="max-w-[980px] pl-3 text-[56px] leading-[1.08] font-bold tracking-[-0.035em] text-(--editorial-ink)">
+          Versionstamps: The Perfect Cursor for Pagination
         </h1>
 
-        {/* Subtitle */}
-        <p className="max-w-4xl text-2xl leading-relaxed text-gray-600 dark:text-gray-300">
-          Build{" "}
-          <span className="underline decoration-blue-600 underline-offset-4 dark:decoration-blue-400">
-            fr
-          </span>
-          amework-
-          <span className="underline decoration-purple-600 underline-offset-4 dark:decoration-purple-400">
-            agno
-          </span>
-          stic libraries that embed backend and frontend logic in your users' applications
-        </p>
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-(--editorial-ghost-border) pt-[22px]">
+          <div
+            className={`${mono} flex items-center gap-4 text-[14px] tracking-[0.08em] uppercase`}
+          >
+            <span className="font-semibold text-(--editorial-ink)">Wilco Kruijer</span>
+            <span className="text-(--editorial-muted)">·</span>
+            <span className="font-normal text-(--editorial-muted)">March 27, 2026</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <span
+              className={`${mono} text-[14px] font-semibold tracking-[0.08em] text-(--editorial-muted)`}
+            >
+              fragno.dev
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-primary)" />
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-tertiary)" />
+              <span className="inline-block h-[7px] w-[7px] rounded-full bg-(--editorial-secondary)" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

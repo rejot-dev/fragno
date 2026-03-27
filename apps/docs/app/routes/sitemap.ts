@@ -30,6 +30,7 @@ export async function loader(_: Route.LoaderArgs) {
     "/fragments/workflows",
     "/fragments/pi",
     "/fragments/resend",
+    "/fragments/resend/essay",
     "/fragments/github",
     "/fragments/upload",
     "/fragments/auth",
