@@ -42,6 +42,10 @@ import {
   type RegisteredResendBashCommandContext,
 } from "./resend-bash-runtime";
 import {
+  createReson8BashCommands,
+  type RegisteredReson8BashCommandContext,
+} from "./reson8-bash-runtime";
+import {
   createTelegramBashCommands,
   type RegisteredTelegramBashCommandContext,
 } from "./telegram-bash-runtime";
@@ -55,6 +59,7 @@ export type BashHostContext = {
   automations: RegisteredAutomationsBashCommandContext | null;
   otp: RegisteredOtpBashCommandContext | null;
   pi: RegisteredPiBashCommandContext | null;
+  reson8: RegisteredReson8BashCommandContext | null;
   resend: RegisteredResendBashCommandContext | null;
   telegram: RegisteredTelegramBashCommandContext | null;
 };
@@ -64,6 +69,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   automations: null,
   otp: null,
   pi: null,
+  reson8: null,
   resend: null,
   telegram: null,
 };
@@ -108,6 +114,7 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
         ...createOtpBashCommands(commandInput),
         ...createEventBashCommands(commandInput),
         ...createPiBashCommands(commandInput),
+        ...createReson8BashCommands(commandInput),
         ...createResendBashCommands(commandInput),
         ...createTelegramBashCommands(commandInput),
       ],

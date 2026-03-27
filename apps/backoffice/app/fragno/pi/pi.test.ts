@@ -15,6 +15,7 @@ const createMockEnv = () =>
   ({
     UPLOAD: { idFromName: () => "stub", get: () => ({}) },
     RESEND: { idFromName: () => "stub", get: () => ({}) },
+    RESON8: { idFromName: () => "stub", get: () => ({}) },
     AUTOMATIONS: { idFromName: () => "stub", get: () => ({}) },
   }) as unknown as CloudflareEnv;
 
@@ -53,6 +54,13 @@ const createMockBashContext = (): PiBashCommandContext => ({
       },
     },
   },
+  reson8: {
+    runtime: {
+      transcribePrerecorded: async () => {
+        throw new Error("not available in test");
+      },
+    },
+  },
   resend: {
     runtime: {
       listThreads: async () => {
@@ -78,6 +86,15 @@ const createMockBashContext = (): PiBashCommandContext => ({
         throw new Error("not available in test");
       },
       downloadFile: async () => {
+        throw new Error("not available in test");
+      },
+      sendMessage: async () => {
+        throw new Error("not available in test");
+      },
+      sendChatAction: async () => {
+        throw new Error("not available in test");
+      },
+      editMessage: async () => {
         throw new Error("not available in test");
       },
     },
@@ -130,6 +147,7 @@ describe("Pi bash tool", () => {
       "events",
       "resend",
       "system",
+      "tmp",
       "workspace",
     ]);
   });
