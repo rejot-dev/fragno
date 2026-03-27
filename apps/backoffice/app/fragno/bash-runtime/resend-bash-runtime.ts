@@ -1,4 +1,4 @@
-import { createRouteCaller } from "@fragno-dev/core/api";
+import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 
 import type {
   ResendListThreadMessagesOutput,
@@ -33,60 +33,6 @@ const RESEND_COMMAND_NAMES = [
   "resend.threads.reply",
 ] as const;
 const MAX_PAGE_SIZE = 100;
-
-type FragnoResponse<T> =
-  | {
-      type: "empty";
-      status: number;
-      headers: Headers;
-    }
-  | {
-      type: "error";
-      status: number;
-      headers: Headers;
-      error: { message: string; code: string };
-    }
-  | {
-      type: "json";
-      status: number;
-      headers: Headers;
-      data: T;
-    }
-  | {
-      type: "jsonStream";
-      status: number;
-      headers: Headers;
-      stream: AsyncGenerator<T extends unknown[] ? T[number] : T>;
-    };
-
-type ResendRouteInput = {
-  pathParams?: Record<string, string>;
-  query?: Record<string, string>;
-  headers?: Headers | Record<string, string>;
-};
-
-interface ResendRouteCaller {
-  (
-    method: "GET",
-    path: "/threads",
-    inputOptions?: ResendRouteInput,
-  ): Promise<FragnoResponse<ResendListThreadsOutput>>;
-  (
-    method: "GET",
-    path: "/threads/:threadId",
-    inputOptions: ResendRouteInput,
-  ): Promise<FragnoResponse<ResendThreadDetail>>;
-  (
-    method: "GET",
-    path: "/threads/:threadId/messages",
-    inputOptions: ResendRouteInput,
-  ): Promise<FragnoResponse<ResendListThreadMessagesOutput>>;
-  (
-    method: "POST",
-    path: "/threads/:threadId/reply",
-    inputOptions: ResendRouteInput & { body: { to: string[]; subject?: string; text: string } },
-  ): Promise<FragnoResponse<ResendThreadMutationOutput>>;
-}
 
 export type ResendCommandName = (typeof RESEND_COMMAND_NAMES)[number];
 export type ResendThreadOrder = "asc" | "desc";
@@ -397,13 +343,13 @@ export const createResendBashCommands = (input: BashCommandFactoryInput) => {
 
 const createResendRouteCaller = (
   options: CreateRouteBackedResendRuntimeOptions,
-): ResendRouteCaller => {
+): RouteCallerForFragment<ResendFragment> => {
   return createRouteCaller<ResendFragment>({
     baseUrl: options.baseUrl,
     mountRoute: "/api/resend",
     ...(options.headers ? { baseHeaders: options.headers } : {}),
     fetch: options.fetch,
-  }) as unknown as ResendRouteCaller;
+  });
 };
 
 const isSuccessStatus = (status: number) => status >= 200 && status < 300;

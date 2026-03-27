@@ -22,6 +22,7 @@ import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
 import {
+  type AnyFragnoRouteConfig,
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
   resolveRouteFactories,
@@ -217,58 +218,128 @@ function mergeRequestHeaders(
 }
 
 /**
- * Extract only GET routes from a library config's routes array
  * @internal
  */
-export type ExtractGetRoutes<
-  T extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> = {
-  [K in keyof T]: T[K] extends FragnoRouteConfig<
-    infer Method,
-    infer Path,
-    infer Input,
-    infer Output,
-    infer ErrorCode,
-    infer QueryParams
+type FilterRouteByMethod<TRoute, TExpectedMethod extends HTTPMethod> =
+  TRoute extends FragnoRouteConfig<
+    infer TMethod,
+    infer TPath,
+    infer TInputSchema,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters,
+    infer TThisContext
   >
-    ? Method extends "GET"
-      ? FragnoRouteConfig<Method, Path, Input, Output, ErrorCode, QueryParams>
+    ? [Extract<TMethod, TExpectedMethod>] extends [never]
+      ? [Extract<TExpectedMethod, TMethod>] extends [never]
+        ? never
+        : FragnoRouteConfig<
+            TMethod,
+            TPath,
+            TInputSchema,
+            TOutputSchema,
+            TErrorCode,
+            TQueryParameters,
+            TThisContext
+          >
+      : FragnoRouteConfig<
+          TMethod,
+          TPath,
+          TInputSchema,
+          TOutputSchema,
+          TErrorCode,
+          TQueryParameters,
+          TThisContext
+        >
+    : never;
+
+/**
+ * @internal
+ */
+type FilterRouteByPath<TRoute, TPath extends string> =
+  TRoute extends FragnoRouteConfig<
+    infer TMethod,
+    infer TRoutePath,
+    infer TInputSchema,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters,
+    infer TThisContext
+  >
+    ? [Extract<TRoutePath, TPath>] extends [never]
+      ? [Extract<TPath, TRoutePath>] extends [never]
+        ? never
+        : FragnoRouteConfig<
+            TMethod,
+            TRoutePath,
+            TInputSchema,
+            TOutputSchema,
+            TErrorCode,
+            TQueryParameters,
+            TThisContext
+          >
+      : FragnoRouteConfig<
+          TMethod,
+          TRoutePath,
+          TInputSchema,
+          TOutputSchema,
+          TErrorCode,
+          TQueryParameters,
+          TThisContext
+        >
+    : never;
+
+/**
+ * @internal
+ */
+type ExtractGetRoutesExact<T extends readonly AnyFragnoRouteConfig[]> = {
+  [K in keyof T]: T[K] extends FragnoRouteConfig<
+    infer TMethod,
+    infer TPath,
+    infer TInputSchema,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters,
+    infer TThisContext
+  >
+    ? TMethod extends "GET"
+      ? FragnoRouteConfig<
+          TMethod,
+          TPath,
+          TInputSchema,
+          TOutputSchema,
+          TErrorCode,
+          TQueryParameters,
+          TThisContext
+        >
       : never
     : never;
 }[number][];
 
 /**
- * Extract the path from a route configuration for a given method
+ * Extract only GET routes from a library config's routes array
  * @internal
  */
-export type ExtractRoutePath<
-  T extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
+export type ExtractGetRoutes<T extends readonly AnyFragnoRouteConfig[]> = ExtractGetRoutesExact<T>;
+
+/**
+ * @internal
+ */
+type ExtractRoutePathExact<
+  T extends readonly AnyFragnoRouteConfig[],
   TExpectedMethod extends HTTPMethod = HTTPMethod,
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
-    infer Method,
-    infer Path,
+    infer TMethod,
+    infer TPath,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
     string,
-    string
+    string,
+    RequestThisContext
   >
-    ? Method extends TExpectedMethod
-      ? Path
+    ? TMethod extends TExpectedMethod
+      ? TPath
       : never
     : never;
 }[number];
@@ -276,30 +347,115 @@ export type ExtractRoutePath<
 /**
  * @internal
  */
-export type ExtractGetRoutePaths<
-  T extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
+type ExtractRoutePathLoose<
+  T extends readonly AnyFragnoRouteConfig[],
+  TExpectedMethod extends HTTPMethod = HTTPMethod,
+> = {
+  [K in keyof T]: FilterRouteByMethod<T[K], TExpectedMethod> extends FragnoRouteConfig<
+    infer _TMethod,
+    infer TPath,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
     string,
-    string
-  >[],
-> = ExtractRoutePath<T, "GET">;
+    string,
+    RequestThisContext
+  >
+    ? TPath
+    : never;
+}[number];
 
 /**
  * @internal
  */
-export type ExtractNonGetRoutePaths<
-  T extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> = ExtractRoutePath<T, NonGetHTTPMethod>;
+type HasWidenedRouteShape<T extends readonly AnyFragnoRouteConfig[]> =
+  T[number] extends infer TRoute
+    ? TRoute extends FragnoRouteConfig<
+        infer TMethod,
+        infer TPath,
+        StandardSchemaV1 | undefined,
+        StandardSchemaV1 | undefined,
+        string,
+        string,
+        RequestThisContext
+      >
+      ? string extends TPath
+        ? true
+        : HTTPMethod extends TMethod
+          ? true
+          : false
+      : false
+    : false;
+
+/**
+ * Extract the path from a route configuration for a given method
+ * @internal
+ */
+export type ExtractRoutePath<
+  T extends readonly AnyFragnoRouteConfig[],
+  TExpectedMethod extends HTTPMethod = HTTPMethod,
+> = [ExtractRoutePathExact<T, TExpectedMethod>] extends [never]
+  ? HasWidenedRouteShape<T> extends true
+    ? ExtractRoutePathLoose<T, TExpectedMethod> & string
+    : never
+  : ExtractRoutePathExact<T, TExpectedMethod>;
+
+/**
+ * @internal
+ */
+export type ExtractGetRoutePaths<T extends readonly AnyFragnoRouteConfig[]> = ExtractRoutePath<
+  T,
+  "GET"
+>;
+
+/**
+ * @internal
+ */
+export type ExtractNonGetRoutePaths<T extends readonly AnyFragnoRouteConfig[]> = ExtractRoutePath<
+  T,
+  NonGetHTTPMethod
+>;
+
+/**
+ * @internal
+ */
+type ExtractRouteByPathExact<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TPath extends string,
+  TMethod extends HTTPMethod = HTTPMethod,
+> = {
+  [K in keyof TRoutes]: TRoutes[K] extends FragnoRouteConfig<
+    infer TRouteMethod,
+    TPath,
+    infer TInputSchema,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters,
+    infer TThisContext
+  >
+    ? TRouteMethod extends TMethod
+      ? FragnoRouteConfig<
+          TRouteMethod,
+          TPath,
+          TInputSchema,
+          TOutputSchema,
+          TErrorCode,
+          TQueryParameters,
+          TThisContext
+        >
+      : never
+    : never;
+}[number];
+
+/**
+ * @internal
+ */
+type ExtractRouteByPathLoose<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TPath extends string,
+  TMethod extends HTTPMethod = HTTPMethod,
+> = {
+  [K in keyof TRoutes]: FilterRouteByPath<FilterRouteByMethod<TRoutes[K], TMethod>, TPath>;
+}[number];
 
 /**
  * Extract the route configuration type(s) for a given path from a routes array.
@@ -310,69 +466,35 @@ export type ExtractNonGetRoutePaths<
  * @internal
  */
 export type ExtractRouteByPath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
+  TRoutes extends readonly AnyFragnoRouteConfig[],
   TPath extends string,
   TMethod extends HTTPMethod = HTTPMethod,
-> = {
-  [K in keyof TRoutes]: TRoutes[K] extends FragnoRouteConfig<
-    infer M,
-    TPath,
-    infer Input,
-    infer Output,
-    infer ErrorCode,
-    infer QueryParams
-  >
-    ? M extends TMethod
-      ? FragnoRouteConfig<M, TPath, Input, Output, ErrorCode, QueryParams>
-      : never
-    : never;
-}[number];
+> = [ExtractRouteByPathExact<TRoutes, TPath, TMethod>] extends [never]
+  ? HasWidenedRouteShape<TRoutes> extends true
+    ? ExtractRouteByPathLoose<TRoutes, TPath, TMethod>
+    : never
+  : ExtractRouteByPathExact<TRoutes, TPath, TMethod>;
 
 /**
  * Extract the output schema type for a specific route path from a routes array
  * @internal
  */
 export type ExtractOutputSchemaForPath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[],
+  TRoutes extends readonly AnyFragnoRouteConfig[],
   TPath extends string,
-> = {
-  [K in keyof TRoutes]: TRoutes[K] extends FragnoRouteConfig<
-    infer Method,
-    TPath,
-    StandardSchemaV1 | undefined,
-    infer Output
-  >
-    ? Method extends "GET"
-      ? Output
-      : never
+> =
+  ExtractRouteByPath<TRoutes, TPath, "GET"> extends {
+    outputSchema?: infer TOutputSchema;
+  }
+    ? TOutputSchema
     : never;
-}[number];
 
 /**
  * Check if a path exists as a GET route in the routes array
  * @internal
  */
 export type IsValidGetRoutePath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
+  TRoutes extends readonly AnyFragnoRouteConfig[],
   TPath extends string,
 > = TPath extends ExtractGetRoutePaths<TRoutes> ? true : false;
 
@@ -381,14 +503,7 @@ export type IsValidGetRoutePath<
  * @internal
  */
 export type ValidateGetRoutePath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
+  TRoutes extends readonly AnyFragnoRouteConfig[],
   TPath extends string,
 > =
   TPath extends ExtractGetRoutePaths<TRoutes>
@@ -399,16 +514,8 @@ export type ValidateGetRoutePath<
  * Helper type to check if a routes array has any GET routes
  * @internal
  */
-export type HasGetRoutes<
-  T extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> = ExtractGetRoutePaths<T> extends never ? false : true;
+export type HasGetRoutes<T extends readonly AnyFragnoRouteConfig[]> =
+  ExtractGetRoutePaths<T> extends never ? false : true;
 
 /**
  * @internal
