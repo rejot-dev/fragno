@@ -15,6 +15,9 @@ const createTelegramRuntime = (
     fileSize: 4,
   }),
   downloadFile: async () => new Response(new Uint8Array([0, 255, 1, 2])),
+  sendMessage: async () => ({ ok: true, queued: true }),
+  sendChatAction: async () => ({ ok: true }),
+  editMessage: async () => ({ ok: true, queued: true }),
   ...overrides,
 });
 
@@ -28,6 +31,7 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -60,6 +64,62 @@ describe("telegram bash command registration", () => {
     ]);
   });
 
+  it("supports chat send, typing action, and message edit commands", async () => {
+    const fs = new InMemoryFs();
+    const calls: unknown[] = [];
+    const { bash, commandCallsResult } = createBashHost({
+      fs,
+      context: {
+        automation: null,
+        automations: null,
+        otp: null,
+        pi: null,
+        reson8: null,
+        resend: null,
+        telegram: {
+          runtime: createTelegramRuntime({
+            sendMessage: async (args) => {
+              calls.push(args);
+              return { ok: true, queued: true };
+            },
+          }),
+        },
+      },
+    });
+
+    const result = await bash.exec(
+      'telegram.chat.send -c chat-1 -t "Hello"\n' +
+        "telegram.chat.actions --chat-id chat-1 --action typing\n" +
+        'telegram.message.edit --chat-id chat-1 --message-id 123 --text "Updated"',
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        chatId: "chat-1",
+        text: "Hello",
+        parseMode: "Markdown",
+      }),
+    ]);
+    expect(commandCallsResult).toEqual([
+      {
+        command: "telegram.chat.send",
+        output: expect.any(String),
+        exitCode: 0,
+      },
+      {
+        command: "telegram.chat.actions",
+        output: expect.any(String),
+        exitCode: 0,
+      },
+      {
+        command: "telegram.message.edit",
+        output: expect.any(String),
+        exitCode: 0,
+      },
+    ]);
+  });
+
   it("writes bytes directly to a file when --output is specified", async () => {
     const fs = new InMemoryFs();
     const { bash, commandCallsResult } = createBashHost({
@@ -69,6 +129,7 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -103,6 +164,7 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -126,6 +188,7 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -150,6 +213,7 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),

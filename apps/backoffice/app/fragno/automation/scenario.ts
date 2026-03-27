@@ -17,6 +17,8 @@ import {
   hasHelpOption,
   normalizeExecutionResult,
   parseCliTokens,
+  readOutputOptions,
+  readStringOption,
 } from "./commands/cli";
 import {
   AUTOMATIONS_COMMAND_SPEC_LIST,
@@ -105,7 +107,10 @@ export type AutomationScenarioCommandMock = {
   onExhausted: "default" | "repeat-last" | "error";
 };
 
-export type AutomationScenarioCommandName = keyof ParsedCommandByName | keyof PiParsedCommandByName;
+export type AutomationScenarioCommandName =
+  | keyof ParsedCommandByName
+  | keyof PiParsedCommandByName
+  | "telegram.chat.send";
 
 export type AutomationScenarioDefinition = {
   version: 1;
@@ -225,7 +230,20 @@ export type RunAutomationScenarioFileOptions = {
   path: string;
 };
 
-type ScenarioParsedCommandByName = ParsedCommandByName & PiParsedCommandByName;
+type TelegramChatSendArgs = {
+  chatId: string;
+  text: string;
+};
+
+type ScenarioParsedCommandByName = ParsedCommandByName &
+  PiParsedCommandByName & {
+    "telegram.chat.send": {
+      name: "telegram.chat.send";
+      args: TelegramChatSendArgs;
+      output: AutomationCommandOutputOptions;
+      rawArgs: string[];
+    };
+  };
 type ScenarioParsedCommand = ScenarioParsedCommandByName[keyof ScenarioParsedCommandByName];
 type ScenarioCommandSpec = AutomationCommandSpec<
   AutomationScenarioCommandName,
@@ -251,6 +269,50 @@ const SUPPORTED_COMMAND_SPECS = [
   ...OTP_COMMAND_SPEC_LIST,
   ...EVENT_COMMAND_SPEC_LIST,
   ...PI_COMMAND_SPEC_LIST,
+  {
+    name: "telegram.chat.send",
+    help: {
+      summary: "telegram.chat.send queues a message to be sent to a Telegram chat.",
+      options: [
+        {
+          name: "chat-id",
+          required: true,
+          valueRequired: true,
+          valueName: "chat-id",
+          description: "Telegram chat id to send to (-c shorthand)",
+        },
+        {
+          name: "text",
+          required: true,
+          valueRequired: true,
+          valueName: "text",
+          description: "Message text (-t shorthand)",
+        },
+      ],
+      examples: ['telegram.chat.send --chat-id "$chat_id" --text "Hello"'],
+    },
+    parse: (args: string[]) => {
+      const expandedArgs = args.map((token) => {
+        if (token === "-c") {
+          return "--chat-id";
+        }
+        if (token === "-t") {
+          return "--text";
+        }
+        return token;
+      });
+      const parsed = parseCliTokens(expandedArgs);
+      return {
+        name: "telegram.chat.send",
+        args: {
+          chatId: readStringOption(parsed, "chat-id", true)!,
+          text: readStringOption(parsed, "text", true)!,
+        },
+        output: readOutputOptions(parsed),
+        rawArgs: args,
+      } satisfies ScenarioParsedCommandByName["telegram.chat.send"];
+    },
+  } satisfies ScenarioCommandSpec,
 ] as readonly ScenarioCommandSpec[];
 
 const automationEventSchema: z.ZodType<AutomationEvent> = z.object({
@@ -945,6 +1007,15 @@ const applySuccessfulCommandState = (
       });
       break;
     }
+    case "telegram.chat.send": {
+      context.state.replies.push({
+        eventId: context.event.id,
+        source: "telegram",
+        externalActorId: command.args.chatId,
+        text: command.args.text,
+      });
+      break;
+    }
     case "otp.identity.create-claim": {
       context.state.claims.push(
         normalizeClaimFromData(context.state, context.event, command.args, result.data),
@@ -1080,6 +1151,25 @@ const executeBuiltinCommand = async (
           orgId: emitted.orgId,
           source: emitted.source,
           eventType: emitted.eventType,
+        },
+      };
+    }
+    case "telegram.chat.send": {
+      if (typeof command.args.text !== "string" || command.args.text.length === 0) {
+        throw new Error("telegram.chat.send requires a non-empty --text value");
+      }
+
+      context.state.replies.push({
+        eventId: context.event.id,
+        source: "telegram",
+        externalActorId: command.args.chatId,
+        text: command.args.text,
+      });
+
+      return {
+        data: {
+          ok: true,
+          queued: true,
         },
       };
     }

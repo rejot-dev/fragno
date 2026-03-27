@@ -90,8 +90,9 @@ describe("starter automation scenario: telegram-claim-linking.start.sh", () => {
           },
         }),
         expect.objectContaining({
-          name: "event.reply",
+          name: "telegram.chat.send",
           args: {
+            chatId: "chat-1",
             text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
           },
         }),

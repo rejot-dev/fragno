@@ -38,6 +38,7 @@ export type PiCommandName = (typeof PI_COMMAND_NAMES)[number];
 export type PiSessionCreateArgs = {
   agent: string;
   name?: string;
+  systemMessage?: string;
   metadata?: unknown;
   tags?: string[];
   steeringMode?: "all" | "one-at-a-time";
@@ -178,6 +179,13 @@ const HELP: {
         description: "Optional display name for the session",
       },
       {
+        name: "system-message",
+        valueRequired: true,
+        valueName: "text",
+        description:
+          "Additional system message to append to the configured agent system prompt for this session",
+      },
+      {
         name: "tag",
         valueRequired: true,
         valueName: "tag",
@@ -198,6 +206,7 @@ const HELP: {
     ],
     examples: [
       `pi.session.create --agent assistant --name onboarding --tag team-alpha --tag priority --metadata-json '{"purpose":"support"}'`,
+      'pi.session.create --agent assistant --system-message "You are operating in staging mode." --format json',
       "pi.session.create --agent assistant --steering-mode one-at-a-time --format json",
     ],
   },
@@ -292,6 +301,7 @@ const parsePiSessionCreate = (args: string[]): PiParsedCommandByName["pi.session
     args: {
       agent: readStringOption(parsed, "agent", true)!,
       name: readStringOption(parsed, "name") ?? undefined,
+      systemMessage: readStringOption(parsed, "system-message") ?? undefined,
       metadata,
       tags,
       steeringMode: normalizeSteeringMode(readStringOption(parsed, "steering-mode")),
