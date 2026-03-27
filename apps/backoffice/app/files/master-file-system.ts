@@ -9,7 +9,7 @@ import type {
   DirentEntry,
   FileContent,
   FsStat,
-  IIFileSystem,
+  IFileSystem,
   MkdirOptions,
   ReadFileOptions,
   RmOptions,
@@ -48,17 +48,48 @@ export type MasterFileSystemOptions = {
  * and any parent directories implied by nested mount points, so callers can browse the combined
  * namespace without needing each mount to materialize those directories itself.
  */
-export class MasterFileSystem implements IIFileSystem {
-  readonly mounts: ReadonlyArray<ResolvedFileMount>;
-  readonly #routingMounts: ReadonlyArray<ResolvedFileMount>;
+export class MasterFileSystem implements IFileSystem {
+  #mounts: ResolvedFileMount[];
+  #routingMounts: ResolvedFileMount[];
 
   constructor(options: MasterFileSystemOptions) {
-    this.mounts = options.mounts
+    this.#mounts = options.mounts
       .slice()
       .sort((left, right) => compareMountDisplayOrder(left.mountPoint, right.mountPoint));
     this.#routingMounts = options.mounts
       .slice()
       .sort((left, right) => right.mountPoint.length - left.mountPoint.length);
+  }
+
+  get mounts(): ReadonlyArray<ResolvedFileMount> {
+    return this.#mounts;
+  }
+
+  mount(mount: ResolvedFileMount): void {
+    const mountPoint = normalizeMountPoint(mount.mountPoint);
+    if (this.#mounts.some((m) => m.mountPoint === mountPoint)) {
+      throw new Error(`Duplicate file mount point '${mountPoint}' is already registered.`);
+    }
+
+    const resolved = { ...mount, mountPoint };
+    this.#mounts.push(resolved);
+    this.#mounts.sort((left, right) => compareMountDisplayOrder(left.mountPoint, right.mountPoint));
+    this.#routingMounts.push(resolved);
+    this.#routingMounts.sort((left, right) => right.mountPoint.length - left.mountPoint.length);
+  }
+
+  unmount(mountPoint: string): void {
+    const normalized = normalizeMountPoint(mountPoint);
+    const mountIndex = this.#mounts.findIndex((m) => m.mountPoint === normalized);
+    if (mountIndex === -1) {
+      throw new Error(`No mount found at '${normalized}'.`);
+    }
+
+    this.#mounts.splice(mountIndex, 1);
+    const routingIndex = this.#routingMounts.findIndex((m) => m.mountPoint === normalized);
+    if (routingIndex !== -1) {
+      this.#routingMounts.splice(routingIndex, 1);
+    }
   }
 
   async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {

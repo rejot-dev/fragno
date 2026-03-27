@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import type { FileContent, FsStat } from "./interface";
-import { createMasterFileSystem } from "./master-file-system";
+import { createMasterFileSystem, MasterFileSystem } from "./master-file-system";
+import { normalizeMountedFileSystem } from "./mounted-file-system";
 import { isMountPointParentOf, normalizeMountPoint, normalizeRelativePath } from "./normalize-path";
 import { registerFileContributor, resetFileContributorsForTest } from "./registry";
 import type { FileContributor, FilesContext, MountedFileSystem } from "./types";
@@ -430,6 +431,106 @@ describe("createMasterFileSystem", () => {
   test("detects parent mount relationship", () => {
     expect(isMountPointParentOf("/system", "/system/archive")).toBe(true);
     expect(isMountPointParentOf("/system", "/systematic")).toBe(false);
+  });
+
+  test("dynamically mounts and unmounts filesystems", async () => {
+    const master = await createMasterFileSystem(context);
+    const initialMountCount = master.mounts.length;
+
+    const eventJson = '{"id":"test"}';
+
+    master.mount({
+      id: "context",
+      kind: "custom",
+      mountPoint: "/context",
+      title: "Context",
+      readOnly: true,
+      persistence: "session",
+      fs: normalizeMountedFileSystem(
+        {
+          readFile: async () => eventJson,
+          readFileBuffer: async () => new TextEncoder().encode(eventJson),
+          stat: async () => ({
+            isFile: true,
+            isDirectory: false,
+            isSymbolicLink: false,
+            mode: 0o444,
+            size: eventJson.length,
+            mtime: new Date(0),
+          }),
+          readdir: async () => ["event.json"],
+          getAllPaths: () => ["/context", "/context/event.json"],
+        },
+        { readOnly: true },
+      ),
+    });
+
+    expect(master.mounts.length).toBe(initialMountCount + 1);
+    await expect(master.readFile("/context/event.json")).resolves.toBe('{"id":"test"}');
+    await expect(master.readdir("/")).resolves.toEqual(expect.arrayContaining(["context"]));
+
+    master.unmount("/context");
+
+    expect(master.mounts.length).toBe(initialMountCount);
+    await expect(master.readdir("/")).resolves.not.toEqual(expect.arrayContaining(["context"]));
+  });
+
+  test("rejects duplicate dynamic mount points", async () => {
+    const master = await createMasterFileSystem(context);
+
+    const fs = new InMemoryFs();
+    const mount = {
+      id: "dup",
+      kind: "custom" as const,
+      mountPoint: "/workspace",
+      title: "Dup",
+      readOnly: false,
+      persistence: "session" as const,
+      fs: normalizeMountedFileSystem(fs, { readOnly: false }),
+    };
+
+    expect(() => master.mount(mount)).toThrow(/Duplicate file mount point/);
+  });
+
+  test("rejects unmount of non-existent mount point", async () => {
+    const master = await createMasterFileSystem(context);
+    expect(() => master.unmount("/nonexistent")).toThrow(/No mount found/);
+  });
+
+  test("mount and unmount can be used as a bracket around execution", async () => {
+    const master = new MasterFileSystem({ mounts: [] });
+
+    master.mount({
+      id: "temp",
+      kind: "custom",
+      mountPoint: "/temp",
+      title: "Temp",
+      readOnly: true,
+      persistence: "session",
+      fs: normalizeMountedFileSystem(
+        {
+          readFile: async () => "hello",
+          readFileBuffer: async () => new TextEncoder().encode("hello"),
+          stat: async () => ({
+            isFile: true,
+            isDirectory: false,
+            isSymbolicLink: false,
+            mode: 0o444,
+            size: 5,
+            mtime: new Date(0),
+          }),
+          readdir: async () => ["data.txt"],
+          getAllPaths: () => ["/temp", "/temp/data.txt"],
+        },
+        { readOnly: true },
+      ),
+    });
+
+    await expect(master.readFile("/temp/data.txt")).resolves.toBe("hello");
+
+    master.unmount("/temp");
+
+    await expect(master.exists("/temp/data.txt")).resolves.toBe(false);
   });
 });
 
