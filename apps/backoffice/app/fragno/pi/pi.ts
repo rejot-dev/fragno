@@ -31,6 +31,10 @@ import {
   type ResendBashRuntime,
 } from "../bash-runtime/resend-bash-runtime";
 import {
+  createReson8RouteBashRuntime,
+  type Reson8BashRuntime,
+} from "../bash-runtime/reson8-bash-runtime";
+import {
   createTelegramBashRuntime,
   type TelegramBashRuntime,
 } from "../bash-runtime/telegram-bash-runtime";
@@ -61,6 +65,9 @@ export type PiBashCommandContext = {
   };
   pi: {
     runtime: PiBashRuntime;
+  };
+  reson8: {
+    runtime: Reson8BashRuntime;
   };
   resend: {
     runtime: ResendBashRuntime;
@@ -288,6 +295,9 @@ export const createPiBashCommandContext = ({
   },
   pi: {
     runtime: createPiRouteBashRuntime({ env, orgId }),
+  },
+  reson8: {
+    runtime: createReson8RouteBashRuntime({ env, orgId }),
   },
   resend: {
     runtime: createResendRouteBashRuntime({ env, orgId }),

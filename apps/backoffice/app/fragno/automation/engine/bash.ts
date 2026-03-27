@@ -5,6 +5,11 @@ import {
   type ResendBashRuntime,
 } from "@/fragno/bash-runtime/resend-bash-runtime";
 import {
+  createReson8RouteBashRuntime,
+  createUnavailableReson8BashRuntime,
+  type Reson8BashRuntime,
+} from "@/fragno/bash-runtime/reson8-bash-runtime";
+import {
   createTelegramBashRuntime,
   createUnavailableTelegramBashRuntime,
   type TelegramBashRuntime,
@@ -73,6 +78,9 @@ export type AutomationBashHostContext = {
   pi: {
     runtime: PiBashRuntime;
   } | null;
+  reson8: {
+    runtime: Reson8BashRuntime;
+  };
   resend: {
     runtime: ResendBashRuntime;
   };
@@ -176,6 +184,10 @@ export const createAutomationBashCommandContext = ({
       runtime,
     },
     pi: pi ? { runtime: pi.runtime } : null,
+    reson8:
+      env && orgId
+        ? { runtime: createReson8RouteBashRuntime({ env, orgId }) }
+        : { runtime: createUnavailableReson8BashRuntime() },
     resend:
       env && orgId
         ? { runtime: createResendRouteBashRuntime({ env, orgId }) }

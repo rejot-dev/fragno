@@ -6,6 +6,7 @@ import { createBashHost } from "./bash-host";
 import type { OtpBashRuntime } from "./otp-bash-runtime";
 import type { PiBashRuntime } from "./pi-bash-runtime";
 import type { ResendBashRuntime } from "./resend-bash-runtime";
+import type { Reson8BashRuntime } from "./reson8-bash-runtime";
 
 const createAutomationsRuntime = () => ({
   lookupBinding: async () => ({
@@ -121,6 +122,12 @@ const createResendRuntime = (): ResendBashRuntime => ({
   }),
 });
 
+const createReson8Runtime = (): Reson8BashRuntime => ({
+  transcribePrerecorded: async () => ({
+    text: "hello world",
+  }),
+});
+
 const createPiRuntime = (): PiBashRuntime => ({
   createSession: async () => ({
     id: "session-1",
@@ -228,6 +235,9 @@ const createTelegramRuntime = () => ({
     fileSize: 4,
   }),
   downloadFile: async () => new Response(new Uint8Array([0, 255, 1, 2])),
+  sendMessage: async () => ({ ok: true, queued: true }),
+  sendChatAction: async () => ({ ok: true }),
+  editMessage: async () => ({ ok: true, queued: true }),
 });
 
 const createAutomationContext = () => ({
@@ -272,6 +282,9 @@ describe("bash host command assembly", () => {
         },
         pi: {
           runtime: createPiRuntime(),
+        },
+        reson8: {
+          runtime: createReson8Runtime(),
         },
         resend: {
           runtime: createResendRuntime(),
@@ -344,6 +357,7 @@ describe("bash host command assembly", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: null,
       },
@@ -373,6 +387,7 @@ describe("bash host command assembly", () => {
         automations: null,
         otp: null,
         pi: null,
+        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),

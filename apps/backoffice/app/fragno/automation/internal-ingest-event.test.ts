@@ -24,6 +24,7 @@ import { automationFragmentDefinition, type AutomationPiBashContext } from "./de
 import { automationFragmentRoutes } from "./routes";
 
 const replyCalls: string[] = [];
+const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
 const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
   url: `https://example.com/claims/${externalActorId}`,
   externalId: externalActorId,
@@ -48,6 +49,41 @@ const automationEnv = {
   TELEGRAM: {
     idFromName: vi.fn((orgId: string) => `telegram:${orgId}`),
     get: vi.fn(() => ({
+      fetch: vi.fn(async (request: Request) => {
+        const url = new URL(request.url);
+        const pathname = url.pathname;
+
+        if (request.method === "POST" && pathname.includes("/api/telegram/chats/")) {
+          if (pathname.endsWith("/send")) {
+            const chatId = pathname.split("/chats/")[1]!.split("/")[0]!;
+            const body = (await request.json()) as { text?: string };
+            telegramSendCalls.push({ chatId, text: body.text ?? "" });
+            return new Response(JSON.stringify({ ok: true, queued: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+
+          if (pathname.endsWith("/actions")) {
+            return new Response(JSON.stringify({ ok: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+
+          if (pathname.endsWith("/edit")) {
+            return new Response(JSON.stringify({ ok: true, queued: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+        }
+
+        return new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }),
       getAutomationFile: telegramGetFileMock,
       downloadAutomationFile: telegramDownloadFileMock,
       sendAutomationReply: vi.fn(),
@@ -67,6 +103,17 @@ const automationEnv = {
   },
   RESEND: {
     idFromName: vi.fn((orgId: string) => `resend:${orgId}`),
+    get: vi.fn(() => ({
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+            status: 400,
+          }),
+      ),
+    })),
+  },
+  RESON8: {
+    idFromName: vi.fn((orgId: string) => `reson8:${orgId}`),
     get: vi.fn(() => ({
       fetch: vi.fn(
         async () =>
@@ -381,6 +428,7 @@ describe("automation internalIngestEvent", () => {
 
   beforeEach(async () => {
     replyCalls.length = 0;
+    telegramSendCalls.length = 0;
     vi.clearAllMocks();
     issueIdentityClaimMock.mockClear();
     createPiSessionMock.mockClear();
@@ -549,8 +597,11 @@ describe("automation internalIngestEvent", () => {
         publicBaseUrl: "https://example.com",
       }),
     );
-    expect(replyCalls).toEqual([
-      "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
+    expect(telegramSendCalls).toEqual([
+      {
+        chatId: "chat-1",
+        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
+      },
     ]);
 
     const otpResult = await ingestEvent({
@@ -594,10 +645,19 @@ describe("automation internalIngestEvent", () => {
       eventType,
     });
     expect(issueIdentityClaimMock).toHaveBeenCalledTimes(1);
-    expect(replyCalls).toEqual([
-      "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
-      "Your Telegram chat is now linked.",
-      "This Telegram chat is already linked.",
+    expect(telegramSendCalls).toEqual([
+      {
+        chatId: "chat-1",
+        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
+      },
+      {
+        chatId: "chat-1",
+        text: "Your Telegram chat is now linked.",
+      },
+      {
+        chatId: "chat-1",
+        text: "This Telegram chat is already linked.",
+      },
     ]);
   });
 
@@ -750,19 +810,27 @@ describe("automation internalIngestEvent", () => {
         }),
         idempotencyKey: expect.any(String),
       });
-      expect(createPiSessionMock).toHaveBeenCalledWith({
-        agent: "default::openai::gpt-5-mini",
-        name: "Telegram chat-1",
-        tags: ["telegram", "auto-session"],
-      });
+      expect(createPiSessionMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "default::openai::gpt-5-mini",
+          name: "Telegram chat-1",
+          tags: ["telegram", "auto-session"],
+        }),
+      );
       expect(runTurnMock).toHaveBeenCalledWith({
         sessionId: "session-for-default::openai::gpt-5-mini",
         text: "Hello Pi",
         steeringMode: undefined,
       });
-      expect(replyCalls).toEqual([
-        "Created Pi session: session-for-default::openai::gpt-5-mini",
-        "agent:Hello Pi",
+      expect(telegramSendCalls).toEqual([
+        {
+          chatId: "chat-1",
+          text: "Created Pi session: session-for-default::openai::gpt-5-mini",
+        },
+        {
+          chatId: "chat-1",
+          text: "agent:Hello Pi",
+        },
       ]);
     } finally {
       await starterContext.test.cleanup();
@@ -854,6 +922,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
         OTP: automationEnv.OTP,
         TELEGRAM: automationEnv.TELEGRAM,
         RESEND: automationEnv.RESEND,
+        RESON8: automationEnv.RESON8,
       } as unknown as CloudflareEnv,
     });
 
@@ -939,9 +1008,15 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
       source: "otp",
       eventType: "identity.claim.completed",
     });
-    expect(replyCalls).toEqual([
-      "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
-      "We couldn't link your Telegram chat. Please try again.",
+    expect(telegramSendCalls).toEqual([
+      {
+        chatId: "chat-1",
+        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
+      },
+      {
+        chatId: "chat-1",
+        text: "We couldn't link your Telegram chat. Please try again.",
+      },
     ]);
 
     const identityBindingsResponse = await fragment.fragment.callRoute("GET", "/identity-bindings");
