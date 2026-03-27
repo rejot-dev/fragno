@@ -104,7 +104,7 @@ const canUsePersistentWorkspaceLayer = (ctx: FilesContext): boolean => {
     return false;
   }
 
-  return Boolean(ctx.uploadRuntime || (ctx.request && ctx.routerContext));
+  return Boolean(ctx.uploadRuntime);
 };
 
 const describeWorkspaceRoot = (ctx: FilesContext, writable: boolean): string => {

@@ -235,34 +235,10 @@ export class Pi extends DurableObject<CloudflareEnv> {
       throw new Error("Pi runtime requires an organisation id.");
     }
 
-    const uploadBinding = this.#env.UPLOAD;
-    const uploadDo = uploadBinding?.get(uploadBinding.idFromName(orgId));
-    const resendDo = this.#env.RESEND.get(this.#env.RESEND.idFromName(orgId));
-    const sessionFileSystemContext: PiSessionFileSystemContext = uploadDo
-      ? {
-          orgId,
-          uploadRuntime: {
-            baseUrl: "https://pi.internal",
-            uploadConfig: await uploadDo.getAdminConfig(),
-            fetch: uploadDo.fetch.bind(uploadDo),
-          },
-          resendRuntime: {
-            baseUrl: "https://pi.internal",
-            fetch: resendDo.fetch.bind(resendDo),
-          },
-        }
-      : {
-          orgId,
-          uploadRuntime: {
-            baseUrl: "https://pi.internal",
-            uploadConfig: null,
-            fetch: async () => new Response("Upload binding not configured.", { status: 404 }),
-          },
-          resendRuntime: {
-            baseUrl: "https://pi.internal",
-            fetch: resendDo.fetch.bind(resendDo),
-          },
-        };
+    const sessionFileSystemContext: PiSessionFileSystemContext = {
+      orgId,
+      env: this.#env,
+    };
 
     const runtime = createPiRuntime({
       config,

@@ -169,19 +169,17 @@ beforeEach(() => {
 });
 
 describe("resend file contributor", () => {
-  test("createFileSystem returns null when router context is missing", () => {
+  test("createFileSystem returns null when resendRuntime is not provided", () => {
     const resolved = resendFileContributor.createFileSystem?.({
       orgId: "org_123",
-      backend: "backoffice",
     });
 
     expect(resolved).toBeNull();
   });
 
-  test("accepts an injected resend runtime without router context", async () => {
+  test("accepts an injected resend runtime", async () => {
     const resolved = await resendFileContributor.createFileSystem?.({
       orgId: "org_123",
-      backend: "pi",
       resendRuntime: {
         baseUrl: "https://pi.internal",
         fetch: async (request: Request) => await resendRequestHandler(request),
@@ -200,9 +198,10 @@ describe("resend file contributor", () => {
   test("loads thread list and renders markdown files", async () => {
     const resolved = await resendFileContributor.createFileSystem?.({
       orgId: "org_123",
-      backend: "backoffice",
-      request: new Request("https://docs.example.test/backoffice/files"),
-      routerContext: { get: () => ({}) } as never,
+      resendRuntime: {
+        baseUrl: "https://pi.internal",
+        fetch: async (request: Request) => await resendRequestHandler(request),
+      },
     });
 
     expect(resolved).not.toBeNull();

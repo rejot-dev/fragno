@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
 
-import { automationHooksFileContributor, createMasterFileSystem } from "@/files";
+import { createOrgFileSystem } from "@/files";
 import type { AutomationEvent, AutomationIngestResult } from "@/fragno/automation";
 import {
   buildNotConfiguredResponse,
@@ -95,37 +95,15 @@ export class Automations extends DurableObject<CloudflareEnv> {
 
   async #createAutomationFileSystem(orgId?: string) {
     const normalizedOrgId = orgId?.trim();
-    const durableHooksRuntimes = [
-      {
-        contributorId: automationHooksFileContributor.id,
-        getHookQueue: (opts?: DurableHookQueueOptions) =>
-          this.getHookQueue({ ...opts, fragment: "automation" as const }),
-      },
-    ];
-
-    if (!normalizedOrgId || !this.#env.UPLOAD) {
-      return createMasterFileSystem({
-        orgId: normalizedOrgId || "automation-default-org",
-        origin: "https://automations.internal",
-        backend: "pi",
-        uploadConfig: null,
-        durableHooksRuntimes,
-      });
+    if (!normalizedOrgId) {
+      throw new Error("Automation file system requires an organisation id");
     }
 
-    const uploadDo = this.#env.UPLOAD.get(this.#env.UPLOAD.idFromName(normalizedOrgId));
-    const uploadConfig = await uploadDo.getAdminConfig();
-
-    return createMasterFileSystem({
+    return createOrgFileSystem({
       orgId: normalizedOrgId,
-      origin: "https://automations.internal",
-      backend: "pi",
-      uploadConfig,
-      uploadRuntime: {
-        baseUrl: "https://automations.internal",
-        fetch: uploadDo.fetch.bind(uploadDo),
-      },
-      durableHooksRuntimes,
+      env: this.#env,
+      automationHookQueue: (opts) =>
+        this.getHookQueue({ ...opts, fragment: "automation" as const }),
     });
   }
 

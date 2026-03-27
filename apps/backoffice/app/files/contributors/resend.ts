@@ -1,6 +1,5 @@
 import type { ResendThreadMessage, ResendThreadSummary } from "@fragno-dev/resend-fragment";
 
-import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
 import {
   NotConfiguredError,
   buildResendThreadMarkdown,
@@ -235,29 +234,14 @@ export const resendFileContributor: FileContributor = {
 };
 
 const createResendRuntime = (ctx: FilesContext): ResendBashRuntime | null => {
-  if (ctx.resendRuntime) {
-    return createRouteBackedResendRuntime({
-      baseUrl: ctx.resendRuntime.baseUrl ?? ctx.origin ?? "https://resend.runtime",
-      headers: ctx.resendRuntime.headers,
-      fetch: ctx.resendRuntime.fetch,
-    });
-  }
-
-  if (!ctx.routerContext || typeof (ctx.routerContext as { get?: unknown }).get !== "function") {
+  if (!ctx.resendRuntime) {
     return null;
   }
-
-  const baseUrl = ctx.request?.url ?? ctx.origin;
-  if (!baseUrl) {
-    return null;
-  }
-
-  const resendDo = getResendDurableObject(ctx.routerContext, ctx.orgId);
 
   return createRouteBackedResendRuntime({
-    baseUrl,
-    headers: ctx.request?.headers,
-    fetch: resendDo.fetch.bind(resendDo),
+    baseUrl: ctx.resendRuntime.baseUrl ?? ctx.origin ?? "https://resend.runtime",
+    headers: ctx.resendRuntime.headers,
+    fetch: ctx.resendRuntime.fetch,
   });
 };
 
