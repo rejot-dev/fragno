@@ -363,6 +363,7 @@ const scenarioCommandMocksSchema = z
   .object({
     "automations.identity.lookup-binding": commandMockSchema.optional(),
     "automations.identity.bind-actor": commandMockSchema.optional(),
+    "automations.script.run": commandMockSchema.optional(),
     "otp.identity.create-claim": commandMockSchema.optional(),
     "event.reply": commandMockSchema.optional(),
     "event.emit": commandMockSchema.optional(),
@@ -1112,6 +1113,11 @@ const executeBuiltinCommand = async (
       return {
         data: clone(result),
       };
+    }
+    case "automations.script.run": {
+      throw new Error(
+        "automations.script.run is not supported in simulation. Use commandMocks to mock its result.",
+      );
     }
   }
 };

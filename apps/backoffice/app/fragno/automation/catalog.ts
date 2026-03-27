@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-import {
-  createMasterFileSystem,
-  normalizeRelativePath,
-  type IFileSystem,
-  type IIFileSystem,
-} from "@/files";
+import { createMasterFileSystem, normalizeRelativePath, type IFileSystem } from "@/files";
 
 import { AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 
@@ -26,10 +21,10 @@ export type AutomationFileSystemResolverInput = {
 
 export type AutomationFileSystemResolver = (
   input: AutomationFileSystemResolverInput,
-) => Promise<IIFileSystem> | IIFileSystem;
+) => Promise<IFileSystem> | IFileSystem;
 
 export type AutomationFileSystemConfig = {
-  automationFileSystem?: IIFileSystem;
+  automationFileSystem?: IFileSystem;
   getAutomationFileSystem?: AutomationFileSystemResolver;
 };
 
@@ -266,11 +261,15 @@ const readRequiredFile = async (fileSystem: IFileSystem, absolutePath: string, l
   }
 };
 
-export const createDefaultAutomationFileSystem = async (orgId?: string): Promise<IIFileSystem> => {
+/**
+ * Intentionally minimal filesystem with no upload, resend, or durable hooks.
+ * Only used as a last-resort fallback when no `env` or pre-built filesystem is
+ * available (e.g. the bash engine runtime path). In production the automations
+ * DO always supplies a full filesystem via `getAutomationFileSystem`.
+ */
+export const createMinimalFileSystem = async (orgId?: string): Promise<IFileSystem> => {
   return createMasterFileSystem({
     orgId: orgId?.trim() || "automation-default-org",
-    origin: "https://automations.internal",
-    backend: "pi",
     uploadConfig: null,
   });
 };
@@ -278,7 +277,7 @@ export const createDefaultAutomationFileSystem = async (orgId?: string): Promise
 export const resolveAutomationFileSystem = async (
   config: AutomationFileSystemConfig,
   input: AutomationFileSystemResolverInput,
-): Promise<IIFileSystem> => {
+): Promise<IFileSystem> => {
   if (config.getAutomationFileSystem) {
     return await config.getAutomationFileSystem(input);
   }
@@ -287,7 +286,7 @@ export const resolveAutomationFileSystem = async (
     return config.automationFileSystem;
   }
 
-  return createDefaultAutomationFileSystem(input.orgId);
+  return createMinimalFileSystem(input.orgId);
 };
 
 export const loadAutomationCatalog = async (

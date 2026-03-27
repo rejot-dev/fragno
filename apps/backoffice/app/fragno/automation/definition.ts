@@ -2,8 +2,15 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { InstanceStatus, WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
+import { MasterFileSystem } from "@/files/master-file-system";
+import { createScriptRunnerRuntime, executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
+
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
-import { getAutomationBindingsForEvent, loadAutomationCatalogFromConfig } from "./catalog";
+import {
+  getAutomationBindingsForEvent,
+  loadAutomationCatalog,
+  resolveAutomationFileSystem,
+} from "./catalog";
 import {
   type AutomationEvent,
   type AutomationSourceAdapterRegistry,
@@ -12,7 +19,6 @@ import {
 import {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
-  executeBashAutomation,
   type AutomationPiBashContext,
 } from "./engine/bash";
 
@@ -73,10 +79,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
 
     return {
       internalIngestEvent: defineHook(async function (payload) {
-        const catalog = await loadAutomationCatalogFromConfig(
+        const resolvedFs = await resolveAutomationFileSystem(
           config,
           buildCatalogResolverInput(payload),
         );
+        if (!(resolvedFs instanceof MasterFileSystem)) {
+          throw new Error("Automation filesystem must be a MasterFileSystem.");
+        }
+        const masterFs = resolvedFs;
+        const catalog = await loadAutomationCatalog(masterFs);
         const matchingBindings = getAutomationBindingsForEvent(catalog, payload);
 
         if (matchingBindings.length === 0) {
@@ -101,6 +112,19 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           event: payload,
           idempotencyKey: this.idempotencyKey,
         });
+        const scriptRunner = createScriptRunnerRuntime({
+          fileSystemConfig: { automationFileSystem: masterFs },
+          env: config.env,
+          createBashRuntime: (event) =>
+            createAutomationBashRuntime({
+              hookContext: this,
+              env: config.env,
+              event,
+              sourceAdapters,
+              sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
+            }),
+          createPiAutomationContext: config.createPiAutomationContext,
+        });
 
         for (const binding of matchingBindings) {
           if (binding.scriptLoadError) {
@@ -109,6 +133,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
 
           const result = await executeBashAutomation({
             script: binding.scriptBody,
+            masterFs,
             context: createAutomationBashCommandContext({
               event: payload,
               binding: {
@@ -127,6 +152,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               runtime,
               env: config.env,
               pi: pi ?? null,
+              scriptRunner,
             }),
           });
 
