@@ -1,0 +1,237 @@
+---
+title: Using the Fragment
+description: Build email flows, inboxes, and thread UIs with the Resend fragment.
+icon: Mail
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Choose the right API
+
+The Resend fragment exposes two kinds of data:
+
+- **Local canonical data** in your database: `useEmails`, `useEmail`, `useThreads`, `useThread`,
+  `useThreadMessages`
+- **Live provider data** from Resend: `useReceivedEmails`, `useReceivedEmail`, `useDomains`,
+  `useDomain`
+
+Use the local thread APIs for product features. Use the live provider APIs for setup and inspection.
+
+## Send a one-off email
+
+Use `useSendEmail()` when you want outbound mail without creating a thread UI.
+
+```tsx title="components/send-welcome-email.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function SendWelcomeEmailButton() {
+  const { mutate, loading, error } = resendClient.useSendEmail();
+
+  const send = async () => {
+    const email = await mutate({
+      body: {
+        to: ["customer@example.com"],
+        subject: "Welcome",
+        text: "Thanks for signing up.",
+      },
+    });
+
+    console.log(email.id); // local emailMessage id
+    console.log(email.status); // queued | sending | sent | delivered | ...
+  };
+
+  return (
+    <button onClick={send} disabled={loading}>
+      {loading ? "Sending..." : "Send"}
+    </button>
+  );
+}
+```
+
+The fragment first stores the outbound intent locally, then sends through Resend in a background
+hook.
+
+## Build a threaded inbox
+
+Use the thread routes for support, onboarding, approvals, or any email workflow that should behave
+like a conversation.
+
+### List threads
+
+```tsx title="components/support-inbox.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function SupportInbox() {
+  const { data, loading, error } = resendClient.useThreads();
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>{error.message}</div>;
+
+  return (
+    <ul>
+      {data?.threads.map((thread) => (
+        <li key={thread.id}>
+          <strong>{thread.subject ?? "(no subject)"}</strong>
+          <div>{thread.lastMessagePreview}</div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Start a thread
+
+```tsx title="components/start-thread.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function StartThreadButton() {
+  const { mutate, loading } = resendClient.useCreateThread();
+
+  const start = async () => {
+    const result = await mutate({
+      body: {
+        to: ["customer@example.com"],
+        subject: "Welcome",
+        text: "Reply here if you need help.",
+      },
+    });
+
+    console.log(result.thread.id);
+    console.log(result.thread.replyToAddress);
+  };
+
+  return (
+    <button onClick={start} disabled={loading}>
+      Start thread
+    </button>
+  );
+}
+```
+
+### Read one thread and reply
+
+```tsx title="components/thread-detail.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function ThreadDetail({ threadId }: { threadId: string }) {
+  const { data: thread } = resendClient.useThread({
+    path: { threadId },
+  });
+  const { data: page } = resendClient.useThreadMessages({
+    path: { threadId },
+  });
+  const { mutate: reply, loading } = resendClient.useReplyToThread();
+
+  const sendReply = async () => {
+    await reply({
+      path: { threadId },
+      body: {
+        text: "Thanks — we're on it.",
+      },
+    });
+  };
+
+  return (
+    <div>
+      <h2>{thread?.subject}</h2>
+      <ul>
+        {page?.messages.map((message) => (
+          <li key={message.id}>
+            <strong>{message.direction}</strong>: {message.text ?? message.subject}
+          </li>
+        ))}
+      </ul>
+      <button onClick={sendReply} disabled={loading}>
+        Reply
+      </button>
+    </div>
+  );
+}
+```
+
+<Callout type="info">
+  Replies inherit the existing thread subject by default. When configured, the fragment also adds a
+  thread-specific <code>replyToAddress</code> so inbound replies can be routed back into the same
+  thread.
+</Callout>
+
+## Inspect outbound delivery state
+
+Use `useEmails()` and `useEmail()` when you want an outbox or delivery log.
+
+```tsx title="components/outbox.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function Outbox() {
+  const { data } = resendClient.useEmails({
+    query: { status: "delivered" },
+  });
+
+  return (
+    <ul>
+      {data?.emails.map((email) => (
+        <li key={email.id}>
+          {email.subject} — {email.status}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## Inspect received emails
+
+Use `useReceivedEmails()` and `useReceivedEmail()` when you need the raw received email detail from
+Resend, including attachments and raw download URLs.
+
+```tsx title="components/received-email.tsx"
+import { resendClient } from "@/lib/resend-client";
+
+export function ReceivedEmail({ emailId }: { emailId: string }) {
+  const { data } = resendClient.useReceivedEmail({
+    path: { emailId },
+  });
+
+  return <pre>{JSON.stringify(data, null, 2)}</pre>;
+}
+```
+
+## React to events on the server
+
+Use config callbacks when your app should run business logic after inbound mail or status changes.
+
+```ts title="lib/resend.ts"
+import { createResendFragment } from "@fragno-dev/resend-fragment";
+
+export const resendFragment = createResendFragment(
+  {
+    apiKey: process.env.RESEND_API_KEY!,
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
+    defaultFrom: "Support <support@example.com>",
+    onEmailReceived: async ({ threadId, from, subject }) => {
+      console.log("Inbound email", { threadId, from, subject });
+    },
+    onEmailStatusUpdated: async ({ emailMessageId, status, eventType }) => {
+      console.log("Delivery update", { emailMessageId, status, eventType });
+    },
+  },
+  {
+    databaseAdapter: fragmentDbAdapter,
+    mountRoute: "/api/resend",
+  },
+);
+```
+
+## Thread resolution model
+
+Inbound mail is matched to an existing thread in this order:
+
+1. reply token in the reply-to address
+2. `In-Reply-To`
+3. `References`
+4. heuristic match on normalized subject + participants
+5. otherwise a new thread
+
+This logic lives in the fragment, so your UI can work with thread IDs and message timelines instead
+of email protocol details.

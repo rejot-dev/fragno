@@ -49,15 +49,22 @@ export function FragmentHero({
   description,
   aside,
   children,
+  className,
 }: {
   eyebrow: ReactNode;
   title: ReactNode;
   description: ReactNode;
   aside?: ReactNode;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="mb-20 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
+    <section
+      className={cn(
+        "mb-20 grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start",
+        className,
+      )}
+    >
       <div className="space-y-6">
         {eyebrow}
         <h1 className="max-w-4xl text-5xl leading-[0.96] font-bold tracking-[-0.05em] md:text-7xl">
