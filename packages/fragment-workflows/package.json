@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/workflows",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Fragno workflows fragment",
   "files": [
     "dist"

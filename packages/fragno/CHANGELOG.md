@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.2.2
+
+### Patch Changes
+
+- 0020e39: fix: align nanostores dependencies on version 1.2 across Fragno packages
+
 ## 0.2.1
 
 ### Patch Changes
