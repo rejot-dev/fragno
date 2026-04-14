@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/create",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": false,
   "description": "A library for creating Fragno fragments",
   "homepage": "https://fragno.dev",

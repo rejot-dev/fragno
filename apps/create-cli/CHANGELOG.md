@@ -1,5 +1,13 @@
 # create-fragno
 
+## 0.1.8
+
+### Patch Changes
+
+- 4d141f8: fix: remove development exports from published packages
+- Updated dependencies [4d141f8]
+  - @fragno-dev/create@0.1.8
+
 ## 0.1.7
 
 ### Patch Changes
