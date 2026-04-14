@@ -152,7 +152,7 @@ export default function BackofficeOrganisationResendConfiguration() {
 
   const isConfigured = Boolean(configState?.configured);
   const webhookBaseUrl = formState.webhookBaseUrl.trim() || origin;
-  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${orgId}/resend/webhook`;
+  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${orgId}/webhook`;
   const webhookBaseUrlError = validateOptionalUrl(
     formState.webhookBaseUrl.trim(),
     "Webhook base URL",

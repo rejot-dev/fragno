@@ -15,7 +15,7 @@ describe("resend-fragment webhook", () => {
   beforeAll(async () => {
     ctx = await createResendTestContext();
     ({ fragment, callRoute } = ctx);
-    webhookUrl = `http://localhost${ctx.fragment.mountRoute}/resend/webhook`;
+    webhookUrl = `http://localhost${ctx.fragment.mountRoute}/webhook`;
   });
 
   beforeEach(async () => {

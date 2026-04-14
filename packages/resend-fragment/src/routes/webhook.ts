@@ -11,7 +11,7 @@ const resendWebhookResponseSchema = z.object({
 export const registerWebhookRoutes = ({ defineRoute, config, deps }: ResendRouteFactoryContext) => [
   defineRoute({
     method: "POST",
-    path: "/resend/webhook",
+    path: "/webhook",
     outputSchema: resendWebhookResponseSchema,
     errorCodes: ["MISSING_SIGNATURE", "WEBHOOK_SIGNATURE_INVALID", "WEBHOOK_ERROR"] as const,
     handler: async function ({ headers, rawBody }, { json, error }) {

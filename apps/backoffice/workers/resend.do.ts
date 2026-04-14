@@ -187,7 +187,7 @@ const buildConfigResponse = (config: StoredResendConfig | null): ConfigResponse 
 const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
   const trimmed = resolvedOrigin.replace(/\/+$/, "");
-  return `${trimmed}/api/resend/${orgId}/resend/webhook`;
+  return `${trimmed}/api/resend/${orgId}/webhook`;
 };
 
 const createWebhook = async (
