@@ -80,6 +80,8 @@
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "@mariozechner/pi-agent-core": "^0.51.5",
     "@mariozechner/pi-ai": "^0.51.5",
     "@standard-schema/spec": "^1.1.0",
@@ -88,10 +90,8 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/cli": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
-    "@fragno-dev/workflows": "workspace:*",
     "@types/node": "^25.2.2",
     "@types/react": "^19.2.8",
     "drizzle-kit": "^0.31.7",
@@ -102,8 +102,6 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/workflows": "workspace:*",
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
