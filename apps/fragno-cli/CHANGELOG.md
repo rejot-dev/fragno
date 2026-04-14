@@ -1,5 +1,15 @@
 # @fragno-dev/cli
 
+## 0.2.3
+
+### Patch Changes
+
+- 490a8b5: refactor: remove the corpus command and its package from the Fragno CLI
+- Updated dependencies [0020e39]
+  - @fragno-dev/core@0.2.2
+  - @fragno-dev/db@0.4.1
+  - @fragno-dev/node@0.0.9
+
 ## 0.2.2
 
 ### Patch Changes

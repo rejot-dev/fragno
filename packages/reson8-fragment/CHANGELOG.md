@@ -1,5 +1,13 @@
 # @fragno-dev/reson8-fragment
 
+## 0.0.3
+
+### Patch Changes
+
+- 0020e39: fix: align nanostores dependencies on version 1.2 across Fragno packages
+- Updated dependencies [0020e39]
+  - @fragno-dev/core@0.2.2
+
 ## 0.0.2
 
 ### Patch Changes

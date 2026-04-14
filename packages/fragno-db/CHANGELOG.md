@@ -1,5 +1,12 @@
 # @fragno-dev/db
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [0020e39]
+  - @fragno-dev/core@0.2.2
+
 ## 0.4.0
 
 ### Minor Changes

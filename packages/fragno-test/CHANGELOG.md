@@ -1,5 +1,13 @@
 # @fragno-dev/test
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [0020e39]
+  - @fragno-dev/core@0.2.2
+  - @fragno-dev/db@0.4.1
+
 ## 2.0.1
 
 ### Patch Changes
