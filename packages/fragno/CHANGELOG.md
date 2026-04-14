@@ -1,5 +1,27 @@
 # @fragno-dev/core
 
+## 0.2.1
+
+### Patch Changes
+
+- 3e2ff94: feat: register schemas via adapter registry and mount internal routes
+- f34d7d7: fix: ensure cross-schema durable hook enqueuing works reliably
+- 4d141f8: fix: remove development exports from published packages
+- c8841b5: feat: add callServices helper with implicit request context
+- 83f6223: feat: support createStore factory callbacks for per-consumer client stores
+- 567c3b3: feat: add default org preference helpers and session seeding
+- 8a2da9d: fix: infer route caller input and output types from fragment routes.
+- 93fa469: fix: replace cuid2 with a shared Web Crypto id generator
+- b3ad7eb: fix: lazily initialize createId randomness for Workers-safe startup
+- 9eeba53: feat: add internal fragment describe metadata and adapter identity
+- 2ae432c: fix: allow optional request bodies when input schema allows undefined
+- 9f87189: fix: preserve explicit content-type behavior for binary request bodies
+- 0f9b7ef: refactor: replace linked fragments with internal routes
+- f4aedad: feat: add createRouteCaller helper for custom fetch targets
+- f042c9d: feat: add typed workflow state restore support
+- 7bda0b2: feat(db): add sync command registry, registration, and sync entrypoint
+- b84a3d0: fix: preserve class methods when creating store-backed React hooks
+
 ## 0.2.0
 
 ### Minor Changes
