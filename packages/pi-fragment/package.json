@@ -85,6 +85,7 @@
     "@mariozechner/pi-agent-core": "^0.51.5",
     "@mariozechner/pi-ai": "^0.51.5",
     "@standard-schema/spec": "^1.1.0",
+    "nanostores": "^1.2.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

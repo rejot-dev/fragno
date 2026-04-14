@@ -95,7 +95,7 @@
     "@nanostores/query": "^0.3.4",
     "@nanostores/solid": "^1.1.1",
     "@standard-schema/spec": "^1.1.0",
-    "nanostores": "^1.1.0",
+    "nanostores": "^1.2.0",
     "rou3": "^0.7.12"
   },
   "devDependencies": {

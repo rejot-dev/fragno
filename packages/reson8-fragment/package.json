@@ -72,7 +72,7 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
-    "nanostores": "^1.1.0",
+    "nanostores": "^1.2.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

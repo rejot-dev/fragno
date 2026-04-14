@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "nanostores": "^1.1.0",
+    "nanostores": "^1.2.0",
     "openai": "^5.23.2",
     "zod": "^4.3.5"
   },

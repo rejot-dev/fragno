@@ -53,7 +53,7 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "nanostores": "^1.1.0",
+    "nanostores": "^1.2.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
