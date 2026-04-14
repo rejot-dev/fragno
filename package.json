@@ -29,7 +29,7 @@
     "test": "turbo run test --output-logs=errors-only",
     "test:watch": "turbo run test:watch --output-logs=errors-only",
     "test:coverage": "turbo run test && turbo run collect-json-reports merge-json-reports report --filter=@fragno-private/vitest-config",
-    "ci:version": "changeset version && pnpm update && pnpm install",
+    "ci:version": "changeset version && pnpm exec oxfmt pnpm-workspace.yaml && pnpm update && pnpm install",
     "ci:publish": "changeset publish && changeset tag",
     "ci:canary": "changeset version --snapshot ${CANARY_SUFFIX:-canary} && changeset publish --tag canary --no-git-tag",
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text pnpm-lock.yaml",
