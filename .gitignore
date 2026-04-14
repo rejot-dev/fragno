@@ -79,10 +79,6 @@ CLAUDE.local.md
 # Keep JSONL exports (source of truth for git)
 !.beads/*.jsonl
 
-# Corpus tests
-**/corpus-tests
-corpus-tests
-
 # Local pre-commit override
 lefthook-local.yml
 

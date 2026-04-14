@@ -25,7 +25,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "outputs": ["coverage.json", "corpus-tests/**"]
+      "outputs": ["coverage.json"]
     },
     "test:watch": {
       "cache": false,

@@ -30,14 +30,11 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/corpus": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/node": "workspace:*",
     "c12": "^3.3.3",
     "gunshi": "^0.26.3",
-    "jsonc-parser": "^3.3.1",
-    "marked": "^15.0.12",
-    "marked-terminal": "^7.3.0"
+    "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

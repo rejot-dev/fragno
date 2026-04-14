@@ -89,7 +89,6 @@ Examples:
 - `packages/auth/` - Auth fragment
 - `packages/forms/` - Forms fragment
 - `packages/stripe/` - Stripe integration fragment
-- `packages/corpus/` - Content corpus utilities used by fragments
 - `packages/jsonforms-shadcn-renderers/` - JSONForms renderers (shadcn/ui)
 
 ### Tooling & CLIs

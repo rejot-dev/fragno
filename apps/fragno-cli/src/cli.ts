@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 
 import { cli, define } from "gunshi";
 
-import { corpusCommand } from "./commands/corpus.js";
 import { generateCommand } from "./commands/db/generate.js";
 import { infoCommand } from "./commands/db/info.js";
 import { migrateCommand } from "./commands/db/migrate.js";
@@ -43,12 +42,6 @@ export async function run() {
       // Run search command directly
       await cli(args.slice(1), searchCommand, {
         name: "fragno-cli search",
-        version,
-      });
-    } else if (args[0] === "corpus") {
-      // Run corpus command directly
-      await cli(args.slice(1), corpusCommand, {
-        name: "fragno-cli corpus",
         version,
       });
     } else if (args[0] === "serve") {
@@ -114,13 +107,11 @@ export async function run() {
       console.log("  serve                 Start a local HTTP server to serve fragments");
       console.log("  db                    Database management commands");
       console.log("  search                Search the Fragno documentation");
-      console.log("  corpus                View code examples and documentation for Fragno");
       console.log("");
       console.log("For more info, run any command with the `--help` flag:");
       console.log("  fragno-cli serve --help");
       console.log("  fragno-cli db --help");
       console.log("  fragno-cli search --help");
-      console.log("  fragno-cli corpus --help");
       console.log("");
       console.log("OPTIONS:");
       console.log("  -h, --help             Display this help message");
@@ -144,4 +135,4 @@ if (import.meta.main) {
   await run();
 }
 
-export { generateCommand, migrateCommand, infoCommand, searchCommand, corpusCommand };
+export { generateCommand, migrateCommand, infoCommand, searchCommand };
