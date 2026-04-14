@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { cn } from "@/lib/cn";
 
 export const P = ({ children }: { children: ReactNode }) => (
   <p className="mb-6 max-w-4xl text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_70%,white)]">
@@ -87,12 +88,24 @@ export function TabbedCodeFigure({
   tabs,
   figcaption,
   ariaLabel,
+  defaultTabId,
+  fullWidth,
 }: {
   tabs: TabbedCodeFigureTab[];
-  figcaption: string;
+  /** When omitted, no caption is rendered under the figure. */
+  figcaption?: string;
   ariaLabel: string;
+  /** Initial tab; must match a tab `id`. Falls back to the first tab. */
+  defaultTabId?: string;
+  /** Span the parent width instead of capping at `max-w-4xl`. */
+  fullWidth?: boolean;
 }) {
-  const [activeTabId, setActiveTabId] = useState(tabs[0]?.id);
+  const [activeTabId, setActiveTabId] = useState(() => {
+    if (defaultTabId && tabs.some((t) => t.id === defaultTabId)) {
+      return defaultTabId;
+    }
+    return tabs[0]?.id;
+  });
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
   if (!activeTab) {
@@ -102,7 +115,7 @@ export function TabbedCodeFigure({
   const accentVar = TAB_COLOR_VAR[activeTab.color];
 
   return (
-    <figure className="mb-12 max-w-4xl space-y-6">
+    <figure className={cn("mb-12 space-y-6", fullWidth ? "w-full max-w-none" : "max-w-4xl")}>
       <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-[12px] dark:shadow-[0_24px_48px_rgb(2_6_23_/_0.28)]">
         <div
           className="flex flex-wrap gap-4 bg-[color-mix(in_srgb,var(--editorial-surface-low)_92%,transparent)] px-6 py-4 text-base font-bold tracking-[0.14em] uppercase md:px-10"
@@ -132,7 +145,7 @@ export function TabbedCodeFigure({
         </div>
 
         <div className="space-y-6 p-6 md:p-10">
-          <div className="max-w-4xl space-y-4">
+          <div className={cn("space-y-4", fullWidth ? "max-w-none" : "max-w-4xl")}>
             <div
               className="text-base font-bold tracking-[0.14em] uppercase"
               style={{ color: accentVar }}
@@ -166,9 +179,16 @@ export function TabbedCodeFigure({
         </div>
       </div>
 
-      <figcaption className="max-w-4xl text-base font-medium text-(--editorial-muted)">
-        {figcaption}
-      </figcaption>
+      {figcaption ? (
+        <figcaption
+          className={cn(
+            "text-base font-medium text-(--editorial-muted)",
+            fullWidth ? "max-w-none" : "max-w-4xl",
+          )}
+        >
+          {figcaption}
+        </figcaption>
+      ) : null}
     </figure>
   );
 }

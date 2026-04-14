@@ -1,0 +1,281 @@
+---
+title: Quickstart
+description: Install and configure the Resend fragment
+icon: Album
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The Resend fragment gives you typed APIs for sending email, receiving webhook events, and reading
+local email threads from your database.
+
+## Prerequisites
+
+- A Resend API key + webhook signing secret
+- (For sending) A verified sender address for `defaultFrom`
+
+## Agentic Installation
+
+```npm
+npx skills add https://github.com/rejot-dev/fragno --skill fragno
+```
+
+The Fragno agent skill will guide your agent through the installation process. Just tell it to
+"Integrate the Resend fragment into my application" and it'll go to work. Read the documentation
+below to see the full process.
+
+## Manual Installation
+
+```npm
+npm install @fragno-dev/resend-fragment @fragno-dev/db
+```
+
+The CLI will be used to generate the database schema for your ORM and/or apply migrations.
+
+```npm
+npm install --save-dev @fragno-dev/cli
+```
+
+### 1. Initialize the database adapter
+
+You must initialize the appropriate database adapter for use with the Resend fragment. For
+additional details on setting the adapter, see
+[our Fragno DB docs](/docs/fragno/for-users/database-fragments/overview#choose-your-workflow).
+
+The example below uses Drizzle ORM with PostgreSQL, but adapters for other databases and ORMs are
+also available.
+
+```ts title="db/fragno.ts"
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  // You may reuse the connection pool from elsewhere in your application.
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
+
+export const fragmentDbAdapter = new SqlAdapter({
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
+});
+```
+
+#### Reference
+
+Available built-in dialects:
+
+- **SQL**: `SqliteDialect`, `PostgresDialect`, `MysqlDialect` (from `@fragno-dev/db/dialects`)
+- **Cloudflare Durable Objects (SQLite)**: `DurableObjectDialect` (from
+  `@fragno-dev/db/dialects/durable-object`)
+
+Available driver configs (`@fragno-dev/db/drivers`):
+
+- **SQLite**: `BetterSQLite3DriverConfig`, `SQLocalDriverConfig`,
+  `CloudflareDurableObjectsDriverConfig`
+- **PostgreSQL**: `NodePostgresDriverConfig`, `PGLiteDriverConfig`
+- **MySQL/MariaDB**: `MySQL2DriverConfig`
+
+<Callout title="MySQL is experimental" type="warn">
+  Our focus has been on PostgreSQL and SQLite. MySQL support is experimental and may not work as
+  expected.
+</Callout>
+
+### 2. Create the Resend instance
+
+Create a file to instantiate the fragment server:
+
+```ts title="lib/resend.ts"
+import { createResendFragment } from "@fragno-dev/resend-fragment";
+import { fragmentDbAdapter } from "@/db/fragno";
+
+export const resendFragment = createResendFragment(
+  {
+    apiKey: process.env.RESEND_API_KEY!,
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
+    defaultFrom: "Support <support@example.com>",
+    defaultReplyTo: "support@example.com",
+    onEmailReceived: async ({ emailMessageId }) => {
+      console.log("Inbound email", emailMessageId);
+    },
+    onEmailStatusUpdated: async ({ emailMessageId, status }) => {
+      console.log("Email status updated", emailMessageId, "status", status);
+    },
+  },
+  {
+    databaseAdapter: fragmentDbAdapter,
+    // This is also the default mountRoute.
+    mountRoute: "/api/resend",
+  },
+);
+```
+
+Set `defaultFrom` unless you always provide `from` in each request.
+
+#### About `mountRoute`
+
+`mountRoute` is the URL prefix where your app exposes this fragment’s HTTP routes. If you change it
+server-side, you must use the same `mountRoute` in the client setup below.
+
+### 3. Mount the fragment routes
+
+Mount the fragment handlers in your app. See [Frameworks](/docs/fragno/reference/frameworks) for
+supported runtimes.
+
+Note that most full-stack frameworks use file-based routing, so make sure to create the file in the
+correct location based on the `mountRoute` you configured.
+
+```ts title="app/api/resend/[...all]/route.ts" tab="Next.js"
+import { resendFragment } from "@/lib/resend";
+
+export const { GET, POST, PUT, PATCH, DELETE } = resendFragment.handlersFor("next-js");
+```
+
+```ts title="app/routes/api/resend.tsx" tab="React Router v7"
+import { resendFragment } from "@/lib/resend";
+
+export const handlers = resendFragment.handlersFor("react-router");
+
+// Note: React Router requires individual exports, destructured exports don't work
+export const action = handlers.action;
+export const loader = handlers.loader;
+```
+
+```ts title="server/api/resend/[...all].ts" tab="Nuxt"
+import { resendFragment } from "@/lib/resend";
+
+export default fromWebHandler(resendFragment.handler);
+```
+
+```ts title="pages/api/resend/[...all].ts" tab="Astro"
+import { resendFragment } from "@/lib/resend";
+
+export const { ALL } = resendFragment.handlersFor("astro");
+export const prerender = false;
+```
+
+```ts title="routes/api/resend/[...path].ts" tab="SvelteKit"
+import { resendFragment } from "@/lib/resend";
+
+export const { GET, POST, PUT, PATCH, DELETE } = resendFragment.handlersFor("svelte-kit");
+export const prerender = false;
+```
+
+```ts title="index.ts" tab="Hono"
+import { Hono } from "hono";
+import { resendFragment } from "@/lib/resend";
+
+const app = new Hono();
+app.all("/api/resend/*", (c) => resendFragment.handler(c.req.raw));
+```
+
+### 4. Generate the database schema
+
+Generate the fragment schema with the CLI:
+
+```npm
+npx fragno-cli db generate lib/resend.ts --format drizzle -o db/resend.schema.ts
+```
+
+This command will generate a Drizzle schema file that you can integrate into your existing Drizzle
+setup. You can then use Drizzle to run migrations against your database. We also support Prisma,
+direct SQL migration file output, and direct migration execution.
+
+For complete database integration instructions, see
+[Database Fragments](/docs/fragno/for-users/database-fragments/overview).
+
+### 5. Secure routes
+
+Use [middleware](/docs/fragno/for-users/middleware) to require authentication for the fragment’s
+HTTP APIs (sending mail, listing threads, domains, and so on).
+
+Do **not** protect the webhook route with your user session: Resend calls it from their
+infrastructure. The fragment validates those requests using your `webhookSecret` and Svix signature
+headers instead.
+
+```ts title="lib/resend.ts"
+import { createResendFragment } from "@fragno-dev/resend-fragment";
+import { fragmentDbAdapter } from "@/db/fragno";
+
+export const resendFragment = createResendFragment(
+  {
+    // ... your config from step 2
+  },
+  {
+    databaseAdapter: fragmentDbAdapter,
+    mountRoute: "/api/resend",
+  },
+).withMiddleware(async ({ path, headers }, { error }) => {
+  if (path === "/webhook") {
+    return undefined;
+  }
+
+  const isAuthorized = getUser(headers)?.role === "admin"; // Using your authentication system
+
+  if (!isAuthorized) {
+    return error({ message: "Not authorized", code: "NOT_AUTHORIZED" }, 401);
+  }
+});
+```
+
+### 6. Register the Resend webhook
+
+Assuming you mounted the fragment at `/api/resend`, go to the
+[Resend dashboard](https://resend.com/webhooks) and register the webhook by pointing it at:
+
+```text
+https://your-app.com/api/resend/webhook
+```
+
+We listen to all `email.*` events.
+
+## Client setup
+
+Create a client instance to use the fragment in your frontend:
+
+```ts title="lib/resend-client.ts" tab="React"
+import { createResendFragmentClient } from "@fragno-dev/resend-fragment/react";
+
+export const resendClient = createResendFragmentClient({
+  mountRoute: "/api/resend",
+});
+```
+
+```ts title="lib/resend-client.ts" tab="Vue"
+import { createResendFragmentClient } from "@fragno-dev/resend-fragment/vue";
+
+export const resendClient = createResendFragmentClient({
+  mountRoute: "/api/resend",
+});
+```
+
+```ts title="lib/resend-client.ts" tab="Solid JS"
+import { createResendFragmentClient } from "@fragno-dev/resend-fragment/solid";
+
+export const resendClient = createResendFragmentClient({
+  mountRoute: "/api/resend",
+});
+```
+
+```ts title="lib/resend-client.ts" tab="Svelte"
+import { createResendFragmentClient } from "@fragno-dev/resend-fragment/svelte";
+
+export const resendClient = createResendFragmentClient({
+  mountRoute: "/api/resend",
+});
+```
+
+```ts title="lib/resend-client.ts" tab="Vanilla"
+import { createResendFragmentClient } from "@fragno-dev/resend-fragment/vanilla";
+
+export const resendClient = createResendFragmentClient({
+  mountRoute: "/api/resend",
+});
+```
+
+## Using the Resend library
+
+See the next page for usage examples.

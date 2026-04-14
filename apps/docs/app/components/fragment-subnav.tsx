@@ -61,9 +61,12 @@ export function FragmentSubnav({
         className,
       )}
     >
-      <span className="bg-[color-mix(in_srgb,var(--editorial-surface)_78%,transparent)] px-3 py-1.5 shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] backdrop-blur-[12px]">
+      <Link
+        to="/fragments"
+        className="bg-[color-mix(in_srgb,var(--editorial-surface)_78%,transparent)] px-3 py-1.5 shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] backdrop-blur-[12px] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)] hover:text-[var(--editorial-ink)]"
+      >
         First party fragments
-      </span>
+      </Link>
       {fragments.map((fragment) => {
         const content = (
           <>

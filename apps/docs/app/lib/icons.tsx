@@ -17,6 +17,7 @@ import {
   ListChecks,
   KeyRound,
   Send,
+  Mail,
 } from "lucide-react";
 
 import { FragnoCircle as FragnoCircleIcon } from "@/components/logos/fragno-circle";
@@ -52,4 +53,5 @@ export const iconComponents = {
   ListChecks,
   KeyRound,
   Send,
+  Mail,
 } as const;

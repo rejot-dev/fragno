@@ -1,4 +1,4 @@
-import { Lightbulb, ClipboardList, Workflow, Upload, Send, Shield } from "lucide-react";
+import { Lightbulb, ClipboardList, Workflow, Upload, Send, Shield, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -59,8 +59,8 @@ export default function DocsIndexPage() {
           <p className="text-fd-muted-foreground text-sm font-medium">Reference & guides</p>
           <h1 className="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">Documentation</h1>
           <p className="text-fd-muted-foreground mt-3 max-w-2xl text-lg">
-            Explore the Fragno framework and the first-party fragments for billing, messaging,
-            forms, uploads, workflows, and auth.
+            Explore the Fragno framework and the first-party fragments for billing, email,
+            messaging, forms, uploads, workflows, and auth.
           </p>
         </header>
 
@@ -87,6 +87,12 @@ export default function DocsIndexPage() {
             icon={<Stripe className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Stripe Fragment"
             description="Batteries included integration for Stripe subscriptions"
+          />
+          <DocCard
+            href="/docs/resend"
+            icon={<Mail className="size-6 text-gray-700 dark:text-gray-300" />}
+            title="Resend Fragment"
+            description="Typed outbound, inbound, and threaded email with local history"
           />
           <DocCard
             href="/docs/telegram"
