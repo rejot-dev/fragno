@@ -58,11 +58,11 @@
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
     "stripe": "^19.3.1",
     "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@fragno-dev/db": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
@@ -72,7 +72,6 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@fragno-dev/db": "^0.3.0",
     "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
