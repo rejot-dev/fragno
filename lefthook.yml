@@ -6,7 +6,7 @@ pre-commit:
   piped: true
   jobs:
     - name: lint
-      run: pnpm exec oxlint --fix {staged_files}
+      run: pnpm exec oxlint --fix --no-error-on-unmatched-pattern {staged_files}
     - name: format
       run:
         sh -c 'node scripts/format-files.mjs --staged --check; code=$?; node
