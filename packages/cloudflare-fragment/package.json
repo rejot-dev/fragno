@@ -10,6 +10,11 @@
     "typescript",
     "vue"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/cloudflare-fragment"
+  },
   "files": [
     "dist"
   ],

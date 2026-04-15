@@ -2,6 +2,11 @@
   "name": "@fragno-private/vitest-config",
   "version": "0.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/vitest-config"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

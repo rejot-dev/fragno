@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/react-router",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/react-router-example"
+  },
   "type": "module",
   "scripts": {
     "build": "react-router build",

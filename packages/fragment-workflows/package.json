@@ -2,6 +2,11 @@
   "name": "@fragno-dev/workflows",
   "version": "0.0.3",
   "description": "Fragno workflows fragment",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragment-workflows"
+  },
   "files": [
     "dist"
   ],

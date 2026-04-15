@@ -1,6 +1,11 @@
 {
   "name": "@fragno-dev/backoffice-rr",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/backoffice"
+  },
   "type": "module",
   "scripts": {
     "build": "react-router build",

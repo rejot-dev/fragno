@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/react-spa-local-first",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/react-spa-local-first"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

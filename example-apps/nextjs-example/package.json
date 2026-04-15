@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/nextjs",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/nextjs-example"
+  },
   "scripts": {
     "dev": "next dev --port 3001",
     "build": "next build",

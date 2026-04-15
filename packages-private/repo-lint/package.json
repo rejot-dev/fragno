@@ -2,6 +2,11 @@
   "name": "@fragno-private/repo-lint",
   "version": "0.0.1",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/repo-lint"
+  },
   "scripts": {
     "lint": "pnpm -C ../.. exec oxlint .",
     "lint:fix": "pnpm -C ../.. exec oxlint --fix ."

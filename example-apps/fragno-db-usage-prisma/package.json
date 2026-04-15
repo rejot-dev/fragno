@@ -1,6 +1,11 @@
 {
   "name": "@fragno-dev/fragno-db-usage-prisma",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/fragno-db-usage-prisma"
+  },
   "type": "module",
   "main": "./dist/mod.js",
   "module": "./dist/mod.js",

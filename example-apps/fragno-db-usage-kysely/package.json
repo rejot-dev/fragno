@@ -1,6 +1,11 @@
 {
   "name": "@fragno-dev/fragno-db-usage-kysely",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/fragno-db-usage-kysely"
+  },
   "type": "module",
   "main": "./dist/node/mod.js",
   "module": "./dist/node/mod.js",

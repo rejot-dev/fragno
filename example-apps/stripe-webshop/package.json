@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/stripe",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/stripe-webshop"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite dev",

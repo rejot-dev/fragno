@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/svelte-kit",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/svelte-kit-example"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite dev",

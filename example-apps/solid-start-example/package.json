@@ -1,6 +1,11 @@
 {
   "name": "solid-start-example",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/solid-start-example"
+  },
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",

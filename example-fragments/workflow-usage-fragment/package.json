@@ -11,6 +11,11 @@
     "typescript",
     "vue"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-fragments/workflow-usage-fragment"
+  },
   "bin": {
     "workflow-usage": "./bin/run.js"
   },

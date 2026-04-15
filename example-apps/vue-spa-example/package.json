@@ -1,6 +1,11 @@
 {
   "name": "@fragno-example/vue-spa",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-apps/vue-spa-example"
+  },
   "type": "module",
   "scripts": {
     "dev": "run-p \"dev:frontend\" \"dev:backend\"",

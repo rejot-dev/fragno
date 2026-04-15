@@ -2,6 +2,11 @@
   "name": "@fragno-private/oxlint-plugins",
   "version": "0.0.1",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/oxlint-plugins"
+  },
   "type": "module",
   "exports": {
     "./tsdown-exports-sync": "./tsdown-exports-sync.js",
