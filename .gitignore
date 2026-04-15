@@ -72,6 +72,7 @@ CLAUDE.local.md
 
 # Test artifacts
 **/_generated
+**/trace-out/
 
 # .beads directory files (keep JSONL only)
 .beads/

@@ -1,0 +1,43 @@
+[
+  {
+    "name": "process_name",
+    "args": { "name": "tsc" },
+    "cat": "__metadata",
+    "ph": "M",
+    "ts": 100,
+    "pid": 1,
+    "tid": 1
+  },
+  {
+    "name": "thread_name",
+    "args": { "name": "Main" },
+    "cat": "__metadata",
+    "ph": "M",
+    "ts": 100,
+    "pid": 1,
+    "tid": 1
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "cat": "parse",
+    "ts": 150,
+    "name": "createSourceFile",
+    "args": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts"
+    }
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "X",
+    "cat": "check",
+    "ts": 300,
+    "dur": 90,
+    "name": "checkSourceFile",
+    "args": {
+      "path": "/repo/packages/fragno-db/src/query/simple-query-interface.ts"
+    }
+  }
+]

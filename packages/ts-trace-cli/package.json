@@ -1,0 +1,52 @@
+{
+  "name": "@fragno-dev/ts-trace-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CLI for analyzing TypeScript trace output",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/ts-trace-cli"
+  },
+  "bin": {
+    "ts-trace": "./bin/run.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/mod.js",
+  "module": "./dist/mod.js",
+  "types": "./dist/mod.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

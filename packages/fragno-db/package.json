@@ -134,6 +134,7 @@
     "kysely-pglite": "^0.6.1",
     "mysql2": "^3.16.1",
     "sqlocal": "^0.15.2",
+    "typescript": "catalog:",
     "vitest": "catalog:",
     "zod": "^4.3.5"
   },

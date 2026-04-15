@@ -1,0 +1,77 @@
+[
+  {
+    "name": "process_name",
+    "args": { "name": "tsc" },
+    "cat": "__metadata",
+    "ph": "M",
+    "ts": 100,
+    "pid": 1,
+    "tid": 1
+  },
+  {
+    "name": "thread_name",
+    "args": { "name": "Main" },
+    "cat": "__metadata",
+    "ph": "M",
+    "ts": 100,
+    "pid": 1,
+    "tid": 1
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "cat": "program",
+    "ts": 120,
+    "name": "createProgram",
+    "args": {
+      "configFilePath": "/repo/packages/fragno-db/tsconfig.json",
+      "rootDir": "/repo/packages/fragno-db"
+    }
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "cat": "parse",
+    "ts": 150,
+    "name": "createSourceFile",
+    "args": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts"
+    }
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "E",
+    "cat": "parse",
+    "ts": 220,
+    "name": "createSourceFile",
+    "args": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts"
+    }
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "X",
+    "cat": "check",
+    "ts": 300,
+    "dur": 120,
+    "name": "checkSourceFile",
+    "args": {
+      "path": "/repo/packages/fragno-db/src/query/simple-query-interface.ts"
+    }
+  },
+  {
+    "pid": 1,
+    "tid": 1,
+    "ph": "B",
+    "cat": "parse",
+    "ts": 450,
+    "name": "createSourceFile",
+    "args": {
+      "path": "/repo/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/lib/lib.es5.d.ts"
+    }
+  }
+]
