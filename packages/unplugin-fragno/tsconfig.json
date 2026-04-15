@@ -2,8 +2,7 @@
   "extends": "@fragno-private/typescript-config/tsconfig.node.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": ".",
-    "composite": true
+    "rootDir": "."
   },
   "include": ["src", "package.json"],
   "exclude": ["node_modules", "dist", "esbuild.config.js"]

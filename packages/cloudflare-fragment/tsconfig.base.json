@@ -8,7 +8,6 @@
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
