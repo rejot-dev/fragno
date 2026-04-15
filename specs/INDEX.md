@@ -41,6 +41,12 @@ Format:
   tests, build config, and docs.
 - [Auth Organizations and Roles — Spec](./spec-auth-organizations.md) — Add organizations, members,
   roles, invitations, hooks, and conservative endpoints to the auth fragment.
+- [Auth Principal + Credential Strategy Refactor — Spec](./spec-auth-principal-refactor.md) —
+  Decouple auth routes/services from raw session ids, introduce a normalized auth principal and
+  credential strategy boundary, and establish strategy-neutral `auth.token` / `authToken` contracts.
+- [Auth Stateless JWT Strategy — Spec](./spec-auth-stateless-jwt.md) — Add a fully stateless JWT
+  authentication strategy for `@fragno-dev/auth`, including token claims, auth-version-based
+  invalidation, active-organization token scope, and OAuth issuance without session rows.
 - [GitHub App Global Webhook Routing + Organization Mapping — Spec](./spec-github-app-global-webhook-routing.md)
   — Introduces singleton GitHub webhook ingress, installation-to-organization binding, secure setup
   callback flow, and replay of unclaimed deliveries before forwarding to org-scoped GitHub
@@ -84,3 +90,6 @@ Format:
 - [Fragno Lofi Canonical `find()` Rewrite — Implementation Plan](./impl-lofi-canonical-find-rewrite.md)
   — Implementation tasks to rewrite `@fragno-dev/lofi` around the canonical read API, remove legacy
   join/builder coupling, and migrate runtime/tests/docs.
+- [TypeScript Trace Analysis CLI — MVP Implementation Plan](./impl-typescript-trace-cli.md) — Tasks
+  to build a CLI for summarizing and comparing TypeScript trace output, with project-local filtering
+  and reports tailored to checker-performance investigations.
