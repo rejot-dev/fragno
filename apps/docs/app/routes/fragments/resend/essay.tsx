@@ -731,16 +731,10 @@ export default function ResendEssayPage() {
                 Read the Fragno essay
               </Link>
               <Link
-                to="/fragments"
+                to="/fragments/resend"
                 className="inline-flex w-full items-center justify-center rounded-md px-4 py-2.5 text-sm font-semibold tracking-[0.08em] text-(--editorial-secondary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-secondary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-secondary)_10%,transparent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--editorial-secondary)_35%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-(--editorial-paper) focus-visible:outline-none sm:w-auto"
               >
-                All Fragments
-              </Link>
-              <Link
-                to="/docs/fragno/user-quick-start"
-                className="inline-flex w-full items-center justify-center rounded-md px-4 py-2.5 text-sm font-semibold tracking-[0.08em] text-(--editorial-tertiary) shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--editorial-tertiary)_28%,transparent)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-tertiary)_10%,transparent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--editorial-tertiary)_35%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-(--editorial-paper) focus-visible:outline-none sm:w-auto"
-              >
-                User quick start
+                Resend library overview
               </Link>
             </div>
           </div>

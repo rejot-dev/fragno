@@ -816,7 +816,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
 
           <section className="mb-12 max-w-4xl space-y-10">
             <div className="space-y-4">
-              <PerspectiveFocus audience="both" minimumTime="medium">
+              <PerspectiveFocus audience="both" minimumTime="low">
                 <div className="text-base font-bold tracking-[0.14em] text-(--editorial-muted) uppercase">
                   Further reading
                 </div>
@@ -827,7 +827,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
                   author guides, reference, and API documentation.
                 </p>
               </PerspectiveFocus>
-              <PerspectiveFocus audience="both" minimumTime="medium">
+              <PerspectiveFocus audience="both" minimumTime="low">
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <Link
                     to="/docs/fragno/for-library-authors/getting-started"
