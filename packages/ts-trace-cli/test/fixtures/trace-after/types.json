@@ -1,0 +1,198 @@
+[
+  {
+    "id": 1,
+    "intrinsicName": "string",
+    "flags": ["String"],
+    "display": "string"
+  },
+  {
+    "id": 2,
+    "symbolName": "TableBuilder",
+    "flags": ["Object"],
+    "display": "TableBuilder<Users>",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 675, "character": 36 },
+      "end": { "line": 901, "character": 2 }
+    }
+  },
+  {
+    "id": 3,
+    "symbolName": "TableBuilder",
+    "flags": ["Object"],
+    "display": "TableBuilder<Posts>",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 675, "character": 36 },
+      "end": { "line": 901, "character": 2 }
+    }
+  },
+  {
+    "id": 4,
+    "symbolName": "TableBuilder",
+    "flags": ["Object"],
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 675, "character": 36 },
+      "end": { "line": 901, "character": 2 }
+    }
+  },
+  {
+    "id": 6,
+    "symbolName": "Table",
+    "flags": ["Object"],
+    "display": "Table<users>",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 175, "character": 3 },
+      "end": { "line": 219, "character": 2 }
+    }
+  },
+  {
+    "id": 9,
+    "symbolName": "RefreshTableTargets",
+    "flags": ["Object"],
+    "display": "RefreshTableTargets<Table>",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 984, "character": 10 },
+      "end": { "line": 1002, "character": 3 }
+    }
+  },
+  {
+    "id": 13,
+    "symbolName": "__type",
+    "flags": ["Object"],
+    "display": "{ id: string; email: string; }",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 220, "character": 10 },
+      "end": { "line": 220, "character": 40 }
+    }
+  },
+  {
+    "id": 14,
+    "symbolName": "__type",
+    "flags": ["Object"],
+    "display": "{ id: string; email: string; name: string; }",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 221, "character": 10 },
+      "end": { "line": 221, "character": 40 }
+    }
+  },
+  {
+    "id": 15,
+    "symbolName": "__object",
+    "flags": ["Object"],
+    "display": "{ where: ColumnRef; limit: number; }",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 430, "character": 10 },
+      "end": { "line": 450, "character": 2 }
+    }
+  },
+  {
+    "id": 16,
+    "symbolName": "__function",
+    "flags": ["Object"],
+    "display": "(input: DbColumn) => Table",
+    "firstDeclaration": {
+      "path": "/repo/packages/fragno-db/src/schema/create.ts",
+      "start": { "line": 451, "character": 10 },
+      "end": { "line": 470, "character": 2 }
+    }
+  },
+  {
+    "id": 17,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "display": "MainSelectResult<UserQuery>",
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 18,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 19,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 20,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 21,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 22,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 23,
+    "symbolName": "MainSelectResult",
+    "flags": ["Conditional"],
+    "firstDeclaration": {
+      "path": "/Repo/packages/fragno-db/src/query/simple-query-interface.ts",
+      "start": { "line": 44, "character": 3 },
+      "end": { "line": 54, "character": 13 }
+    }
+  },
+  {
+    "id": 24,
+    "symbolName": "ErrorConstructor",
+    "flags": ["Object"],
+    "display": "{ readonly prototype: Error; }",
+    "firstDeclaration": {
+      "path": "/repo/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/lib/lib.es5.d.ts",
+      "start": { "line": 1079, "character": 2 },
+      "end": { "line": 1085, "character": 2 }
+    }
+  },
+  {
+    "id": 25,
+    "symbolName": "ErrorConstructor",
+    "flags": ["Object"],
+    "firstDeclaration": {
+      "path": "/repo/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/lib/lib.es5.d.ts",
+      "start": { "line": 1079, "character": 2 },
+      "end": { "line": 1085, "character": 2 }
+    }
+  }
+]
