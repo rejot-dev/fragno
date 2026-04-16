@@ -23,7 +23,7 @@ export const AUTOMATIONS_COMMANDS = [
 
 export const OTP_COMMANDS = ["otp.identity.create-claim"] as const;
 
-export const EVENT_COMMANDS = ["event.reply", "event.emit"] as const;
+export const EVENT_COMMANDS = ["event.emit"] as const;
 
 export type AutomationsCommandName = (typeof AUTOMATIONS_COMMANDS)[number];
 export type OtpCommandName = (typeof OTP_COMMANDS)[number];
@@ -54,12 +54,6 @@ export type IdentityBindActorArgs = {
   key: string;
   value: string;
   description?: string;
-};
-
-export type EventReplyArgs = {
-  text: string;
-  source?: string;
-  externalActorId?: string;
 };
 
 export type EventEmitArgs = {
@@ -100,7 +94,6 @@ export type ParsedCommandByName = {
   >;
   "otp.identity.create-claim": ParsedCommand<"otp.identity.create-claim", IdentityCreateClaimArgs>;
   "automations.script.run": ParsedCommand<"automations.script.run", ScriptRunArgs>;
-  "event.reply": ParsedCommand<"event.reply", EventReplyArgs>;
   "event.emit": ParsedCommand<"event.emit", EventEmitArgs>;
 };
 

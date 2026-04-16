@@ -22,7 +22,6 @@ import {
   resolvePiHarnesses,
   type PiConfigState,
 } from "@/fragno/pi/pi-shared";
-import { createTelegramSourceAdapter } from "@/fragno/telegram";
 
 const resolveDefaultPiAgent = (configState: PiConfigState) => {
   if (!configState.configured || !configState.config) {
@@ -59,11 +58,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
     this.initPromise = this.#state.blockConcurrencyWhile(async () => {
       this.#runtime = createAutomationsRuntime(state, {
         env: this.#env,
-        sourceAdapters: {
-          telegram: createTelegramSourceAdapter({
-            reply: this.#replyToTelegram.bind(this),
-          }),
-        },
         createPiAutomationContext: this.#createPiAutomationContext.bind(this),
         getAutomationFileSystem: ({ orgId }) => this.#createAutomationFileSystem(orgId),
       });
@@ -104,19 +98,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
       env: this.#env,
       automationHookQueue: (opts) =>
         this.getHookQueue({ ...opts, fragment: "automation" as const }),
-    });
-  }
-
-  async #replyToTelegram(input: { event: AutomationEvent; externalActorId: string; text: string }) {
-    const orgId = input.event.orgId?.trim();
-    if (!orgId) {
-      throw new Error("Telegram replies require an organisation id");
-    }
-
-    const telegramDo = this.#env.TELEGRAM.get(this.#env.TELEGRAM.idFromName(orgId));
-    await telegramDo.sendAutomationReply({
-      chatId: input.externalActorId,
-      text: input.text,
     });
   }
 

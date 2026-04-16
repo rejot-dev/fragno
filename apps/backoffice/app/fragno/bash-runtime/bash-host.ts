@@ -10,7 +10,7 @@ import {
   type AutomationFileSystemConfig,
 } from "@/fragno/automation/catalog";
 import type { ScriptRunArgs } from "@/fragno/automation/commands/types";
-import { getSourceAdapter, type AutomationEvent } from "@/fragno/automation/contracts";
+import type { AutomationEvent } from "@/fragno/automation/contracts";
 import {
   createAutomationBashCommandContext,
   type AutomationBashHostContext,
@@ -391,8 +391,6 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
       ...createEventBashRuntime({
         env: input.env,
         event: { ...event, orgId: input.orgId },
-        sourceAdapters: {},
-        sourceAdapter: getSourceAdapter({}, event.source),
       }),
     }),
   });

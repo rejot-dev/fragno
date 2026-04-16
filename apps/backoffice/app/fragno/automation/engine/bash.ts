@@ -37,12 +37,7 @@ import type {
   AutomationTriggerBinding,
   BashAutomationCommandResult,
 } from "../commands/types";
-import {
-  type AnyAutomationSourceAdapter,
-  type AutomationBashEnvironment,
-  type AutomationEvent,
-  type AutomationSourceAdapterRegistry,
-} from "../contracts";
+import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -99,14 +94,10 @@ export const createAutomationBashRuntime = ({
   hookContext,
   env,
   event,
-  sourceAdapters,
-  sourceAdapter,
 }: {
   hookContext: AutomationIdentityStorageContext;
   env?: CloudflareEnv;
   event: AutomationEvent;
-  sourceAdapters: Partial<AutomationSourceAdapterRegistry>;
-  sourceAdapter: AnyAutomationSourceAdapter | undefined;
 }): AutomationBashRuntime => {
   const orgId = normalizeOrgId(event.orgId);
 
@@ -132,8 +123,6 @@ export const createAutomationBashRuntime = ({
         ...event,
         orgId,
       },
-      sourceAdapters,
-      sourceAdapter,
     }),
   };
 };

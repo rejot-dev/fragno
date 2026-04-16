@@ -257,7 +257,6 @@ const createAutomationContext = () => ({
   idempotencyKey: "idem-1",
   bashEnv: {},
   runtime: {
-    reply: async () => ({ ok: true as const }),
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
       accepted: true,
       eventId: "emitted-1",
@@ -363,17 +362,17 @@ describe("bash host command assembly", () => {
       },
     });
 
-    const eventHelp = await bash.exec("event.reply --help");
+    const eventHelp = await bash.exec("event.emit --help");
     const missingPi = await bash.exec("pi.session.create --agent assistant");
 
     expect(eventHelp.exitCode).toBe(0);
-    expect(eventHelp.stdout).toContain("event.reply");
+    expect(eventHelp.stdout).toContain("event.emit");
     expect(missingPi.exitCode).toBe(127);
     expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
     expect(commandCallsResult).toEqual([
       {
-        command: "event.reply",
-        output: expect.stringContaining("event.reply"),
+        command: "event.emit",
+        output: expect.stringContaining("event.emit"),
         exitCode: 0,
       },
     ]);

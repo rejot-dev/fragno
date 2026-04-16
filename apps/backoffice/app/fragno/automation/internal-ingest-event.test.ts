@@ -1,7 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { z } from "zod";
-
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -19,11 +17,10 @@ import {
 } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
-import type { AutomationEvent, AutomationSourceAdapterRegistry } from "./contracts";
+import type { AutomationEvent } from "./contracts";
 import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
 import { automationFragmentRoutes } from "./routes";
 
-const replyCalls: string[] = [];
 const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
 const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
   url: `https://example.com/claims/${externalActorId}`,
@@ -146,27 +143,6 @@ const createPiSessionMock = vi.fn(async ({ agent }: { agent: string }) => ({
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 }));
-const sourceAdapter = {
-  source: "telegram",
-  eventSchemas: {
-    "message.received": z.object({
-      text: z.string().optional(),
-      chatId: z.string().optional(),
-      attachments: z
-        .array(
-          z.object({
-            kind: z.string(),
-            fileId: z.string(),
-          }),
-        )
-        .optional(),
-    }),
-  },
-  reply: vi.fn(async ({ text }: { text: string }) => {
-    replyCalls.push(text);
-  }),
-} satisfies AutomationSourceAdapterRegistry["telegram"];
-
 const createUploadConfig = (
   overrides: Partial<UploadAdminConfigResponse> = {},
 ): UploadAdminConfigResponse => ({
@@ -374,9 +350,6 @@ const buildAutomationTestContext = async (
       instantiate(automationFragmentDefinition)
         .withConfig({
           env: config.env ?? automationEnv,
-          sourceAdapters: {
-            telegram: sourceAdapter,
-          },
           createPiAutomationContext: config.createPiAutomationContext,
           getAutomationFileSystem: async () => currentAutomationFileSystem,
         })
@@ -391,16 +364,6 @@ describe("automation internalIngestEvent", () => {
   const fragment = fragments.automation;
   const source = "telegram";
   const eventType = "message.received";
-
-  const expectAccepted = (result: unknown) => {
-    expect(result).toEqual({
-      accepted: true,
-      eventId: "event-123",
-      orgId: undefined,
-      source,
-      eventType,
-    });
-  };
 
   const setAutomationOverlay = async (overlay: Record<string, string> = {}) => {
     currentAutomationFileSystem = await createAutomationFileSystem(overlay);
@@ -427,7 +390,6 @@ describe("automation internalIngestEvent", () => {
   };
 
   beforeEach(async () => {
-    replyCalls.length = 0;
     telegramSendCalls.length = 0;
     vi.clearAllMocks();
     issueIdentityClaimMock.mockClear();
@@ -450,8 +412,14 @@ describe("automation internalIngestEvent", () => {
 
       const result = await ingestEvent();
 
-      expectAccepted(result);
-      expect(replyCalls).toEqual([]);
+      expect(result).toEqual({
+        accepted: true,
+        eventId: "event-123",
+        orgId: undefined,
+        source,
+        eventType,
+      });
+      expect(telegramSendCalls).toEqual([]);
       expect(warn).toHaveBeenCalledWith(
         "No automation binding configured for event",
         expect.objectContaining({
@@ -506,15 +474,25 @@ describe("automation internalIngestEvent", () => {
           },
         },
       ]),
-      "automations/scripts/first.sh": 'event.reply --text "from-first"',
-      "automations/scripts/second.sh": 'event.reply --text "from-second"',
-      "automations/scripts/disabled.sh": 'event.reply --text "should-not-run"',
+      "automations/scripts/first.sh": 'telegram.chat.send --chat-id actor-1 --text "from-first"',
+      "automations/scripts/second.sh": 'telegram.chat.send --chat-id actor-1 --text "from-second"',
+      "automations/scripts/disabled.sh":
+        'telegram.chat.send --chat-id actor-1 --text "should-not-run"',
     });
 
-    const result = await ingestEvent();
+    const result = await ingestEvent({ orgId: "org-1" });
 
-    expectAccepted(result);
-    expect(replyCalls).toEqual(["from-first", "from-second"]);
+    expect(result).toEqual({
+      accepted: true,
+      eventId: "event-123",
+      orgId: "org-1",
+      source,
+      eventType,
+    });
+    expect(telegramSendCalls).toEqual([
+      { chatId: "actor-1", text: "from-first" },
+      { chatId: "actor-1", text: "from-second" },
+    ]);
   });
 
   test("stops executing later bindings after an earlier filesystem script failure", async () => {
@@ -549,13 +527,20 @@ describe("automation internalIngestEvent", () => {
           },
         ]),
         "automations/scripts/failing.sh": ['echo "boom" >&2', "exit 9"].join("\n"),
-        "automations/scripts/skipped.sh": 'event.reply --text "should-not-run"',
+        "automations/scripts/skipped.sh":
+          'telegram.chat.send --chat-id actor-1 --text "should-not-run"',
       });
 
-      const result = await ingestEvent();
+      const result = await ingestEvent({ orgId: "org-1" });
 
-      expectAccepted(result);
-      expect(replyCalls).toEqual([]);
+      expect(result).toEqual({
+        accepted: true,
+        eventId: "event-123",
+        orgId: "org-1",
+        source,
+        eventType,
+      });
+      expect(telegramSendCalls).toEqual([]);
       expect(errorSpy).toHaveBeenCalledWith(
         "[fragno-db] Hook failed",
         expect.objectContaining({
@@ -967,7 +952,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
         }),
       );
       expect(issueIdentityClaimMock).not.toHaveBeenCalled();
-      expect(replyCalls).toEqual([]);
+      expect(telegramSendCalls).toEqual([]);
     } finally {
       errorSpy.mockRestore();
       await noBaseUrlContext.test.cleanup();
@@ -1030,7 +1015,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
   test("prefers persistent overlay automation files over starter script contents", async () => {
     await setAutomationOverlay({
       [STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingStart]:
-        'event.reply --text "overlay-start"',
+        'telegram.chat.send --chat-id chat-1 --text "overlay-start"',
     });
 
     const result = await ingestEvent({
@@ -1053,7 +1038,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
       source: "telegram",
       eventType: "message.received",
     });
-    expect(replyCalls).toEqual(["overlay-start"]);
+    expect(telegramSendCalls).toEqual([{ chatId: "chat-1", text: "overlay-start" }]);
     expect(issueIdentityClaimMock).not.toHaveBeenCalled();
   });
 });

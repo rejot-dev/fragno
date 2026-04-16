@@ -1,29 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { z } from "zod";
-
-import type { AutomationEvent, AutomationSourceAdapterRegistry } from "../automation/contracts";
+import type { AutomationEvent } from "../automation/contracts";
 import { createEventBashRuntime } from "./event-bash-runtime";
-
-const createTelegramAdapter = (
-  reply?: AutomationSourceAdapterRegistry["telegram"]["reply"],
-): AutomationSourceAdapterRegistry["telegram"] => ({
-  source: "telegram",
-  eventSchemas: {
-    "message.received": z.object({}),
-  },
-  reply,
-});
-
-const createOtpAdapter = (
-  reply?: AutomationSourceAdapterRegistry["otp"]["reply"],
-): AutomationSourceAdapterRegistry["otp"] => ({
-  source: "otp",
-  eventSchemas: {
-    "identity.claim.completed": z.object({}),
-  },
-  reply,
-});
 
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
@@ -40,72 +18,6 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
   ...overrides,
 });
 
-describe("createEventBashRuntime.reply", () => {
-  it("reuses the event actor id when replying through the same source", async () => {
-    const reply = vi.fn(async () => undefined);
-    const sourceAdapters = {
-      telegram: createTelegramAdapter(reply),
-    } satisfies Partial<AutomationSourceAdapterRegistry>;
-    const event = createEvent();
-    const runtime = createEventBashRuntime({
-      event,
-      sourceAdapters,
-      sourceAdapter: sourceAdapters.telegram,
-    });
-
-    await expect(runtime.reply({ text: "hello" })).resolves.toEqual({ ok: true });
-
-    expect(reply).toHaveBeenCalledWith({
-      event,
-      externalActorId: "chat-1",
-      text: "hello",
-    });
-  });
-
-  it("requires an explicit external actor id when replying through a different source", async () => {
-    const otpReply = vi.fn(async () => undefined);
-    const sourceAdapters = {
-      telegram: createTelegramAdapter(),
-      otp: createOtpAdapter(otpReply),
-    } satisfies Partial<AutomationSourceAdapterRegistry>;
-    const event = createEvent();
-    const runtime = createEventBashRuntime({
-      event,
-      sourceAdapters,
-      sourceAdapter: sourceAdapters.telegram,
-    });
-
-    await expect(runtime.reply({ source: "otp", text: "hello" })).rejects.toThrow(
-      "event.reply requires --external-actor-id when replying through source 'otp' because the current event source is 'telegram'",
-    );
-    expect(otpReply).not.toHaveBeenCalled();
-  });
-
-  it("uses an explicit external actor id when replying through a different source", async () => {
-    const otpReply = vi.fn(async () => undefined);
-    const sourceAdapters = {
-      telegram: createTelegramAdapter(),
-      otp: createOtpAdapter(otpReply),
-    } satisfies Partial<AutomationSourceAdapterRegistry>;
-    const event = createEvent();
-    const runtime = createEventBashRuntime({
-      event,
-      sourceAdapters,
-      sourceAdapter: sourceAdapters.telegram,
-    });
-
-    await expect(
-      runtime.reply({ source: "otp", externalActorId: "otp-user-1", text: "hello" }),
-    ).resolves.toEqual({ ok: true });
-
-    expect(otpReply).toHaveBeenCalledWith({
-      event,
-      externalActorId: "otp-user-1",
-      text: "hello",
-    });
-  });
-});
-
 describe("createEventBashRuntime.emitEvent", () => {
   it("normalizes array payloads to an empty object", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
@@ -120,8 +32,6 @@ describe("createEventBashRuntime.emitEvent", () => {
     const runtime = createEventBashRuntime({
       env,
       event: createEvent(),
-      sourceAdapters: {},
-      sourceAdapter: undefined,
     });
 
     await expect(
@@ -154,8 +64,6 @@ describe("createEventBashRuntime.emitEvent", () => {
     const runtime = createEventBashRuntime({
       env,
       event: createEvent(),
-      sourceAdapters: {},
-      sourceAdapter: undefined,
     });
 
     await runtime.emitEvent({
