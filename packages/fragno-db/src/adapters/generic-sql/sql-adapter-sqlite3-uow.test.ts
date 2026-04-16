@@ -275,7 +275,7 @@ describe("SqlAdapter SQLite", () => {
 
     const internalFragmentStub = {
       $internal: { deps: { schema: internalSchema } },
-    } as InternalFragmentInstance;
+    } as unknown as InternalFragmentInstance;
 
     const buildHookUow = (name: string) => {
       const uow = queryEngine.createUnitOfWork(name).forSchema(testSchema, hooks);

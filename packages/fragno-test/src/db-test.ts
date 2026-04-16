@@ -9,7 +9,6 @@ import type {
   AnyFragnoInstantiatedFragment,
   FragmentDefinition,
 } from "@fragno-dev/core";
-import type { FragnoDatabase } from "@fragno-dev/db";
 import type { DatabaseAdapter, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import type { BaseTestContext } from ".";
@@ -20,6 +19,7 @@ import {
   type SchemaConfig,
 } from "./adapters";
 import { drainDurableHooks } from "./durable-hooks";
+import type { TestDb } from "./test-db";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
 // It's used to represent services after they've been bound to a context
@@ -122,8 +122,7 @@ type FragmentResultFromFactoryResult<T> =
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        FlattenRouteFactories<TRoutesOrFactories>,
-        ExtractSchemaFromDeps<TDeps>
+        FlattenRouteFactories<TRoutesOrFactories>
       >
     : T extends FragnoInstantiatedFragment<
           infer TRoutes,
@@ -140,16 +139,9 @@ type FragmentResultFromFactoryResult<T> =
           TServiceThisContext,
           THandlerThisContext,
           TRequestStorage,
-          TRoutes,
-          ExtractSchemaFromDeps<TDeps>
+          TRoutes
         >
       : never;
-
-// Extract the schema type from database fragment dependencies
-// Database fragments have ImplicitDatabaseDependencies<TSchema> which includes `schema: TSchema`
-type ExtractSchemaFromDeps<TDeps> = TDeps extends { schema: infer TSchema extends AnySchema }
-  ? TSchema
-  : AnySchema;
 
 // Forward declarations for recursive type references
 interface FragmentResult<
@@ -159,7 +151,6 @@ interface FragmentResult<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
-  TSchema extends AnySchema,
 > {
   fragment: FragnoInstantiatedFragment<
     TRoutes,
@@ -181,12 +172,11 @@ interface FragmentResult<
     TRequestStorage,
     FragnoPublicConfig
   >["callRoute"];
-  db: FragnoDatabase<TSchema>;
+  db: TestDb;
 }
 
 // Safe: Catch-all for any fragment result type
 export type AnyFragmentResult = FragmentResult<
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -430,8 +420,7 @@ export class DatabaseFragmentsTestBuilder<
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        FlattenRouteFactories<TRoutesOrFactories>,
-        ExtractSchemaFromDeps<TDeps> // Extract actual schema type from deps
+        FlattenRouteFactories<TRoutesOrFactories>
       >;
     },
     TAdapter,
@@ -481,8 +470,7 @@ export class DatabaseFragmentsTestBuilder<
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        TRoutes,
-        ExtractSchemaFromDeps<TDeps>
+        TRoutes
       >;
     },
     TAdapter,
@@ -794,12 +782,12 @@ export class DatabaseFragmentsTestBuilder<
 
       // First pass: create fragments without service dependencies to extract provided services
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const providedServicesByName: Record<string, { service: any; orm: any }> = {};
+      const providedServicesByName: Record<string, { service: any }> = {};
       const instanceResults = new Map<string, any>(); // eslint-disable-line @typescript-eslint/no-explicit-any
       const builderConfigs = new Map<string, ReturnType<typeof resolveBuilderConfig>>();
 
       for (const plan of fragmentPlans) {
-        const orm = testContext.getOrm(plan.namespace);
+        const db = testContext.getDb(plan.namespace);
         let fragment: AnyFragnoInstantiatedFragment | undefined;
         let builderConfig = plan.builderConfig;
 
@@ -853,7 +841,6 @@ export class DatabaseFragmentsTestBuilder<
         for (const [serviceName, serviceImpl] of Object.entries(fragment.services)) {
           providedServicesByName[serviceName] = {
             service: serviceImpl,
-            orm,
           };
         }
 
@@ -864,11 +851,7 @@ export class DatabaseFragmentsTestBuilder<
             services: fragment.services,
             deps: deps || {},
             callRoute: fragment.callRoute.bind(fragment),
-            get db() {
-              return orm;
-            },
-            _orm: orm,
-            _schema: plan.schema,
+            db,
           });
         }
       }
@@ -877,7 +860,7 @@ export class DatabaseFragmentsTestBuilder<
       const fragmentResults: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
       for (const plan of fragmentPlans) {
-        const orm = testContext.getOrm(plan.namespace);
+        const db = testContext.getDb(plan.namespace);
 
         if (instanceResults.has(plan.name)) {
           fragmentResults.push(instanceResults.get(plan.name));
@@ -921,11 +904,7 @@ export class DatabaseFragmentsTestBuilder<
           services: fragment.services,
           deps: deps || {},
           callRoute: fragment.callRoute.bind(fragment),
-          get db() {
-            return orm;
-          },
-          _orm: orm,
-          _schema: plan.schema,
+          db,
         });
       }
 
@@ -949,7 +928,6 @@ export class DatabaseFragmentsTestBuilder<
         result.services = newResult.services;
         result.deps = newResult.deps;
         result.callRoute = newResult.callRoute;
-        result._orm = newResult._orm;
       });
     };
 

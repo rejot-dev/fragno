@@ -72,8 +72,8 @@ async function buildOutboxContext(): Promise<OutboxContext> {
     .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
     .build();
 
-  const deps = fragment.$internal.deps as ImplicitDatabaseDependencies<typeof appSchema>;
-  const db = deps.databaseAdapter.createQueryEngine(deps.schema, deps.namespace);
+  const deps = fragment.$internal.deps as ImplicitDatabaseDependencies;
+  const db = deps.databaseAdapter.createQueryEngine(appSchema, deps.namespace);
 
   return {
     db,

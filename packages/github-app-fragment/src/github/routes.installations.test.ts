@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
 
+import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
 
 type FetchCall = {
@@ -204,6 +205,7 @@ describe("github-app installation sync", () => {
       const scopedRepos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -227,7 +229,11 @@ describe("github-app installation sync", () => {
       expect(removedRepo?.removedAt).not.toBeNull();
 
       const repoLinks = (
-        await fragments.githubApp.db.createUnitOfWork("read").find("repo_link").executeRetrieve()
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("repo_link")
+          .executeRetrieve()
       )[0];
       expect(repoLinks).toHaveLength(0);
 
@@ -278,7 +284,11 @@ describe("github-app installation sync", () => {
       expect(typedResponse.data).toEqual({ added: 1, removed: 0, updated: 0 });
 
       const installations = (
-        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("installation")
+          .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);

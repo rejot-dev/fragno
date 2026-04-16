@@ -1,4 +1,5 @@
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
+import { internalSchema } from "../fragments/internal-fragment.schema";
 import { dbNow, isDbNow, type DbNow } from "../query/db-now";
 import type {
   ExecuteTxOptions,
@@ -260,7 +261,7 @@ function resolveStuckProcessingTimeoutMinutes(
  */
 export function prepareHookMutations(
   uow: Pick<IUnitOfWork, "getTriggeredHooks" | "forSchema" | "idempotencyKey">,
-  internalFragment: InternalFragmentInstance,
+  _internalFragment: InternalFragmentInstance,
   defaultRetryPolicy?: RetryPolicy,
 ): void {
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
@@ -297,7 +298,6 @@ export function prepareHookMutations(
     },
   });
 
-  const internalSchema = internalFragment.$internal.deps.schema;
   const internalUow = uow.forSchema(internalSchema);
 
   for (const hook of triggeredHooks) {
@@ -340,7 +340,6 @@ export async function processHooks<THooks extends HooksMap>(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,
   );
-  const internalSchema = internalFragment.$internal.deps.schema;
   const includeStuckProcessing = stuckProcessingTimeoutMinutes !== false;
   const staleBefore = includeStuckProcessing
     ? dbNow().plus({ minutes: -stuckProcessingTimeoutMinutes })

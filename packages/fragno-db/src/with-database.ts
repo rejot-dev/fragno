@@ -61,7 +61,7 @@ export function withDatabase<TSchema extends AnySchema>(
 ) => DatabaseFragmentDefinitionBuilder<
   TSchema,
   TConfig,
-  TDeps & ImplicitDatabaseDependencies<TSchema>,
+  TDeps & ImplicitDatabaseDependencies,
   TBaseServices,
   TServices,
   TServiceDeps,
@@ -106,7 +106,7 @@ export function withDatabase<TSchema extends AnySchema>(
     return new DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
-      TDeps & ImplicitDatabaseDependencies<TSchema>,
+      TDeps & ImplicitDatabaseDependencies,
       TBaseServices,
       TServices,
       TServiceDeps,
@@ -119,7 +119,7 @@ export function withDatabase<TSchema extends AnySchema>(
       builder as unknown as FragmentDefinitionBuilder<
         TConfig,
         FragnoPublicConfigWithDatabase,
-        TDeps & ImplicitDatabaseDependencies<TSchema>,
+        TDeps & ImplicitDatabaseDependencies,
         TBaseServices,
         TServices,
         TServiceDeps,

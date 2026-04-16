@@ -1,7 +1,4 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
-
-import type { FragnoDatabase } from "@fragno-dev/db";
-import type { DatabaseAdapter } from "@fragno-dev/db";
+import type { DatabaseAdapter, FragnoDatabase } from "@fragno-dev/db";
 
 import type {
   SupportedAdapter,
@@ -11,6 +8,7 @@ import type {
   DrizzlePgliteAdapter,
   InMemoryAdapterConfig,
 } from "./adapters";
+import { createTestDb, type TestDb } from "./test-db";
 
 // Re-export utilities from @fragno-dev/core/test
 export {
@@ -34,6 +32,8 @@ export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-t
 export type { AnyFragmentResult } from "./db-test";
 export { drainDurableHooks } from "./durable-hooks";
 export type { DrainDurableHooksMode, DrainDurableHooksOptions } from "./durable-hooks";
+export { createTestDb } from "./test-db";
+export type { TestDb } from "./test-db";
 
 /**
  * Base test context with common functionality across all adapters
@@ -46,10 +46,10 @@ export interface BaseTestContext {
 }
 
 /**
- * Internal interface with getOrm for adapter implementations
+ * Internal interface with getDb for adapter implementations
  */
 export interface InternalTestContextMethods {
-  getOrm: <TSchema extends AnySchema>(namespace: string | null) => FragnoDatabase<TSchema>;
+  getDb: (namespace: string | null) => TestDb;
 }
 
 /**
@@ -61,13 +61,14 @@ export function createCommonTestContextMethods(
   ormMap: Map<string | null, FragnoDatabase<any>>,
 ): InternalTestContextMethods {
   return {
-    getOrm: <TSchema extends AnySchema>(namespace: string | null) => {
-      const orm = ormMap.get(namespace);
-      if (!orm) {
-        throw new Error(`No ORM found for namespace: ${String(namespace)}`);
-      }
-      return orm as FragnoDatabase<TSchema>;
-    },
+    getDb: (namespace: string | null) =>
+      createTestDb(() => {
+        const orm = ormMap.get(namespace);
+        if (!orm) {
+          throw new Error(`No ORM found for namespace: ${String(namespace)}`);
+        }
+        return orm;
+      }),
   };
 }
 

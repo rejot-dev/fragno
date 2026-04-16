@@ -3,7 +3,6 @@ import { rm } from "node:fs/promises";
 
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
-import type { AnySchema } from "@fragno-dev/db/schema";
 import { drizzle } from "drizzle-orm/pglite";
 import { KyselyPGlite } from "kysely-pglite";
 
@@ -12,20 +11,8 @@ import { internalFragmentDef } from "@fragno-dev/db";
 
 import { PGlite } from "@electric-sql/pglite";
 
+import { createCommonTestContextMethods } from "..";
 import type { AdapterFactoryResult, DrizzlePgliteAdapter, SchemaConfig } from "../adapters";
-
-const createCommonTestContextMethods = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string | null, FragnoDatabase<any, any>>,
-) => ({
-  getOrm: <TSchema extends AnySchema>(namespace: string | null): FragnoDatabase<TSchema> => {
-    const orm = ormMap.get(namespace);
-    if (!orm) {
-      throw new Error(`No ORM found for namespace: ${String(namespace)}`);
-    }
-    return orm as FragnoDatabase<TSchema>;
-  },
-});
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,

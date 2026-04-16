@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { resendSchema } from "./schema";
 import { createResendTestContext, receivingGetMock, sendMock, verifyMock } from "./test-context";
 
 type ResendWebhookTestContext = Awaited<ReturnType<typeof createResendTestContext>>;
@@ -486,7 +487,7 @@ describe("resend-fragment webhook", () => {
 
   test("updates status events", async () => {
     {
-      const uow = ctx.db.createUnitOfWork("seed-status-msg");
+      const uow = ctx.db.createUnitOfWork("seed-status-msg").forSchema(resendSchema);
       uow.create("emailMessage", {
         id: "msg_status",
         direction: "outbound",
@@ -578,7 +579,7 @@ describe("resend-fragment webhook", () => {
     vi.setSystemTime(new Date("2026-03-18T10:05:00.000Z"));
 
     {
-      const uow = ctx.db.createUnitOfWork("seed-status-retry-msg");
+      const uow = ctx.db.createUnitOfWork("seed-status-retry-msg").forSchema(resendSchema);
       uow.create("emailMessage", {
         id: "msg_status_retry",
         direction: "outbound",

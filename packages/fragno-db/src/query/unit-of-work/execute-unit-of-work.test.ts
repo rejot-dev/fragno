@@ -59,7 +59,7 @@ function setupCrossSchemaHookTest() {
         namespace: null,
       },
     },
-  } as InternalFragmentInstance;
+  } as unknown as InternalFragmentInstance;
 
   return {
     schemaA,

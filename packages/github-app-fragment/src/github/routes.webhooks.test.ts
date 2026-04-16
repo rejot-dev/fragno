@@ -4,6 +4,7 @@ import { createHmac, generateKeyPairSync } from "crypto";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
 
 type FetchCall = {
@@ -354,7 +355,11 @@ describe("github-app webhooks", () => {
       await drainDurableHooks(fragments.githubApp.fragment);
 
       const installations = (
-        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("installation")
+          .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
@@ -365,6 +370,7 @@ describe("github-app webhooks", () => {
       const repos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -386,6 +392,7 @@ describe("github-app webhooks", () => {
       const reposAfter = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -431,7 +438,11 @@ describe("github-app webhooks", () => {
       await drainDurableHooks(fragments.githubApp.fragment);
 
       const installations = (
-        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("installation")
+          .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
@@ -440,6 +451,7 @@ describe("github-app webhooks", () => {
       const repos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -513,6 +525,7 @@ describe("github-app webhooks", () => {
       const repos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -600,6 +613,7 @@ describe("github-app webhooks", () => {
       const repos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -698,6 +712,7 @@ describe("github-app webhooks", () => {
       const repos = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo")
           .executeRetrieve()
       )[0];
@@ -708,7 +723,11 @@ describe("github-app webhooks", () => {
       expect(byId.get("10")?.removedAt).toBeInstanceOf(Date);
 
       const links = (
-        await fragments.githubApp.db.createUnitOfWork("read").find("repo_link").executeRetrieve()
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("repo_link")
+          .executeRetrieve()
       )[0];
       expect(links).toHaveLength(0);
     } finally {

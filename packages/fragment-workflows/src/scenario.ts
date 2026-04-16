@@ -6,6 +6,7 @@ import {
   type SupportedAdapter,
 } from "@fragno-dev/test";
 
+import { workflowsSchema } from "./schema";
 import {
   createWorkflowsTestHarness,
   type WorkflowsHistory,
@@ -636,6 +637,7 @@ const getScenarioInstanceRow = async <TRegistry extends WorkflowsRegistry>(
   const rows = (
     await harness.db
       .createUnitOfWork("scenario-instance")
+      .forSchema(workflowsSchema)
       .find("workflow_instance", (b) =>
         b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
           eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
@@ -784,6 +786,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       return (
         await harness.db
           .createUnitOfWork("scenario-steps")
+          .forSchema(workflowsSchema)
           .find("workflow_step", (b) =>
             b
               .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -818,6 +821,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       return (
         await harness.db
           .createUnitOfWork("scenario-events")
+          .forSchema(workflowsSchema)
           .find("workflow_event", (b) =>
             b
               .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
@@ -864,6 +868,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       return (
         await harness.db
           .createUnitOfWork("scenario-history-steps")
+          .forSchema(workflowsSchema)
           .find("workflow_step", (b) => {
             let builder = b
               .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -887,6 +892,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       return (
         await harness.db
           .createUnitOfWork("scenario-history-events")
+          .forSchema(workflowsSchema)
           .find("workflow_event", (b) => {
             let builder = b
               .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
@@ -1384,6 +1390,7 @@ export async function runScenario<
                 return (
                   await harness.db
                     .createUnitOfWork("scenario-retry-steps")
+                    .forSchema(workflowsSchema)
                     .find("workflow_step", (b) =>
                       b
                         .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -1542,6 +1549,7 @@ export async function runScenario<
               return (
                 await harness.db
                   .createUnitOfWork("scenario-wake-steps")
+                  .forSchema(workflowsSchema)
                   .find("workflow_step", (b) =>
                     b
                       .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>

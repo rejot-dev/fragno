@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { workflowsSchema } from "./schema";
 import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 import {
   defineWorkflow,
@@ -60,6 +61,7 @@ describe("createWorkflowsTestHarness", () => {
     const [sleepInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
           b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
             eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
@@ -85,6 +87,7 @@ describe("createWorkflowsTestHarness", () => {
     const [eventInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
           b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
             eb.and(eb("workflowName", "=", "event-workflow"), eb("id", "=", eventId)),
@@ -124,6 +127,7 @@ describe("createWorkflowsTestHarness", () => {
     const [sleepInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
           b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
             eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
@@ -189,6 +193,7 @@ describe("createWorkflowsTestHarness", () => {
     const [retryInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
           b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
             eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("id", "=", retryId)),
@@ -207,6 +212,7 @@ describe("createWorkflowsTestHarness", () => {
     const [step] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];

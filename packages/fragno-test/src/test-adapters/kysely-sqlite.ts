@@ -1,26 +1,13 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { SQLocalDriverConfig } from "@fragno-dev/db/drivers";
-import type { AnySchema } from "@fragno-dev/db/schema";
 import { Kysely } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 
 import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
+import { createCommonTestContextMethods } from "..";
 import type { KyselySqliteAdapter, AdapterFactoryResult, SchemaConfig } from "../adapters";
-
-const createCommonTestContextMethods = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string | null, FragnoDatabase<any, any>>,
-) => ({
-  getOrm: <TSchema extends AnySchema>(namespace: string | null): FragnoDatabase<TSchema> => {
-    const orm = ormMap.get(namespace);
-    if (!orm) {
-      throw new Error(`No ORM found for namespace: ${String(namespace)}`);
-    }
-    return orm as FragnoDatabase<TSchema>;
-  },
-});
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,

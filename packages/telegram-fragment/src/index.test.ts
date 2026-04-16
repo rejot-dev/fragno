@@ -136,6 +136,7 @@ describe("telegram-fragment", async () => {
     const messages = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("message", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -512,6 +513,7 @@ describe("telegram-fragment", async () => {
     const chats = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("chat", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -522,6 +524,7 @@ describe("telegram-fragment", async () => {
     const users = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("user", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -563,6 +566,7 @@ describe("telegram-fragment", async () => {
     const messages = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("message", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -673,6 +677,7 @@ describe("telegram-fragment", async () => {
     const storedAfterSend = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("message", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -725,6 +730,7 @@ describe("telegram-fragment", async () => {
     const storedAfterEdit = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("message", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -769,6 +775,7 @@ describe("telegram-fragment", async () => {
     const messages = await (async () => {
       const uow = fragments.telegram.db
         .createUnitOfWork("read")
+        .forSchema(telegramSchema)
         .find("message", (b) => b.whereIndex("primary"));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];

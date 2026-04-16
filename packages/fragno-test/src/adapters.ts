@@ -5,9 +5,8 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 import type { drizzle } from "drizzle-orm/pglite";
 import type { Kysely } from "kysely";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
-
 import type { BaseTestContext } from ".";
+import type { TestDb } from "./test-db";
 
 export interface KyselySqliteAdapter {
   type: "kysely-sqlite";
@@ -45,7 +44,7 @@ export interface SchemaConfig {
 }
 
 interface InternalTestContext extends BaseTestContext {
-  getOrm: <TSchema extends AnySchema>(namespace: string | null) => FragnoDatabase<TSchema>;
+  getDb: (namespace: string | null) => TestDb;
 }
 
 export type AdapterContext<T extends SupportedAdapter> = T extends

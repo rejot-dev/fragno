@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
-
+import type { TestDb } from ".";
 import { createAdapter, type SupportedAdapter } from "./adapters";
 
 const conformanceSchema = schema("conformance", (s) =>
@@ -63,7 +62,7 @@ type AdapterCase = {
   supportsDeterministicDefaults: boolean;
 };
 
-type ConformanceDb = FragnoDatabase<typeof conformanceSchema>;
+type ConformanceDb = TestDb;
 
 const adapterCases: AdapterCase[] = [
   {
@@ -83,7 +82,7 @@ const adapterCases: AdapterCase[] = [
 
 async function withAdapter<T>(config: SupportedAdapter, run: (db: ConformanceDb) => Promise<T>) {
   const { testContext } = await createAdapter(config, [{ schema: conformanceSchema, namespace }]);
-  const db = testContext.getOrm<typeof conformanceSchema>(namespace) as ConformanceDb;
+  const db = testContext.getDb(namespace);
 
   try {
     return await run(db);
@@ -96,7 +95,7 @@ for (const adapterCase of adapterCases) {
   describe(`adapter conformance (${adapterCase.name})`, () => {
     it("enforces optimistic checks and version bumps", async () => {
       await withAdapter(adapterCase.config, async (db) => {
-        const createUow = db.createUnitOfWork("create-user");
+        const createUow = db.createUnitOfWork("create-user").forSchema(conformanceSchema);
         createUow.create("users", { name: "Ada" });
         const createResult = await createUow.executeMutations();
         expect(createResult.success).toBe(true);
@@ -104,13 +103,14 @@ for (const adapterCase of adapterCases) {
         const createdId = createUow.getCreatedIds()[0];
         expect(createdId).toBeDefined();
 
-        const updateUow = db.createUnitOfWork("update-user");
+        const updateUow = db.createUnitOfWork("update-user").forSchema(conformanceSchema);
         updateUow.update("users", createdId!, (b) => b.set({ name: "Ada Lovelace" }).check());
         const updateResult = await updateUow.executeMutations();
         expect(updateResult.success).toBe(true);
 
         const [[updatedUser]] = await db
           .createUnitOfWork("verify-update")
+          .forSchema(conformanceSchema)
           .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", createdId!)))
           .executeRetrieve();
 
@@ -119,7 +119,7 @@ for (const adapterCase of adapterCases) {
           id: expect.objectContaining({ version: 1 }),
         });
 
-        const staleUow = db.createUnitOfWork("stale-update");
+        const staleUow = db.createUnitOfWork("stale-update").forSchema(conformanceSchema);
         staleUow.update("users", createdId!, (b) => b.set({ name: "Ada Byron" }).check());
         const staleResult = await staleUow.executeMutations();
         expect(staleResult.success).toBe(false);
@@ -131,7 +131,7 @@ for (const adapterCase of adapterCases) {
         const users = ["Ada", "Brett", "Cora", "Dylan", "Emma"];
         for (const name of users) {
           await (async () => {
-            const uow = db.createUnitOfWork("write");
+            const uow = db.createUnitOfWork("write").forSchema(conformanceSchema);
             const created = uow.create("users", { name });
             const { success } = await uow.executeMutations();
             if (!success) {
@@ -144,6 +144,7 @@ for (const adapterCase of adapterCases) {
         const firstPage = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(conformanceSchema)
             .findWithCursor("users", (b) =>
               b.whereIndex("users_by_name").orderByIndex("users_by_name", "asc").pageSize(2),
             );
@@ -158,6 +159,7 @@ for (const adapterCase of adapterCases) {
         const secondPage = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(conformanceSchema)
             .findWithCursor("users", (b) =>
               b
                 .whereIndex("users_by_name")
@@ -176,6 +178,7 @@ for (const adapterCase of adapterCases) {
         const thirdPage = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(conformanceSchema)
             .findWithCursor("users", (b) =>
               b
                 .whereIndex("users_by_name")
@@ -196,7 +199,7 @@ for (const adapterCase of adapterCases) {
     it("executes nested joins consistently", async () => {
       await withAdapter(adapterCase.config, async (db) => {
         const authorId = await (async () => {
-          const uow = db.createUnitOfWork("write");
+          const uow = db.createUnitOfWork("write").forSchema(conformanceSchema);
           const created = uow.create("users", { name: "Author" });
           const { success } = await uow.executeMutations();
           if (!success) {
@@ -205,7 +208,7 @@ for (const adapterCase of adapterCases) {
           return created;
         })();
         const commenterId = await (async () => {
-          const uow = db.createUnitOfWork("write");
+          const uow = db.createUnitOfWork("write").forSchema(conformanceSchema);
           const created = uow.create("users", { name: "Commenter" });
           const { success } = await uow.executeMutations();
           if (!success) {
@@ -214,7 +217,7 @@ for (const adapterCase of adapterCases) {
           return created;
         })();
         const postId = await (async () => {
-          const uow = db.createUnitOfWork("write");
+          const uow = db.createUnitOfWork("write").forSchema(conformanceSchema);
           const created = uow.create("posts", { title: "Hello", authorId });
           const { success } = await uow.executeMutations();
           if (!success) {
@@ -224,7 +227,7 @@ for (const adapterCase of adapterCases) {
         })();
 
         await (async () => {
-          const uow = db.createUnitOfWork("write");
+          const uow = db.createUnitOfWork("write").forSchema(conformanceSchema);
           const created = uow.create("comments", {
             postId,
             authorId: commenterId,
@@ -240,6 +243,7 @@ for (const adapterCase of adapterCases) {
         const comments = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(conformanceSchema)
             .find("comments", (b) =>
               b
                 .whereIndex("primary")
@@ -288,11 +292,11 @@ for (const adapterCase of adapterCases) {
         ]);
 
         try {
-          const firstDb = firstContext.getOrm<typeof conformanceSchema>(namespace);
-          const secondDb = secondContext.getOrm<typeof conformanceSchema>(namespace);
+          const firstDb = firstContext.getDb(namespace);
+          const secondDb = secondContext.getDb(namespace);
 
           const firstId = await (async () => {
-            const uow = firstDb.createUnitOfWork("write");
+            const uow = firstDb.createUnitOfWork("write").forSchema(conformanceSchema);
             const created = uow.create("users", { id: "seeded-user", name: "Seeded" });
             const { success } = await uow.executeMutations();
             if (!success) {
@@ -301,7 +305,7 @@ for (const adapterCase of adapterCases) {
             return created;
           })();
           const secondId = await (async () => {
-            const uow = secondDb.createUnitOfWork("write");
+            const uow = secondDb.createUnitOfWork("write").forSchema(conformanceSchema);
             const created = uow.create("users", { id: "seeded-user", name: "Seeded" });
             const { success } = await uow.executeMutations();
             if (!success) {
@@ -315,6 +319,7 @@ for (const adapterCase of adapterCases) {
           const createdUser = await (async () => {
             const uow = firstDb
               .createUnitOfWork("read")
+              .forSchema(conformanceSchema)
               .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", firstId)));
             await uow.executeRetrieve();
             return (await uow.retrievalPhase)[0];
@@ -357,10 +362,10 @@ describe("adapter conformance (kysely-sqlite instrumentation)", () => {
       [{ schema: conformanceSchema, namespace }],
     );
 
-    const db = testContext.getOrm<typeof conformanceSchema>(namespace);
+    const db = testContext.getDb(namespace);
 
     try {
-      const uow = db.createUnitOfWork("instrumented");
+      const uow = db.createUnitOfWork("instrumented").forSchema(conformanceSchema);
       uow.find("users", (b) => b.whereIndex("primary"));
       uow.create("users", { name: "Instrumented" });
 
@@ -390,17 +395,20 @@ describe("adapter conformance (kysely-sqlite instrumentation)", () => {
       [{ schema: conformanceSchema, namespace }],
     );
 
-    const db = testContext.getOrm<typeof conformanceSchema>(namespace);
+    const db = testContext.getDb(namespace);
 
     try {
-      const uow = db.createUnitOfWork("conflict-injected");
+      const uow = db.createUnitOfWork("conflict-injected").forSchema(conformanceSchema);
       uow.create("users", { name: "Should not persist" });
 
       const result = await uow.executeMutations();
       expect(result.success).toBe(false);
 
       const users = await (async () => {
-        const uow = db.createUnitOfWork("read").find("users", (b) => b.whereIndex("primary"));
+        const uow = db
+          .createUnitOfWork("read")
+          .forSchema(conformanceSchema)
+          .find("users", (b) => b.whereIndex("primary"));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();

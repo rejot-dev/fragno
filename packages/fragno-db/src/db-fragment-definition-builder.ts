@@ -150,7 +150,7 @@ export type DbRoundtripGuardConfig = {
  * Implicit dependencies that database fragments get automatically.
  * These are injected without requiring explicit configuration.
  */
-export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
+export type ImplicitDatabaseDependencies = {
   /**
    * Database adapter instance.
    */
@@ -158,7 +158,7 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
   /**
    * The schema definition for this fragment.
    */
-  schema: TSchema;
+  schema: AnySchema;
   /**
    * The database namespace for this fragment.
    */
@@ -670,7 +670,7 @@ export class DatabaseFragmentDefinitionBuilder<
   ): DatabaseFragmentDefinitionBuilder<
     TSchema,
     TConfig,
-    TNewDeps & ImplicitDatabaseDependencies<TSchema>,
+    TNewDeps & ImplicitDatabaseDependencies,
     {},
     {},
     TServiceDependencies,
@@ -694,7 +694,7 @@ export class DatabaseFragmentDefinitionBuilder<
 
       // Create implicit dependencies
       const createUow = () => dbContext.createUnitOfWork();
-      const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
+      const implicitDeps: ImplicitDatabaseDependencies = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
@@ -1096,7 +1096,7 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
-      const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
+      const implicitDeps: ImplicitDatabaseDependencies = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
@@ -1283,7 +1283,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const autoSchedule = options.durableHooks?.autoSchedule !== false;
       const registryResolver = this.#registryResolver;
       const databaseAdapter =
-        (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter ??
+        (deps as ImplicitDatabaseDependencies).databaseAdapter ??
         resolveDatabaseAdapter(options, this.#schema);
       const internalFragment = isInternalFragment
         ? undefined
@@ -1526,7 +1526,7 @@ export class DatabaseFragmentDefinitionBuilder<
     }
     if (this.#registryResolver) {
       const registryInternalRoutes = ({ deps }: { deps: TDeps }) => {
-        const databaseAdapter = (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter;
+        const databaseAdapter = (deps as ImplicitDatabaseDependencies).databaseAdapter;
         if (!databaseAdapter) {
           throw new Error("Database adapter is missing for internal routes.");
         }
