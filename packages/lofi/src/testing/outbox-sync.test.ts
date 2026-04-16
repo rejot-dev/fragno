@@ -14,6 +14,7 @@ import {
 } from "fake-indexeddb";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
+import type { FragnoDatabase } from "@fragno-dev/db";
 import {
   InMemoryAdapter,
   getInternalFragment,
@@ -55,14 +56,7 @@ const fragmentDef = defineFragment(fragmentName).extend(withDatabase(appSchema))
 const createDbName = () => `lofi-outbox-${Math.random().toString(16).slice(2)}`;
 
 type OutboxContext = {
-  db: {
-    create: (
-      table: "users" | "posts",
-      values: Record<string, unknown>,
-    ) => Promise<{
-      internalId?: bigint;
-    }>;
-  };
+  db: FragnoDatabase<typeof appSchema>;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
 };
@@ -119,18 +113,34 @@ describe("outbox sync integration", () => {
     const { db, internalFragment, cleanup } = await buildOutboxContext();
 
     try {
-      await db.create("users", { email: "alpha@example.com", age: 30 });
-      const betaUserId = await db.create("users", { email: "beta@example.com", age: 20 });
-      await db.create("users", { email: "gamma@example.com", age: 40 });
+      const betaUserId = await (async () => {
+        const uow = db.createUnitOfWork("seed-users");
+        uow.create("users", { email: "alpha@example.com", age: 30 });
+        uow.create("users", { email: "beta@example.com", age: 20 });
+        uow.create("users", { email: "gamma@example.com", age: 40 });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create users");
+        }
+        const ids = uow.getCreatedIds();
+        return ids[1]!;
+      })();
 
       if (!betaUserId.internalId) {
         throw new Error("Expected beta user to include internal id");
       }
 
-      await db.create("posts", {
-        title: "Hello",
-        authorId: FragnoReference.fromInternal(betaUserId.internalId),
-      });
+      {
+        const uow = db.createUnitOfWork("seed-post");
+        uow.create("posts", {
+          title: "Hello",
+          authorId: FragnoReference.fromInternal(betaUserId.internalId),
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create post");
+        }
+      }
 
       const expectedEntries = await listOutbox(internalFragment);
       const expectedStamps = expectedEntries.map((entry) => entry.versionstamp);
@@ -208,8 +218,15 @@ describe("outbox sync integration", () => {
     const { db, internalFragment, cleanup } = await buildOutboxContext();
 
     try {
-      await db.create("users", { email: "alpha@example.com", age: 30 });
-      await db.create("users", { email: "beta@example.com", age: 20 });
+      {
+        const uow = db.createUnitOfWork("seed-users-dup");
+        uow.create("users", { email: "alpha@example.com", age: 30 });
+        uow.create("users", { email: "beta@example.com", age: 20 });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create users");
+        }
+      }
 
       const expectedEntries = await listOutbox(internalFragment);
 

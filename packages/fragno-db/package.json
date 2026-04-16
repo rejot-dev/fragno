@@ -42,8 +42,8 @@
       "default": "./dist/sql-driver/dialects/durable-object-dialect.js"
     },
     "./query": {
-      "types": "./dist/query/simple-query-interface.d.ts",
-      "default": "./dist/query/simple-query-interface.js"
+      "types": "./dist/query/mod.d.ts",
+      "default": "./dist/query/mod.js"
     },
     "./adapters": {
       "types": "./dist/adapters/adapters.d.ts",

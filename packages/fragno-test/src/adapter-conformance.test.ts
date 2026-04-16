@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+
+import type { FragnoDatabase } from "@fragno-dev/db";
 
 import { createAdapter, type SupportedAdapter } from "./adapters";
 
@@ -62,7 +63,7 @@ type AdapterCase = {
   supportsDeterministicDefaults: boolean;
 };
 
-type ConformanceDb = SimpleQueryInterface<typeof conformanceSchema>;
+type ConformanceDb = FragnoDatabase<typeof conformanceSchema>;
 
 const adapterCases: AdapterCase[] = [
   {
@@ -129,36 +130,62 @@ for (const adapterCase of adapterCases) {
       await withAdapter(adapterCase.config, async (db) => {
         const users = ["Ada", "Brett", "Cora", "Dylan", "Emma"];
         for (const name of users) {
-          await db.create("users", { name });
+          await (async () => {
+            const uow = db.createUnitOfWork("write");
+            const created = uow.create("users", { name });
+            const { success } = await uow.executeMutations();
+            if (!success) {
+              throw new Error("Failed to create record");
+            }
+            return created;
+          })();
         }
 
-        const firstPage = await db.findWithCursor("users", (b) =>
-          b.whereIndex("users_by_name").orderByIndex("users_by_name", "asc").pageSize(2),
-        );
+        const firstPage = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findWithCursor("users", (b) =>
+              b.whereIndex("users_by_name").orderByIndex("users_by_name", "asc").pageSize(2),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(firstPage.items.map((user) => user.name)).toEqual(["Ada", "Brett"]);
         expect(firstPage.hasNextPage).toBe(true);
         expect(firstPage.cursor).toBeDefined();
 
-        const secondPage = await db.findWithCursor("users", (b) =>
-          b
-            .whereIndex("users_by_name")
-            .orderByIndex("users_by_name", "asc")
-            .pageSize(2)
-            .after(firstPage.cursor!),
-        );
+        const secondPage = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findWithCursor("users", (b) =>
+              b
+                .whereIndex("users_by_name")
+                .orderByIndex("users_by_name", "asc")
+                .pageSize(2)
+                .after(firstPage.cursor!),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(secondPage.items.map((user) => user.name)).toEqual(["Cora", "Dylan"]);
         expect(secondPage.hasNextPage).toBe(true);
         expect(secondPage.cursor).toBeDefined();
 
-        const thirdPage = await db.findWithCursor("users", (b) =>
-          b
-            .whereIndex("users_by_name")
-            .orderByIndex("users_by_name", "asc")
-            .pageSize(2)
-            .after(secondPage.cursor!),
-        );
+        const thirdPage = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findWithCursor("users", (b) =>
+              b
+                .whereIndex("users_by_name")
+                .orderByIndex("users_by_name", "asc")
+                .pageSize(2)
+                .after(secondPage.cursor!),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(thirdPage.items.map((user) => user.name)).toEqual(["Emma"]);
         expect(thirdPage.hasNextPage).toBe(false);
@@ -168,27 +195,65 @@ for (const adapterCase of adapterCases) {
 
     it("executes nested joins consistently", async () => {
       await withAdapter(adapterCase.config, async (db) => {
-        const authorId = await db.create("users", { name: "Author" });
-        const commenterId = await db.create("users", { name: "Commenter" });
-        const postId = await db.create("posts", { title: "Hello", authorId });
+        const authorId = await (async () => {
+          const uow = db.createUnitOfWork("write");
+          const created = uow.create("users", { name: "Author" });
+          const { success } = await uow.executeMutations();
+          if (!success) {
+            throw new Error("Failed to create record");
+          }
+          return created;
+        })();
+        const commenterId = await (async () => {
+          const uow = db.createUnitOfWork("write");
+          const created = uow.create("users", { name: "Commenter" });
+          const { success } = await uow.executeMutations();
+          if (!success) {
+            throw new Error("Failed to create record");
+          }
+          return created;
+        })();
+        const postId = await (async () => {
+          const uow = db.createUnitOfWork("write");
+          const created = uow.create("posts", { title: "Hello", authorId });
+          const { success } = await uow.executeMutations();
+          if (!success) {
+            throw new Error("Failed to create record");
+          }
+          return created;
+        })();
 
-        await db.create("comments", {
-          postId,
-          authorId: commenterId,
-          body: "Nice post",
-        });
+        await (async () => {
+          const uow = db.createUnitOfWork("write");
+          const created = uow.create("comments", {
+            postId,
+            authorId: commenterId,
+            body: "Nice post",
+          });
+          const { success } = await uow.executeMutations();
+          if (!success) {
+            throw new Error("Failed to create record");
+          }
+          return created;
+        })();
 
-        const comments = await db.find("comments", (b) =>
-          b
-            .whereIndex("primary")
-            .join((jb) =>
-              jb
-                .post((pb) =>
-                  pb.select(["title"]).join((jb2) => jb2.author((ab) => ab.select(["name"]))),
-                )
-                .commenter((cb) => cb.select(["name"])),
-            ),
-        );
+        const comments = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .find("comments", (b) =>
+              b
+                .whereIndex("primary")
+                .join((jb) =>
+                  jb
+                    .post((pb) =>
+                      pb.select(["title"]).join((jb2) => jb2.author((ab) => ab.select(["name"]))),
+                    )
+                    .commenter((cb) => cb.select(["name"])),
+                ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(comments).toHaveLength(1);
         expect(comments[0]).toMatchObject({
@@ -226,14 +291,34 @@ for (const adapterCase of adapterCases) {
           const firstDb = firstContext.getOrm<typeof conformanceSchema>(namespace);
           const secondDb = secondContext.getOrm<typeof conformanceSchema>(namespace);
 
-          const firstId = await firstDb.create("users", { id: "seeded-user", name: "Seeded" });
-          const secondId = await secondDb.create("users", { id: "seeded-user", name: "Seeded" });
+          const firstId = await (async () => {
+            const uow = firstDb.createUnitOfWork("write");
+            const created = uow.create("users", { id: "seeded-user", name: "Seeded" });
+            const { success } = await uow.executeMutations();
+            if (!success) {
+              throw new Error("Failed to create record");
+            }
+            return created;
+          })();
+          const secondId = await (async () => {
+            const uow = secondDb.createUnitOfWork("write");
+            const created = uow.create("users", { id: "seeded-user", name: "Seeded" });
+            const { success } = await uow.executeMutations();
+            if (!success) {
+              throw new Error("Failed to create record");
+            }
+            return created;
+          })();
 
           expect(firstId.externalId).toBe(secondId.externalId);
 
-          const createdUser = await firstDb.findFirst("users", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", firstId)),
-          );
+          const createdUser = await (async () => {
+            const uow = firstDb
+              .createUnitOfWork("read")
+              .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", firstId)));
+            await uow.executeRetrieve();
+            return (await uow.retrievalPhase)[0];
+          })();
 
           expect(createdUser?.slug).toBe("seeded-0");
           expect(createdUser?.createdAt?.toISOString()).toBe(fixedClock.toISOString());
@@ -314,7 +399,11 @@ describe("adapter conformance (kysely-sqlite instrumentation)", () => {
       const result = await uow.executeMutations();
       expect(result.success).toBe(false);
 
-      const users = await db.find("users", (b) => b.whereIndex("primary"));
+      const users = await (async () => {
+        const uow = db.createUnitOfWork("read").find("users", (b) => b.whereIndex("primary"));
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(users).toHaveLength(0);
       expect(calls).toEqual([]);
     } finally {

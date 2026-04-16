@@ -150,11 +150,17 @@ describe("upload fragment direct single flows", () => {
     expect(completeResponse.data.status).toBe("ready");
     expect(finalizeUpload).toHaveBeenCalled();
 
-    const stored = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", createResponse.data.fileKey)),
-      ),
-    );
+    const stored = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", createResponse.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(stored?.status).toBe("ready");
     expect(stored?.objectKey).toMatch(
@@ -291,9 +297,16 @@ describe("upload fragment direct single flows", () => {
 
     assert(createResponse.type === "json");
 
-    await db.update("upload", createResponse.data.uploadId, (b) =>
-      b.set({ expiresAt: new Date(Date.now() - 1000) }),
-    );
+    await (async () => {
+      const uow = db.createUnitOfWork("write");
+      uow.update("upload", createResponse.data.uploadId, (b) =>
+        b.set({ expiresAt: new Date(Date.now() - 1000) }),
+      );
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record");
+      }
+    })();
 
     const response = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
       pathParams: { uploadId: createResponse.data.uploadId },
@@ -318,9 +331,15 @@ describe("upload fragment direct single flows", () => {
 
     assert(createResponse.type === "json");
 
-    const upload = await db.findFirst("upload", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
-    );
+    const upload = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("upload", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(upload).toBeTruthy();
     if (!upload) {
       throw new Error("Upload row missing");
@@ -328,26 +347,34 @@ describe("upload fragment direct single flows", () => {
 
     const supersededObjectKey = `store/${upload.provider}/${upload.key}/20260319T115043123Z`;
     const now = new Date();
-    await db.create("file", {
-      key: upload.key,
-      provider: upload.provider,
-      uploaderId: upload.uploaderId,
-      filename: "old.txt",
-      sizeBytes: upload.expectedSizeBytes,
-      contentType: upload.contentType,
-      checksum: upload.checksum,
-      visibility: upload.visibility,
-      tags: upload.tags,
-      metadata: upload.metadata,
-      status: "ready",
-      objectKey: supersededObjectKey,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: now,
-      deletedAt: null,
-      errorCode: null,
-      errorMessage: null,
-    });
+    await (async () => {
+      const uow = db.createUnitOfWork("write");
+      const created = uow.create("file", {
+        key: upload.key,
+        provider: upload.provider,
+        uploaderId: upload.uploaderId,
+        filename: "old.txt",
+        sizeBytes: upload.expectedSizeBytes,
+        contentType: upload.contentType,
+        checksum: upload.checksum,
+        visibility: upload.visibility,
+        tags: upload.tags,
+        metadata: upload.metadata,
+        status: "ready",
+        objectKey: supersededObjectKey,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+        deletedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     const completeResponse = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
       pathParams: { uploadId: createResponse.data.uploadId },
@@ -357,11 +384,17 @@ describe("upload fragment direct single flows", () => {
     assert(completeResponse.type === "json");
     expect(completeResponse.data.status).toBe("ready");
 
-    const currentFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
-      ),
-    );
+    const currentFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(currentFile?.objectKey).toBe(upload.objectKey);
     expect(deleteObject).not.toHaveBeenCalled();
@@ -393,11 +426,17 @@ describe("upload fragment direct single flows", () => {
 
     assert(firstComplete.type === "json");
 
-    const firstFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
-      ),
-    );
+    const firstFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(firstFile?.objectKey).toBeDefined();
     if (!firstFile?.objectKey) {
       throw new Error("First file row missing objectKey");
@@ -422,11 +461,17 @@ describe("upload fragment direct single flows", () => {
     assert(secondComplete.type === "json");
     expect(secondComplete.data.filename).toBe("second.txt");
 
-    const currentFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
-      ),
-    );
+    const currentFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(currentFile?.objectKey).toBeDefined();
     expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
 
@@ -574,18 +619,30 @@ describe("upload fragment direct single flows", () => {
 
       await drainDurableHooks(expiredFragment);
 
-      const upload = await expiredDb.findFirst("upload", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
-      );
+      const upload = await (async () => {
+        const uow = expiredDb
+          .createUnitOfWork("read")
+          .findFirst("upload", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
 
-      const file = await expiredDb.findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(
-            eb("provider", "=", expiredAdapter.name),
-            eb("key", "=", createResponse.data.fileKey),
-          ),
-        ),
-      );
+      const file = await (async () => {
+        const uow = expiredDb
+          .createUnitOfWork("read")
+          .findFirst("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(
+                eb("provider", "=", expiredAdapter.name),
+                eb("key", "=", createResponse.data.fileKey),
+              ),
+            ),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
 
       expect(upload?.status).toBe("expired");
       expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
@@ -619,11 +676,20 @@ describe("upload fragment direct single flows", () => {
         });
         assert(createResponse.type === "json");
 
-        const storedFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
-          ),
-        );
+        const storedFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(
+                  eb("provider", "=", storage.name),
+                  eb("key", "=", createResponse.data.fileKey),
+                ),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(storedFile?.objectKey).toBeDefined();
         if (!storedFile?.objectKey) {
           throw new Error("Stored file missing objectKey");
@@ -687,11 +753,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(firstCreate.type === "json");
 
-        const firstFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const firstFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(firstFile?.objectKey).toBeDefined();
         if (!firstFile?.objectKey) {
           throw new Error("First file row missing objectKey");
@@ -712,11 +784,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(secondCreate.type === "json");
 
-        const currentFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const currentFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(currentFile?.objectKey).toBeDefined();
         expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
         if (!currentFile?.objectKey) {
@@ -780,11 +858,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(firstCreate.type === "json");
 
-        const firstFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const firstFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(firstFile?.objectKey).toBeDefined();
         if (!firstFile?.objectKey) {
           throw new Error("First file row missing objectKey");
@@ -805,11 +889,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(secondCreate.type === "json");
 
-        const secondFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const secondFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(secondFile?.objectKey).toBeDefined();
         expect(secondFile?.objectKey).not.toBe(firstFile.objectKey);
         if (!secondFile?.objectKey) {
@@ -831,11 +921,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(thirdCreate.type === "json");
 
-        const currentFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const currentFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(currentFile?.objectKey).toBeDefined();
         expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
         expect(currentFile?.objectKey).not.toBe(secondFile.objectKey);
@@ -919,11 +1015,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(firstCreate.type === "json");
 
-        const firstFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const firstFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(firstFile?.objectKey).toBeDefined();
         if (!firstFile?.objectKey) {
           throw new Error("First file row missing objectKey");
@@ -944,11 +1046,17 @@ describe("upload fragment direct single flows", () => {
         });
         assert(secondCreate.type === "json");
 
-        const currentFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-          ),
-        );
+        const currentFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
         expect(currentFile?.objectKey).toBeDefined();
         expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
         if (!currentFile?.objectKey) {
@@ -1046,11 +1154,20 @@ describe("upload fragment direct single flows", () => {
 
         assert(deleteResponse.type === "json");
 
-        const persistedFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
-          ),
-        );
+        const persistedFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(
+                  eb("provider", "=", storage.name),
+                  eb("key", "=", createResponse.data.fileKey),
+                ),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(persistedFile?.objectKey).toBeDefined();
         if (!persistedFile?.objectKey) {
@@ -1155,11 +1272,20 @@ describe("upload fragment direct single flows", () => {
 
         assert(deleteResponse.type === "json");
 
-        const deletedFile = await db.findFirst("file", (b) =>
-          b.whereIndex("idx_file_provider_key", (eb) =>
-            eb.and(eb("provider", "=", storage.name), eb("key", "=", createResponse.data.fileKey)),
-          ),
-        );
+        const deletedFile = await (async () => {
+          const uow = db
+            .createUnitOfWork("read")
+            .findFirst("file", (b) =>
+              b.whereIndex("idx_file_provider_key", (eb) =>
+                eb.and(
+                  eb("provider", "=", storage.name),
+                  eb("key", "=", createResponse.data.fileKey),
+                ),
+              ),
+            );
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(deletedFile).toBeDefined();
         if (!deletedFile) {
@@ -1250,9 +1376,16 @@ describe("upload fragment direct single flows", () => {
 
     assert(createResponse.type === "json");
 
-    await db.update("upload", createResponse.data.uploadId, (b) =>
-      b.set({ expiresAt: new Date(Date.now() - 1_000) }),
-    );
+    await (async () => {
+      const uow = db.createUnitOfWork("write");
+      uow.update("upload", createResponse.data.uploadId, (b) =>
+        b.set({ expiresAt: new Date(Date.now() - 1_000) }),
+      );
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record");
+      }
+    })();
 
     const retryResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -1321,11 +1454,17 @@ describe("upload fragment direct single flows", () => {
 
     await drainDurableHooks(fragment);
 
-    const file = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", retryResponse.data.fileKey)),
-      ),
-    );
+    const file = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", retryResponse.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(file?.status).toBe("ready");
   });
@@ -1437,11 +1576,17 @@ describe("upload fragment direct multipart flows", () => {
 
     assert(firstComplete.type === "json");
 
-    const firstFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
-      ),
-    );
+    const firstFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(firstFile?.objectKey).toBeDefined();
     if (!firstFile?.objectKey) {
       throw new Error("First multipart file row missing objectKey");
@@ -1472,11 +1617,17 @@ describe("upload fragment direct multipart flows", () => {
     assert(secondComplete.type === "json");
     expect(secondComplete.data.filename).toBe("movie-v2.mp4");
 
-    const currentFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
-      ),
-    );
+    const currentFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(currentFile?.objectKey).toBeDefined();
     expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
 

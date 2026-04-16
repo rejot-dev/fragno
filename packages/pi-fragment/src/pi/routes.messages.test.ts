@@ -3,7 +3,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import { SESSION_STATUSES } from "./constants";
-import { buildHarness, createStreamFn, mockModel, type DatabaseFragmentsTest } from "./test-utils";
+import {
+  buildHarness,
+  createPiSessionRow,
+  createStreamFn,
+  findPiSessions,
+  findWorkflowInstances,
+  mockModel,
+  type DatabaseFragmentsTest,
+} from "./test-utils";
 import type { PiFragmentConfig } from "./types";
 import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
@@ -152,7 +160,7 @@ describe("pi-fragment messages route", () => {
   });
 
   it("returns SESSION_NOT_FOUND when the backing workflow instance is missing", async () => {
-    const sessionId = await fragments.pi.db.create("session", {
+    const sessionId = await createPiSessionRow(workflows.test.adapter, {
       name: "Missing workflow",
       agent: "default",
       status: "active",
@@ -273,7 +281,8 @@ describe("pi-fragment messages route", () => {
     const ack = response.data as Record<string, unknown>;
     expect(SESSION_STATUSES).toContain(ack["status"] as (typeof SESSION_STATUSES)[number]);
 
-    const [row] = await fragments.pi.db.find("session");
+    const rows = await findPiSessions(workflows.test.adapter);
+    const row = rows[0];
     expect(row?.steeringMode).toBe("all");
   });
 
@@ -320,7 +329,7 @@ describe("pi-fragment messages route", () => {
       expect(extractAssistantTextFromOutput(alphaStatus.output)).toBe("assistant:alpha");
       expect(extractAssistantTextFromOutput(betaStatus.output)).toBe("assistant:beta");
 
-      const instances = await multi.workflows.db.find("workflow_instance");
+      const instances = await findWorkflowInstances(multi.workflows.test.adapter);
       const alphaInstance = instances.find(
         (row: unknown) =>
           String((row as { id?: unknown }).id) === alphaSession.id &&

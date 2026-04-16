@@ -7,7 +7,7 @@ export default defineConfig([
       "./src/durable-hooks.ts",
       "./src/id.ts",
       "./src/schema/create.ts",
-      "./src/query/simple-query-interface.ts",
+      "./src/query/mod.ts",
       "./src/adapters/adapters.ts",
       "./src/adapters/in-memory/index.ts",
       "./src/adapters/sql/index.ts",

@@ -43,10 +43,20 @@ describe("Workflows Runner", () => {
     const instanceId = await harness.createInstance("TIMEOUT");
     await drainDurableHooks(harness.fragment);
 
-    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const [stepRecord] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(stepRecord?.wakeAt).toBeInstanceOf(Date);
 
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     const wakeAt = stepRecord!.wakeAt!;
@@ -105,7 +115,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("MUTATION_ERROR");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
@@ -114,9 +129,12 @@ describe("Workflows Runner", () => {
     expect(status.status).toBe("errored");
     expect(status.error?.message).toBeTruthy();
 
-    const mutationRows = await harness.fragments["mutationError"].db.find("mutation_record", (b) =>
-      b.whereIndex("primary"),
-    );
+    const mutationRows = (
+      await harness.fragments["mutationError"].db
+        .createUnitOfWork("read")
+        .find("mutation_record", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(mutationRows).toHaveLength(0);
   });
 
@@ -167,7 +185,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("TERMINAL_ERROR");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
@@ -175,9 +198,14 @@ describe("Workflows Runner", () => {
     const waitingStatus = await harness.getStatus("TERMINAL_ERROR", instanceId);
     expect(waitingStatus.status).toBe("waiting");
 
-    const rows = await harness.fragments["terminalError"].db.find("mutation_record", (b) =>
-      b.whereIndex("primary"),
-    );
+    const rows = await (async () => {
+      return (
+        await harness.fragments["terminalError"].db
+          .createUnitOfWork("read")
+          .find("mutation_record", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+    })();
     expect(rows).toHaveLength(0);
   });
 
@@ -228,7 +256,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("TERMINAL_ERROR_COMMIT");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
@@ -237,9 +270,14 @@ describe("Workflows Runner", () => {
     expect(finalStatus.status).toBe("errored");
     expect(finalStatus.error?.message).toBe("NO_RETRY");
 
-    const rows = await harness.fragments["terminalErrorCommit"].db.find("mutation_record", (b) =>
-      b.whereIndex("primary"),
-    );
+    const rows = await (async () => {
+      return (
+        await harness.fragments["terminalErrorCommit"].db
+          .createUnitOfWork("read")
+          .find("mutation_record", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+    })();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ note: `terminal-${instanceId}` });
   });
@@ -271,7 +309,12 @@ describe("Workflows Runner", () => {
     expect(status.error?.message).toBe("NO_RETRY");
     expect(attempts).toBe(1);
 
-    const [stepRecord] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const [stepRecord] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(stepRecord).toMatchObject({
       stepKey: "do:boom",
       status: "errored",
@@ -306,7 +349,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("PAUSE_DURING");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     const tickPromise = harness.tick(buildPayload(instance!, "create"));
@@ -334,7 +382,14 @@ describe("Workflows Runner", () => {
     expect(status.status).toBe("waiting");
     expect(runs).toBe(1);
 
-    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const steps = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("read")
+          .find("workflow_step", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+    })();
     expect(steps).toHaveLength(2);
 
     await harness.tick(buildPayload(instance!, "event"));
@@ -383,7 +438,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("MUTATION_ORDER");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
@@ -392,9 +452,12 @@ describe("Workflows Runner", () => {
     expect(status.status).toBe("errored");
     expect(status.error?.message).toBe("CALLBACK_FAILED");
 
-    const rows = await harness.fragments["mutationOrder"].db.find("mutation_record", (b) =>
-      b.whereIndex("primary"),
-    );
+    const rows = (
+      await harness.fragments["mutationOrder"].db
+        .createUnitOfWork("read")
+        .find("mutation_record", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(rows).toHaveLength(0);
   });
 
@@ -440,22 +503,35 @@ describe("Workflows Runner", () => {
     });
 
     await harness.createInstance("MUTATION_REPLAY");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
 
-    const initialRows = await harness.fragments["mutationReplay"].db.find("mutation_log", (b) =>
-      b.whereIndex("primary"),
-    );
+    const initialRows = (
+      await harness.fragments["mutationReplay"].db
+        .createUnitOfWork("read")
+        .find("mutation_log", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(initialRows).toHaveLength(1);
     expect(runs).toBe(1);
 
     await harness.tick(buildPayload(instance!, "event"));
 
-    const replayRows = await harness.fragments["mutationReplay"].db.find("mutation_log", (b) =>
-      b.whereIndex("primary"),
-    );
+    const replayRows = await (async () => {
+      return (
+        await harness.fragments["mutationReplay"].db
+          .createUnitOfWork("read")
+          .find("mutation_log", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+    })();
     expect(replayRows).toHaveLength(1);
     expect(runs).toBe(1);
   });
@@ -485,7 +561,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("CONCURRENCY");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     const tickOne = harness.tick(buildPayload(instance!, "create"));
@@ -499,7 +580,14 @@ describe("Workflows Runner", () => {
     const processed = [firstResult, secondResult].filter((value) => value > 0);
     expect(processed).toHaveLength(1);
 
-    const steps = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const steps = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("read")
+          .find("workflow_step", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+    })();
     expect(steps).toHaveLength(1);
 
     const status = await harness.getStatus("CONCURRENCY", instanceId);
@@ -531,7 +619,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("TERMINATE");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     const tickPromise = harness.tick(buildPayload(instance!, "create"));
@@ -578,7 +671,12 @@ describe("Workflows Runner", () => {
     });
 
     const instanceId = await harness.createInstance("RESTART");
-    const [instance] = await harness.db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(instance).toBeTruthy();
 
     const tickPromise = harness.tick(buildPayload(instance!, "create"));
@@ -599,9 +697,14 @@ describe("Workflows Runner", () => {
     const status = await harness.getStatus("RESTART", instanceId);
     expect(status.status).toBe("active");
 
-    const [updated] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", instance!.id)),
-    );
+    const [updated] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", instance!.id)),
+        )
+        .executeRetrieve()
+    )[0];
     expect(updated?.runNumber).toBe(instance!.runNumber + 1);
   });
 });

@@ -246,19 +246,30 @@ describe("Forms Fragment", () => {
 
       // Update it via handlerTx (UnitOfWork with .check() doesn't work in test adapter)
       // TODO: Add coverage for services.updateForm once the test adapter supports .check().
-      const form = await formsFragment.db.findFirst("form", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", formId)),
-      );
+      const form = await (async () => {
+        const uow = formsFragment.db
+          .createUnitOfWork("read")
+          .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       assert(form);
 
-      await formsFragment.db.update("form", form.id, (b) =>
-        b.set({
-          title: "Updated Test Form",
-          description: "Now with a description",
-          version: form.version + 1,
-          updatedAt: new Date(),
-        }),
-      );
+      {
+        const uow = formsFragment.db.createUnitOfWork("update-form");
+        uow.update("form", form.id, (b) =>
+          b.set({
+            title: "Updated Test Form",
+            description: "Now with a description",
+            version: form.version + 1,
+            updatedAt: new Date(),
+          }),
+        );
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to update form");
+        }
+      }
 
       // Verify update via GET (public route uses slug)
       const getResponse = await formsFragment.callRoute("GET", "/:slug", {
@@ -423,13 +434,24 @@ describe("Forms Fragment", () => {
       const formId = createResponse.data;
 
       // Publish it by updating status
-      await formsFragment.db.update(
-        "form",
-        (await formsFragment.db.findFirst("form", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", formId)),
-        ))!.id,
-        (b) => b.set({ status: "open" }),
-      );
+      {
+        const form = await (async () => {
+          const uow = formsFragment.db
+            .createUnitOfWork("read")
+            .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
+        if (!form) {
+          throw new Error("Missing form");
+        }
+        const uow = formsFragment.db.createUnitOfWork("publish-form");
+        uow.update("form", form.id, (b) => b.set({ status: "open" }));
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to update form");
+        }
+      }
 
       publishedFormId = formId;
 
@@ -469,13 +491,24 @@ describe("Forms Fragment", () => {
       const formId = createResponse.data;
 
       // Publish it
-      await formsFragment.db.update(
-        "form",
-        (await formsFragment.db.findFirst("form", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", formId)),
-        ))!.id,
-        (b) => b.set({ status: "open" }),
-      );
+      {
+        const form = await (async () => {
+          const uow = formsFragment.db
+            .createUnitOfWork("read")
+            .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
+        if (!form) {
+          throw new Error("Missing form");
+        }
+        const uow = formsFragment.db.createUnitOfWork("publish-form");
+        uow.update("form", form.id, (b) => b.set({ status: "open" }));
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to update form");
+        }
+      }
 
       // Submit (public route uses slug)
       const submitResponse = await formsFragment.callRoute("POST", "/:slug/submit", {
@@ -518,16 +551,30 @@ describe("Forms Fragment", () => {
 
     test("should get a single submission by ID", async () => {
       // First create a submission
-      const form = await formsFragment.db.findFirst("form", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
-      );
+      const form = await (async () => {
+        const uow = formsFragment.db
+          .createUnitOfWork("read")
+          .findFirst("form", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       assert(form);
 
-      const submissionId = await formsFragment.db.create("response", {
-        formId: form.id.externalId,
-        formVersion: form.version,
-        data: { name: "Test User", email: "test@test.com" },
-      });
+      const submissionId = await (async () => {
+        const uow = formsFragment.db.createUnitOfWork("create-response");
+        const created = uow.create("response", {
+          formId: form.id.externalId,
+          formVersion: form.version,
+          data: { name: "Test User", email: "test@test.com" },
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create response");
+        }
+        return created;
+      })();
 
       // Get it
       const response = await formsFragment.callRoute("GET", "/admin/submissions/:id", {
@@ -541,16 +588,30 @@ describe("Forms Fragment", () => {
 
     test("should delete a submission", async () => {
       // Create a submission
-      const form = await formsFragment.db.findFirst("form", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
-      );
+      const form = await (async () => {
+        const uow = formsFragment.db
+          .createUnitOfWork("read")
+          .findFirst("form", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       assert(form);
 
-      const submissionId = await formsFragment.db.create("response", {
-        formId: form.id.externalId,
-        formVersion: form.version,
-        data: { name: "To Delete", email: "delete@test.com" },
-      });
+      const submissionId = await (async () => {
+        const uow = formsFragment.db.createUnitOfWork("create-response");
+        const created = uow.create("response", {
+          formId: form.id.externalId,
+          formVersion: form.version,
+          data: { name: "To Delete", email: "delete@test.com" },
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create response");
+        }
+        return created;
+      })();
 
       // Delete it
       const deleteResponse = await formsFragment.callRoute("DELETE", "/admin/submissions/:id", {

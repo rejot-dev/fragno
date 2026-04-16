@@ -1,8 +1,8 @@
 import type { Condition } from "../query/condition-builder";
 import { buildCondition } from "../query/condition-builder";
 import type { CursorResult } from "../query/cursor";
-import type { CompiledJoin } from "../query/orm/orm";
-import type { AnySelectClause } from "../query/simple-query-interface";
+import type { CompiledJoin } from "../query/find-options";
+import type { AnySelectClause } from "../query/mod";
 import type { MutationOperation, RetrievalOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId } from "../schema/create";

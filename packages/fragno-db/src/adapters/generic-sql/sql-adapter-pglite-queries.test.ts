@@ -639,19 +639,31 @@ describe("SqlAdapter PGLite", () => {
     const prefix = "CursorPagTest";
 
     for (let i = 1; i <= 15; i++) {
-      await queryEngine.create("users", {
-        name: `${prefix} ${i.toString().padStart(2, "0")}`,
-        age: 20 + i,
-      });
+      await (async () => {
+        const uow = queryEngine.createUnitOfWork("write");
+        const created = uow.create("users", {
+          name: `${prefix} ${i.toString().padStart(2, "0")}`,
+          age: 20 + i,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        return created;
+      })();
     }
 
     // Fetch first page with cursor (pageSize=10, total=15 items)
-    const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const firstPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     // Check structure and hasNextPage
     expect(firstPage).toHaveProperty("items");
@@ -663,13 +675,17 @@ describe("SqlAdapter PGLite", () => {
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     // Fetch second page using cursor (last page with 5 remaining items)
-    const secondPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .after(firstPage.cursor!)
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const secondPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .after(firstPage.cursor!)
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(secondPage.items).toHaveLength(5);
     expect(secondPage.hasNextPage).toBe(false);
@@ -681,12 +697,16 @@ describe("SqlAdapter PGLite", () => {
     expect(secondPageFirstName > firstPageLastName).toBe(true);
 
     // Test empty results
-    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const emptyPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(emptyPage.items).toHaveLength(0);
     expect(emptyPage.hasNextPage).toBe(false);
     expect(emptyPage.cursor).toBeUndefined();

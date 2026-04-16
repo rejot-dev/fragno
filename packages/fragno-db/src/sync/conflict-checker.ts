@@ -6,7 +6,7 @@ import { createSQLQueryCompiler } from "../adapters/generic-sql/query/create-sql
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
 import type { Condition } from "../query/condition-builder";
-import type { CompiledJoin } from "../query/orm/orm";
+import type { CompiledJoin } from "../query/find-options";
 import type { AnyTable } from "../schema/create";
 import type { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 

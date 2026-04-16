@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { FragnoDatabase } from "@fragno-dev/db";
 
 import { githubAppSchema } from "../schema";
-import { buildHarness } from "./test-utils";
+import { buildHarness, runGithubUowCreate } from "./test-utils";
 import { normalizeJoinedInstallation, normalizeJoinedLinks } from "./utils";
 
 const createConfig = () => ({
@@ -44,14 +44,14 @@ type InstallReposResponse =
   | { type: "error"; error: { code: string; message?: string } };
 
 type ErrorResponse = { type: "error"; error: { code: string; message?: string } };
-type GitHubAppDb = SimpleQueryInterface<typeof githubAppSchema>;
+type GitHubAppDb = FragnoDatabase<typeof githubAppSchema>;
 
 describe("github-app repo linking routes", () => {
   it("links and unlinks repositories with the default link key", async () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "1",
         accountId: "1",
         accountLogin: "octo",
@@ -61,7 +61,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "10",
         installationId: "1",
         ownerLogin: "octo",
@@ -126,7 +126,7 @@ describe("github-app repo linking routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "1",
         accountId: "1",
         accountLogin: "octo",
@@ -136,7 +136,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "10",
         installationId: "1",
         ownerLogin: "octo",
@@ -167,7 +167,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "1",
         accountId: "1",
         accountLogin: "octo",
@@ -177,7 +177,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "10",
         installationId: "1",
         ownerLogin: "octo",
@@ -208,7 +208,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "9",
         accountId: "9",
         accountLogin: "octo",
@@ -218,7 +218,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "90",
         installationId: "9",
         ownerLogin: "octo",
@@ -230,7 +230,7 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "90",
         linkKey: "default",
       });
@@ -277,7 +277,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "5",
         accountId: "5",
         accountLogin: "octo",
@@ -287,7 +287,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "50",
         installationId: "5",
         ownerLogin: "octo",
@@ -321,7 +321,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "6",
         accountId: "6",
         accountLogin: "octo",
@@ -331,7 +331,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "60",
         installationId: "6",
         ownerLogin: "octo",
@@ -364,7 +364,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "3",
         accountId: "3",
         accountLogin: "octo",
@@ -374,7 +374,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "30",
         installationId: "3",
         ownerLogin: "octo",
@@ -406,7 +406,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "7",
         accountId: "7",
         accountLogin: "octo",
@@ -416,7 +416,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "70",
         installationId: "7",
         ownerLogin: "octo",
@@ -428,7 +428,7 @@ describe("github-app repo linking routes", () => {
         removedAt: new Date(),
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "70",
         linkKey: "default",
       });
@@ -453,7 +453,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "40",
         installationId: 999n,
         ownerLogin: "octo",
@@ -465,7 +465,7 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "40",
         linkKey: "default",
       });
@@ -508,7 +508,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "8",
         accountId: "8",
         accountLogin: "octo",
@@ -518,7 +518,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "80",
         installationId: "8",
         ownerLogin: "octo",
@@ -549,7 +549,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "9",
         accountId: "9",
         accountLogin: "octo",
@@ -578,7 +578,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "10",
         accountId: "10",
         accountLogin: "octo",
@@ -588,7 +588,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "100",
         installationId: "10",
         ownerLogin: "octo",
@@ -638,7 +638,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "11",
         accountId: "11",
         accountLogin: "octo",
@@ -648,7 +648,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "110",
         installationId: "11",
         ownerLogin: "octo",
@@ -660,7 +660,7 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "110",
         linkKey: "default",
       });
@@ -684,7 +684,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "12",
         accountId: "12",
         accountLogin: "octo",
@@ -694,7 +694,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "120",
         installationId: "12",
         ownerLogin: "octo",
@@ -725,7 +725,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "2",
         accountId: "2",
         accountLogin: "octo",
@@ -735,7 +735,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "20",
         installationId: "2",
         ownerLogin: "octo",
@@ -747,7 +747,7 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "21",
         installationId: "2",
         ownerLogin: "octo",
@@ -759,12 +759,12 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "20",
         linkKey: "alpha",
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "21",
         linkKey: "beta",
       });
@@ -795,7 +795,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "11",
         accountId: "11",
         accountLogin: "octo",
@@ -805,7 +805,7 @@ describe("github-app repo linking routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "110",
         installationId: "11",
         ownerLogin: "octo",
@@ -818,11 +818,18 @@ describe("github-app repo linking routes", () => {
       });
 
       const db = fragments.githubApp.db as GitHubAppDb;
-      const repos = await db.find("installation_repo", (b) =>
-        b
-          .whereIndex("idx_installation_repo_installation", (eb) => eb("installationId", "=", "11"))
-          .join((jb) => jb.links()),
-      );
+      const repos = (
+        await db
+          .createUnitOfWork("read")
+          .find("installation_repo", (b) =>
+            b
+              .whereIndex("idx_installation_repo_installation", (eb) =>
+                eb("installationId", "=", "11"),
+              )
+              .join((jb) => jb.links()),
+          )
+          .executeRetrieve()
+      )[0];
 
       expect(repos).toHaveLength(1);
       const [repo] = repos;
@@ -840,7 +847,7 @@ describe("github-app repo linking routes", () => {
     const { fragments, test } = await buildHarness(createConfig());
 
     try {
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "120",
         installationId: 999n,
         ownerLogin: "octo",
@@ -853,11 +860,18 @@ describe("github-app repo linking routes", () => {
       });
 
       const db = fragments.githubApp.db as GitHubAppDb;
-      const repos = await db.find("installation_repo", (b) =>
-        b
-          .whereIndex("idx_installation_repo_installation", (eb) => eb("installationId", "=", 999n))
-          .join((jb) => jb.installation()),
-      );
+      const repos = (
+        await db
+          .createUnitOfWork("read")
+          .find("installation_repo", (b) =>
+            b
+              .whereIndex("idx_installation_repo_installation", (eb) =>
+                eb("installationId", "=", 999n),
+              )
+              .join((jb) => jb.installation()),
+          )
+          .executeRetrieve()
+      )[0];
 
       expect(repos).toHaveLength(1);
       const [repo] = repos;

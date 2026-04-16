@@ -64,7 +64,7 @@ export const commentSchema = schema("comment", (s) => {
         <FragnoCodeBlock
           lang="typescript"
           code={`// Find comments with author data
-const comments = await orm.find(
+const uow = orm.createUnitOfWork("read-comments").find(
   "comment",
   (b) =>
     b
@@ -79,6 +79,9 @@ const comments = await orm.find(
       )
       .pageSize(20)
 );
+
+await uow.executeRetrieve();
+const [comments] = await uow.retrievalPhase;
 
 // Fully typed results
 for (const comment of comments) {

@@ -180,11 +180,17 @@ describe("upload file routes", async () => {
     });
     assert(createResponse.type === "json");
     const { fileKey } = createResponse.data;
-    const storedFile = await db.findFirst("file", (b) =>
-      b.whereIndex("idx_file_provider_key", (eb) =>
-        eb.and(eb("provider", "=", provider), eb("key", "=", fileKey)),
-      ),
-    );
+    const storedFile = await (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("file", (b) =>
+          b.whereIndex("idx_file_provider_key", (eb) =>
+            eb.and(eb("provider", "=", provider), eb("key", "=", fileKey)),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(storedFile?.objectKey).toBeDefined();
     if (!storedFile?.objectKey) {
       throw new Error("Stored file missing objectKey");
@@ -359,11 +365,17 @@ describe("upload file routes", async () => {
       });
       assert(firstCreate.type === "json");
 
-      const firstFile = await db.findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-        ),
-      );
+      const firstFile = await (async () => {
+        const uow = db
+          .createUnitOfWork("read")
+          .findFirst("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+            ),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(firstFile?.objectKey).toBeDefined();
       if (!firstFile?.objectKey) {
         throw new Error("First file row missing objectKey");
@@ -382,11 +394,17 @@ describe("upload file routes", async () => {
       });
       assert(secondCreate.type === "json");
 
-      const currentFile = await db.findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
-        ),
-      );
+      const currentFile = await (async () => {
+        const uow = db
+          .createUnitOfWork("read")
+          .findFirst("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
+            ),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(currentFile?.objectKey).toBeDefined();
       expect(currentFile?.objectKey).not.toBe(firstFile.objectKey);
       if (!currentFile?.objectKey) {

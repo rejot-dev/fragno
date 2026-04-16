@@ -351,9 +351,15 @@ describe("DSL Workflow - Scenario Tests", () => {
         }),
         scenarioSteps.read({
           read: async (ctx) =>
-            await ctx.harness.fragments["usage"].db.find("step", (b) =>
-              b.whereIndex("idx_step_session", (eb) => eb("sessionId", "=", "mk-session")),
-            ),
+            await (async () => {
+              const uow = ctx.harness.fragments["usage"].db
+                .createUnitOfWork("read")
+                .find("step", (b) =>
+                  b.whereIndex("idx_step_session", (eb) => eb("sessionId", "=", "mk-session")),
+                );
+              await uow.executeRetrieve();
+              return (await uow.retrievalPhase)[0];
+            })(),
           storeAs: "persistedSteps",
         }),
         scenarioSteps.assert((ctx) => {

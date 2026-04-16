@@ -1,8 +1,8 @@
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
+import type { FragnoDatabase } from "../fragno-database";
 import type { SqlNamingStrategy } from "../naming/sql-naming";
-import type { SimpleQueryInterface } from "../query/simple-query-interface";
-import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
+import type { IUnitOfWork, TypedUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../schema/create";
 import type { SQLProvider } from "../shared/providers";
 import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
@@ -59,12 +59,27 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   readonly namingStrategy: SqlNamingStrategy;
 
   /**
-   * @deprecated Avoid using query engines directly in fragment code. Prefer handlerTx/serviceTx.
+   * Register a schema/namespace pair with the adapter for adapter-level bookkeeping
+   * used by base UOWs and namespace-aware executor features.
+   */
+  registerSchema: <const T extends AnySchema>(schema: T, namespace: string | null) => void;
+
+  createUnitOfWork: <const T extends AnySchema>(
+    schema: T,
+    namespace: string | null,
+    name?: string,
+    config?: TUOWConfig,
+  ) => TypedUnitOfWork<T, [], unknown>;
+
+  createBaseUnitOfWork: (name?: string, config?: TUOWConfig) => IUnitOfWork;
+
+  /**
+   * @deprecated Prefer adapter.createUnitOfWork(schema, namespace, ...) directly.
    */
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
     namespace: string | null,
-  ) => SimpleQueryInterface<T, TUOWConfig>;
+  ) => FragnoDatabase<T, TUOWConfig>;
 
   prepareMigrations?: <const T extends AnySchema>(
     schema: T,

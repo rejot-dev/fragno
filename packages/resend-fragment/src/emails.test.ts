@@ -9,7 +9,7 @@ describe("resend-fragment emails", async () => {
   const ctx = await createResendTestContext();
   const { fragment, callRoute, db } = ctx;
 
-  const createOutboundMessage = (overrides: Record<string, unknown> = {}) => {
+  const createOutboundMessage = async (overrides: Record<string, unknown> = {}) => {
     const values = overrides as {
       createdAt?: Date;
       occurredAt?: Date;
@@ -22,7 +22,8 @@ describe("resend-fragment emails", async () => {
     const occurredAt = values["occurredAt"] instanceof Date ? values["occurredAt"] : createdAt;
     const updatedAt = values["updatedAt"] instanceof Date ? values["updatedAt"] : createdAt;
 
-    return db.create("emailMessage", {
+    const uow = db.createUnitOfWork("outbound-msg");
+    uow.create("emailMessage", {
       direction: "outbound",
       threadId: null,
       status: "sent",
@@ -50,6 +51,11 @@ describe("resend-fragment emails", async () => {
       updatedAt,
       ...overrides,
     });
+    const { success } = await uow.executeMutations();
+    if (!success) {
+      throw new Error("Failed to create email message");
+    }
+    return uow.getCreatedIds()[0]!;
   };
 
   beforeEach(async () => {

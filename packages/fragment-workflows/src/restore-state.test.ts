@@ -87,26 +87,37 @@ describe("restoreWorkflowState", () => {
     });
 
     const instanceId = await harness.createInstance("STATEFUL");
-    const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
+    const [createdInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(createdInstance).toBeTruthy();
 
     await harness.tick(buildPayload(createdInstance!, "create"));
 
-    const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
-    const stepRows = await harness.db.find("workflow_step", (b) =>
-      b
-        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(
-            eb("instanceRef", "=", waitingInstance!.id),
-            eb("runNumber", "=", waitingInstance!.runNumber),
-          ),
+    const [waitingInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const stepRows = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", waitingInstance!.id),
+                eb("runNumber", "=", waitingInstance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
         )
-        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-    );
+        .executeRetrieve()
+    )[0];
 
     const restored = await restoreWorkflowState({
       workflow: StatefulWorkflow,
@@ -146,26 +157,37 @@ describe("restoreWorkflowState", () => {
     });
 
     await harness.createInstance("STATEFUL");
-    const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
+    const [createdInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(createdInstance).toBeTruthy();
 
     await harness.tick(buildPayload(createdInstance!, "create"));
 
-    const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
-    const stepRows = await harness.db.find("workflow_step", (b) =>
-      b
-        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(
-            eb("instanceRef", "=", waitingInstance!.id),
-            eb("runNumber", "=", waitingInstance!.runNumber),
-          ),
+    const [waitingInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const stepRows = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", waitingInstance!.id),
+                eb("runNumber", "=", waitingInstance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
         )
-        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-    );
+        .executeRetrieve()
+    )[0];
 
     const restored = await restoreWorkflowState({
       workflow: StatefulWorkflow,
@@ -199,9 +221,12 @@ describe("restoreWorkflowState", () => {
     });
 
     await harness.createInstance("EVENTFUL", { id: "eventful-1" });
-    const [createdInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
+    const [createdInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(createdInstance).toBeTruthy();
 
     await harness.tick(buildPayload(createdInstance!, "create"));
@@ -210,29 +235,42 @@ describe("restoreWorkflowState", () => {
       payload: { ok: true },
     });
 
-    const [waitingInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("primary"),
-    );
-    const stepRows = await harness.db.find("workflow_step", (b) =>
-      b
-        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(
-            eb("instanceRef", "=", waitingInstance!.id),
-            eb("runNumber", "=", waitingInstance!.runNumber),
-          ),
+    const [waitingInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const stepRows = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", waitingInstance!.id),
+                eb("runNumber", "=", waitingInstance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
         )
-        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-    );
-    const [pendingEventBefore] = await harness.db.find("workflow_event", (b) =>
-      b
-        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(
-            eb("instanceRef", "=", waitingInstance!.id),
-            eb("runNumber", "=", waitingInstance!.runNumber),
-          ),
+        .executeRetrieve()
+    )[0];
+    const [pendingEventBefore] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_event", (b) =>
+          b
+            .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", waitingInstance!.id),
+                eb("runNumber", "=", waitingInstance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
         )
-        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
-    );
+        .executeRetrieve()
+    )[0];
 
     const restored = await restoreWorkflowState({
       workflow: EventWorkflow,
@@ -240,16 +278,21 @@ describe("restoreWorkflowState", () => {
       steps: stepRows,
     });
 
-    const [pendingEventAfter] = await harness.db.find("workflow_event", (b) =>
-      b
-        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(
-            eb("instanceRef", "=", waitingInstance!.id),
-            eb("runNumber", "=", waitingInstance!.runNumber),
-          ),
+    const [pendingEventAfter] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_event", (b) =>
+          b
+            .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", waitingInstance!.id),
+                eb("runNumber", "=", waitingInstance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
         )
-        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
-    );
+        .executeRetrieve()
+    )[0];
 
     expect(restored).toEqual({ phase: "waiting", received: false });
     expect(pendingEventBefore?.consumedByStepKey).toBeNull();

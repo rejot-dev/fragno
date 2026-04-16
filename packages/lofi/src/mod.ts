@@ -1,3 +1,4 @@
+export type { AsyncQueryFindFamily } from "./query-types";
 export type {
   IndexedDbAdapterOptions,
   InMemoryLofiAdapterOptions,

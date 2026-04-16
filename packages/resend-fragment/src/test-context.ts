@@ -194,28 +194,48 @@ export const createResendTestContext = async () => {
   };
 
   const getEmail = (id: string): Promise<ResendEmailMessageRow | null> =>
-    fragments.resend.db.findFirst("emailMessage", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", id)),
-    );
+    (async () => {
+      const uow = fragments.resend.db
+        .createUnitOfWork("read")
+        .findFirst("emailMessage", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
   const getThread = (id: string): Promise<ResendThreadRow | null> =>
-    fragments.resend.db.findFirst("emailThread", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", id)),
-    );
+    (async () => {
+      const uow = fragments.resend.db
+        .createUnitOfWork("read")
+        .findFirst("emailThread", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
   const getEmailByProviderId = (providerEmailId: string): Promise<ResendEmailMessageRow | null> =>
-    fragments.resend.db.findFirst("emailMessage", (b) =>
-      b.whereIndex("idx_emailMessage_providerEmailId", (eb) =>
-        eb("providerEmailId", "=", providerEmailId),
-      ),
-    );
+    (async () => {
+      const uow = fragments.resend.db
+        .createUnitOfWork("read")
+        .findFirst("emailMessage", (b) =>
+          b.whereIndex("idx_emailMessage_providerEmailId", (eb) =>
+            eb("providerEmailId", "=", providerEmailId),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
   const listThreadMessages = (threadId: string) =>
-    fragments.resend.db.find("emailMessage", (b) =>
-      b
-        .whereIndex("idx_emailMessage_thread_occurredAt", (eb) => eb("threadId", "=", threadId))
-        .orderByIndex("idx_emailMessage_thread_occurredAt", "asc"),
-    );
+    (async () => {
+      const uow = fragments.resend.db
+        .createUnitOfWork("read")
+        .find("emailMessage", (b) =>
+          b
+            .whereIndex("idx_emailMessage_thread_occurredAt", (eb) => eb("threadId", "=", threadId))
+            .orderByIndex("idx_emailMessage_thread_occurredAt", "asc"),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
   return {
     fragment,

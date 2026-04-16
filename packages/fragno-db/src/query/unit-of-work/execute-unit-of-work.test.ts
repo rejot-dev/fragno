@@ -1902,7 +1902,11 @@ describe("Unified Tx API", () => {
         .withServiceCalls(() => [serviceInSchemaB("beta")] as const)
         .execute();
 
-      const hooks = await internalQuery.find("fragno_hooks");
+      const hooks = await (async () => {
+        const uow = internalQuery.createUnitOfWork("read").find("fragno_hooks");
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(hooks).toHaveLength(2);
       expect(hooks).toEqual(
         expect.arrayContaining([
@@ -1960,7 +1964,11 @@ describe("Unified Tx API", () => {
         .withServiceCalls(() => [serviceInSchemaA("alpha")] as const)
         .execute();
 
-      const hooks = await internalQuery.find("fragno_hooks");
+      const hooks = await (async () => {
+        const uow = internalQuery.createUnitOfWork("read").find("fragno_hooks");
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(hooks).toHaveLength(2);
       expect(hooks).toEqual(
         expect.arrayContaining([

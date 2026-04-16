@@ -1,10 +1,10 @@
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { createHandlerTxBuilder, HandlerTxBuilder } from "@fragno-dev/db";
 import type { OutboxEntry } from "@fragno-dev/db";
 
 import type { InMemoryLofiStore } from "./adapters/in-memory/store";
+import type { AsyncQueryFindFamily } from "./query-types";
 
 export type LofiClientOptions = {
   outboxUrl: string;
@@ -52,11 +52,7 @@ export type InMemoryLofiAdapterOptions = {
   store?: InMemoryLofiStore;
 };
 
-export type LofiQueryInterface<TSchema extends AnySchema> = {
-  find: SimpleQueryInterface<TSchema>["find"];
-  findFirst: SimpleQueryInterface<TSchema>["findFirst"];
-  findWithCursor: SimpleQueryInterface<TSchema>["findWithCursor"];
-};
+export type LofiQueryInterface<TSchema extends AnySchema> = AsyncQueryFindFamily<TSchema>;
 
 export type LofiQueryEngineOptions = {
   schemaName?: string;

@@ -1,5 +1,4 @@
 import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/route";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type {
@@ -10,6 +9,7 @@ import type {
   AnyFragnoInstantiatedFragment,
   FragmentDefinition,
 } from "@fragno-dev/core";
+import type { FragnoDatabase } from "@fragno-dev/db";
 import type { DatabaseAdapter, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import type { BaseTestContext } from ".";
@@ -181,7 +181,7 @@ interface FragmentResult<
     TRequestStorage,
     FragnoPublicConfig
   >["callRoute"];
-  db: SimpleQueryInterface<TSchema>;
+  db: FragnoDatabase<TSchema>;
 }
 
 // Safe: Catch-all for any fragment result type
@@ -596,6 +596,9 @@ export class DatabaseFragmentsTestBuilder<
         try {
           // Create a mock adapter to extract the schema
           const mockAdapter = {
+            registerSchema: () => {},
+            createUnitOfWork: () => ({ schema: null }),
+            createBaseUnitOfWork: () => ({ schema: null }),
             createQueryEngine: () => ({ schema: null }),
             getSchemaVersion: async () => undefined,
             namingStrategy: {

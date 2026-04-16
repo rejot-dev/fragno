@@ -164,14 +164,21 @@ const fragmentDef = defineFragmentWithDatabase<Config>("my-fragment")
   .withServices(({ orm }) => {
     return {
       createNote: async (note) => {
-        const id = await orm.create("note", note);
+        const uow = orm.createUnitOfWork("create-note");
+        const id = uow.create("note", note);
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create note");
+        }
         return { id: id.toJSON(), ...note };
       },
-      getNotesByUser: (userId: string) => {
+      getNotesByUser: async (userId: string) => {
         // Use whereIndex for efficient indexed queries
-        return orm.find("note", (b) =>
-          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
-        );
+        const uow = orm
+          .createUnitOfWork("read-notes")
+          .find("note", (b) => b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)));
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
       },
     };
   });
@@ -179,11 +186,14 @@ const fragmentDef = defineFragmentWithDatabase<Config>("my-fragment")
 
 **ORM methods**:
 
-- `orm.create(table, data)` - Insert a row, returns FragnoId
-- `orm.find(table, builder)` - Query rows with filtering
-- `orm.findOne(table, builder)` - Query a single row
-- `orm.update(table, id, data)` - Update a row by ID
-- `orm.delete(table, id)` - Delete a row by ID
+- `orm.createUnitOfWork(name?)` - Create a schema-bound unit of work for reads and mutations
+- `uow.find(table, builder)` - Queue a typed read query
+- `uow.findFirst(table, builder)` - Queue a typed single-row read query
+- `uow.executeRetrieve()` - Execute queued reads
+- `uow.retrievalPhase` - Read typed retrieval results
+- `uow.create(table, data)` - Insert a row, returns FragnoId
+- `uow.update(table, id, builder)` - Update a row by ID
+- `uow.delete(table, id, builder?)` - Delete a row by ID
 - `.whereIndex(indexName, condition)` - Use indexes for efficient queries
 
 ### Transactions (Unit of Work)

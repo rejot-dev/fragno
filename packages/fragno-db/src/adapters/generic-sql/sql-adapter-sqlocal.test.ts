@@ -53,24 +53,48 @@ describe("SqlAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create two accounts with initial balances
-    const account1Id = await queryEngine.create("accounts", {
-      userId: "user1",
-      balance: 1000,
-    });
+    const account1Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("accounts", {
+        userId: "user1",
+        balance: 1000,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const account2Id = await queryEngine.create("accounts", {
-      userId: "user2",
-      balance: 500,
-    });
+    const account2Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("accounts", {
+        userId: "user2",
+        balance: 500,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Verify initial balances
-    const initialAccount1 = await queryEngine.findFirst("accounts", (b) => {
-      return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
-    });
+    const initialAccount1 = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
+        return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
+      });
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const initialAccount2 = await queryEngine.findFirst("accounts", (b) => {
-      return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
-    });
+    const initialAccount2 = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
+        return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
+      });
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(initialAccount1?.balance).toBe(1000);
     expect(initialAccount2?.balance).toBe(500);
@@ -114,13 +138,21 @@ describe("SqlAdapter SQLite", () => {
     expect(success).toBe(true);
 
     // Verify final balances
-    const finalAccount1 = await queryEngine.findFirst("accounts", (b) => {
-      return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
-    });
+    const finalAccount1 = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
+        return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
+      });
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const finalAccount2 = await queryEngine.findFirst("accounts", (b) => {
-      return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
-    });
+    const finalAccount2 = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
+        return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
+      });
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(finalAccount1?.balance).toBe(700); // 1000 - 300
     expect(finalAccount2?.balance).toBe(800); // 500 + 300
@@ -130,19 +162,17 @@ describe("SqlAdapter SQLite", () => {
     expect(finalAccount2?.id.version).toBe(1);
 
     // Verify transaction was recorded
-    const transaction = await queryEngine.findFirst("transactions", (b) => {
-      return b.whereIndex("primary");
-    });
+    const transaction = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("transactions", (b) => {
+        return b.whereIndex("primary");
+      });
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    expect(transaction).toMatchObject({
-      fromAccountId: expect.objectContaining({
-        internalId: account1Id.internalId,
-      }),
-      toAccountId: expect.objectContaining({
-        internalId: account2Id.internalId,
-      }),
-      amount: transferAmount,
-    });
+    expect(transaction?.fromAccountId.internalId).toBe(finalAccount1?.id.internalId);
+    expect(transaction?.toAccountId.internalId).toBe(finalAccount2?.id.internalId);
+    expect(transaction?.amount).toBe(transferAmount);
   });
 
   it("should execute Unit of Work with version checking", async () => {
@@ -150,10 +180,18 @@ describe("SqlAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create initial account
-    const initialAccountId = await queryEngine.create("accounts", {
-      userId: "user3",
-      balance: 1000,
-    });
+    const initialAccountId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("accounts", {
+        userId: "user3",
+        balance: 1000,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     expect(initialAccountId.version).toBe(0);
 
@@ -177,9 +215,15 @@ describe("SqlAdapter SQLite", () => {
     expect(accounts).toHaveLength(1);
 
     // Verify the account was updated
-    const updatedAccount = await queryEngine.findFirst("accounts", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)),
-    );
+    const updatedAccount = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("accounts", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(updatedAccount).toMatchObject({
       id: expect.objectContaining({

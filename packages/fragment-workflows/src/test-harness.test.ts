@@ -57,11 +57,16 @@ describe("createWorkflowsTestHarness", () => {
     });
 
     const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
-    const [sleepInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-        eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
-      ),
-    );
+    const [sleepInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
     if (!sleepInstance) {
       throw new Error("Missing sleep instance");
     }
@@ -77,11 +82,16 @@ describe("createWorkflowsTestHarness", () => {
     expect(sleepStatus.status).toBe("complete");
 
     const eventId = await harness.createInstance("events");
-    const [eventInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-        eb.and(eb("workflowName", "=", "event-workflow"), eb("id", "=", eventId)),
-      ),
-    );
+    const [eventInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(eb("workflowName", "=", "event-workflow"), eb("id", "=", eventId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
     if (!eventInstance) {
       throw new Error("Missing event instance");
     }
@@ -111,11 +121,16 @@ describe("createWorkflowsTestHarness", () => {
     });
 
     const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
-    const [sleepInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-        eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
-      ),
-    );
+    const [sleepInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
     if (!sleepInstance) {
       throw new Error("Missing sleep instance");
     }
@@ -171,11 +186,16 @@ describe("createWorkflowsTestHarness", () => {
 
     const startMs = testClock.now().getTime();
     const retryId = await harness.createInstance("retryDelay");
-    const [retryInstance] = await harness.db.find("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-        eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("id", "=", retryId)),
-      ),
-    );
+    const [retryInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("id", "=", retryId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
     if (!retryInstance) {
       throw new Error("Missing retry instance");
     }
@@ -184,7 +204,12 @@ describe("createWorkflowsTestHarness", () => {
     const nowMs = testClock.now().getTime();
     expect(nowMs - startMs).toBe(5 * 60_000);
 
-    const [step] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const [step] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
     expect(step?.status).toBe("waiting");
     expect(step?.nextRetryAt).toBeInstanceOf(Date);
     expect(step?.nextRetryAt?.getTime()).toBe(nowMs + 60_000);

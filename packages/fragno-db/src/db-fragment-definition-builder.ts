@@ -33,7 +33,6 @@ import {
   createDurableHooksRunner,
 } from "./hooks/hooks";
 import { sanitizeNamespace } from "./naming/sql-naming";
-import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import {
   createServiceTxBuilder,
   createHandlerTxBuilder,
@@ -44,7 +43,7 @@ import {
   type ExecuteTxOptions,
   type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
-import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
+import type { IUnitOfWork, TypedUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type { AnySchema } from "./schema/create";
 import type { SyncCommandRegistry, SyncCommandTargetRegistration } from "./sync/types";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
@@ -260,7 +259,9 @@ export type DatabaseFragmentContext = {
 };
 
 type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragmentContext & {
-  db: SimpleQueryInterface<TSchema>;
+  namespace: string | null;
+  createUnitOfWork: (name?: string) => TypedUnitOfWork<TSchema, [], unknown>;
+  createBaseUnitOfWork: (name?: string) => IUnitOfWork;
 };
 
 /**
@@ -272,11 +273,20 @@ function createDatabaseContext<TSchema extends AnySchema>(
   schema: TSchema,
 ): DatabaseFragmentContextInternal<TSchema> {
   const databaseAdapter = resolveDatabaseAdapter(options, schema);
-
   const namespace = resolveDatabaseNamespace(options, schema);
-  const db = databaseAdapter.createQueryEngine(schema, namespace);
 
-  return { databaseAdapter, db };
+  databaseAdapter.registerSchema(schema, namespace);
+
+  return {
+    databaseAdapter,
+    namespace,
+    createUnitOfWork: (name?: string) => databaseAdapter.createUnitOfWork(schema, namespace, name),
+    createBaseUnitOfWork: (name?: string) => {
+      const uow = databaseAdapter.createBaseUnitOfWork(name);
+      uow.registerSchema(schema, namespace);
+      return uow;
+    },
+  };
 }
 
 function resolveDatabaseNamespace<TSchema extends AnySchema>(
@@ -673,7 +683,7 @@ export class DatabaseFragmentDefinitionBuilder<
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
       const dbContext = createDatabaseContext(context.options, this.#schema);
-      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const namespace = dbContext.namespace;
 
       // Call user function with enriched context
       const userDeps = fn({
@@ -683,7 +693,7 @@ export class DatabaseFragmentDefinitionBuilder<
       });
 
       // Create implicit dependencies
-      const createUow = () => dbContext.db.createUnitOfWork();
+      const createUow = () => dbContext.createUnitOfWork();
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
@@ -1054,8 +1064,7 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const dbContext = createDatabaseContext(context.options, this.#schema);
-      const { db } = dbContext;
-      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const namespace = dbContext.namespace;
       const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
       const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
 
@@ -1091,7 +1100,7 @@ export class DatabaseFragmentDefinitionBuilder<
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
-        createUnitOfWork: () => db.createUnitOfWork(),
+        createUnitOfWork: () => dbContext.createUnitOfWork(),
       };
 
       return {
@@ -1114,7 +1123,7 @@ export class DatabaseFragmentDefinitionBuilder<
         // Create database context - needed here to create the UOW
         const dbContextForStorage = createDatabaseContext(options, this.#schema);
 
-        const uow = dbContextForStorage.db.createBaseUnitOfWork();
+        const uow = dbContextForStorage.createBaseUnitOfWork();
 
         return { uow };
       },
@@ -1200,7 +1209,7 @@ export class DatabaseFragmentDefinitionBuilder<
             {
               ...execOptions,
               createUnitOfWork: () => {
-                const baseUow = dbContextForHooks.db.createBaseUnitOfWork();
+                const baseUow = dbContextForHooks.createBaseUnitOfWork();
                 baseUow.registerSchema(
                   hooksConfig.internalFragment.$internal.deps.schema,
                   hooksConfig.internalFragment.$internal.deps.namespace,

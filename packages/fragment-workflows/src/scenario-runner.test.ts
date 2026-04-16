@@ -1052,10 +1052,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
           storeAs: "finalSteps",
         }),
         scenarioSteps.read({
-          read: (ctx) =>
-            ctx.harness.fragments["timeoutMutation"].db.find("session_status", (b) =>
-              b.whereIndex("primary"),
-            ),
+          read: async (ctx) => {
+            return (
+              await ctx.harness.fragments["timeoutMutation"].db
+                .createUnitOfWork("read")
+                .find("session_status", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
           storeAs: "rows",
         }),
         scenarioSteps.assert((ctx) => {
@@ -1324,7 +1328,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
           storeAs: "status",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.harness.db.find("workflow_event", (b) => b.whereIndex("primary")),
+          read: async (ctx) => {
+            return (
+              await ctx.harness.db
+                .createUnitOfWork("read")
+                .find("workflow_event", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
           storeAs: "events",
         }),
         scenarioSteps.assert((ctx) => {
@@ -1657,10 +1668,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
           storeAs: "status",
         }),
         scenarioSteps.read({
-          read: (ctx) =>
-            ctx.harness.fragments["mutations"].db.find("mutation_record", (b) =>
-              b.whereIndex("primary"),
-            ),
+          read: async (ctx) => {
+            return (
+              await ctx.harness.fragments["mutations"].db
+                .createUnitOfWork("read")
+                .find("mutation_record", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
           storeAs: "mutationRows",
         }),
         scenarioSteps.assert((ctx) => {
@@ -2297,7 +2312,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
           storeAs: "status3",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.harness.db.find("workflow_instance", (b) => b.whereIndex("primary")),
+          read: async (ctx) => {
+            return (
+              await ctx.harness.db
+                .createUnitOfWork("read")
+                .find("workflow_instance", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
           storeAs: "instances",
         }),
         scenarioSteps.assert((ctx) => {
@@ -2353,7 +2375,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
           storeAs: "created",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.harness.db.find("workflow_instance", (b) => b.whereIndex("primary")),
+          read: async (ctx) => {
+            return (
+              await ctx.harness.db
+                .createUnitOfWork("read")
+                .find("workflow_instance", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
           storeAs: "instances",
         }),
         scenarioSteps.runCreateUntilIdle({ workflow: "BATCH_SKIP", instanceId: "dup-1" }),

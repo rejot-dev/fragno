@@ -103,9 +103,21 @@ describe("cloudflare-fragment", () => {
   });
 
   const getApp = async (id: string) =>
-    db.findFirst("app", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+    (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("app", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
   const getDeployment = async (id: string) =>
-    db.findFirst("deployment", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+    (async () => {
+      const uow = db
+        .createUnitOfWork("read")
+        .findFirst("deployment", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
   const getFetchHeaders = (index: number) =>
     new Headers((fetchMock.mock.calls[index]?.[1]?.headers ?? {}) as HeadersInit);
 
