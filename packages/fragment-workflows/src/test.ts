@@ -3,20 +3,19 @@ import {
   type AnyFragnoInstantiatedFragment,
   type FragnoRuntime,
 } from "@fragno-dev/core";
-import type { FragnoDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type {
   AnyFragmentResult,
   DatabaseFragmentsTestBuilder,
   SupportedAdapter,
   TestContext,
+  TestDb,
 } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
 import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
 import { runWorkflowsTick } from "./new-runner";
 import { workflowsRoutesFactory } from "./routes";
-import { workflowsSchema } from "./schema";
 import { parseDurationMs } from "./utils";
 import type {
   InstanceStatus,
@@ -78,7 +77,7 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
 export type WorkflowsTestHarnessFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
   {
     fragment: WorkflowsFragment<TRegistry>;
-    db: FragnoDatabase<typeof workflowsSchema>;
+    db: TestDb;
     services: WorkflowsFragmentServices<TRegistry>;
     deps: WorkflowsFragment<TRegistry>["$internal"]["deps"];
     callRoute: WorkflowsFragment<TRegistry>["callRoute"];
@@ -119,7 +118,7 @@ export type WorkflowsTestHarness<
 > = {
   fragments: WorkflowsTestHarnessFragments<TRegistry, TFragments>;
   fragment: WorkflowsFragment<TRegistry>;
-  db: FragnoDatabase<typeof workflowsSchema>;
+  db: TestDb;
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;

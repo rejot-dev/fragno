@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
-
 import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
 import { normalizeJoinedInstallation, normalizeJoinedLinks } from "./utils";
@@ -44,7 +42,6 @@ type InstallReposResponse =
   | { type: "error"; error: { code: string; message?: string } };
 
 type ErrorResponse = { type: "error"; error: { code: string; message?: string } };
-type GitHubAppDb = FragnoDatabase<typeof githubAppSchema>;
 
 describe("github-app repo linking routes", () => {
   it("links and unlinks repositories with the default link key", async () => {
@@ -817,10 +814,11 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      const db = fragments.githubApp.db as GitHubAppDb;
+      const db = fragments.githubApp.db;
       const repos = (
         await db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo", (b) =>
             b
               .whereIndex("idx_installation_repo_installation", (eb) =>
@@ -859,10 +857,11 @@ describe("github-app repo linking routes", () => {
         removedAt: null,
       });
 
-      const db = fragments.githubApp.db as GitHubAppDb;
+      const db = fragments.githubApp.db;
       const repos = (
         await db
           .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
           .find("installation_repo", (b) =>
             b
               .whereIndex("idx_installation_repo_installation", (eb) =>

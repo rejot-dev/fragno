@@ -19,6 +19,7 @@ import {
   type WorkflowScenarioInstanceRow,
   type WorkflowScenarioStepRow,
 } from "./scenario";
+import { workflowsSchema } from "./schema";
 import { defineWorkflow, WaitForEventTimeoutError } from "./workflow";
 
 type RouteResponse = {
@@ -1056,6 +1057,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return (
               await ctx.harness.fragments["timeoutMutation"].db
                 .createUnitOfWork("read")
+                .forSchema(timeoutMutationSchema)
                 .find("session_status", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];
@@ -1332,6 +1334,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return (
               await ctx.harness.db
                 .createUnitOfWork("read")
+                .forSchema(workflowsSchema)
                 .find("workflow_event", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];
@@ -1672,6 +1675,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return (
               await ctx.harness.fragments["mutations"].db
                 .createUnitOfWork("read")
+                .forSchema(mutationsSchema)
                 .find("mutation_record", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];
@@ -2316,6 +2320,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return (
               await ctx.harness.db
                 .createUnitOfWork("read")
+                .forSchema(workflowsSchema)
                 .find("workflow_instance", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];
@@ -2379,6 +2384,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return (
               await ctx.harness.db
                 .createUnitOfWork("read")
+                .forSchema(workflowsSchema)
                 .find("workflow_instance", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];

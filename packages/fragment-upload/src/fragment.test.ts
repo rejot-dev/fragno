@@ -153,6 +153,7 @@ describe("upload fragment direct single flows", () => {
     const stored = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", createResponse.data.fileKey)),
@@ -298,7 +299,7 @@ describe("upload fragment direct single flows", () => {
     assert(createResponse.type === "json");
 
     await (async () => {
-      const uow = db.createUnitOfWork("write");
+      const uow = db.createUnitOfWork("write").forSchema(uploadSchema);
       uow.update("upload", createResponse.data.uploadId, (b) =>
         b.set({ expiresAt: new Date(Date.now() - 1000) }),
       );
@@ -334,6 +335,7 @@ describe("upload fragment direct single flows", () => {
     const upload = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("upload", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
         );
@@ -348,7 +350,7 @@ describe("upload fragment direct single flows", () => {
     const supersededObjectKey = `store/${upload.provider}/${upload.key}/20260319T115043123Z`;
     const now = new Date();
     await (async () => {
-      const uow = db.createUnitOfWork("write");
+      const uow = db.createUnitOfWork("write").forSchema(uploadSchema);
       const created = uow.create("file", {
         key: upload.key,
         provider: upload.provider,
@@ -387,6 +389,7 @@ describe("upload fragment direct single flows", () => {
     const currentFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", upload.provider), eb("key", "=", upload.key)),
@@ -429,6 +432,7 @@ describe("upload fragment direct single flows", () => {
     const firstFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -464,6 +468,7 @@ describe("upload fragment direct single flows", () => {
     const currentFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -622,6 +627,7 @@ describe("upload fragment direct single flows", () => {
       const upload = await (async () => {
         const uow = expiredDb
           .createUnitOfWork("read")
+          .forSchema(uploadSchema)
           .findFirst("upload", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
           );
@@ -632,6 +638,7 @@ describe("upload fragment direct single flows", () => {
       const file = await (async () => {
         const uow = expiredDb
           .createUnitOfWork("read")
+          .forSchema(uploadSchema)
           .findFirst("file", (b) =>
             b.whereIndex("idx_file_provider_key", (eb) =>
               eb.and(
@@ -679,6 +686,7 @@ describe("upload fragment direct single flows", () => {
         const storedFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(
@@ -756,6 +764,7 @@ describe("upload fragment direct single flows", () => {
         const firstFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -787,6 +796,7 @@ describe("upload fragment direct single flows", () => {
         const currentFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -861,6 +871,7 @@ describe("upload fragment direct single flows", () => {
         const firstFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -892,6 +903,7 @@ describe("upload fragment direct single flows", () => {
         const secondFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -924,6 +936,7 @@ describe("upload fragment direct single flows", () => {
         const currentFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -1018,6 +1031,7 @@ describe("upload fragment direct single flows", () => {
         const firstFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -1049,6 +1063,7 @@ describe("upload fragment direct single flows", () => {
         const currentFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -1157,6 +1172,7 @@ describe("upload fragment direct single flows", () => {
         const persistedFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(
@@ -1275,6 +1291,7 @@ describe("upload fragment direct single flows", () => {
         const deletedFile = await (async () => {
           const uow = db
             .createUnitOfWork("read")
+            .forSchema(uploadSchema)
             .findFirst("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(
@@ -1377,7 +1394,7 @@ describe("upload fragment direct single flows", () => {
     assert(createResponse.type === "json");
 
     await (async () => {
-      const uow = db.createUnitOfWork("write");
+      const uow = db.createUnitOfWork("write").forSchema(uploadSchema);
       uow.update("upload", createResponse.data.uploadId, (b) =>
         b.set({ expiresAt: new Date(Date.now() - 1_000) }),
       );
@@ -1457,6 +1474,7 @@ describe("upload fragment direct single flows", () => {
     const file = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", retryResponse.data.fileKey)),
@@ -1579,6 +1597,7 @@ describe("upload fragment direct multipart flows", () => {
     const firstFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -1620,6 +1639,7 @@ describe("upload fragment direct multipart flows", () => {
     const currentFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", adapter.name), eb("key", "=", firstCreate.data.fileKey)),

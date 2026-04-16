@@ -915,7 +915,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expectTypeOf(deps).toExtend<
         {
           customDep: string;
-        } & ImplicitDatabaseDependencies<TestSchema>
+        } & ImplicitDatabaseDependencies
       >();
 
       expect(deps.customDep).toBe("test");

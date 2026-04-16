@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { restoreWorkflowState } from "./runner/restore-state";
+import { workflowsSchema } from "./schema";
 import { createWorkflowsTestHarness } from "./test";
 import {
   defineWorkflow,
@@ -90,6 +91,7 @@ describe("restoreWorkflowState", () => {
     const [createdInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -100,12 +102,14 @@ describe("restoreWorkflowState", () => {
     const [waitingInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const stepRows = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) =>
           b
             .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -160,6 +164,7 @@ describe("restoreWorkflowState", () => {
     const [createdInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -170,12 +175,14 @@ describe("restoreWorkflowState", () => {
     const [waitingInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const stepRows = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) =>
           b
             .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -224,6 +231,7 @@ describe("restoreWorkflowState", () => {
     const [createdInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -238,12 +246,14 @@ describe("restoreWorkflowState", () => {
     const [waitingInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const stepRows = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) =>
           b
             .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
@@ -259,6 +269,7 @@ describe("restoreWorkflowState", () => {
     const [pendingEventBefore] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
@@ -281,6 +292,7 @@ describe("restoreWorkflowState", () => {
     const [pendingEventAfter] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>

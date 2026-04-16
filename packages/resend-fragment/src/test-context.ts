@@ -24,6 +24,7 @@ import {
   type ResendThreadMutationOutput,
 } from "./routes";
 import type { ResendEmailMessageRow, ResendThreadRow } from "./routes/context";
+import { resendSchema } from "./schema";
 
 type MockFn = ReturnType<typeof vi.fn>;
 type OnEmailStatusUpdatedMock = MockFn &
@@ -197,6 +198,7 @@ export const createResendTestContext = async () => {
     (async () => {
       const uow = fragments.resend.db
         .createUnitOfWork("read")
+        .forSchema(resendSchema)
         .findFirst("emailMessage", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -206,6 +208,7 @@ export const createResendTestContext = async () => {
     (async () => {
       const uow = fragments.resend.db
         .createUnitOfWork("read")
+        .forSchema(resendSchema)
         .findFirst("emailThread", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -215,6 +218,7 @@ export const createResendTestContext = async () => {
     (async () => {
       const uow = fragments.resend.db
         .createUnitOfWork("read")
+        .forSchema(resendSchema)
         .findFirst("emailMessage", (b) =>
           b.whereIndex("idx_emailMessage_providerEmailId", (eb) =>
             eb("providerEmailId", "=", providerEmailId),
@@ -228,6 +232,7 @@ export const createResendTestContext = async () => {
     (async () => {
       const uow = fragments.resend.db
         .createUnitOfWork("read")
+        .forSchema(resendSchema)
         .find("emailMessage", (b) =>
           b
             .whereIndex("idx_emailMessage_thread_occurredAt", (eb) => eb("threadId", "=", threadId))

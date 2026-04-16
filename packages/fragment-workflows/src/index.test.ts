@@ -78,7 +78,7 @@ describe("Workflows Fragment", () => {
     const instanceId = "instance-1";
 
     const instanceRef = await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: instanceId,
         workflowName,
@@ -98,7 +98,7 @@ describe("Workflows Fragment", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef,
         runNumber: 0,
@@ -128,7 +128,7 @@ describe("Workflows Fragment", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_event", {
         instanceRef,
         runNumber: 0,
@@ -152,18 +152,21 @@ describe("Workflows Fragment", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const [step] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const [event] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -262,6 +265,7 @@ describe("Workflows Fragment", () => {
       const [instance] = (
         await db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_instance", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -273,7 +277,7 @@ describe("Workflows Fragment", () => {
 
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
       const instanceRef = await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
           id: "history-route",
           workflowName: "demo-workflow",
@@ -298,7 +302,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
           runNumber: 2,
@@ -328,7 +332,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_event", {
           instanceRef,
           runNumber: 2,
@@ -365,7 +369,7 @@ describe("Workflows Fragment", () => {
 
     test("GET /:workflowName/instances/:instanceId/history should default to latest run", async () => {
       const instanceRef = await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
           id: "history-latest",
           workflowName: "demo-workflow",
@@ -390,7 +394,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
           runNumber: 2,
@@ -420,7 +424,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
           runNumber: 3,
@@ -450,7 +454,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_event", {
           instanceRef,
           runNumber: 3,
@@ -489,7 +493,7 @@ describe("Workflows Fragment", () => {
 
     test("GET /:workflowName/instances/:instanceId/history/:run should return requested run", async () => {
       const instanceRef = await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
           id: "history-run",
           workflowName: "demo-workflow",
@@ -514,7 +518,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
           runNumber: 2,
@@ -544,7 +548,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
           runNumber: 3,
@@ -574,7 +578,7 @@ describe("Workflows Fragment", () => {
       })();
 
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_event", {
           instanceRef,
           runNumber: 2,
@@ -613,7 +617,7 @@ describe("Workflows Fragment", () => {
 
     test("GET /:workflowName/instances/:instanceId/history/:run should reject invalid run", async () => {
       await (async () => {
-        const uow = db.createUnitOfWork("wf");
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
           id: "history-invalid-run",
           workflowName: "demo-workflow",

@@ -354,6 +354,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             await (async () => {
               const uow = ctx.harness.fragments["usage"].db
                 .createUnitOfWork("read")
+                .forSchema(workflowUsageSchema)
                 .find("step", (b) =>
                   b.whereIndex("idx_step_session", (eb) => eb("sessionId", "=", "mk-session")),
                 );

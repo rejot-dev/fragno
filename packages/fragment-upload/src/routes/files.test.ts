@@ -9,6 +9,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
+import { uploadSchema } from "../schema";
 import { createFilesystemStorageAdapter } from "../storage/fs";
 import type { StorageAdapter } from "../storage/types";
 
@@ -183,6 +184,7 @@ describe("upload file routes", async () => {
     const storedFile = await (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(uploadSchema)
         .findFirst("file", (b) =>
           b.whereIndex("idx_file_provider_key", (eb) =>
             eb.and(eb("provider", "=", provider), eb("key", "=", fileKey)),
@@ -368,6 +370,7 @@ describe("upload file routes", async () => {
       const firstFile = await (async () => {
         const uow = db
           .createUnitOfWork("read")
+          .forSchema(uploadSchema)
           .findFirst("file", (b) =>
             b.whereIndex("idx_file_provider_key", (eb) =>
               eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),
@@ -397,6 +400,7 @@ describe("upload file routes", async () => {
       const currentFile = await (async () => {
         const uow = db
           .createUnitOfWork("read")
+          .forSchema(uploadSchema)
           .findFirst("file", (b) =>
             b.whereIndex("idx_file_provider_key", (eb) =>
               eb.and(eb("provider", "=", storage.name), eb("key", "=", firstCreate.data.fileKey)),

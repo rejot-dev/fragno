@@ -98,7 +98,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   new FragmentDefinitionBuilder<
     InternalFragmentConfig,
     FragnoPublicConfigWithDatabase,
-    ImplicitDatabaseDependencies<typeof internalSchema>,
+    ImplicitDatabaseDependencies,
     {},
     {},
     {},

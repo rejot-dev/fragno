@@ -1,5 +1,4 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import type { AnySchema } from "../schema/create";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
 import { createDurableHooksRunner } from "./hooks";
 
@@ -41,8 +40,8 @@ function hasDurableHooksConfigured(
   return Boolean(internal?.durableHooksToken);
 }
 
-export function createDurableHooksProcessor<TSchema extends AnySchema>(
-  fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
+export function createDurableHooksProcessor(
+  fragment: AnyFragnoInstantiatedDatabaseFragment,
 ): DurableHooksProcessor {
   const durableHooksToken = (fragment.$internal as DurableHooksInternal).durableHooksToken;
   if (!durableHooksToken) {

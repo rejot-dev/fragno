@@ -6,7 +6,7 @@ import type {
   ImplicitDatabaseDependencies,
   DatabaseHandlerContext,
 } from "./db-fragment-definition-builder";
-import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
+import { getSchemaVersionFromDatabase, internalSchema } from "./fragments/internal-fragment";
 import { getInternalFragment } from "./internal/adapter-registry";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
@@ -17,7 +17,6 @@ import {
   type DbIntervalInput,
   type DbNow,
 } from "./query/db-now";
-import type { AnySchema } from "./schema/create";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
@@ -130,20 +129,19 @@ export type {
   SyncCommandTxFactory,
 } from "./sync/types";
 
-export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = AnySchema> =
-  FragnoInstantiatedFragment<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    ImplicitDatabaseDependencies<TSchema>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    DatabaseHandlerContext,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    FragnoPublicConfigWithDatabase
-  >;
+export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  ImplicitDatabaseDependencies,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  DatabaseHandlerContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  FragnoPublicConfigWithDatabase
+>;
 
 /**
  * Helper function to run migrations for a database fragment.
@@ -167,9 +165,7 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
  * await migrate(fragment);
  * ```
  */
-export async function migrate<TSchema extends AnySchema>(
-  fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
-): Promise<void> {
+export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): Promise<void> {
   const { deps } = fragment.$internal;
   const adapter = deps.databaseAdapter;
 
@@ -193,7 +189,6 @@ export async function migrate<TSchema extends AnySchema>(
   }
 
   const internalDeps = internalFragment.$internal.deps;
-  const internalSchema = internalDeps.schema;
   // Internal fragment uses databaseNamespace: null (no table suffix).
   // Version tracking uses empty string so the key is ".schema_version",
   // which matches both the legacy format and how the internal fragment was designed.

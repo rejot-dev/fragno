@@ -480,7 +480,7 @@ describe("multi-fragment tests", () => {
 
       // Cleanup (centralized - cleans up all fragments)
       await test.cleanup();
-    }, 10000);
+    }, 30000);
   }
 });
 

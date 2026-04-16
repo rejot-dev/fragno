@@ -43,7 +43,7 @@ const outboxFragmentDef = defineFragment(outboxFragmentName)
   .build();
 
 type OutboxTestContext = {
-  fragment: AnyFragnoInstantiatedDatabaseFragment<typeof outboxSchema>;
+  fragment: AnyFragnoInstantiatedDatabaseFragment;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
 };
@@ -108,10 +108,7 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
   });
 }
 
-async function createUser(
-  fragment: AnyFragnoInstantiatedDatabaseFragment<typeof outboxSchema>,
-  email: string,
-) {
+async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email: string) {
   return fragment.inContext(async function (this: DatabaseRequestContext) {
     await this.handlerTx()
       .mutate(({ forSchema }) => forSchema(outboxSchema).create("users", { email }))
@@ -135,7 +132,7 @@ async function createUser(
 }
 
 async function createPost(
-  fragment: AnyFragnoInstantiatedDatabaseFragment<typeof outboxSchema>,
+  fragment: AnyFragnoInstantiatedDatabaseFragment,
   title: string,
   authorId: FragnoReference,
 ) {

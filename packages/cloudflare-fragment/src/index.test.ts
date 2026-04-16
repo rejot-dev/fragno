@@ -8,6 +8,7 @@ import { cloudflareDeployRequestSchema } from "./contracts";
 import { cloudflareFragmentDefinition, type CloudflareFragmentConfig } from "./definition";
 import { buildCloudflareAppTag, buildCloudflareDeploymentTag } from "./deployment-tag";
 import { cloudflareRoutesFactory } from "./routes";
+import { cloudflareSchema } from "./schema";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -106,6 +107,7 @@ describe("cloudflare-fragment", () => {
     (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(cloudflareSchema)
         .findFirst("app", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
@@ -114,6 +116,7 @@ describe("cloudflare-fragment", () => {
     (async () => {
       const uow = db
         .createUnitOfWork("read")
+        .forSchema(cloudflareSchema)
         .findFirst("deployment", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];

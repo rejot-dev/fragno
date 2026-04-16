@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { ResendSendEmailInput } from "./routes";
+import { resendSchema } from "./schema";
 import { createResendTestContext, sendMock } from "./test-context";
 
 describe("resend-fragment emails", async () => {
@@ -22,7 +23,7 @@ describe("resend-fragment emails", async () => {
     const occurredAt = values["occurredAt"] instanceof Date ? values["occurredAt"] : createdAt;
     const updatedAt = values["updatedAt"] instanceof Date ? values["updatedAt"] : createdAt;
 
-    const uow = db.createUnitOfWork("outbound-msg");
+    const uow = db.createUnitOfWork("outbound-msg").forSchema(resendSchema);
     uow.create("emailMessage", {
       direction: "outbound",
       threadId: null,

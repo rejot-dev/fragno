@@ -2,16 +2,16 @@ import type { TableToInsertValues } from "@fragno-dev/db/query";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
 import { instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
-import type { FragnoDatabase } from "@fragno-dev/db";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import type { TypedUnitOfWork } from "@fragno-dev/db";
+import { buildDatabaseFragmentsTest, type TestDb } from "@fragno-dev/test";
 
 import { githubAppRoutesFactory } from "../routes";
 import { githubAppSchema } from "../schema";
 import { githubAppFragmentDefinition } from "./definition";
 import type { GitHubAppFragmentConfig } from "./types";
 
-type GithubTestDb = FragnoDatabase<typeof githubAppSchema>;
-type GithubUow = ReturnType<GithubTestDb["createUnitOfWork"]>;
+type GithubTestDb = TestDb;
+type GithubUow = TypedUnitOfWork<typeof githubAppSchema>;
 type GithubTableName = keyof (typeof githubAppSchema)["tables"] & string;
 
 /** Run one or more `create` calls in a single unit of work (replaces removed `db.create` helper). */
@@ -20,7 +20,7 @@ export async function runGithubUowCreates(
   uowName: string,
   fn: (uow: GithubUow) => void,
 ): Promise<void> {
-  const uow = db.createUnitOfWork(uowName);
+  const uow = db.createUnitOfWork(uowName).forSchema(githubAppSchema);
   fn(uow);
   const { success } = await uow.executeMutations();
   if (!success) {
@@ -34,7 +34,7 @@ export async function runGithubUowCreate<TTableName extends GithubTableName>(
   table: TTableName,
   values: TableToInsertValues<(typeof githubAppSchema)["tables"][TTableName]>,
 ): Promise<FragnoId> {
-  const uow = db.createUnitOfWork(uowName);
+  const uow = db.createUnitOfWork(uowName).forSchema(githubAppSchema);
   uow.create(table, values);
   const { success } = await uow.executeMutations();
   if (!success) {

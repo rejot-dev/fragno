@@ -10,6 +10,7 @@ import { withDatabase } from "@fragno-dev/db";
 // 2. Concurrency conflict handling / idempotency of duplicate ticks
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import { workflowsSchema } from "./schema";
 import { createWorkflowsTestHarness } from "./test";
 import { defineWorkflow, NonRetryableError, type WorkflowEnqueuedHookPayload } from "./workflow";
 
@@ -46,6 +47,7 @@ describe("Workflows Runner", () => {
     const [stepRecord] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -54,6 +56,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -118,6 +121,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -132,6 +136,7 @@ describe("Workflows Runner", () => {
     const mutationRows = (
       await harness.fragments["mutationError"].db
         .createUnitOfWork("read")
+        .forSchema(mutationErrorSchema)
         .find("mutation_record", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -188,6 +193,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -202,6 +208,7 @@ describe("Workflows Runner", () => {
       return (
         await harness.fragments["terminalError"].db
           .createUnitOfWork("read")
+          .forSchema(terminalErrorSchema)
           .find("mutation_record", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -259,6 +266,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -274,6 +282,7 @@ describe("Workflows Runner", () => {
       return (
         await harness.fragments["terminalErrorCommit"].db
           .createUnitOfWork("read")
+          .forSchema(terminalErrorSchema)
           .find("mutation_record", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -312,6 +321,7 @@ describe("Workflows Runner", () => {
     const [stepRecord] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_step", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -352,6 +362,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -386,6 +397,7 @@ describe("Workflows Runner", () => {
       return (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_step", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -441,6 +453,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -455,6 +468,7 @@ describe("Workflows Runner", () => {
     const rows = (
       await harness.fragments["mutationOrder"].db
         .createUnitOfWork("read")
+        .forSchema(mutationOrderSchema)
         .find("mutation_record", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -506,6 +520,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -516,6 +531,7 @@ describe("Workflows Runner", () => {
     const initialRows = (
       await harness.fragments["mutationReplay"].db
         .createUnitOfWork("read")
+        .forSchema(mutationReplaySchema)
         .find("mutation_log", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -528,6 +544,7 @@ describe("Workflows Runner", () => {
       return (
         await harness.fragments["mutationReplay"].db
           .createUnitOfWork("read")
+          .forSchema(mutationReplaySchema)
           .find("mutation_log", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -564,6 +581,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -584,6 +602,7 @@ describe("Workflows Runner", () => {
       return (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_step", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -622,6 +641,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -674,6 +694,7 @@ describe("Workflows Runner", () => {
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -700,6 +721,7 @@ describe("Workflows Runner", () => {
     const [updated] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", instance!.id)),
         )

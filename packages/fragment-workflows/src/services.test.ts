@@ -12,6 +12,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import { workflowsFragmentDefinition } from "./definition";
 import type { WorkflowsFragmentServices } from "./index";
 import { createWorkflowLiveStateStore } from "./live-state";
+import { workflowsSchema } from "./schema";
 import { createWorkflowsTestHarness } from "./test";
 import { defineWorkflow } from "./workflow";
 import type {
@@ -171,6 +172,7 @@ describe("Workflows Fragment Services", () => {
       const [createdInstance] = (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_instance", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -195,6 +197,7 @@ describe("Workflows Fragment Services", () => {
       const [waitingInstance] = (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_instance", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -289,6 +292,7 @@ describe("Workflows Fragment Services", () => {
       const [createdInstance] = (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_instance", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -309,6 +313,7 @@ describe("Workflows Fragment Services", () => {
       const [waitingInstance] = (
         await harness.db
           .createUnitOfWork("read")
+          .forSchema(workflowsSchema)
           .find("workflow_instance", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
@@ -346,6 +351,7 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -377,6 +383,7 @@ describe("Workflows Fragment Services", () => {
     const instances = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -398,6 +405,7 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -408,6 +416,7 @@ describe("Workflows Fragment Services", () => {
     const [pauseEvent] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -419,7 +428,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     {
-      const uow = db.createUnitOfWork("set-workflow-instance-paused");
+      const uow = db.createUnitOfWork("set-workflow-instance-paused").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({ status: "paused", updatedAt: new Date() }),
       );
@@ -437,6 +446,7 @@ describe("Workflows Fragment Services", () => {
     const [resumedInstance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -454,12 +464,13 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
 
     {
-      const uow = db.createUnitOfWork("set-workflow-instance-waiting");
+      const uow = db.createUnitOfWork("set-workflow-instance-waiting").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({ status: "waiting", updatedAt: new Date() }),
       );
@@ -477,6 +488,7 @@ describe("Workflows Fragment Services", () => {
     const [pausedInstance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -487,7 +499,7 @@ describe("Workflows Fragment Services", () => {
 
   test("terminate should mark instance as terminated", async () => {
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: "terminate-1",
         workflowName: "demo-workflow",
@@ -521,6 +533,7 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -541,11 +554,12 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     {
-      const uow = db.createUnitOfWork("complete-workflow-instance");
+      const uow = db.createUnitOfWork("complete-workflow-instance").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({
           status: "complete",
@@ -570,6 +584,7 @@ describe("Workflows Fragment Services", () => {
     const [restartedInstance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -593,12 +608,13 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
 
     {
-      const uow = db.createUnitOfWork("set-workflow-instance-waiting");
+      const uow = db.createUnitOfWork("set-workflow-instance-waiting").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({ status: "waiting", updatedAt: new Date() }),
       );
@@ -610,7 +626,7 @@ describe("Workflows Fragment Services", () => {
     await drainDurableHooks(fragment);
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef: instance.id,
         runNumber: 0,
@@ -651,6 +667,7 @@ describe("Workflows Fragment Services", () => {
     const [event] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -665,7 +682,7 @@ describe("Workflows Fragment Services", () => {
   test("sendEvent should not wake when waitForEvent has timed out", async () => {
     const instanceId = "event-timeout";
     const instanceRef = await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: instanceId,
         workflowName: "demo-workflow",
@@ -690,7 +707,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef,
         runNumber: 0,
@@ -730,6 +747,7 @@ describe("Workflows Fragment Services", () => {
     const [event] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -745,12 +763,13 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
 
     {
-      const uow = db.createUnitOfWork("complete-workflow-instance");
+      const uow = db.createUnitOfWork("complete-workflow-instance").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({ status: "complete", updatedAt: new Date() }),
       );
@@ -776,6 +795,7 @@ describe("Workflows Fragment Services", () => {
     const [instance] = (
       await db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -784,7 +804,7 @@ describe("Workflows Fragment Services", () => {
     const updatedAt = new Date("2024-01-02T00:00:10.000Z");
 
     {
-      const uow = db.createUnitOfWork("set-workflow-instance-metadata");
+      const uow = db.createUnitOfWork("set-workflow-instance-metadata").forSchema(workflowsSchema);
       uow.update("workflow_instance", instance.id, (b) =>
         b.set({
           status: "waiting",
@@ -802,7 +822,7 @@ describe("Workflows Fragment Services", () => {
     const currentStepAt = new Date("2024-01-02T00:00:30.000Z");
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef: instance.id,
         runNumber: 0,
@@ -834,7 +854,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef: instance.id,
         runNumber: 0,
@@ -899,7 +919,7 @@ describe("Workflows Fragment Services", () => {
 
   test("getInstanceRunNumber should return current run", async () => {
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: "history-1",
         workflowName: "demo-workflow",
@@ -971,6 +991,7 @@ describe("Workflows Fragment Services", () => {
     const [createdInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
@@ -985,12 +1006,14 @@ describe("Workflows Fragment Services", () => {
     const [waitingInstance] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_instance", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
     const [pendingEventBefore] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
@@ -1016,6 +1039,7 @@ describe("Workflows Fragment Services", () => {
     const [pendingEventAfter] = (
       await harness.db
         .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
@@ -1036,7 +1060,7 @@ describe("Workflows Fragment Services", () => {
 
   test("listHistory should return steps and events for a run", async () => {
     const instanceRef = await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: "history-2",
         workflowName: "demo-workflow",
@@ -1061,7 +1085,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef,
         runNumber: 1,
@@ -1091,7 +1115,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef,
         runNumber: 1,
@@ -1121,7 +1145,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_event", {
         instanceRef,
         runNumber: 1,
@@ -1143,7 +1167,7 @@ describe("Workflows Fragment Services", () => {
     })();
 
     await (async () => {
-      const uow = db.createUnitOfWork("wf");
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_event", {
         instanceRef,
         runNumber: 1,

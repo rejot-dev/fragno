@@ -5,6 +5,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 
 import { otpFragmentDefinition } from "./definition";
 import { otpRoutes } from "./index";
+import { otpSchema } from "./schema";
 
 const isDbNowMarker = (value: unknown): value is { tag: "db-now"; offsetMs?: number } => {
   return (
@@ -101,6 +102,7 @@ describe("otp fragment", async () => {
     const otpRows = await (async () => {
       const uow = fragments.otp.db
         .createUnitOfWork("read")
+        .forSchema(otpSchema)
         .find("otp", (b) =>
           b.whereIndex("idx_otp_externalId_type_createdAt", (eb) =>
             eb.and(eb("externalId", "=", "user-1"), eb("type", "=", "email_verification")),
@@ -172,6 +174,7 @@ describe("otp fragment", async () => {
     const storedOtp = await (async () => {
       const uow = fragments.otp.db
         .createUnitOfWork("read")
+        .forSchema(otpSchema)
         .findFirst("otp", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
         );
@@ -237,6 +240,7 @@ describe("otp fragment", async () => {
       const storedOtp = await (async () => {
         const uow = expiringFragments.otp.db
           .createUnitOfWork("read")
+          .forSchema(otpSchema)
           .findFirst("otp", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
           );
@@ -378,6 +382,7 @@ describe("otp fragment", async () => {
       const storedAfterConfirm = await (async () => {
         const uow = expiringFragments.otp.db
           .createUnitOfWork("read")
+          .forSchema(otpSchema)
           .findFirst("otp", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
           );
@@ -414,6 +419,7 @@ describe("otp fragment", async () => {
       const storedAfterHooks = await (async () => {
         const uow = expiringFragments.otp.db
           .createUnitOfWork("read")
+          .forSchema(otpSchema)
           .findFirst("otp", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
           );

@@ -249,6 +249,7 @@ describe("Forms Fragment", () => {
       const form = await (async () => {
         const uow = formsFragment.db
           .createUnitOfWork("read")
+          .forSchema(formsSchema)
           .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
@@ -256,7 +257,7 @@ describe("Forms Fragment", () => {
       assert(form);
 
       {
-        const uow = formsFragment.db.createUnitOfWork("update-form");
+        const uow = formsFragment.db.createUnitOfWork("update-form").forSchema(formsSchema);
         uow.update("form", form.id, (b) =>
           b.set({
             title: "Updated Test Form",
@@ -438,6 +439,7 @@ describe("Forms Fragment", () => {
         const form = await (async () => {
           const uow = formsFragment.db
             .createUnitOfWork("read")
+            .forSchema(formsSchema)
             .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
           await uow.executeRetrieve();
           return (await uow.retrievalPhase)[0];
@@ -445,7 +447,7 @@ describe("Forms Fragment", () => {
         if (!form) {
           throw new Error("Missing form");
         }
-        const uow = formsFragment.db.createUnitOfWork("publish-form");
+        const uow = formsFragment.db.createUnitOfWork("publish-form").forSchema(formsSchema);
         uow.update("form", form.id, (b) => b.set({ status: "open" }));
         const { success } = await uow.executeMutations();
         if (!success) {
@@ -495,6 +497,7 @@ describe("Forms Fragment", () => {
         const form = await (async () => {
           const uow = formsFragment.db
             .createUnitOfWork("read")
+            .forSchema(formsSchema)
             .findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", formId)));
           await uow.executeRetrieve();
           return (await uow.retrievalPhase)[0];
@@ -502,7 +505,7 @@ describe("Forms Fragment", () => {
         if (!form) {
           throw new Error("Missing form");
         }
-        const uow = formsFragment.db.createUnitOfWork("publish-form");
+        const uow = formsFragment.db.createUnitOfWork("publish-form").forSchema(formsSchema);
         uow.update("form", form.id, (b) => b.set({ status: "open" }));
         const { success } = await uow.executeMutations();
         if (!success) {
@@ -554,6 +557,7 @@ describe("Forms Fragment", () => {
       const form = await (async () => {
         const uow = formsFragment.db
           .createUnitOfWork("read")
+          .forSchema(formsSchema)
           .findFirst("form", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
           );
@@ -563,7 +567,7 @@ describe("Forms Fragment", () => {
       assert(form);
 
       const submissionId = await (async () => {
-        const uow = formsFragment.db.createUnitOfWork("create-response");
+        const uow = formsFragment.db.createUnitOfWork("create-response").forSchema(formsSchema);
         const created = uow.create("response", {
           formId: form.id.externalId,
           formVersion: form.version,
@@ -591,6 +595,7 @@ describe("Forms Fragment", () => {
       const form = await (async () => {
         const uow = formsFragment.db
           .createUnitOfWork("read")
+          .forSchema(formsSchema)
           .findFirst("form", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", publishedFormId)),
           );
@@ -600,7 +605,7 @@ describe("Forms Fragment", () => {
       assert(form);
 
       const submissionId = await (async () => {
-        const uow = formsFragment.db.createUnitOfWork("create-response");
+        const uow = formsFragment.db.createUnitOfWork("create-response").forSchema(formsSchema);
         const created = uow.create("response", {
           formId: form.id.externalId,
           formVersion: form.version,

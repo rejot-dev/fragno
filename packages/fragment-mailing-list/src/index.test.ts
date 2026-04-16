@@ -178,6 +178,7 @@ describe("Mailing List Fragment", async () => {
         const result = await (async () => {
           const uow = fragments["mailing-list"].db
             .createUnitOfWork("read")
+            .forSchema(mailingListSchema)
             .find("subscriber", (b) => b.whereIndex("primary"));
           await uow.executeRetrieve();
           return (await uow.retrievalPhase)[0];
