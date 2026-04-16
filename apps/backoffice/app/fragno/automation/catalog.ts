@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { createMasterFileSystem, normalizeRelativePath, type IFileSystem } from "@/files";
+import {
+  createMasterFileSystem,
+  normalizeRelativePath,
+  type DirentEntry,
+  type IFileSystem,
+} from "@/files";
+import { FileSystemError } from "@/files/fs-errors";
 
 import { AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 
@@ -52,8 +58,45 @@ const automationManifestSchema = z.object({
   bindings: z.array(manifestBindingSchema),
 });
 
-type AutomationManifest = z.infer<typeof automationManifestSchema>;
-type AutomationManifestBinding = AutomationManifest["bindings"][number];
+export type AutomationManifest = z.infer<typeof automationManifestSchema>;
+export type AutomationManifestBinding = AutomationManifest["bindings"][number];
+
+export type AutomationManifestScriptEntry = {
+  id: string;
+  key: string;
+  name: string;
+  engine: "bash";
+  path: string;
+  absolutePath: string;
+  version: number;
+  bindingIds: string[];
+  bindingCount: number;
+  enabledBindingCount: number;
+  enabled: boolean;
+};
+
+export type AutomationManifestBindingEntry = {
+  id: string;
+  source: string;
+  eventType: string;
+  enabled: boolean;
+  triggerOrder: number | null;
+  scriptId: string;
+  scriptKey: string;
+  scriptName: string;
+  scriptPath: string;
+  absoluteScriptPath: string;
+  scriptVersion: number;
+  scriptEngine: "bash";
+  scriptEnv: Record<string, string>;
+};
+
+export type AutomationManifestSummary = {
+  version: 1;
+  manifestPath: string;
+  bindings: AutomationManifestBindingEntry[];
+  scripts: AutomationManifestScriptEntry[];
+};
 
 export type AutomationScriptCatalogEntry = {
   id: string;
@@ -94,6 +137,12 @@ export type AutomationCatalog = {
   manifestPath: string;
   bindings: AutomationBindingCatalogEntry[];
   scripts: AutomationScriptCatalogEntry[];
+};
+
+export type AutomationWorkspaceScriptEntry = {
+  path: string;
+  absolutePath: string;
+  engine: "bash";
 };
 
 const resolveTriggerOrder = (value: number | null | undefined) =>
@@ -145,6 +194,16 @@ const normalizeScriptRelativePath = (value: string, bindingId: string): string =
 const toAbsoluteAutomationPath = (relativePath: string) =>
   `${AUTOMATION_WORKSPACE_ROOT}/${normalizeRelativePath(relativePath)}`;
 
+const toAutomationWorkspaceRelativePath = (absolutePath: string) => {
+  if (!absolutePath.startsWith(`${AUTOMATION_WORKSPACE_ROOT}/`)) {
+    throw new Error(
+      `Automation path '${absolutePath}' must stay under ${AUTOMATION_WORKSPACE_ROOT}.`,
+    );
+  }
+
+  return normalizeRelativePath(absolutePath.slice(`${AUTOMATION_WORKSPACE_ROOT}/`.length));
+};
+
 const createScriptId = (binding: AutomationManifestBinding, scriptPath: string) =>
   `script:${binding.script.key}@${binding.script.version}:${scriptPath}`;
 
@@ -183,9 +242,11 @@ const compareScriptEntries = (
   return left.path.localeCompare(right.path);
 };
 
-const compareBindingEntries = (
-  left: AutomationBindingCatalogEntry,
-  right: AutomationBindingCatalogEntry,
+const compareBindingEntries = <
+  TBinding extends { source: string; eventType: string; triggerOrder: number | null; id: string },
+>(
+  left: TBinding,
+  right: TBinding,
 ) => {
   const sourceOrder = left.source.localeCompare(right.source);
   if (sourceOrder !== 0) {
@@ -204,6 +265,18 @@ const compareBindingEntries = (
   }
 
   return left.id.localeCompare(right.id);
+};
+
+const compareWorkspaceScriptEntries = (
+  left: AutomationWorkspaceScriptEntry,
+  right: AutomationWorkspaceScriptEntry,
+) => {
+  const pathOrder = left.path.localeCompare(right.path);
+  if (pathOrder !== 0) {
+    return pathOrder;
+  }
+
+  return left.absolutePath.localeCompare(right.absolutePath);
 };
 
 const assertCompatibleScriptEntry = (
@@ -261,6 +334,237 @@ const readRequiredFile = async (fileSystem: IFileSystem, absolutePath: string, l
   }
 };
 
+const readAutomationWorkspaceTextFile = async (
+  fileSystem: IFileSystem,
+  absolutePath: string,
+  label: string,
+) => {
+  try {
+    return await fileSystem.readFile(absolutePath, "utf-8");
+  } catch (error) {
+    throw new Error(
+      `${label} '${absolutePath}' could not be read from the automation workspace: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
+const buildAutomationManifestSummary = (
+  manifest: AutomationManifest,
+): AutomationManifestSummary => {
+  const bindingIds = new Set<string>();
+  const scriptsById = new Map<string, AutomationManifestScriptEntry>();
+  const bindings = [] as AutomationManifestBindingEntry[];
+
+  for (const binding of manifest.bindings) {
+    if (bindingIds.has(binding.id)) {
+      throw new Error(`Automation manifest contains duplicate binding id '${binding.id}'.`);
+    }
+    bindingIds.add(binding.id);
+
+    const scriptPath = normalizeScriptRelativePath(binding.script.path, binding.id);
+    const absoluteScriptPath = toAbsoluteAutomationPath(scriptPath);
+    const scriptId = createScriptId(binding, scriptPath);
+    const scriptEnv = resolveBindingScriptEnv(binding);
+    const existingScript = scriptsById.get(scriptId);
+
+    if (existingScript) {
+      if (
+        existingScript.key !== binding.script.key ||
+        existingScript.name !== binding.script.name ||
+        existingScript.engine !== binding.script.engine ||
+        existingScript.path !== scriptPath ||
+        existingScript.absolutePath !== absoluteScriptPath ||
+        existingScript.version !== binding.script.version
+      ) {
+        throw new Error(
+          `Automation binding '${binding.id}' reuses script identity '${existingScript.id}' with conflicting script metadata.`,
+        );
+      }
+
+      existingScript.bindingIds.push(binding.id);
+      existingScript.bindingCount += 1;
+      if (binding.enabled !== false) {
+        existingScript.enabledBindingCount += 1;
+        existingScript.enabled = true;
+      }
+    } else {
+      scriptsById.set(scriptId, {
+        id: scriptId,
+        key: binding.script.key,
+        name: binding.script.name,
+        engine: binding.script.engine,
+        path: scriptPath,
+        absolutePath: absoluteScriptPath,
+        version: binding.script.version,
+        bindingIds: [binding.id],
+        bindingCount: 1,
+        enabledBindingCount: binding.enabled !== false ? 1 : 0,
+        enabled: binding.enabled !== false,
+      });
+    }
+
+    bindings.push({
+      id: binding.id,
+      source: binding.source,
+      eventType: binding.eventType,
+      enabled: binding.enabled !== false,
+      triggerOrder: binding.triggerOrder ?? null,
+      scriptId,
+      scriptKey: binding.script.key,
+      scriptName: binding.script.name,
+      scriptPath,
+      absoluteScriptPath,
+      scriptVersion: binding.script.version,
+      scriptEngine: binding.script.engine,
+      scriptEnv,
+    });
+  }
+
+  const scripts = Array.from(scriptsById.values())
+    .map((script) => ({
+      ...script,
+      bindingIds: script.bindingIds.slice().sort(),
+    }))
+    .sort((left, right) => {
+      const nameOrder = left.name.localeCompare(right.name);
+      if (nameOrder !== 0) {
+        return nameOrder;
+      }
+
+      const keyOrder = left.key.localeCompare(right.key);
+      if (keyOrder !== 0) {
+        return keyOrder;
+      }
+
+      return left.path.localeCompare(right.path);
+    });
+
+  return {
+    version: manifest.version,
+    manifestPath: AUTOMATION_BINDINGS_MANIFEST_PATH,
+    bindings: bindings.sort(compareBindingEntries),
+    scripts,
+  } satisfies AutomationManifestSummary;
+};
+
+export const loadAutomationManifest = async (
+  fileSystem: IFileSystem,
+): Promise<AutomationManifest> => {
+  const manifestContent = await readRequiredFile(
+    fileSystem,
+    AUTOMATION_BINDINGS_MANIFEST_PATH,
+    "Automation manifest",
+  );
+  return parseAutomationManifest(manifestContent);
+};
+
+export const loadAutomationManifestSummary = async (
+  fileSystem: IFileSystem,
+): Promise<AutomationManifestSummary> => {
+  const manifest = await loadAutomationManifest(fileSystem);
+  return buildAutomationManifestSummary(manifest);
+};
+
+const isAutomationWorkspaceDirectoryMissingError = (error: unknown): boolean => {
+  if (error instanceof FileSystemError) {
+    return error.code === "ENOENT";
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.message === "Path not found." ||
+    error.message === "File not found." ||
+    error.message.startsWith("ENOENT:") ||
+    error.message.endsWith(" was not found.")
+  );
+};
+
+const listAutomationWorkspaceFilePaths = async (
+  fileSystem: IFileSystem,
+  absolutePath: string,
+): Promise<string[]> => {
+  let dirents: DirentEntry[] | null = null;
+
+  if (fileSystem.readdirWithFileTypes) {
+    try {
+      dirents = await fileSystem.readdirWithFileTypes(absolutePath);
+    } catch (error) {
+      if (isAutomationWorkspaceDirectoryMissingError(error)) {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  if (!dirents) {
+    let names: string[];
+    try {
+      names = await fileSystem.readdir(absolutePath);
+    } catch (error) {
+      if (isAutomationWorkspaceDirectoryMissingError(error)) {
+        return [];
+      }
+
+      throw error;
+    }
+
+    dirents = names
+      .slice()
+      .sort((left, right) => left.localeCompare(right))
+      .map(
+        (name) =>
+          ({
+            name,
+            isFile: false,
+            isDirectory: false,
+            isSymbolicLink: false,
+          }) satisfies DirentEntry,
+      );
+  }
+
+  const sortedDirents = dirents.slice().sort((left, right) => left.name.localeCompare(right.name));
+  const paths = [] as string[];
+
+  for (const entry of sortedDirents) {
+    const childPath = fileSystem.resolvePath(absolutePath, entry.name);
+    const isDirectory = entry.isDirectory;
+    const isFile = entry.isFile;
+
+    if (!isDirectory && !isFile) {
+      let stat;
+      try {
+        stat = await fileSystem.stat(childPath);
+      } catch {
+        continue;
+      }
+
+      if (stat.isDirectory) {
+        paths.push(...(await listAutomationWorkspaceFilePaths(fileSystem, childPath)));
+        continue;
+      }
+
+      if (stat.isFile) {
+        paths.push(childPath);
+      }
+
+      continue;
+    }
+
+    if (isDirectory) {
+      paths.push(...(await listAutomationWorkspaceFilePaths(fileSystem, childPath)));
+      continue;
+    }
+
+    paths.push(childPath);
+  }
+
+  return paths;
+};
+
 /**
  * Intentionally minimal filesystem with no upload, resend, or durable hooks.
  * Only used as a last-resort fallback when no `env` or pre-built filesystem is
@@ -272,6 +576,45 @@ export const createMinimalFileSystem = async (orgId?: string): Promise<IFileSyst
     orgId: orgId?.trim() || "automation-default-org",
     uploadConfig: null,
   });
+};
+
+export const listAutomationWorkspaceScripts = async (
+  fileSystem: IFileSystem,
+): Promise<AutomationWorkspaceScriptEntry[]> => {
+  const absolutePaths = await listAutomationWorkspaceFilePaths(fileSystem, AUTOMATION_SCRIPTS_ROOT);
+
+  return absolutePaths
+    .map((absolutePath) => ({
+      path: toAutomationWorkspaceRelativePath(absolutePath),
+      absolutePath,
+      engine: "bash" as const,
+    }))
+    .sort(compareWorkspaceScriptEntries);
+};
+
+export const readAutomationWorkspaceScript = async (
+  fileSystem: IFileSystem,
+  scriptPath: string,
+): Promise<AutomationScriptCatalogEntry> => {
+  const normalizedPath = normalizeScriptRelativePath(scriptPath, scriptPath.trim() || "script");
+  const absolutePath = toAbsoluteAutomationPath(normalizedPath);
+  const body = await readAutomationWorkspaceTextFile(fileSystem, absolutePath, "Automation script");
+
+  return {
+    id: normalizedPath,
+    key: normalizedPath.replace(/^scripts\//, "").replace(/\.[^.]+$/, ""),
+    name: normalizedPath,
+    engine: "bash",
+    path: normalizedPath,
+    absolutePath,
+    version: 1,
+    body,
+    scriptLoadError: null,
+    bindingIds: [],
+    bindingCount: 0,
+    enabledBindingCount: 0,
+    enabled: false,
+  } satisfies AutomationScriptCatalogEntry;
 };
 
 export const resolveAutomationFileSystem = async (
@@ -438,10 +781,18 @@ export const loadAutomationCatalogFromConfig = async (
   return loadAutomationCatalog(fileSystem);
 };
 
-export const getAutomationBindingsForEvent = (
-  catalog: AutomationCatalog,
+export const getAutomationBindingsForEvent = <
+  TBinding extends {
+    id: string;
+    enabled: boolean;
+    source: string;
+    eventType: string;
+    triggerOrder: number | null;
+  },
+>(
+  catalog: { bindings: TBinding[] },
   event: { source: string; eventType: string },
-): AutomationBindingCatalogEntry[] => {
+): TBinding[] => {
   return catalog.bindings
     .filter(
       (binding) =>

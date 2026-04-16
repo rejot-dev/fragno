@@ -31,7 +31,6 @@ export default [
       route("automations/:orgId", "routes/backoffice/automations/organisation-layout.tsx", [
         index("routes/backoffice/automations/organisation-index.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
-        route("triggers", "routes/backoffice/automations/triggers.tsx"),
         route("identity", "routes/backoffice/automations/identity.tsx"),
       ]),
       route("environments", "routes/backoffice/environments/index.tsx"),

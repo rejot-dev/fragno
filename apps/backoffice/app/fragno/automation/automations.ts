@@ -80,18 +80,14 @@ export const createAutomationsDispatcher = (
   automationFragment: ReturnType<typeof createAutomationFragment>,
   state: DurableObjectState,
   env: CloudflareEnv,
-): DurableHooksDispatcherDurableObjectHandler | null => {
-  try {
-    const dispatcherFactory = createDurableHooksProcessor([workflowsFragment, automationFragment], {
-      onProcessError: (error) => {
-        console.error("Automations durable hook processor error", error);
-      },
-    });
-    return dispatcherFactory(state, env);
-  } catch (error) {
-    console.warn("Automations durable hook processor disabled", error);
-    return null;
-  }
+): DurableHooksDispatcherDurableObjectHandler => {
+  const dispatcherFactory = createDurableHooksProcessor([workflowsFragment, automationFragment], {
+    onProcessError: (error) => {
+      console.error("Automations durable hook processor error", error);
+    },
+  });
+
+  return dispatcherFactory(state, env);
 };
 
 export const buildNotConfiguredResponse = () =>

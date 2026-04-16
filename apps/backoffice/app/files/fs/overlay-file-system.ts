@@ -1,4 +1,4 @@
-import { createUnsupportedOperationFileSystemError } from "../fs-errors";
+import { FileSystemError, createUnsupportedOperationFileSystemError } from "../fs-errors";
 import type { DirentEntry, FsStat } from "../interface";
 import { normalizeMountedFileSystem } from "../mounted-file-system";
 import type { FileEntryDescriptor, MountedFileSystem } from "../types";
@@ -83,16 +83,24 @@ export const createOverlayMountedFileSystem = (
 
     try {
       return await readLayer.stat(path);
-    } catch {
-      return null;
+    } catch (error) {
+      if (isPathNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
     }
   };
 
   const safeWriteStat = async (path: string): Promise<FsStat | null> => {
     try {
       return await writeLayer.stat(path);
-    } catch {
-      return null;
+    } catch (error) {
+      if (isPathNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
     }
   };
 
@@ -100,16 +108,30 @@ export const createOverlayMountedFileSystem = (
     if (readLayer.readdirWithFileTypes) {
       try {
         return await readLayer.readdirWithFileTypes(path);
-      } catch {
-        return [];
+      } catch (error) {
+        if (isPathNotFoundError(error)) {
+          return [];
+        }
+
+        throw error;
       }
     }
 
     if (readLayer.readdir) {
+      let names: string[];
       try {
-        const names = await readLayer.readdir(path);
-        return Promise.all(
-          names.map(async (name) => {
+        names = await readLayer.readdir(path);
+      } catch (error) {
+        if (isPathNotFoundError(error)) {
+          return [];
+        }
+
+        throw error;
+      }
+
+      const entries = await Promise.all(
+        names.map(async (name) => {
+          try {
             const stat = await readLayer.stat?.(resolvePath(path, name));
             return {
               name,
@@ -117,25 +139,49 @@ export const createOverlayMountedFileSystem = (
               isDirectory: stat?.isDirectory ?? false,
               isSymbolicLink: stat?.isSymbolicLink ?? false,
             } satisfies DirentEntry;
-          }),
-        );
-      } catch {
-        return [];
-      }
+          } catch (error) {
+            if (isPathNotFoundError(error)) {
+              return null;
+            }
+
+            throw error;
+          }
+        }),
+      );
+
+      return entries.filter((entry): entry is DirentEntry => entry !== null);
     }
 
     return [];
   };
 
   const safeWriteDirents = async (path: string): Promise<DirentEntry[]> => {
-    try {
-      if (writeLayer.readdirWithFileTypes) {
+    if (writeLayer.readdirWithFileTypes) {
+      try {
         return await writeLayer.readdirWithFileTypes(path);
+      } catch (error) {
+        if (isPathNotFoundError(error)) {
+          return [];
+        }
+
+        throw error;
+      }
+    }
+
+    let names: string[];
+    try {
+      names = await writeLayer.readdir(path);
+    } catch (error) {
+      if (isPathNotFoundError(error)) {
+        return [];
       }
 
-      const names = await writeLayer.readdir(path);
-      return Promise.all(
-        names.map(async (name) => {
+      throw error;
+    }
+
+    const entries = await Promise.all(
+      names.map(async (name) => {
+        try {
           const stat = await writeLayer.stat(resolvePath(path, name));
           return {
             name,
@@ -143,11 +189,17 @@ export const createOverlayMountedFileSystem = (
             isDirectory: stat.isDirectory,
             isSymbolicLink: stat.isSymbolicLink,
           } satisfies DirentEntry;
-        }),
-      );
-    } catch {
-      return [];
-    }
+        } catch (error) {
+          if (isPathNotFoundError(error)) {
+            return null;
+          }
+
+          throw error;
+        }
+      }),
+    );
+
+    return entries.filter((entry): entry is DirentEntry => entry !== null);
   };
 
   const describeOverlayEntry = async (path: string): Promise<FileEntryDescriptor | null> => {
@@ -191,6 +243,7 @@ export const createOverlayMountedFileSystem = (
 
   const readOverlayDirents = async (path: string): Promise<DirentEntry[]> => {
     const normalizedPath = normalizeDirectoryPath(path);
+    const overlayPath = stripTrailingSlash(normalizedPath);
     const writeDirents = await safeWriteDirents(normalizedPath);
     const readDirents = await safeReadDirents(normalizedPath);
     const merged = new Map<string, DirentEntry>();
@@ -203,12 +256,27 @@ export const createOverlayMountedFileSystem = (
       merged.set(entry.name, entry);
     }
 
+    const writeStat = await safeWriteStat(overlayPath);
+    if (writeStat?.isFile) {
+      merged.clear();
+    } else {
+      for (const entry of writeDirents) {
+        if (!entry.isFile) {
+          continue;
+        }
+
+        const shadowedPrefix = `${entry.name}/`;
+        for (const name of Array.from(merged.keys())) {
+          if (name.startsWith(shadowedPrefix)) {
+            merged.delete(name);
+          }
+        }
+      }
+    }
+
     if (merged.size === 0) {
-      const exists = await safeWriteExists(normalizedPath);
-      const stat = exists
-        ? await safeWriteStat(normalizedPath)
-        : await safeReadStat(normalizedPath);
-      if (!stat?.isDirectory) {
+      const readStat = writeStat ? null : await safeReadStat(overlayPath);
+      if (!writeStat?.isDirectory && !readStat?.isDirectory) {
         throw new Error("Path not found.");
       }
     }
@@ -255,12 +323,8 @@ export const createOverlayMountedFileSystem = (
 
   const hasReadLayerPathAtOrBelow = async (path: string): Promise<boolean> => {
     const readStat = await safeReadStat(path);
-    if (readStat?.isFile) {
+    if (readStat) {
       return true;
-    }
-
-    if (!readStat?.isDirectory) {
-      return false;
     }
 
     const queue = [normalizeDirectoryPath(path)];
@@ -272,15 +336,8 @@ export const createOverlayMountedFileSystem = (
       }
 
       const entries = await safeReadDirents(next);
-
-      for (const entry of entries) {
-        if (entry.isFile) {
-          return true;
-        }
-
-        if (entry.isDirectory) {
-          queue.push(normalizeDirectoryPath(resolvePath(next, entry.name)));
-        }
+      if (entries.length > 0) {
+        return true;
       }
     }
 
@@ -318,8 +375,12 @@ export const createOverlayMountedFileSystem = (
       return readOverlayDirents(path);
     },
     async readFile(path, options) {
-      if (await safeWriteExists(path)) {
-        return writeLayer.readFile(path, options);
+      try {
+        return await writeLayer.readFile(path, options);
+      } catch (error) {
+        if (!isPathNotFoundError(error)) {
+          throw error;
+        }
       }
 
       if (readLayer.readFile) {
@@ -333,8 +394,17 @@ export const createOverlayMountedFileSystem = (
       throw new Error("This mounted filesystem does not support reading files.");
     },
     async readFileBuffer(path) {
-      if (await safeWriteExists(path)) {
-        return writeLayer.readFileBuffer(path);
+      try {
+        return await writeLayer.readFileBuffer(path);
+      } catch (error) {
+        if (!isPathNotFoundError(error)) {
+          throw error;
+        }
+
+        const writeStat = await safeWriteStat(path);
+        if (writeStat?.isDirectory) {
+          throw new Error("This mounted filesystem does not support reading files.");
+        }
       }
 
       if (readLayer.readFileBuffer) {
@@ -348,11 +418,20 @@ export const createOverlayMountedFileSystem = (
       throw new Error("This mounted filesystem does not support reading files.");
     },
     async readFileStream(path) {
-      if (await safeWriteExists(path)) {
-        if (writeLayer.readFileStream) {
-          return writeLayer.readFileStream(path);
-        }
+      if (writeLayer.readFileStream) {
+        try {
+          return await writeLayer.readFileStream(path);
+        } catch (error) {
+          if (!isPathNotFoundError(error)) {
+            throw error;
+          }
 
+          const writeStat = await safeWriteStat(path);
+          if (writeStat?.isDirectory) {
+            throw createUnsupportedOperationFileSystemError("read stream", path);
+          }
+        }
+      } else if (await safeWriteStat(path)) {
         throw createUnsupportedOperationFileSystemError("read stream", path);
       }
 
@@ -371,10 +450,10 @@ export const createOverlayMountedFileSystem = (
       await writeLayer.mkdir(path, options);
     },
     async rm(path, options) {
-      const writeExists = await safeWriteExists(path);
+      const writeStat = await safeWriteStat(path);
       const readBacked = await hasReadLayerPathAtOrBelow(path);
 
-      if (!writeExists) {
+      if (!writeStat) {
         if (readBacked) {
           throw new Error(
             `Cannot delete '${path}' because it is backed by the starter read layer. Tombstones are not supported yet.`,
@@ -412,6 +491,18 @@ export const createOverlayMountedFileSystem = (
       return Array.from(paths).sort();
     },
   });
+};
+
+const isPathNotFoundError = (error: unknown): boolean => {
+  if (error instanceof FileSystemError) {
+    return error.code === "ENOENT";
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message === "Path not found." || error.message === "File not found.";
 };
 
 const createDirectoryStat = (): FsStat => ({

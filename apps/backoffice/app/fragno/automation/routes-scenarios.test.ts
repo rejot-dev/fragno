@@ -115,4 +115,42 @@ describe("automation routes /scenarios", () => {
       ]),
     );
   });
+
+  test("returns 400 for invalid scenario paths", async () => {
+    const response = await fragment.callRoute("POST", "/scenarios/run", {
+      body: {
+        path: "../telegram-pi-session.json",
+      },
+    });
+
+    expect(response.type).toBe("error");
+    if (response.type !== "error") {
+      throw new Error("Expected invalid path error response");
+    }
+
+    expect(response.status).toBe(400);
+    expect(response.error).toMatchObject({
+      code: "AUTOMATION_SCENARIO_PATH_INVALID",
+      message: "Relative path cannot contain '.' or '..' segments.",
+    });
+  });
+
+  test("returns 404 when the scenario file does not exist", async () => {
+    const response = await fragment.callRoute("POST", "/scenarios/run", {
+      body: {
+        path: "missing-scenario.json",
+      },
+    });
+
+    expect(response.type).toBe("error");
+    if (response.type !== "error") {
+      throw new Error("Expected missing scenario error response");
+    }
+
+    expect(response.status).toBe(404);
+    expect(response.error).toMatchObject({
+      code: "AUTOMATION_SCENARIO_NOT_FOUND",
+    });
+    expect(response.error.message).toContain("missing-scenario.json");
+  });
 });

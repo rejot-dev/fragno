@@ -18,7 +18,9 @@ import {
   AUTOMATION_SCRIPT_AGENT_ENV_KEY,
   AUTOMATION_WORKSPACE_ROOT,
   getAutomationBindingsForEvent,
+  listAutomationWorkspaceScripts,
   loadAutomationCatalog,
+  readAutomationWorkspaceScript,
 } from "./catalog";
 import { AUTOMATION_SOURCE_EVENT_TYPES, AUTOMATION_SOURCES } from "./contracts";
 
@@ -142,6 +144,9 @@ const createAutomationFileSystem = async (
   } satisfies FilesContext);
 };
 
+const withFileSystemOverrides = <T extends object>(fileSystem: T, overrides: Partial<T>): T =>
+  Object.assign(Object.create(fileSystem), overrides);
+
 describe("automation catalog", () => {
   test("loads the starter automation manifest and scripts from /workspace", async () => {
     const fileSystem = await createAutomationFileSystem();
@@ -170,6 +175,68 @@ describe("automation catalog", () => {
     expect(telegramBindings.map((binding) => binding.id)).toEqual(
       expect.arrayContaining(["telegram-claim-linking-start", "telegram-pi-session-ensure"]),
     );
+  });
+
+  test("lists workspace scripts even when they are not referenced by bindings.json", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      "automations/scripts/unbound-workspace-script.sh": 'echo "hello from workspace"',
+    });
+
+    const scripts = await listAutomationWorkspaceScripts(fileSystem);
+
+    expect(scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "scripts/unbound-workspace-script.sh",
+          absolutePath: `${AUTOMATION_WORKSPACE_ROOT}/scripts/unbound-workspace-script.sh`,
+        }),
+      ]),
+    );
+  });
+
+  test("treats a missing workspace scripts directory as empty", async () => {
+    const fileSystem = withFileSystemOverrides(await createAutomationFileSystem(), {
+      async readdirWithFileTypes() {
+        throw new Error("Path not found.");
+      },
+    });
+
+    await expect(listAutomationWorkspaceScripts(fileSystem)).resolves.toEqual([]);
+  });
+
+  test("rethrows non-missing workspace directory errors from readdirWithFileTypes", async () => {
+    const fileSystem = withFileSystemOverrides(await createAutomationFileSystem(), {
+      async readdirWithFileTypes() {
+        throw Object.assign(new Error("Permission denied."), { code: "EACCES" });
+      },
+    });
+
+    await expect(listAutomationWorkspaceScripts(fileSystem)).rejects.toThrow("Permission denied.");
+  });
+
+  test("rethrows non-missing workspace directory errors from readdir fallback", async () => {
+    const fileSystem = withFileSystemOverrides(await createAutomationFileSystem(), {
+      readdirWithFileTypes: undefined,
+      async readdir() {
+        throw Object.assign(new Error("I/O failure."), { code: "EIO" });
+      },
+    });
+
+    await expect(listAutomationWorkspaceScripts(fileSystem)).rejects.toThrow("I/O failure.");
+  });
+
+  test("reads an individual workspace script only when requested", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      "automations/scripts/lazy-read.sh": 'echo "lazy"',
+    });
+
+    const script = await readAutomationWorkspaceScript(fileSystem, "scripts/lazy-read.sh");
+
+    expect(script).toMatchObject({
+      path: "scripts/lazy-read.sh",
+      absolutePath: `${AUTOMATION_WORKSPACE_ROOT}/scripts/lazy-read.sh`,
+      body: 'echo "lazy"',
+    });
   });
 
   test("rejects malformed manifests with a clear error", async () => {

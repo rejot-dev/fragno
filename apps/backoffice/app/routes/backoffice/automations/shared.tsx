@@ -13,10 +13,10 @@ export type AutomationScriptItem = {
   key: string;
   name: string;
   engine: string;
-  script: string;
+  script: string | null;
   path: string;
   absolutePath: string;
-  version: number;
+  version: number | null;
   scriptLoadError?: string | null;
   bindingIds: string[];
   bindingCount: number;
@@ -107,14 +107,12 @@ export type AutomationLayoutContext = {
   scripts: AutomationScriptItem[];
   triggerBindings: AutomationTriggerItem[];
   identityBindings: AutomationIdentityItem[];
-  scenarios: AutomationScenarioItem[];
   scriptsError: string | null;
   triggerBindingsError: string | null;
   identityBindingsError: string | null;
-  scenariosError: string | null;
 };
 
-export type AutomationTab = "scripts" | "triggers" | "identity";
+export type AutomationTab = "scripts" | "identity";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -184,11 +182,6 @@ export function AutomationTabs({ orgId, activeTab }: { orgId: string; activeTab:
       id: "scripts" as const,
       label: "Scripts",
       to: `${basePath}/scripts`,
-    },
-    {
-      id: "triggers" as const,
-      label: "Triggers",
-      to: `${basePath}/triggers`,
     },
     {
       id: "identity" as const,
