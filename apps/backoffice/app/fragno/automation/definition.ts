@@ -11,11 +11,7 @@ import {
   loadAutomationCatalog,
   resolveAutomationFileSystem,
 } from "./catalog";
-import {
-  type AutomationEvent,
-  type AutomationSourceAdapterRegistry,
-  getSourceAdapter,
-} from "./contracts";
+import type { AutomationEvent } from "./contracts";
 import {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
@@ -51,7 +47,6 @@ export type AutomationWorkflowsService = Pick<
 
 export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
   env?: CloudflareEnv;
-  sourceAdapters?: Partial<AutomationSourceAdapterRegistry>;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     idempotencyKey: string;
@@ -75,8 +70,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
   .extend(withDatabase(automationFragmentSchema))
   .usesOptionalService<"workflows", AutomationWorkflowsService>("workflows")
   .provideHooks(({ defineHook, config }) => {
-    const sourceAdapters = config.sourceAdapters ?? {};
-
     return {
       internalIngestEvent: defineHook(async function (payload) {
         const resolvedFs = await resolveAutomationFileSystem(
@@ -100,13 +93,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           return;
         }
 
-        const sourceAdapter = getSourceAdapter(sourceAdapters, payload.source);
         const runtime = createAutomationBashRuntime({
           hookContext: this,
           env: config.env,
           event: payload,
-          sourceAdapters,
-          sourceAdapter,
         });
         const pi = await config.createPiAutomationContext?.({
           event: payload,
@@ -120,8 +110,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               hookContext: this,
               env: config.env,
               event,
-              sourceAdapters,
-              sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
             }),
           createPiAutomationContext: config.createPiAutomationContext,
         });

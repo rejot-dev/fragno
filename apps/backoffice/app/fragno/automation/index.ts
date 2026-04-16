@@ -8,8 +8,6 @@ import type {
   AutomationEventActor,
   AutomationEventPayload,
   AutomationEventSubject,
-  AutomationSourceAdapter,
-  AutomationSourceAdapterRegistry,
 } from "./contracts";
 import {
   automationFragmentDefinition,
@@ -92,8 +90,6 @@ export type {
   AutomationKnownEventType,
   AutomationEventTypeForSource,
   AutomationSource,
-  AutomationSourceAdapter,
-  AutomationSourceAdapterRegistry,
 } from "./contracts";
 export type {
   AutomationScenarioCatalogEntry,
@@ -138,7 +134,7 @@ export type {
   AutomationIdentityBindingRecord,
 } from "./engine/bash";
 export type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
-export type { AutomationReplyResult, EventBashRuntime } from "../bash-runtime/event-bash-runtime";
+export type { EventBashRuntime } from "../bash-runtime/event-bash-runtime";
 export type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 export type {
   TelegramAutomationFileMetadata,

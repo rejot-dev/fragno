@@ -11,11 +11,7 @@ import {
   type TelegramMessageHookPayload,
 } from "@fragno-dev/telegram-fragment";
 
-import type {
-  AutomationKnownEvent,
-  AutomationSourceAdapter,
-  AutomationSourceReplyInput,
-} from "./automation/contracts";
+import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 
 export type TelegramConfig = Pick<
@@ -76,18 +72,6 @@ export const buildTelegramAutomationEvent = (
     type: "external",
     externalId: payload.chatId,
   },
-});
-
-export const createTelegramSourceAdapter = (
-  options: {
-    reply?: (input: AutomationSourceReplyInput) => Promise<void>;
-  } = {},
-): AutomationSourceAdapter<typeof AUTOMATION_SOURCES.telegram> => ({
-  source: AUTOMATION_SOURCES.telegram,
-  eventSchemas: {
-    [AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived]: telegramMessageReceivedPayloadSchema,
-  },
-  ...(options.reply ? { reply: options.reply } : {}),
 });
 
 export function createAdapter(state?: DurableObjectState) {

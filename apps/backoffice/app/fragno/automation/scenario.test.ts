@@ -72,9 +72,10 @@ describe("automation scenario simulator", () => {
           },
         },
       ]),
-      "automations/scripts/alpha.sh": 'event.reply --text "from-alpha"',
-      "automations/scripts/beta.sh": 'event.reply --text "from-beta"',
-      "automations/scripts/disabled.sh": 'event.reply --text "should-not-run"',
+      "automations/scripts/alpha.sh": 'telegram.chat.send --chat-id chat-1 --text "from-alpha"',
+      "automations/scripts/beta.sh": 'telegram.chat.send --chat-id chat-1 --text "from-beta"',
+      "automations/scripts/disabled.sh":
+        'telegram.chat.send --chat-id chat-1 --text "should-not-run"',
     });
 
     const result = await simulateAutomationScenario({
@@ -124,7 +125,7 @@ describe("automation scenario simulator", () => {
         },
       ]),
       "automations/scripts/failing.sh": ['echo "boom" >&2', "exit 9"].join("\n"),
-      "automations/scripts/later.sh": 'event.reply --text "should-not-run"',
+      "automations/scripts/later.sh": 'telegram.chat.send --chat-id chat-1 --text "should-not-run"',
     });
 
     const result = await simulateAutomationScenario({
@@ -174,7 +175,7 @@ describe("automation scenario simulator", () => {
       "automations/scripts/pi-turn.sh": [
         'text="$(jq -r \'.payload.text // ""\' /context/event.json)"',
         'assistant_text="$(pi.session.turn --session-id session-1 --text "$text" --print assistantText)"',
-        'event.reply --text "$assistant_text"',
+        'telegram.chat.send --chat-id chat-1 --text "$assistant_text"',
       ].join("\n"),
     });
 

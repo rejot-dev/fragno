@@ -429,7 +429,6 @@ const scenarioCommandMocksSchema = z
     "automations.identity.bind-actor": commandMockSchema.optional(),
     "automations.script.run": commandMockSchema.optional(),
     "otp.identity.create-claim": commandMockSchema.optional(),
-    "event.reply": commandMockSchema.optional(),
     "event.emit": commandMockSchema.optional(),
     "pi.session.create": commandMockSchema.optional(),
     "pi.session.get": commandMockSchema.optional(),
@@ -993,23 +992,6 @@ const applySuccessfulCommandState = (
       );
       break;
     }
-    case "event.reply": {
-      const replySource = command.args.source ?? context.event.source;
-      const externalActorId =
-        command.args.externalActorId ??
-        (replySource === context.event.source ? context.event.actor?.externalId : undefined);
-      if (!externalActorId) {
-        break;
-      }
-
-      context.state.replies.push({
-        eventId: context.event.id,
-        source: replySource,
-        externalActorId,
-        text: command.args.text,
-      });
-      break;
-    }
     case "telegram.chat.send": {
       context.state.replies.push({
         eventId: context.event.id,
@@ -1109,39 +1091,6 @@ const executeBuiltinCommand = async (
       context.state.claims.push(clone(claim));
       return {
         data: claim,
-      };
-    }
-    case "event.reply": {
-      const replySource = command.args.source ?? context.event.source;
-      const activeExternalActorId =
-        command.args.externalActorId ??
-        (replySource === context.event.source ? context.event.actor?.externalId : undefined);
-
-      if (typeof command.args.text !== "string" || command.args.text.length === 0) {
-        throw new Error("event.reply requires a non-empty --text value");
-      }
-
-      if (!activeExternalActorId) {
-        if (replySource !== context.event.source) {
-          throw new Error(
-            `event.reply requires --external-actor-id when replying through source '${replySource}' because the current event source is '${context.event.source}'`,
-          );
-        }
-
-        throw new Error("Cannot call event.reply because no external actor id is available");
-      }
-
-      context.state.replies.push({
-        eventId: context.event.id,
-        source: replySource,
-        externalActorId: activeExternalActorId,
-        text: command.args.text,
-      });
-
-      return {
-        data: {
-          ok: true,
-        },
       };
     }
     case "event.emit": {

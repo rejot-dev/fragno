@@ -4,14 +4,8 @@ import type {
   AutomationCommandContext,
   EventCommandHandlers,
   EventEmitArgs,
-  EventReplyArgs,
 } from "../automation/commands/types";
-import {
-  getSourceAdapter,
-  type AnyAutomationSourceAdapter,
-  type AutomationEvent,
-  type AutomationSourceAdapterRegistry,
-} from "../automation/contracts";
+import type { AutomationEvent } from "../automation/contracts";
 import type { BashCommandFactoryInput } from "./bash-host";
 
 export type AutomationEmitEventResult = {
@@ -22,17 +16,9 @@ export type AutomationEmitEventResult = {
   eventType: string;
 };
 
-export type AutomationReplyResult = {
-  ok: true;
-};
-
 export type EventBashRuntime = {
-  reply: (input: EventReplyArgs) => Promise<AutomationReplyResult>;
   emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
 };
-
-export type EventBashRuntimeInput = Omit<EventBashRuntime, "reply"> &
-  Partial<Pick<EventBashRuntime, "reply">>;
 
 export type RegisteredEventBashCommandContext = AutomationCommandContext & {
   runtime: EventBashRuntime;
@@ -41,16 +27,9 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 export type CreateEventBashRuntimeOptions = {
   env?: CloudflareEnv;
   event: AutomationEvent;
-  sourceAdapters: Partial<AutomationSourceAdapterRegistry>;
-  sourceAdapter: AnyAutomationSourceAdapter | undefined;
 };
 
 const eventCommandHandlers: EventCommandHandlers<RegisteredEventBashCommandContext> = {
-  "event.reply": async (command, context) => {
-    return {
-      data: await context.runtime.reply(command.args),
-    };
-  },
   "event.emit": async (command, context) => {
     return {
       data: await context.runtime.emitEvent(command.args),
@@ -83,46 +62,7 @@ const buildIngestResult = (event: AutomationEvent): AutomationEmitEventResult =>
 export const createEventBashRuntime = ({
   env,
   event,
-  sourceAdapters,
-  sourceAdapter,
 }: CreateEventBashRuntimeOptions): EventBashRuntime => ({
-  reply: async ({ source, externalActorId, text }) => {
-    const replySource = source ?? event.source;
-    const activeSourceAdapter =
-      replySource === event.source
-        ? (sourceAdapter ?? getSourceAdapter(sourceAdapters, replySource))
-        : getSourceAdapter(sourceAdapters, replySource);
-    const replyActorId =
-      externalActorId ?? (replySource === event.source ? event.actor?.externalId : undefined);
-
-    if (typeof text !== "string" || text.length === 0) {
-      throw new Error("event.reply requires a non-empty --text value");
-    }
-
-    if (!activeSourceAdapter?.reply) {
-      throw new Error(`No reply handler is registered for source: ${replySource}`);
-    }
-
-    if (!replyActorId) {
-      if (replySource !== event.source) {
-        throw new Error(
-          `event.reply requires --external-actor-id when replying through source '${replySource}' because the current event source is '${event.source}'`,
-        );
-      }
-
-      throw new Error("Cannot call event.reply because no external actor id is available");
-    }
-
-    await activeSourceAdapter.reply({
-      event,
-      externalActorId: replyActorId,
-      text,
-    });
-
-    return {
-      ok: true,
-    };
-  },
   emitEvent: async ({ eventType, source, externalActorId, actorType, subjectUserId, payload }) => {
     if (!env) {
       throw new Error("event.emit is not configured");

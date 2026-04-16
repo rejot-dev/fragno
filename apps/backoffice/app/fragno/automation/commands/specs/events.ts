@@ -9,41 +9,10 @@ import type {
   AutomationCommandHelp,
   AutomationCommandSpec,
   EventEmitArgs,
-  EventReplyArgs,
   ParsedCommandByName,
 } from "../types";
 
-const HELP: {
-  reply: AutomationCommandHelp;
-  emit: AutomationCommandHelp;
-} = {
-  reply: {
-    summary: "event.reply sends a text reply through a source adapter.",
-    options: [
-      {
-        name: "text",
-        required: true,
-        valueRequired: true,
-        valueName: "text",
-        description: "Text message to send to the actor",
-      },
-      {
-        name: "source",
-        valueRequired: true,
-        valueName: "source",
-        description: "Override reply source. Defaults to current event source",
-      },
-      {
-        name: "external-actor-id",
-        valueRequired: true,
-        valueName: "external-actor-id",
-        description: "Override actor id. Defaults to current event actor external id",
-      },
-    ],
-    examples: [
-      'event.reply --source telegram --external-actor-id user-1 --text "linked successfully"',
-    ],
-  },
+const HELP: { emit: AutomationCommandHelp } = {
   emit: {
     summary: "event.emit triggers another Fragno automation event.",
     options: [
@@ -92,22 +61,6 @@ const HELP: {
   },
 };
 
-const parseEventReply = (args: string[]): ParsedCommandByName["event.reply"] => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "event.reply");
-
-  return {
-    name: "event.reply",
-    args: {
-      text: readStringOption(parsed, "text", true)!,
-      source: readStringOption(parsed, "source"),
-      externalActorId: readStringOption(parsed, "external-actor-id"),
-    },
-    output: readOutputOptions(parsed),
-    rawArgs: args,
-  };
-};
-
 const parseEventEmit = (args: string[]): ParsedCommandByName["event.emit"] => {
   const parsed = parseCliTokens(args);
   assertNoPositionals(parsed, "event.emit");
@@ -128,17 +81,11 @@ const parseEventEmit = (args: string[]): ParsedCommandByName["event.emit"] => {
 };
 
 export const eventCommandSpecs = {
-  "event.reply": {
-    name: "event.reply",
-    help: HELP.reply,
-    parse: parseEventReply,
-  },
   "event.emit": {
     name: "event.emit",
     help: HELP.emit,
     parse: parseEventEmit,
   },
 } satisfies {
-  "event.reply": AutomationCommandSpec<"event.reply", EventReplyArgs>;
   "event.emit": AutomationCommandSpec<"event.emit", EventEmitArgs>;
 };

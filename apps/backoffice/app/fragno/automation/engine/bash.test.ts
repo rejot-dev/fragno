@@ -6,7 +6,6 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 
 import { createBashHost, executeBashAutomation } from "../../bash-runtime/bash-host";
-import { createTelegramSourceAdapter } from "../../telegram";
 import { createAutomationCommands } from "../commands/bash-adapter";
 import {
   AUTOMATIONS_COMMAND_SPEC_LIST,
@@ -20,7 +19,7 @@ import type {
   EventCommandHandlers,
   OtpCommandHandlers,
 } from "../commands/types";
-import { getSourceAdapter, type AutomationEvent } from "../contracts";
+import type { AutomationEvent } from "../contracts";
 import {
   createAutomationBashCommandContext,
   createAutomationBashRuntime,
@@ -74,9 +73,6 @@ const runtime: AutomationBashRuntime = {
     externalId: input.externalActorId,
     code: "123456",
   }),
-  reply: async () => ({
-    ok: true,
-  }),
   emitEvent: async (input) => ({
     accepted: true,
     eventId: "emitted-1",
@@ -122,16 +118,6 @@ describe("bash command runner", () => {
           },
         };
       },
-      "event.reply": async (command) => {
-        context.invocation.push(
-          `reply:${command.args.source ?? ""}:${command.args.externalActorId ?? ""}`,
-        );
-        return {
-          data: {
-            text: command.args.text,
-          },
-        };
-      },
       "event.emit": async (command) => {
         context.invocation.push("emit");
         return {
@@ -162,7 +148,6 @@ describe("bash command runner", () => {
         'linked_user="$(automations.identity.lookup-binding --source telegram --key actor_1 --print value)"\n' +
         'missing_user="$(automations.identity.lookup-binding --source telegram --key missing --print value || true)"\n' +
         'automations.identity.bind-actor --source telegram --key actor_1 --value "$linked_user" --format json\n' +
-        'event.reply --source telegram --external-actor-id actor_2 --text "done"\n' +
         "event.emit --event-type identity.binding.completed --source otp --format json\n" +
         'echo "$claim_url|$linked_user|$missing_user"',
     );
@@ -171,14 +156,7 @@ describe("bash command runner", () => {
     expect(result.stdout?.trim().split("\n").at(-1)).toBe(
       "https://example.com/actor_1|user-for-actor_1|",
     );
-    expect(context.invocation).toEqual([
-      "create",
-      "lookup",
-      "lookup",
-      "bind",
-      "reply:telegram:actor_2",
-      "emit",
-    ]);
+    expect(context.invocation).toEqual(["create", "lookup", "lookup", "bind", "emit"]);
     expect(commandCallsResult).toEqual([
       {
         command: "otp.identity.create-claim",
@@ -198,11 +176,6 @@ describe("bash command runner", () => {
       {
         command: "automations.identity.bind-actor",
         output: '{"value":"user-for-actor_1","key":"actor_1"}',
-        exitCode: 0,
-      },
-      {
-        command: "event.reply",
-        output: "",
         exitCode: 0,
       },
       {
@@ -238,11 +211,6 @@ describe("bash command runner", () => {
           source: "telegram",
           key: "external-id",
           status: "linked",
-        },
-      }),
-      "event.reply": async () => ({
-        data: {
-          ok: true,
         },
       }),
       "event.emit": async () => ({
@@ -304,7 +272,6 @@ describe("bash command runner", () => {
           status: "linked",
         },
       }),
-      "event.reply": async () => ({ data: { ok: true } }),
       "event.emit": async () => ({
         data: {
           accepted: true,
@@ -331,7 +298,6 @@ describe("bash command runner", () => {
       await bash.exec("otp.identity.create-claim --help"),
       await bash.exec("automations.identity.lookup-binding --help"),
       await bash.exec("automations.identity.bind-actor --help"),
-      await bash.exec("event.reply --help"),
       await bash.exec("event.emit --help"),
     ];
 
@@ -357,11 +323,6 @@ describe("bash command runner", () => {
       {
         command: "automations.identity.bind-actor",
         output: expect.stringContaining("automations.identity.bind-actor"),
-        exitCode: 0,
-      },
-      {
-        command: "event.reply",
-        output: expect.stringContaining("event.reply"),
         exitCode: 0,
       },
       {
@@ -397,11 +358,6 @@ describe("bash command runner", () => {
           source: "telegram",
           key: "external-id",
           status: "linked",
-        },
-      }),
-      "event.reply": async () => ({
-        data: {
-          ok: true,
         },
       }),
       "event.emit": async () => ({
@@ -467,11 +423,6 @@ describe("bash command runner", () => {
           status: "linked",
         },
       }),
-      "event.reply": async () => ({
-        data: {
-          ok: true,
-        },
-      }),
       "event.emit": async () => ({
         data: {
           accepted: true,
@@ -518,7 +469,6 @@ describe("bash command runner", () => {
         automation: {
           ...context,
           runtime: {
-            reply: async () => ({ ok: true as const }),
             emitEvent: runtime.emitEvent,
           },
         },
@@ -610,11 +560,6 @@ describe("bash command runner", () => {
           status: "linked",
         },
       }),
-      "event.reply": async () => ({
-        data: {
-          ok: true,
-        },
-      }),
       "event.emit": async () => ({
         data: {
           accepted: true,
@@ -654,82 +599,6 @@ describe("bash command runner", () => {
         command: "otp.identity.create-claim",
         output: "",
         exitCode: 0,
-      },
-    ]);
-  });
-
-  it("can reply through an overridden source adapter", async () => {
-    const replyCalls: Array<{ externalActorId: string; text: string }> = [];
-    const sourceAdapters = {
-      telegram: createTelegramSourceAdapter({
-        reply: async ({ externalActorId, text }) => {
-          replyCalls.push({ externalActorId, text });
-        },
-      }),
-    };
-
-    const event: AutomationEvent = {
-      id: "event-otp-1",
-      orgId: "org-1",
-      source: "otp",
-      eventType: "identity.claim.completed",
-      occurredAt: "2026-01-01T00:00:00.000Z",
-      payload: {
-        linkSource: "telegram",
-        externalActorId: "chat-1",
-      },
-      actor: null,
-      subject: {
-        userId: "user-1",
-      },
-    };
-
-    const automationRuntime = createAutomationBashRuntime({
-      hookContext: {
-        handlerTx: (() => {
-          throw new Error("handlerTx should not be used in this test");
-        }) as never,
-      },
-      event,
-      sourceAdapters,
-      sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
-    });
-    const result = await executeBashAutomation({
-      script: 'event.reply --source telegram --external-actor-id chat-1 --text "linked"',
-      masterFs: new MasterFileSystem({ mounts: [] }),
-      context: createAutomationBashCommandContext({
-        event,
-        binding: {
-          source: "otp",
-          eventType: "identity.claim.completed",
-          scriptId: "script-otp-1",
-        },
-        idempotencyKey: "idempotency-otp-1",
-        runtime: automationRuntime,
-        pi: {
-          runtime: {
-            createSession: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            getSession: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            listSessions: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-            runTurn: async () => {
-              throw new Error("pi automation context not configured for this test");
-            },
-          },
-        },
-      }),
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(replyCalls).toEqual([
-      {
-        externalActorId: "chat-1",
-        text: "linked",
       },
     ]);
   });
@@ -801,7 +670,7 @@ describe("bash command runner", () => {
               exitCode: 0,
               stdout: "echoed output\n",
               stderr: "",
-              commandCalls: [{ command: "event.reply", output: "", exitCode: 0 }],
+              commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
             }),
           },
         },
@@ -823,7 +692,7 @@ describe("bash command runner", () => {
       exitCode: 0,
       stdout: "echoed output\n",
       stderr: "",
-      commandCalls: [{ command: "event.reply", output: "", exitCode: 0 }],
+      commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
     });
   });
 
@@ -866,10 +735,6 @@ describe("bash command runner", () => {
   });
 
   it("provides /context/event.json for automation runs", async () => {
-    const sourceAdapters = {
-      telegram: createTelegramSourceAdapter(),
-    };
-
     const event: AutomationEvent = {
       id: "event-123",
       orgId: "org-1",
@@ -898,8 +763,6 @@ describe("bash command runner", () => {
         }) as never,
       },
       event,
-      sourceAdapters,
-      sourceAdapter: getSourceAdapter(sourceAdapters, event.source),
     });
     const result = await executeBashAutomation({
       script: 'printf "event=%s\\n" "$(cat /context/event.json)"',
@@ -937,8 +800,6 @@ describe("bash command runner", () => {
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: {},
       },
-      sourceAdapters: { telegram: createTelegramSourceAdapter() },
-      sourceAdapter: createTelegramSourceAdapter(),
     });
 
     const result = await executeBashAutomation({
@@ -979,8 +840,6 @@ describe("bash command runner", () => {
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: {},
       },
-      sourceAdapters: { telegram: createTelegramSourceAdapter() },
-      sourceAdapter: createTelegramSourceAdapter(),
     });
 
     await executeBashAutomation({
@@ -1036,8 +895,6 @@ describe("bash command runner", () => {
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: {},
       },
-      sourceAdapters: { telegram: createTelegramSourceAdapter() },
-      sourceAdapter: createTelegramSourceAdapter(),
     });
 
     await executeBashAutomation({
