@@ -118,21 +118,32 @@ describe("SqlAdapter PGLite", () => {
 
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
-    const userId = await queryEngine.create("users", {
-      name: "John Doe",
-      age: 30,
-    });
+    const userId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "John Doe",
+        age: 30,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    expect(userId).toMatchObject({
-      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(BigInt),
-    });
-
+    expect(userId.externalId).toMatch(/^[a-z0-9]{20,}$/);
+    expect(userId.internalId).toBeUndefined();
     expect(userId.version).toBe(0);
 
-    const getUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", userId)).select(["id", "name"]),
-    );
+    const getUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", userId)).select(["id", "name"]),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(getUser).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
@@ -142,48 +153,73 @@ describe("SqlAdapter PGLite", () => {
     });
 
     // Create 2 emails for the user
-    const email1Id = await queryEngine.create("emails", {
-      user_id: userId,
-      email: "john.doe@example.com",
-      is_primary: true,
-    });
+    const email1Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("emails", {
+        user_id: userId,
+        email: "john.doe@example.com",
+        is_primary: true,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const email2Id = await queryEngine.create("emails", {
-      // Pass only the string (external ID) here, to make sure we generate the right sub-query.
-      user_id: userId.toString(),
-      email: "john.doe.work@company.com",
-      is_primary: false,
-    });
+    const email2Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("emails", {
+        // Pass only the string (external ID) here, to make sure we generate the right sub-query.
+        user_id: userId.toString(),
+        email: "john.doe.work@company.com",
+        is_primary: false,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    expect(email1Id).toMatchObject({
-      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(BigInt),
-    });
+    expect(email1Id.externalId).toMatch(/^[a-z0-9]{20,}$/);
+    expect(email1Id.internalId).toBeUndefined();
 
-    expect(email2Id).toMatchObject({
-      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(BigInt),
-    });
+    expect(email2Id.externalId).toMatch(/^[a-z0-9]{20,}$/);
+    expect(email2Id.internalId).toBeUndefined();
 
     // Update user name
-    await queryEngine.updateMany("users", (b) =>
-      b
-        .whereIndex("primary", (eb) => eb("id", "=", userId))
-        .set({
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      uow.update("users", userId, (b) =>
+        b.set({
           name: "Jane Doe",
         }),
-    );
+      );
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record");
+      }
+    })();
 
-    const updatedUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", userId)),
-    );
+    const updatedUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     // Version has been incremented
     expect(updatedUser!.id.version).toBe(1);
 
     // Query emails with their users using join (since the relation is from emails to users)
-    const emailsWithUsers = await queryEngine.find("emails", (b) =>
-      b.whereIndex("primary").join((jb) => jb.user()),
-    );
+    const emailsWithUsers = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .find("emails", (b) => b.whereIndex("primary").join((jb) => jb.user()));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(emailsWithUsers).toHaveLength(2); // One row per email
     expect(emailsWithUsers[0]).toEqual({
@@ -207,9 +243,15 @@ describe("SqlAdapter PGLite", () => {
     });
 
     // Also test a more specific join query to get emails for a specific user
-    const userEmails = await queryEngine.find("emails", (b) =>
-      b.whereIndex("user_emails", (eb) => eb("user_id", "=", userId)).join((jb) => jb.user()),
-    );
+    const userEmails = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .find("emails", (b) =>
+          b.whereIndex("user_emails", (eb) => eb("user_id", "=", userId)).join((jb) => jb.user()),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(userEmails).toHaveLength(2);
   });
@@ -219,10 +261,18 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create initial user
-    const initialUserId = await queryEngine.create("users", {
-      name: "Alice",
-      age: 25,
-    });
+    const initialUserId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Alice",
+        age: 25,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     expect(initialUserId.version).toBe(0);
 
@@ -246,9 +296,13 @@ describe("SqlAdapter PGLite", () => {
     expect(users).toHaveLength(1);
 
     // Verify the user was updated
-    const updatedUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)),
-    );
+    const updatedUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(updatedUser).toMatchObject({
       id: expect.objectContaining({
@@ -327,7 +381,15 @@ describe("SqlAdapter PGLite", () => {
     ];
 
     for (const user of users) {
-      await queryEngine.create("users", user);
+      await (async () => {
+        const uow = queryEngine.createUnitOfWork("write");
+        const created = uow.create("users", user);
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        return created;
+      })();
     }
 
     // Test forward pagination with after cursor, ordered by name
@@ -369,59 +431,139 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
-    const userId = await queryEngine.create("users", {
-      name: "Blog Author",
-      age: 28,
-    });
+    const userId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Blog Author",
+        age: 28,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create posts
-    const post1Id = await queryEngine.create("posts", {
-      title: "TypeScript Tips",
-      content: "Learn TypeScript",
-      user_id: userId,
-    });
+    const post1Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("posts", {
+        title: "TypeScript Tips",
+        content: "Learn TypeScript",
+        user_id: userId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const post2Id = await queryEngine.create("posts", {
-      title: "Database Design",
-      content: "Learn databases",
-      user_id: userId,
-    });
+    const post2Id = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("posts", {
+        title: "Database Design",
+        content: "Learn databases",
+        user_id: userId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create tags
-    const tagTypeScriptId = await queryEngine.create("tags", {
-      name: "TypeScript",
-    });
+    const tagTypeScriptId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("tags", {
+        name: "TypeScript",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const tagDatabaseId = await queryEngine.create("tags", {
-      name: "Database",
-    });
+    const tagDatabaseId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("tags", {
+        name: "Database",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const tagTutorialId = await queryEngine.create("tags", {
-      name: "Tutorial",
-    });
+    const tagTutorialId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("tags", {
+        name: "Tutorial",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Link posts to tags via junction table
     // Post 1 has tags: TypeScript, Tutorial
-    await queryEngine.create("post_tags", {
-      post_id: post1Id,
-      tag_id: tagTypeScriptId,
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("post_tags", {
+        post_id: post1Id,
+        tag_id: tagTypeScriptId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    await queryEngine.create("post_tags", {
-      post_id: post1Id,
-      tag_id: tagTutorialId,
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("post_tags", {
+        post_id: post1Id,
+        tag_id: tagTutorialId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Post 2 has tags: Database, Tutorial
-    await queryEngine.create("post_tags", {
-      post_id: post2Id,
-      tag_id: tagDatabaseId,
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("post_tags", {
+        post_id: post2Id,
+        tag_id: tagDatabaseId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    await queryEngine.create("post_tags", {
-      post_id: post2Id,
-      tag_id: tagTutorialId,
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("post_tags", {
+        post_id: post2Id,
+        tag_id: tagTutorialId,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Query post_tags with joined post and tag data using UOW
     const uow = queryEngine
@@ -530,30 +672,62 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user (author)
-    const authorId = await queryEngine.create("users", {
-      name: "Blog Author",
-      age: 30,
-    });
+    const authorId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Blog Author",
+        age: 30,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create a post by the author
-    const postId = await queryEngine.create("posts", {
-      user_id: authorId,
-      title: "My First Post",
-      content: "This is the content of my first post",
-    });
+    const postId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("posts", {
+        user_id: authorId,
+        title: "My First Post",
+        content: "This is the content of my first post",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create a commenter
-    const commenterId = await queryEngine.create("users", {
-      name: "Commenter User",
-      age: 25,
-    });
+    const commenterId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Commenter User",
+        age: 25,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create a comment on the post
-    await queryEngine.create("comments", {
-      post_id: postId,
-      user_id: commenterId,
-      text: "Great post!",
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("comments", {
+        post_id: postId,
+        user_id: commenterId,
+        text: "Great post!",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
     const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
@@ -645,17 +819,35 @@ describe("SqlAdapter PGLite", () => {
     expect(new Set(externalIds).size).toBe(3);
 
     // Verify we can use these IDs to query the created users
-    const user1 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
-    );
+    const user1 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const user2 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
-    );
+    const user2 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const user3 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
-    );
+    const user3 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(user1).toMatchObject({
       id: expect.objectContaining({
@@ -715,9 +907,13 @@ describe("SqlAdapter PGLite", () => {
     expect(createdIds3[0].internalId).toBeDefined();
 
     // Verify the user was created with the custom ID
-    const customIdUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", customId)),
-    );
+    const customIdUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(customIdUser).toMatchObject({
       id: expect.objectContaining({
@@ -732,22 +928,42 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
-    const userId = await queryEngine.create("users", {
-      name: "Timestamp Test User",
-      age: 28,
-    });
+    const userId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Timestamp Test User",
+        age: 28,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Create a post
-    const postId = await queryEngine.create("posts", {
-      user_id: userId,
-      title: "Timestamp Test Post",
-      content: "Testing timestamp handling",
-    });
+    const postId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("posts", {
+        user_id: userId,
+        title: "Timestamp Test Post",
+        content: "Testing timestamp handling",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Retrieve the post
-    const post = await queryEngine.findFirst("posts", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", postId)),
-    );
+    const post = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(post).toBeDefined();
 
@@ -798,16 +1014,26 @@ describe("SqlAdapter PGLite", () => {
     expect(success).toBe(true);
 
     // Verify both records were created
-    const user = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", userId)),
-    );
+    const user = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(user?.name).toBe("UOW Test User");
     expect(user?.age).toBe(35);
 
-    const post = await queryEngine.findFirst("posts", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", postId.externalId)),
-    );
+    const post = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("posts", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", postId.externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(post?.title).toBe("UOW Test Post");
     expect(post?.content).toBe("This post was created in the same transaction as the user");
@@ -824,20 +1050,32 @@ describe("SqlAdapter PGLite", () => {
 
     const userIds: FragnoId[] = [];
     for (let i = 1; i <= 15; i++) {
-      const userId = await queryEngine.create("users", {
-        name: `${prefix} ${i.toString().padStart(2, "0")}`,
-        age: 20 + i,
-      });
+      const userId = await (async () => {
+        const uow = queryEngine.createUnitOfWork("write");
+        const created = uow.create("users", {
+          name: `${prefix} ${i.toString().padStart(2, "0")}`,
+          age: 20 + i,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        return created;
+      })();
       userIds.push(userId);
     }
 
     // Fetch first page with cursor (pageSize=10, total=15 items)
-    const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const firstPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     // Check structure and hasNextPage
     expect(firstPage).toHaveProperty("items");
@@ -849,13 +1087,17 @@ describe("SqlAdapter PGLite", () => {
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     // Fetch second page using cursor (last page with 5 remaining items)
-    const secondPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .after(firstPage.cursor!)
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const secondPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .after(firstPage.cursor!)
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(secondPage.items).toHaveLength(5);
     expect(secondPage.hasNextPage).toBe(false);
@@ -875,12 +1117,16 @@ describe("SqlAdapter PGLite", () => {
     expect(firstPageLast < secondPageFirst).toBe(true);
 
     // Test empty results
-    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const emptyPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(emptyPage.items).toHaveLength(0);
     expect(emptyPage.hasNextPage).toBe(false);
     expect(emptyPage.cursor).toBeUndefined();
@@ -890,16 +1136,28 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create test users if not already present
-    const existingUsers = await queryEngine.find("users", (b) =>
-      b.whereIndex("name_idx").pageSize(1),
-    );
+    const existingUsers = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .find("users", (b) => b.whereIndex("name_idx").pageSize(1));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     if (existingUsers.length === 0) {
       for (let i = 1; i <= 5; i++) {
-        await queryEngine.create("users", {
-          name: `UOW Cursor User ${i}`,
-          age: 30 + i,
-        });
+        await (async () => {
+          const uow = queryEngine.createUnitOfWork("write");
+          const created = uow.create("users", {
+            name: `UOW Cursor User ${i}`,
+            age: 30 + i,
+          });
+          const { success } = await uow.executeMutations();
+          if (!success) {
+            throw new Error("Failed to create record");
+          }
+          return created;
+        })();
       }
     }
 
@@ -926,15 +1184,28 @@ describe("SqlAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
-    const userId = await queryEngine.create("users", {
-      name: "Version Conflict User",
-      age: 40,
-    });
+    const userId = await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("users", {
+        name: "Version Conflict User",
+        age: 40,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
     // Update the user to increment their version
-    await queryEngine.updateMany("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", userId)).set({ age: 41 }),
-    );
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      uow.update("users", userId, (b) => b.set({ age: 41 }));
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record");
+      }
+    })();
 
     // Try to check with the old version (should fail)
     const uow = queryEngine.createUnitOfWork("check-stale-version");
@@ -949,9 +1220,13 @@ describe("SqlAdapter PGLite", () => {
     expect(success).toBe(false);
 
     // Verify the post was NOT created
-    const posts = await queryEngine.find("posts", (b) =>
-      b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId)),
-    );
+    const posts = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created");
     expect(conflictPosts).toHaveLength(0);
   });

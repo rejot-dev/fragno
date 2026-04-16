@@ -98,11 +98,17 @@ describe("otp fragment", async () => {
     expectOtpTimestamp(secondResponse.data.createdAt);
     expectOtpTimestamp(secondResponse.data.expiresAt);
 
-    const otpRows = await fragments.otp.db.find("otp", (b) =>
-      b.whereIndex("idx_otp_externalId_type_createdAt", (eb) =>
-        eb.and(eb("externalId", "=", "user-1"), eb("type", "=", "email_verification")),
-      ),
-    );
+    const otpRows = await (async () => {
+      const uow = fragments.otp.db
+        .createUnitOfWork("read")
+        .find("otp", (b) =>
+          b.whereIndex("idx_otp_externalId_type_createdAt", (eb) =>
+            eb.and(eb("externalId", "=", "user-1"), eb("type", "=", "email_verification")),
+          ),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(otpRows).toHaveLength(2);
     expect(otpRows.filter((otp) => otp.status === "pending")).toHaveLength(1);
@@ -163,9 +169,15 @@ describe("otp fragment", async () => {
       expect.any(String),
     );
 
-    const storedOtp = await fragments.otp.db.findFirst("otp", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
-    );
+    const storedOtp = await (async () => {
+      const uow = fragments.otp.db
+        .createUnitOfWork("read")
+        .findFirst("otp", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(storedOtp?.status).toBe("confirmed");
     expect(storedOtp?.confirmationPayload).toEqual(confirmationPayload);
     expect(storedOtp?.confirmedAt).toBeInstanceOf(Date);
@@ -222,9 +234,15 @@ describe("otp fragment", async () => {
         expect.any(String),
       );
 
-      const storedOtp = await expiringFragments.otp.db.findFirst("otp", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
-      );
+      const storedOtp = await (async () => {
+        const uow = expiringFragments.otp.db
+          .createUnitOfWork("read")
+          .findFirst("otp", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(storedOtp?.status).toBe("expired");
       expect(storedOtp?.expiredAt).toBeInstanceOf(Date);
     } finally {
@@ -357,9 +375,15 @@ describe("otp fragment", async () => {
       expect(confirmResponse.status).toBe(410);
       expect(confirmResponse.error.code).toBe("OTP_EXPIRED");
 
-      const storedAfterConfirm = await expiringFragments.otp.db.findFirst("otp", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
-      );
+      const storedAfterConfirm = await (async () => {
+        const uow = expiringFragments.otp.db
+          .createUnitOfWork("read")
+          .findFirst("otp", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(storedAfterConfirm?.status).toBe("expired");
       expect(storedAfterConfirm?.expiredAt).toBeInstanceOf(Date);
       expect(storedAfterConfirm?.invalidatedAt).toBeNull();
@@ -387,9 +411,15 @@ describe("otp fragment", async () => {
         expect.any(String),
       );
 
-      const storedAfterHooks = await expiringFragments.otp.db.findFirst("otp", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
-      );
+      const storedAfterHooks = await (async () => {
+        const uow = expiringFragments.otp.db
+          .createUnitOfWork("read")
+          .findFirst("otp", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", issueResponse.data.id)),
+          );
+        await uow.executeRetrieve();
+        return (await uow.retrievalPhase)[0];
+      })();
       expect(storedAfterHooks?.status).toBe("expired");
       expect(storedAfterHooks?.invalidatedAt).toBeNull();
     } finally {

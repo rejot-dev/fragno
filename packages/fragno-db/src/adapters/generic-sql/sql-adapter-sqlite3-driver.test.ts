@@ -331,26 +331,40 @@ describe("SqlAdapter with better-sqlite3", () => {
     }
     await createUow.executeMutations();
 
-    const all = await queryEngine.find("users", (b) =>
-      b
-        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
-        .orderByIndex("name_id_idx", "asc"),
-    );
+    const all = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .find("users", (b) =>
+          b
+            .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+            .orderByIndex("name_id_idx", "asc"),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
-        .orderByIndex("name_id_idx", "asc")
-        .pageSize(2),
-    );
+    const firstPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+          .orderByIndex("name_id_idx", "asc")
+          .pageSize(2),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const secondPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
-        .after(firstPage.cursor!)
-        .orderByIndex("name_id_idx", "asc")
-        .pageSize(2),
-    );
+    const secondPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
+          .after(firstPage.cursor!)
+          .orderByIndex("name_id_idx", "asc")
+          .pageSize(2),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     const ids = (rows: { id: FragnoId }[]) => rows.map((row) => row.id.externalId);
 
@@ -561,17 +575,35 @@ describe("SqlAdapter with better-sqlite3", () => {
     expect(new Set(externalIds).size).toBe(3);
 
     // Verify we can use these IDs to query the created users
-    const user1 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
-    );
+    const user1 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const user2 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
-    );
+    const user2 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
-    const user3 = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
-    );
+    const user3 = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(user1).toMatchObject({
       id: expect.objectContaining({
@@ -631,9 +663,13 @@ describe("SqlAdapter with better-sqlite3", () => {
     expect(createdIds3[0].internalId).toBeDefined();
 
     // Verify the user was created with the custom ID
-    const customIdUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", customId)),
-    );
+    const customIdUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(customIdUser).toMatchObject({
       id: expect.objectContaining({
@@ -795,44 +831,64 @@ describe("SqlAdapter with better-sqlite3", () => {
     const prefix = "HasNextPageTest";
 
     for (let i = 1; i <= 15; i++) {
-      await queryEngine.create("users", {
-        name: `${prefix} ${i.toString().padStart(2, "0")}`,
-        age: 20 + i,
-      });
+      await (async () => {
+        const uow = queryEngine.createUnitOfWork("write");
+        const created = uow.create("users", {
+          name: `${prefix} ${i.toString().padStart(2, "0")}`,
+          age: 20 + i,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        return created;
+      })();
     }
 
     // Test 1: First page with more results available (pageSize=10, total=15)
-    const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const firstPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(firstPage.items).toHaveLength(10);
     expect(firstPage.hasNextPage).toBe(true);
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     // Test 2: Second page (last page, partial results: 5 items remaining)
-    const secondPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
-        .after(firstPage.cursor!)
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const secondPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .after(firstPage.cursor!)
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(secondPage.items).toHaveLength(5);
     expect(secondPage.hasNextPage).toBe(false);
     expect(secondPage.cursor).toBeUndefined();
 
     // Test 3: Empty results
-    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
-      b
-        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
-        .orderByIndex("name_idx", "asc")
-        .pageSize(10),
-    );
+    const emptyPage = await (async () => {
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(emptyPage.items).toHaveLength(0);
     expect(emptyPage.hasNextPage).toBe(false);
@@ -896,9 +952,13 @@ describe("SqlAdapter with better-sqlite3", () => {
     });
 
     // Verify the user was actually updated in the database
-    const updatedUser = await queryEngine.findFirst("users", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", user.id)),
-    );
+    const updatedUser = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id)));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     expect(updatedUser).toMatchObject({
       id: expect.objectContaining({

@@ -1,10 +1,11 @@
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import type { InMemoryAdapterOptions } from "@fragno-dev/db/adapters/in-memory";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/sql";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { drizzle } from "drizzle-orm/pglite";
 import type { Kysely } from "kysely";
+
+import type { FragnoDatabase } from "@fragno-dev/db";
 
 import type { BaseTestContext } from ".";
 
@@ -31,17 +32,11 @@ export interface InMemoryAdapterConfig {
   uowConfig?: UnitOfWorkConfig;
 }
 
-export interface ModelCheckerAdapterConfig {
-  type: "model-checker";
-  options?: InMemoryAdapterOptions;
-}
-
 export type SupportedAdapter =
   | KyselySqliteAdapter
   | KyselyPgliteAdapter
   | DrizzlePgliteAdapter
-  | InMemoryAdapterConfig
-  | ModelCheckerAdapterConfig;
+  | InMemoryAdapterConfig;
 
 export interface SchemaConfig {
   schema: AnySchema;
@@ -50,7 +45,7 @@ export interface SchemaConfig {
 }
 
 interface InternalTestContext extends BaseTestContext {
-  getOrm: <TSchema extends AnySchema>(namespace: string | null) => SimpleQueryInterface<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string | null) => FragnoDatabase<TSchema>;
 }
 
 export type AdapterContext<T extends SupportedAdapter> = T extends
@@ -63,7 +58,7 @@ export type AdapterContext<T extends SupportedAdapter> = T extends
     ? {
         readonly drizzle: ReturnType<typeof drizzle<any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
       }
-    : T extends InMemoryAdapterConfig | ModelCheckerAdapterConfig
+    : T extends InMemoryAdapterConfig
       ? {}
       : never;
 
@@ -95,11 +90,6 @@ export async function createAdapter<T extends SupportedAdapter>(
   if (adapterConfig.type === "in-memory") {
     const { createInMemoryAdapter } = await import("./test-adapters/in-memory");
     return createInMemoryAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
-  }
-
-  if (adapterConfig.type === "model-checker") {
-    const { createModelCheckerAdapter } = await import("./test-adapters/model-checker");
-    return createModelCheckerAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
   }
 
   throw new Error(`Unsupported adapter type: ${(adapterConfig as SupportedAdapter).type}`);

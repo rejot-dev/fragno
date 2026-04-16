@@ -241,10 +241,10 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
 
           const result = await this.handlerTx()
             .mutate(({ forSchema }) => {
-              const table = forSchema(automationFragmentSchema);
-              const now = table.now();
+              const uow = forSchema(automationFragmentSchema);
+              const now = uow.now();
 
-              table.update("identity_binding", existing.id, (b) =>
+              uow.update("identity_binding", existing.id, (b) =>
                 b
                   .set({
                     status: "revoked",

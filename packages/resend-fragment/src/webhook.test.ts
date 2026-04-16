@@ -485,34 +485,41 @@ describe("resend-fragment webhook", () => {
   });
 
   test("updates status events", async () => {
-    await ctx.db.create("emailMessage", {
-      id: "msg_status",
-      direction: "outbound",
-      threadId: null,
-      status: "queued",
-      providerEmailId: "re_status",
-      from: "Acme <hello@example.com>",
-      to: ["support@example.com"],
-      cc: null,
-      bcc: null,
-      replyTo: null,
-      subject: "Status email",
-      messageId: null,
-      headers: null,
-      html: "<p>Status</p>",
-      text: null,
-      attachments: null,
-      tags: null,
-      occurredAt: new Date("2026-03-18T10:00:00.000Z"),
-      scheduledAt: null,
-      sentAt: new Date("2026-03-18T10:00:00.000Z"),
-      lastEventType: null,
-      lastEventAt: null,
-      errorCode: null,
-      errorMessage: null,
-      createdAt: new Date("2026-03-18T10:00:00.000Z"),
-      updatedAt: new Date("2026-03-18T10:00:00.000Z"),
-    });
+    {
+      const uow = ctx.db.createUnitOfWork("seed-status-msg");
+      uow.create("emailMessage", {
+        id: "msg_status",
+        direction: "outbound",
+        threadId: null,
+        status: "queued",
+        providerEmailId: "re_status",
+        from: "Acme <hello@example.com>",
+        to: ["support@example.com"],
+        cc: null,
+        bcc: null,
+        replyTo: null,
+        subject: "Status email",
+        messageId: null,
+        headers: null,
+        html: "<p>Status</p>",
+        text: null,
+        attachments: null,
+        tags: null,
+        occurredAt: new Date("2026-03-18T10:00:00.000Z"),
+        scheduledAt: null,
+        sentAt: new Date("2026-03-18T10:00:00.000Z"),
+        lastEventType: null,
+        lastEventAt: null,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: new Date("2026-03-18T10:00:00.000Z"),
+        updatedAt: new Date("2026-03-18T10:00:00.000Z"),
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create email message");
+      }
+    }
 
     const statusPayload = {
       type: "email.delivered",
@@ -570,34 +577,41 @@ describe("resend-fragment webhook", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-18T10:05:00.000Z"));
 
-    await ctx.db.create("emailMessage", {
-      id: "msg_status_retry",
-      direction: "outbound",
-      threadId: null,
-      status: "queued",
-      providerEmailId: "re_status_retry",
-      from: "Acme <hello@example.com>",
-      to: ["support@example.com"],
-      cc: null,
-      bcc: null,
-      replyTo: null,
-      subject: "Status retry email",
-      messageId: null,
-      headers: null,
-      html: "<p>Status retry</p>",
-      text: null,
-      attachments: null,
-      tags: null,
-      occurredAt: new Date("2026-03-18T10:00:00.000Z"),
-      scheduledAt: null,
-      sentAt: new Date("2026-03-18T10:00:00.000Z"),
-      lastEventType: null,
-      lastEventAt: null,
-      errorCode: null,
-      errorMessage: null,
-      createdAt: new Date("2026-03-18T10:00:00.000Z"),
-      updatedAt: new Date("2026-03-18T10:00:00.000Z"),
-    });
+    {
+      const uow = ctx.db.createUnitOfWork("seed-status-retry-msg");
+      uow.create("emailMessage", {
+        id: "msg_status_retry",
+        direction: "outbound",
+        threadId: null,
+        status: "queued",
+        providerEmailId: "re_status_retry",
+        from: "Acme <hello@example.com>",
+        to: ["support@example.com"],
+        cc: null,
+        bcc: null,
+        replyTo: null,
+        subject: "Status retry email",
+        messageId: null,
+        headers: null,
+        html: "<p>Status retry</p>",
+        text: null,
+        attachments: null,
+        tags: null,
+        occurredAt: new Date("2026-03-18T10:00:00.000Z"),
+        scheduledAt: null,
+        sentAt: new Date("2026-03-18T10:00:00.000Z"),
+        lastEventType: null,
+        lastEventAt: null,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: new Date("2026-03-18T10:00:00.000Z"),
+        updatedAt: new Date("2026-03-18T10:00:00.000Z"),
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create email message");
+      }
+    }
 
     const payload = {
       type: "email.delivered",

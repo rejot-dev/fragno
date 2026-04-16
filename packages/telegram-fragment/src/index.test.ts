@@ -133,7 +133,13 @@ describe("telegram-fragment", async () => {
     expect(onChatMemberUpdated).toHaveBeenCalledTimes(1);
     expect(commandHandler).toHaveBeenCalledWith("ping");
 
-    const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
+    const messages = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(messages).toHaveLength(1);
     expect(messages[0]?.commandName).toBe("ping");
   });
@@ -503,11 +509,23 @@ describe("telegram-fragment", async () => {
 
     await drainDurableHooks(fragment);
 
-    const chats = await fragments.telegram.db.find("chat", (b) => b.whereIndex("primary"));
+    const chats = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("chat", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(chats).toHaveLength(1);
     expect(chats[0]?.id.toString()).toBe("123");
 
-    const users = await fragments.telegram.db.find("user", (b) => b.whereIndex("primary"));
+    const users = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("user", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     const userIds = users.map((user) => user.id.toString());
     expect(new Set(userIds).size).toBe(2);
     expect(userIds).toContain("42");
@@ -542,7 +560,13 @@ describe("telegram-fragment", async () => {
     await drainDurableHooks(fragment);
 
     expect(commandHandler).toHaveBeenCalledTimes(1);
-    const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
+    const messages = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(messages).toHaveLength(1);
   });
 
@@ -646,9 +670,13 @@ describe("telegram-fragment", async () => {
     });
     expect(sendRequestBody).not.toHaveProperty("chatId");
 
-    const storedAfterSend = await fragments.telegram.db.find("message", (b) =>
-      b.whereIndex("primary"),
-    );
+    const storedAfterSend = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(storedAfterSend).toHaveLength(1);
     expect(storedAfterSend[0]?.text).toBe("Hello from bot");
     expect(onMessageReceived).not.toHaveBeenCalled();
@@ -694,9 +722,13 @@ describe("telegram-fragment", async () => {
     expect(editRequestBody).not.toHaveProperty("chatId");
     expect(editRequestBody).not.toHaveProperty("messageId");
 
-    const storedAfterEdit = await fragments.telegram.db.find("message", (b) =>
-      b.whereIndex("primary"),
-    );
+    const storedAfterEdit = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(storedAfterEdit).toHaveLength(1);
     expect(storedAfterEdit[0]?.text).toBe("Edited text");
     expect(storedAfterEdit[0]?.editedAt).not.toBeNull();
@@ -734,7 +766,13 @@ describe("telegram-fragment", async () => {
 
     await drainDurableHooks(fragment);
 
-    const messages = await fragments.telegram.db.find("message", (b) => b.whereIndex("primary"));
+    const messages = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
     expect(messages).toHaveLength(2);
     expect(messages.map((message) => message.id.toString())).toContain("123:61");
   });

@@ -18,12 +18,12 @@ import {
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
 import { internalSchema } from "./fragments/internal-fragment";
+import type { FragnoDatabase } from "./fragno-database";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 import type { HookFn } from "./hooks/hooks";
 import * as hooks from "./hooks/hooks";
 import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
-import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import { schema, column, idColumn } from "./schema/create";
@@ -55,9 +55,12 @@ function createMockAdapter(): DatabaseAdapter {
   const mockdb = {
     createUnitOfWork: vi.fn(() => createMockUow()),
     createBaseUnitOfWork: vi.fn(() => createMockUow()),
-  } as unknown as SimpleQueryInterface<TestSchema>;
+  } as unknown as FragnoDatabase<TestSchema>;
 
   return {
+    registerSchema: vi.fn(),
+    createUnitOfWork: vi.fn(() => createMockUow()),
+    createBaseUnitOfWork: vi.fn(() => createMockUow()),
     createQueryEngine: vi.fn(() => mockdb),
     getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),

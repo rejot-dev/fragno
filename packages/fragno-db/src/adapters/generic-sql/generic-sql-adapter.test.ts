@@ -34,14 +34,26 @@ describe("SqlAdapter", () => {
 
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
-    await queryEngine.create("products", {
-      name: "test",
-      price: 100,
-    });
+    await (async () => {
+      const uow = queryEngine.createUnitOfWork("write");
+      const created = uow.create("products", {
+        name: "test",
+        price: 100,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      return created;
+    })();
 
-    const product = await queryEngine.findFirst("products", (b) =>
-      b.whereIndex("name_idx", (eb) => eb("name", "=", "test")),
-    );
+    const product = await (async () => {
+      const uow = queryEngine
+        .createUnitOfWork("read")
+        .findFirst("products", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "test")));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
 
     assert(product);
     expect(product.name).toBe("test");

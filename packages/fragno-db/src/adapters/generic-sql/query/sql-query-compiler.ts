@@ -11,7 +11,7 @@ import type { SqlBool } from "kysely";
 
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { Condition } from "../../../query/condition-builder";
-import type { CompiledJoin } from "../../../query/orm/orm";
+import type { CompiledJoin } from "../../../query/find-options";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";

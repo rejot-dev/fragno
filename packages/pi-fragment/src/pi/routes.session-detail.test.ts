@@ -9,8 +9,13 @@ import {
   buildHarness,
   createDelayedStreamFn,
   createFailingStreamFn,
+  createPiSessionRow,
   createStreamFn,
   createStreamFnScript,
+  createPiUnitOfWork,
+  createWorkflowsUnitOfWork,
+  findPiSessions,
+  findWorkflowInstances,
   mockModel,
 } from "./test-utils";
 import type { PiFragmentConfig, PiToolFactory, PiWorkflowsService } from "./types";
@@ -233,9 +238,9 @@ describe("pi-fragment session detail route", () => {
   });
 
   it("returns SESSION_NOT_FOUND when the backing workflow instance is missing", async () => {
-    const { fragments } = await createHarness(createConfig());
+    const { fragments, workflows } = await createHarness(createConfig());
 
-    const sessionId = await fragments.pi.db.create("session", {
+    const sessionId = await createPiSessionRow(workflows.test.adapter, {
       name: "Missing workflow",
       agent: "default",
       status: "active",
@@ -373,9 +378,9 @@ describe("pi-fragment session detail route", () => {
 
     // Recreate the drift reported in review: the workflow is complete, but the persisted
     // session row is still stale, which is what `/sessions` reads from.
-    await fragments.pi.db.update("session", createResponse.data.id, (b) =>
-      b.set({ status: "active" }),
-    );
+    const staleUow = createPiUnitOfWork(workflows.test.adapter, "detail-test-stale-status");
+    staleUow.update("session", createResponse.data.id, (b) => b.set({ status: "active" }));
+    await staleUow.executeMutations();
 
     // The detail route already returns the live workflow status in the response.
     const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
@@ -390,7 +395,7 @@ describe("pi-fragment session detail route", () => {
     expect(detailResponse.data.status).toBe(workflowStatus.status);
 
     // Serving detail should not write that fresher workflow status back to the session row.
-    const sessionRows = await fragments.pi.db.find("session");
+    const sessionRows = await findPiSessions(workflows.test.adapter);
     const sessionRow = sessionRows.find(
       (row: unknown) => String((row as { id?: unknown }).id ?? "") === createResponse.data.id,
     ) as { status?: string } | undefined;
@@ -750,7 +755,7 @@ describe("pi-fragment session detail route", () => {
     });
     await drainDurableHooks(workflows.fragment, { mode: "singlePass" });
 
-    const beforeRows = await fragments.pi.db.find("session");
+    const beforeRows = await findPiSessions(workflows.test.adapter);
     const beforeRow = beforeRows.find(
       (row: unknown) => String((row as { id?: unknown }).id ?? "") === createResponse.data.id,
     ) as { updatedAt: Date } | undefined;
@@ -767,7 +772,7 @@ describe("pi-fragment session detail route", () => {
       throw new Error(formatResponseError(detailResponse));
     }
 
-    const afterRows = await fragments.pi.db.find("session");
+    const afterRows = await findPiSessions(workflows.test.adapter);
     const afterRow = afterRows.find(
       (row: unknown) => String((row as { id?: unknown }).id ?? "") === createResponse.data.id,
     ) as { updatedAt: Date } | undefined;
@@ -789,7 +794,7 @@ describe("pi-fragment session detail route", () => {
       throw new Error(formatResponseError(createResponse));
     }
 
-    const instances = await workflows.db.find("workflow_instance");
+    const instances = await findWorkflowInstances(workflows.test.adapter);
     const instanceRow = instances.find(
       (row: unknown) =>
         String((row as { id?: unknown }).id) === createResponse.data.id &&
@@ -799,9 +804,14 @@ describe("pi-fragment session detail route", () => {
       throw new Error("Expected workflow instance to exist");
     }
 
-    await workflows.db.update("workflow_instance", instanceRow.id, (b) =>
+    const invalidStatusUow = createWorkflowsUnitOfWork(
+      workflows.test.adapter,
+      "invalid-workflow-status",
+    );
+    invalidStatusUow.update("workflow_instance", instanceRow.id, (b) =>
       b.set({ status: "not-a-status" }),
     );
+    await invalidStatusUow.executeMutations();
 
     const detailResponse = await fragments.pi.callRoute("GET", "/sessions/:sessionId", {
       pathParams: { sessionId: createResponse.data.id },

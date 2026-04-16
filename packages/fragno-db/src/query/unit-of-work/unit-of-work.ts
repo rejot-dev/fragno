@@ -15,7 +15,7 @@ import { buildCondition } from "../condition-builder";
 import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
-import type { CompiledJoin } from "../orm/orm";
+import type { CompiledJoin } from "../find-options";
 import type {
   SelectClause,
   TableToInsertValues,
@@ -23,20 +23,7 @@ import type {
   SelectResult,
   ExtractSelect,
   ExtractJoinOut,
-} from "../simple-query-interface";
-
-/**
- * Builder for updateMany operations that supports both whereIndex and set chaining
- */
-export interface UpdateManyBuilder<TTable extends AnyTable> {
-  whereIndex<TIndexName extends ValidIndexName<TTable>>(
-    indexName: TIndexName,
-    condition?: (eb: IndexSpecificConditionBuilder<TTable, TIndexName>) => Condition | boolean,
-  ): this;
-  set(values: TableToUpdateValues<TTable>): this;
-  now(): DbNow;
-  interval(input: DbIntervalInput): DbInterval;
-}
+} from "../mod";
 
 /**
  * Extract column names from a single index

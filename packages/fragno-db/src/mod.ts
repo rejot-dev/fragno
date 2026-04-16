@@ -26,65 +26,14 @@ export type { DbNow, DbInterval, DbIntervalInput };
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";
+export {
+  FragnoDatabase,
+  fragnoDatabaseFakeSymbol,
+  isFragnoDatabase,
+  type CreateFragnoDatabaseDefinitionOptions,
+} from "./fragno-database";
 
-export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
 export const fragnoDatabaseLibraryVersion = "0.1" as const;
-
-export interface CreateFragnoDatabaseDefinitionOptions<T extends AnySchema> {
-  namespace: string | null;
-  schema: T;
-}
-
-export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySchema> {
-  if (value instanceof FragnoDatabase) {
-    return true;
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  return (
-    fragnoDatabaseFakeSymbol in value &&
-    value[fragnoDatabaseFakeSymbol] === fragnoDatabaseFakeSymbol
-  );
-}
-
-/**
- * A Fragno database instance with a bound adapter.
- * Created from a FragnoDatabaseDefinition by calling .create(adapter).
- */
-export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
-  #namespace: string | null;
-  #schema: T;
-  #adapter: DatabaseAdapter<TUOWConfig>;
-
-  constructor(options: {
-    namespace: string | null;
-    schema: T;
-    adapter: DatabaseAdapter<TUOWConfig>;
-  }) {
-    this.#namespace = options.namespace;
-    this.#schema = options.schema;
-    this.#adapter = options.adapter;
-  }
-
-  get [fragnoDatabaseFakeSymbol](): typeof fragnoDatabaseFakeSymbol {
-    return fragnoDatabaseFakeSymbol;
-  }
-
-  get namespace() {
-    return this.#namespace;
-  }
-
-  get schema() {
-    return this.#schema;
-  }
-
-  get adapter(): DatabaseAdapter<TUOWConfig> {
-    return this.#adapter;
-  }
-}
 
 export {
   DatabaseFragmentDefinitionBuilder,

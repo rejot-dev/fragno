@@ -175,9 +175,13 @@ describe("Mailing List Fragment", async () => {
         await waitForOnSubscribe("test@example.com");
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
 
-        const result = await fragments["mailing-list"].db.find("subscriber", (b) =>
-          b.whereIndex("primary"),
-        );
+        const result = await (async () => {
+          const uow = fragments["mailing-list"].db
+            .createUnitOfWork("read")
+            .find("subscriber", (b) => b.whereIndex("primary"));
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        })();
 
         expect(result).toHaveLength(1);
         expect(result[0].email).toBe("test@example.com");

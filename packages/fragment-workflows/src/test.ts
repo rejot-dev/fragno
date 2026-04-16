@@ -1,10 +1,9 @@
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
-
 import {
   instantiate,
   type AnyFragnoInstantiatedFragment,
   type FragnoRuntime,
 } from "@fragno-dev/core";
+import type { FragnoDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type {
   AnyFragmentResult,
@@ -79,7 +78,7 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
 export type WorkflowsTestHarnessFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
   {
     fragment: WorkflowsFragment<TRegistry>;
-    db: SimpleQueryInterface<typeof workflowsSchema>;
+    db: FragnoDatabase<typeof workflowsSchema>;
     services: WorkflowsFragmentServices<TRegistry>;
     deps: WorkflowsFragment<TRegistry>["$internal"]["deps"];
     callRoute: WorkflowsFragment<TRegistry>["callRoute"];
@@ -120,7 +119,7 @@ export type WorkflowsTestHarness<
 > = {
   fragments: WorkflowsTestHarnessFragments<TRegistry, TFragments>;
   fragment: WorkflowsFragment<TRegistry>;
-  db: SimpleQueryInterface<typeof workflowsSchema>;
+  db: FragnoDatabase<typeof workflowsSchema>;
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;
@@ -277,7 +276,7 @@ export async function createWorkflowsTestHarness<
   const clock = runtime.time;
   const workflows = options.workflows;
   let adapterConfig: SupportedAdapter = options.adapter;
-  if (adapterConfig.type === "in-memory" || adapterConfig.type === "model-checker") {
+  if (adapterConfig.type === "in-memory") {
     adapterConfig = {
       ...adapterConfig,
       options: {

@@ -160,8 +160,8 @@ export const bindAutomationIdentityActor = async (
           ),
         )
         .mutate(({ forSchema, retrieveResult: [existing] }) => {
-          const table = forSchema(automationFragmentSchema);
-          const now = table.now();
+          const uow = forSchema(automationFragmentSchema);
+          const now = uow.now();
           const descriptionValue =
             typeof description === "string"
               ? description.trim() !== ""
@@ -172,7 +172,7 @@ export const bindAutomationIdentityActor = async (
                 : null;
 
           if (existing) {
-            table.update("identity_binding", existing.id, (b) =>
+            uow.update("identity_binding", existing.id, (b) =>
               b
                 .set({
                   source,
@@ -198,7 +198,7 @@ export const bindAutomationIdentityActor = async (
             };
           }
 
-          const createdId = table.create("identity_binding", {
+          const createdId = uow.create("identity_binding", {
             source,
             key,
             value,

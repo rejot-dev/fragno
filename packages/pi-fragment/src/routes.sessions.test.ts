@@ -6,10 +6,15 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 
 import {
   buildHarness,
+  createPiSessionRow,
   createStreamFn,
   createFailingStreamFn,
   createInvalidResultStreamFn,
   createDelayedStreamFn,
+  createPiUnitOfWork,
+  createWorkflowsUnitOfWork,
+  findPiSessions,
+  findWorkflowInstances,
   mockModel,
   type DatabaseFragmentsTest,
 } from "./pi/test-utils";
@@ -112,7 +117,7 @@ describe("pi-fragment sessions", () => {
   }) => {
     sessionCounter += 1;
     const now = options.createdAt ?? new Date();
-    return fragments.pi.db.create("session", {
+    return createPiSessionRow(workflows.test.adapter, {
       name: options.name ?? `Session ${sessionCounter}`,
       agent: "default",
       status: options.status ?? "active",
@@ -159,7 +164,7 @@ describe("pi-fragment sessions", () => {
     expect(response.data.tags).toEqual(tags);
     expect(response.data.steeringMode).toBe("all");
 
-    const sessions = await fragments.pi.db.find("session");
+    const sessions = await findPiSessions(workflows.test.adapter);
     expect(sessions).toHaveLength(1);
     const row = sessions[0] as { metadata?: unknown; tags?: unknown; steeringMode?: string };
     expect(row.metadata).toEqual(metadata);
@@ -200,7 +205,7 @@ describe("pi-fragment sessions", () => {
     }
     expect(response.error.code).toBe("WORKFLOW_CREATE_FAILED");
 
-    const sessions = await local.fragments.pi.db.find("session");
+    const sessions = await findPiSessions(local.workflows.test.adapter);
     expect(sessions).toHaveLength(0);
     await local.test.cleanup();
   });
@@ -217,7 +222,7 @@ describe("pi-fragment sessions", () => {
     const workflowStatus = await workflows.getStatus(workflowName, response.data.id);
     expect(response.data.status).toBe(workflowStatus.status);
 
-    const sessions = await fragments.pi.db.find("session");
+    const sessions = await findPiSessions(workflows.test.adapter);
     expect(sessions).toHaveLength(1);
     const row = sessions[0] as { status?: string };
     expect(row.status).toBe(workflowStatus.status);
@@ -371,7 +376,7 @@ describe("pi-fragment sessions", () => {
     const statusById = new Map(
       response.data.map((session: { id: string; status?: string }) => [session.id, session.status]),
     );
-    const persistedRows = await fragments.pi.db.find("session");
+    const persistedRows = await findPiSessions(workflows.test.adapter);
     const persistedStatusById = new Map(
       persistedRows.map((row: unknown) => [
         String((row as { id?: unknown }).id ?? ""),
@@ -398,18 +403,22 @@ describe("pi-fragment sessions", () => {
       throw new Error("Expected session creation to succeed");
     }
 
-    const instances = await workflows.db.find("workflow_instance");
+    const instances = await findWorkflowInstances(workflows.test.adapter);
     const instanceRow = instances.find(
       (row: unknown) =>
         String((row as { id?: unknown }).id) === sessionB.data.id &&
         (row as { workflowName?: string }).workflowName === workflowName,
     ) as { id?: string } | undefined;
     if (instanceRow?.id) {
-      await workflows.db.update("workflow_instance", instanceRow.id, (b) =>
+      const uowWf = createWorkflowsUnitOfWork(workflows.test.adapter, "break-workflow-instance");
+      uowWf.update("workflow_instance", instanceRow.id, (b) =>
         b.set({ workflowName: "missing-workflow" }),
       );
+      await uowWf.executeMutations();
     }
-    await fragments.pi.db.update("session", sessionB.data.id, (b) => b.set({ status: "paused" }));
+    const uowPi = createPiUnitOfWork(workflows.test.adapter, "pause-session");
+    uowPi.update("session", sessionB.data.id, (b) => b.set({ status: "paused" }));
+    await uowPi.executeMutations();
 
     const response = await fragments.pi.callRoute("GET", "/sessions", {});
     expect(response.type).toBe("json");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CompiledJoin } from "../../query/orm/orm";
+import type { CompiledJoin } from "../../query/find-options";
 import { UnitOfWork, type RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
 import {
   column,

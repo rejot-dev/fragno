@@ -612,16 +612,38 @@ const resolveInternalId = (value: { internalId?: bigint } | bigint, label: strin
   return internalId;
 };
 
+/** Row shape from `workflow_instance` reads in scenario harness (matches mapInstanceRow input). */
+type ScenarioDbWorkflowInstance = {
+  id: { internalId?: bigint } | bigint;
+  workflowName: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  params: unknown;
+  output: unknown | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  runNumber: number;
+};
+
 const getScenarioInstanceRow = async <TRegistry extends WorkflowsRegistry>(
   harness: WorkflowsTestHarness<TRegistry>,
   workflowName: string,
   instanceId: string,
-) => {
-  const [instance] = await harness.db.find("workflow_instance", (b) =>
-    b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-      eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
-    ),
-  );
+): Promise<ScenarioDbWorkflowInstance | null> => {
+  const rows = (
+    await harness.db
+      .createUnitOfWork("scenario-instance")
+      .find("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+          eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+        ),
+      )
+      .executeRetrieve()
+  )[0];
+  const [instance] = rows;
   return instance ?? null;
 };
 
@@ -756,16 +778,26 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     }
     const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
+    const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
-    const rows = await harness.db.find("workflow_step", (b) =>
-      b
-        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(eb("instanceRef", "=", instance.id), eb("runNumber", "=", runNumber)),
-        )
-        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order),
+    const rows = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("scenario-steps")
+          .find("workflow_step", (b) =>
+            b
+              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              )
+              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order),
+          )
+          .executeRetrieve()
+      )[0];
+    })();
+
+    return rows.map((row) =>
+      mapStepRow(row as Parameters<typeof mapStepRow>[0], { workflowName, instanceId }),
     );
-
-    return rows.map((row) => mapStepRow(row, { workflowName, instanceId }));
   };
 
   const getEvents = async (
@@ -780,16 +812,26 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     }
     const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
+    const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
-    const rows = await harness.db.find("workflow_event", (b) =>
-      b
-        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(eb("instanceRef", "=", instance.id), eb("runNumber", "=", runNumber)),
-        )
-        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order),
+    const rows = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("scenario-events")
+          .find("workflow_event", (b) =>
+            b
+              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              )
+              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order),
+          )
+          .executeRetrieve()
+      )[0];
+    })();
+
+    return rows.map((row) =>
+      mapEventRow(row as Parameters<typeof mapEventRow>[0], { workflowName, instanceId }),
     );
-
-    return rows.map((row) => mapEventRow(row, { workflowName, instanceId }));
   };
 
   const getStatus = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
@@ -816,42 +858,77 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
 
     const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
+    const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
-    const stepsRows = await harness.db.find("workflow_step", (b) => {
-      let builder = b
-        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(eb("instanceRef", "=", instance.id), eb("runNumber", "=", runNumber)),
-        )
-        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order);
+    const stepsRows = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("scenario-history-steps")
+          .find("workflow_step", (b) => {
+            let builder = b
+              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              )
+              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order);
 
-      if (options?.stepsCursor) {
-        builder = builder.after(options.stepsCursor);
-      }
-      if (options?.pageSize) {
-        builder = builder.pageSize(options.pageSize);
-      }
-      return builder;
-    });
+            if (options?.stepsCursor) {
+              builder = builder.after(options.stepsCursor);
+            }
+            if (options?.pageSize) {
+              builder = builder.pageSize(options.pageSize);
+            }
+            return builder;
+          })
+          .executeRetrieve()
+      )[0];
+    })();
 
-    const eventsRows = await harness.db.find("workflow_event", (b) => {
-      let builder = b
-        .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-          eb.and(eb("instanceRef", "=", instance.id), eb("runNumber", "=", runNumber)),
-        )
-        .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order);
+    const eventsRows = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("scenario-history-events")
+          .find("workflow_event", (b) => {
+            let builder = b
+              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              )
+              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order);
 
-      if (options?.eventsCursor) {
-        builder = builder.after(options.eventsCursor);
-      }
-      if (options?.pageSize) {
-        builder = builder.pageSize(options.pageSize);
-      }
-      return builder;
-    });
+            if (options?.eventsCursor) {
+              builder = builder.after(options.eventsCursor);
+            }
+            if (options?.pageSize) {
+              builder = builder.pageSize(options.pageSize);
+            }
+            return builder;
+          })
+          .executeRetrieve()
+      )[0];
+    })();
 
     return {
       runNumber,
-      steps: stepsRows.map((row) => ({
+      steps: (
+        stepsRows as Array<{
+          id: { toString(): string };
+          runNumber: number;
+          stepKey: string;
+          name: string;
+          type: string;
+          status: string;
+          attempts: number;
+          maxAttempts: number;
+          timeoutMs: number | null;
+          nextRetryAt: Date | null;
+          wakeAt: Date | null;
+          waitEventType: string | null;
+          result: unknown | null;
+          errorName: string | null;
+          errorMessage: string | null;
+          createdAt: Date;
+          updatedAt: Date;
+        }>
+      ).map((row) => ({
         id: row.id.toString(),
         runNumber: row.runNumber,
         stepKey: row.stepKey,
@@ -869,7 +946,17 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
-      events: eventsRows.map((row) => ({
+      events: (
+        eventsRows as Array<{
+          id: { toString(): string };
+          runNumber: number;
+          type: string;
+          payload: unknown | null;
+          createdAt: Date;
+          deliveredAt: Date | null;
+          consumedByStepKey: string | null;
+        }>
+      ).map((row) => ({
         id: row.id.toString(),
         runNumber: row.runNumber,
         type: row.type,
@@ -1292,18 +1379,26 @@ export async function runScenario<
           if (!timestamp) {
             const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
             if (instance) {
-              const steps = await harness.db.find("workflow_step", (b) =>
-                b
-                  .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                    eb.and(
-                      eb("instanceRef", "=", instance.id),
-                      eb("runNumber", "=", instance.runNumber),
-                    ),
-                  )
-                  .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-              );
+              const instanceRef = resolveInternalId(instance.id, "workflow instance");
+              const steps = await (async () => {
+                return (
+                  await harness.db
+                    .createUnitOfWork("scenario-retry-steps")
+                    .find("workflow_step", (b) =>
+                      b
+                        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                          eb.and(
+                            eb("instanceRef", "=", instanceRef),
+                            eb("runNumber", "=", instance.runNumber),
+                          ),
+                        )
+                        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+                    )
+                    .executeRetrieve()
+                )[0];
+              })();
               let dueAt: Date | null = null;
-              for (const step of steps) {
+              for (const step of steps as Array<{ status: string; nextRetryAt: Date | null }>) {
                 if (step.status !== "waiting" || !step.nextRetryAt) {
                   continue;
                 }
@@ -1442,18 +1537,26 @@ export async function runScenario<
           let wakeAt: Date | undefined;
           const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
           if (instance) {
-            const steps = await harness.db.find("workflow_step", (b) =>
-              b
-                .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                  eb.and(
-                    eb("instanceRef", "=", instance.id),
-                    eb("runNumber", "=", instance.runNumber),
-                  ),
-                )
-                .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
-            );
+            const instanceRef = resolveInternalId(instance.id, "workflow instance");
+            const steps = await (async () => {
+              return (
+                await harness.db
+                  .createUnitOfWork("scenario-wake-steps")
+                  .find("workflow_step", (b) =>
+                    b
+                      .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                        eb.and(
+                          eb("instanceRef", "=", instanceRef),
+                          eb("runNumber", "=", instance.runNumber),
+                        ),
+                      )
+                      .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+                  )
+                  .executeRetrieve()
+              )[0];
+            })();
             let dueAt: Date | null = null;
-            for (const step of steps) {
+            for (const step of steps as Array<{ status: string; wakeAt: Date | null }>) {
               if (step.status !== "waiting" || !step.wakeAt) {
                 continue;
               }

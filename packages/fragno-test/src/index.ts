@@ -1,6 +1,6 @@
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
+import type { FragnoDatabase } from "@fragno-dev/db";
 import type { DatabaseAdapter } from "@fragno-dev/db";
 
 import type {
@@ -34,38 +34,6 @@ export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-t
 export type { AnyFragmentResult } from "./db-test";
 export { drainDurableHooks } from "./durable-hooks";
 export type { DrainDurableHooksMode, DrainDurableHooksOptions } from "./durable-hooks";
-export {
-  runModelChecker,
-  defaultStateHasher,
-  defaultTraceHasher,
-  type ModelCheckerConfig,
-  type ModelCheckerBounds,
-  type ModelCheckerRunResult,
-  type ModelCheckerScheduleResult,
-  type ModelCheckerMode,
-  type ModelCheckerStep,
-  type ModelCheckerTraceEvent,
-  type ModelCheckerTrace,
-  type ModelCheckerTraceRecorder,
-  type ModelCheckerTraceHasher,
-  type ModelCheckerTraceHashMode,
-  type NormalizedMutationOperation,
-  type RawUowTransaction,
-  type RawUowTransactionBuilder,
-  type RawUowTransactionContext,
-  type RawUowMutateContext,
-  createRawUowTransaction,
-} from "./model-checker";
-
-export {
-  runModelCheckerWithActors,
-  type ModelCheckerActor,
-  type ModelCheckerInvariant,
-  type ModelCheckerInvariantContext,
-  type ModelCheckerActorsConfig,
-} from "./model-checker-actors";
-
-export { ModelCheckerAdapter, type ModelCheckerScheduler } from "./model-checker-adapter";
 
 /**
  * Base test context with common functionality across all adapters
@@ -81,7 +49,7 @@ export interface BaseTestContext {
  * Internal interface with getOrm for adapter implementations
  */
 export interface InternalTestContextMethods {
-  getOrm: <TSchema extends AnySchema>(namespace: string | null) => SimpleQueryInterface<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string | null) => FragnoDatabase<TSchema>;
 }
 
 /**
@@ -90,7 +58,7 @@ export interface InternalTestContextMethods {
  */
 export function createCommonTestContextMethods(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string | null, SimpleQueryInterface<any>>,
+  ormMap: Map<string | null, FragnoDatabase<any>>,
 ): InternalTestContextMethods {
   return {
     getOrm: <TSchema extends AnySchema>(namespace: string | null) => {
@@ -98,7 +66,7 @@ export function createCommonTestContextMethods(
       if (!orm) {
         throw new Error(`No ORM found for namespace: ${String(namespace)}`);
       }
-      return orm as SimpleQueryInterface<TSchema>;
+      return orm as FragnoDatabase<TSchema>;
     },
   };
 }

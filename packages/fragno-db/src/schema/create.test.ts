@@ -5,7 +5,7 @@ import type {
   TableToColumnValues,
   TableToInsertValues,
   TableToUpdateValues,
-} from "../query/simple-query-interface";
+} from "../query/mod";
 import {
   column,
   FragnoId,

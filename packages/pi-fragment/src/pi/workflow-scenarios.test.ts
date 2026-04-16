@@ -20,6 +20,8 @@ import {
   createStreamFn,
   createStreamFnScript,
   createTestWorkflows,
+  createWorkflowsUnitOfWork,
+  findWorkflowSteps,
   mockModel,
 } from "./test-utils";
 import {
@@ -1099,7 +1101,7 @@ describe("pi-workflows scenarios", () => {
         }),
         scenarioSteps.read({
           read: async (ctx) => {
-            const steps = await ctx.harness.db.find("workflow_step");
+            const steps = await findWorkflowSteps(ctx.harness.test.adapter);
             const assistantStep = steps.find(
               (row: unknown) => (row as { name?: string }).name === "assistant-0",
             ) as { id: { valueOf: () => string }; result?: unknown } | undefined;
@@ -1119,7 +1121,11 @@ describe("pi-workflows scenarios", () => {
             }
 
             existingJournal[0] = { ...existingJournal[0], version: 999 };
-            await ctx.harness.db.update("workflow_step", assistantStep.id.valueOf(), (b) =>
+            const journalUow = createWorkflowsUnitOfWork(
+              ctx.harness.test.adapter,
+              "tamper-tool-journal-version",
+            );
+            journalUow.update("workflow_step", assistantStep.id.valueOf(), (b) =>
               b.set({
                 result: {
                   ...existingResult,
@@ -1127,6 +1133,7 @@ describe("pi-workflows scenarios", () => {
                 },
               }),
             );
+            await journalUow.executeMutations();
             return true;
           },
         }),

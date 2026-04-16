@@ -11,8 +11,8 @@ import { z } from "zod";
 import { instantiate, defineFragment } from "@fragno-dev/core";
 
 import type { DatabaseAdapter } from "./adapters/adapters";
+import type { FragnoDatabase } from "./fragno-database";
 import { suffixNamingStrategy } from "./naming/sql-naming";
-import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import { schema, idColumn, column } from "./schema/create";
 import { withDatabase } from "./with-database";
 
@@ -93,9 +93,12 @@ function createMockAdapter(): DatabaseAdapter {
     createUnitOfWork: vi.fn(() => createMockUow()),
     createBaseUnitOfWork: vi.fn(() => createMockUow()),
     type: "mock",
-  } as unknown as SimpleQueryInterface<TestSchema>;
+  } as unknown as FragnoDatabase<TestSchema>;
 
   return {
+    registerSchema: vi.fn(),
+    createUnitOfWork: vi.fn(() => createMockUow()),
+    createBaseUnitOfWork: vi.fn(() => createMockUow()),
     createQueryEngine: vi.fn(() => mockdb),
     getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
@@ -368,13 +371,12 @@ describe("db-fragment-instantiator", () => {
     it("should create fresh UOW for each request", async () => {
       let createBaseUowCallCount = 0;
       const mockAdapter = createMockAdapter();
-      const queryEngine = mockAdapter.createQueryEngine(testSchema, "test");
 
       // Track how many times createBaseUnitOfWork is called
-      const originalCreateBaseUow = queryEngine.createBaseUnitOfWork;
-      queryEngine.createBaseUnitOfWork = vi.fn(() => {
+      const originalCreateBaseUow = mockAdapter.createBaseUnitOfWork;
+      mockAdapter.createBaseUnitOfWork = vi.fn((name, config) => {
         createBaseUowCallCount++;
-        return originalCreateBaseUow();
+        return originalCreateBaseUow(name, config);
       });
 
       const definition = defineFragment("test-db-fragment")
@@ -408,7 +410,7 @@ describe("db-fragment-instantiator", () => {
 
       // Verify that createBaseUnitOfWork was called twice (once per request)
       expect(createBaseUowCallCount).toBe(2);
-      expect(queryEngine.createBaseUnitOfWork).toHaveBeenCalledTimes(2);
+      expect(mockAdapter.createBaseUnitOfWork).toHaveBeenCalledTimes(2);
     });
   });
 

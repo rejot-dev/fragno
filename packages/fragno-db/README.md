@@ -73,7 +73,12 @@ const commentLibraryDef = defineFragment<CommentLibraryConfig>("comment-library"
   .providesBaseService(({ db }) => {
     return {
       createComment: async (data: { content: string; userId: string; postId: string }) => {
-        const id = await db.create("comment", data);
+        const uow = db.createUnitOfWork("create-comment");
+        const id = uow.create("comment", data);
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create comment");
+        }
         return { id: id.toJSON(), ...data };
       },
     };

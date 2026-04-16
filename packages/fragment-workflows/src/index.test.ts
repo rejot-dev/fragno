@@ -77,45 +77,96 @@ describe("Workflows Fragment", () => {
     const workflowName = "demo-workflow";
     const instanceId = "instance-1";
 
-    const instanceRef = await db.create("workflow_instance", {
-      id: instanceId,
-      workflowName,
-      status: "pending",
-      params: { source: "tests" },
-      runNumber: 0,
-    });
+    const instanceRef = await (async () => {
+      const uow = db.createUnitOfWork("wf");
+      uow.create("workflow_instance", {
+        id: instanceId,
+        workflowName,
+        status: "pending",
+        params: { source: "tests" },
+        runNumber: 0,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing created id");
+      }
+      return id;
+    })();
 
-    await db.create("workflow_step", {
-      instanceRef,
-      runNumber: 0,
-      stepKey: "do:step-1",
-      name: "Start",
-      type: "do",
-      status: "completed",
-      attempts: 1,
-      maxAttempts: 3,
-      timeoutMs: null,
-      nextRetryAt: null,
-      wakeAt: null,
-      waitEventType: null,
-      result: { ok: true },
-      errorName: null,
-      errorMessage: null,
-    });
+    await (async () => {
+      const uow = db.createUnitOfWork("wf");
+      uow.create("workflow_step", {
+        instanceRef,
+        runNumber: 0,
+        stepKey: "do:step-1",
+        name: "Start",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 3,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { ok: true },
+        errorName: null,
+        errorMessage: null,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing created id");
+      }
+      return id;
+    })();
 
-    await db.create("workflow_event", {
-      instanceRef,
-      runNumber: 0,
-      actor: "user",
-      type: "approval",
-      payload: { approved: true },
-      deliveredAt: null,
-      consumedByStepKey: null,
-    });
+    await (async () => {
+      const uow = db.createUnitOfWork("wf");
+      uow.create("workflow_event", {
+        instanceRef,
+        runNumber: 0,
+        actor: "user",
+        type: "approval",
+        payload: { approved: true },
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing created id");
+      }
+      return id;
+    })();
 
-    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
-    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
+    const [instance] = (
+      await db
+        .createUnitOfWork("read")
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const [step] = (
+      await db
+        .createUnitOfWork("read")
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const [event] = (
+      await db
+        .createUnitOfWork("read")
+        .find("workflow_event", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
 
     expect(instance).toMatchObject({
       workflowName,
@@ -208,7 +259,12 @@ describe("Workflows Fragment", () => {
         details: { status: "active" },
       });
 
-      const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+      const [instance] = (
+        await db
+          .createUnitOfWork("read")
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
       expect(instance).toMatchObject({
         workflowName: "demo-workflow",
       });
@@ -216,46 +272,82 @@ describe("Workflows Fragment", () => {
     });
 
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
-      const instanceRef = await db.create("workflow_instance", {
-        id: "history-route",
-        workflowName: "demo-workflow",
-        status: "active",
-        params: {},
-        runNumber: 2,
-        startedAt: null,
-        completedAt: null,
-        output: null,
-        errorName: null,
-        errorMessage: null,
-      });
+      const instanceRef = await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_instance", {
+          id: "history-route",
+          workflowName: "demo-workflow",
+          status: "active",
+          params: {},
+          runNumber: 2,
+          startedAt: null,
+          completedAt: null,
+          output: null,
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_step", {
-        instanceRef,
-        runNumber: 2,
-        stepKey: "do:step-1",
-        name: "Example",
-        type: "do",
-        status: "completed",
-        attempts: 1,
-        maxAttempts: 1,
-        timeoutMs: null,
-        nextRetryAt: null,
-        wakeAt: null,
-        waitEventType: null,
-        result: { ok: true },
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_step", {
+          instanceRef,
+          runNumber: 2,
+          stepKey: "do:step-1",
+          name: "Example",
+          type: "do",
+          status: "completed",
+          attempts: 1,
+          maxAttempts: 1,
+          timeoutMs: null,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+          result: { ok: true },
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_event", {
-        instanceRef,
-        runNumber: 2,
-        actor: "user",
-        type: "approval",
-        payload: { approved: true },
-        deliveredAt: null,
-        consumedByStepKey: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_event", {
+          instanceRef,
+          runNumber: 2,
+          actor: "user",
+          type: "approval",
+          payload: { approved: true },
+          deliveredAt: null,
+          consumedByStepKey: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
       const response = await fragment.callRoute(
         "GET",
@@ -272,64 +364,112 @@ describe("Workflows Fragment", () => {
     });
 
     test("GET /:workflowName/instances/:instanceId/history should default to latest run", async () => {
-      const instanceRef = await db.create("workflow_instance", {
-        id: "history-latest",
-        workflowName: "demo-workflow",
-        status: "active",
-        params: {},
-        runNumber: 3,
-        startedAt: null,
-        completedAt: null,
-        output: null,
-        errorName: null,
-        errorMessage: null,
-      });
+      const instanceRef = await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_instance", {
+          id: "history-latest",
+          workflowName: "demo-workflow",
+          status: "active",
+          params: {},
+          runNumber: 3,
+          startedAt: null,
+          completedAt: null,
+          output: null,
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_step", {
-        instanceRef,
-        runNumber: 2,
-        stepKey: "do:step-old",
-        name: "Old",
-        type: "do",
-        status: "completed",
-        attempts: 1,
-        maxAttempts: 1,
-        timeoutMs: null,
-        nextRetryAt: null,
-        wakeAt: null,
-        waitEventType: null,
-        result: { ok: false },
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_step", {
+          instanceRef,
+          runNumber: 2,
+          stepKey: "do:step-old",
+          name: "Old",
+          type: "do",
+          status: "completed",
+          attempts: 1,
+          maxAttempts: 1,
+          timeoutMs: null,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+          result: { ok: false },
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_step", {
-        instanceRef,
-        runNumber: 3,
-        stepKey: "do:step-new",
-        name: "New",
-        type: "do",
-        status: "completed",
-        attempts: 1,
-        maxAttempts: 1,
-        timeoutMs: null,
-        nextRetryAt: null,
-        wakeAt: null,
-        waitEventType: null,
-        result: { ok: true },
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_step", {
+          instanceRef,
+          runNumber: 3,
+          stepKey: "do:step-new",
+          name: "New",
+          type: "do",
+          status: "completed",
+          attempts: 1,
+          maxAttempts: 1,
+          timeoutMs: null,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+          result: { ok: true },
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_event", {
-        instanceRef,
-        runNumber: 3,
-        actor: "user",
-        type: "latest",
-        payload: { latest: true },
-        deliveredAt: null,
-        consumedByStepKey: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_event", {
+          instanceRef,
+          runNumber: 3,
+          actor: "user",
+          type: "latest",
+          payload: { latest: true },
+          deliveredAt: null,
+          consumedByStepKey: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
       const response = await fragment.callRoute(
         "GET",
@@ -348,64 +488,112 @@ describe("Workflows Fragment", () => {
     });
 
     test("GET /:workflowName/instances/:instanceId/history/:run should return requested run", async () => {
-      const instanceRef = await db.create("workflow_instance", {
-        id: "history-run",
-        workflowName: "demo-workflow",
-        status: "active",
-        params: {},
-        runNumber: 3,
-        startedAt: null,
-        completedAt: null,
-        output: null,
-        errorName: null,
-        errorMessage: null,
-      });
+      const instanceRef = await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_instance", {
+          id: "history-run",
+          workflowName: "demo-workflow",
+          status: "active",
+          params: {},
+          runNumber: 3,
+          startedAt: null,
+          completedAt: null,
+          output: null,
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_step", {
-        instanceRef,
-        runNumber: 2,
-        stepKey: "do:step-old",
-        name: "Old",
-        type: "do",
-        status: "completed",
-        attempts: 1,
-        maxAttempts: 1,
-        timeoutMs: null,
-        nextRetryAt: null,
-        wakeAt: null,
-        waitEventType: null,
-        result: { ok: false },
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_step", {
+          instanceRef,
+          runNumber: 2,
+          stepKey: "do:step-old",
+          name: "Old",
+          type: "do",
+          status: "completed",
+          attempts: 1,
+          maxAttempts: 1,
+          timeoutMs: null,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+          result: { ok: false },
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_step", {
-        instanceRef,
-        runNumber: 3,
-        stepKey: "do:step-new",
-        name: "New",
-        type: "do",
-        status: "completed",
-        attempts: 1,
-        maxAttempts: 1,
-        timeoutMs: null,
-        nextRetryAt: null,
-        wakeAt: null,
-        waitEventType: null,
-        result: { ok: true },
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_step", {
+          instanceRef,
+          runNumber: 3,
+          stepKey: "do:step-new",
+          name: "New",
+          type: "do",
+          status: "completed",
+          attempts: 1,
+          maxAttempts: 1,
+          timeoutMs: null,
+          nextRetryAt: null,
+          wakeAt: null,
+          waitEventType: null,
+          result: { ok: true },
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
-      await db.create("workflow_event", {
-        instanceRef,
-        runNumber: 2,
-        actor: "user",
-        type: "prior",
-        payload: { prior: true },
-        deliveredAt: null,
-        consumedByStepKey: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_event", {
+          instanceRef,
+          runNumber: 2,
+          actor: "user",
+          type: "prior",
+          payload: { prior: true },
+          deliveredAt: null,
+          consumedByStepKey: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
       const response = await fragment.callRoute(
         "GET",
@@ -424,18 +612,30 @@ describe("Workflows Fragment", () => {
     });
 
     test("GET /:workflowName/instances/:instanceId/history/:run should reject invalid run", async () => {
-      await db.create("workflow_instance", {
-        id: "history-invalid-run",
-        workflowName: "demo-workflow",
-        status: "active",
-        params: {},
-        runNumber: 1,
-        startedAt: null,
-        completedAt: null,
-        output: null,
-        errorName: null,
-        errorMessage: null,
-      });
+      await (async () => {
+        const uow = db.createUnitOfWork("wf");
+        uow.create("workflow_instance", {
+          id: "history-invalid-run",
+          workflowName: "demo-workflow",
+          status: "active",
+          params: {},
+          runNumber: 1,
+          startedAt: null,
+          completedAt: null,
+          output: null,
+          errorName: null,
+          errorMessage: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
 
       const response = await fragment.callRoute(
         "GET",

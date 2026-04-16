@@ -22,7 +22,7 @@ import {
   type CursorResult,
 } from "../../query/cursor";
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
-import type { CompiledJoin } from "../../query/orm/orm";
+import type { CompiledJoin } from "../../query/find-options";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import type {
   CompiledMutation,

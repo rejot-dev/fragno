@@ -414,20 +414,29 @@ describe("defineFragmentWithDatabase with full database integration", () => {
       .providesService(({ orm }) => {
         return {
           createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
-            const id = await orm.create("note", note);
+            const uow = orm.createUnitOfWork("create-note");
+            const id = uow.create("note", note);
+            const { success } = await uow.executeMutations();
+            if (!success) {
+              throw new Error("Failed to create note");
+            }
             return {
               ...note,
               id: id.toJSON(),
               createdAt: note.createdAt ?? new Date(),
             };
           },
-          getNotes: () => {
-            return orm.find("note", (b) => b);
+          getNotes: async () => {
+            const uow = orm.createUnitOfWork("read-notes").find("note", (b) => b);
+            await uow.executeRetrieve();
+            return (await uow.retrievalPhase)[0];
           },
-          getNotesByUser: (userId: string) => {
-            return orm.find("note", (b) =>
+          getNotesByUser: async (userId: string) => {
+            const uow = orm.createUnitOfWork("read-notes-by-user").find("note", (b) =>
               b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
             );
+            await uow.executeRetrieve();
+            return (await uow.retrievalPhase)[0];
           },
         };
       });
@@ -437,14 +446,14 @@ describe("defineFragmentWithDatabase with full database integration", () => {
     const result = transform(source, "", { ssr: true });
     expect(result.code).toContain("noteSchema");
     expect(result.code).toContain("createNote");
-    expect(result.code).toContain("orm.create");
-    expect(result.code).toContain("orm.find");
+    expect(result.code).toContain("createUnitOfWork");
+    expect(result.code).toContain("executeRetrieve");
   });
 
   test("ssr:false - transforms database integration", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain("orm.create");
-    expect(result.code).toContain("orm.find");
+    expect(result.code).toContain("createUnitOfWork");
+    expect(result.code).toContain("executeRetrieve");
     expect(result.code).toContain("createNote:");
   });
 });
@@ -537,14 +546,19 @@ describe("defineFragmentWithDatabase with aliased import", () => {
     const lib = defineDbFragment("mylib")
       .withDatabase(mySchema)
       .providesService(({ orm }) => ({
-        getUsers: () => orm.find("users", (b) => b)
+        getUsers: async () => {
+          const uow = orm.createUnitOfWork("read-users").find("users", (b) => b);
+          await uow.executeRetrieve();
+          return (await uow.retrievalPhase)[0];
+        }
       }));
   `;
 
   test("ssr:false - handles aliased imports", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("mySchema");
-    expect(result.code).toContain("orm.find");
+    expect(result.code).toContain("createUnitOfWork");
+    expect(result.code).toContain("executeRetrieve");
     expect(result.code).not.toContain("withDatabase");
     expect(result.code).toContain("providesService((");
     expect(result.code).toContain("orm");
@@ -756,7 +770,11 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       const lib = defineFragmentWithDatabase("mylib")
         .withDatabase(mySchema)
         .providesService(({ orm }) => ({
-          getUsers: () => orm.find("users", (b) => b)
+          getUsers: async () => {
+            const uow = orm.createUnitOfWork("read-users").find("users", (b) => b);
+            await uow.executeRetrieve();
+            return (await uow.retrievalPhase)[0];
+          }
         }));
     `;
 
@@ -777,7 +795,8 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       expect(result.code).toContain("orm");
 
       // Should keep orm usage in services
-      expect(result.code).toContain("orm.find");
+      expect(result.code).toContain("createUnitOfWork");
+      expect(result.code).toContain("executeRetrieve");
     });
 
     test("ssr:true - keeps original code", () => {
@@ -785,7 +804,8 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       expect(result.code).toContain("defineFragmentWithDatabase");
       expect(result.code).toContain("withDatabase");
       expect(result.code).toContain("mySchema");
-      expect(result.code).toContain("orm.find");
+      expect(result.code).toContain("createUnitOfWork");
+      expect(result.code).toContain("executeRetrieve");
     });
   });
 
@@ -946,7 +966,12 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
         .withDatabase(noteSchema)
         .providesService(({ orm }) => ({
           createNote: async (note) => {
-            const id = await orm.create("note", note);
+            const uow = orm.createUnitOfWork("create-note");
+            const id = uow.create("note", note);
+            const { success } = await uow.executeMutations();
+            if (!success) {
+              throw new Error("Failed to create note");
+            }
             return { ...note, id };
           },
         }));
@@ -966,7 +991,7 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
 
       // providesService should be transformed
       expect(result.code).toContain("providesService((");
-      expect(result.code).toContain("orm.create");
+      expect(result.code).toContain("createUnitOfWork");
     });
   });
 

@@ -4,32 +4,11 @@ import { createHmac, generateKeyPairSync } from "crypto";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
-import { buildHarness } from "./test-utils";
+import { buildHarness, runGithubUowCreate } from "./test-utils";
 
 type FetchCall = {
   url: URL;
   init?: RequestInit;
-};
-
-type InstallationRow = {
-  id: { valueOf: () => string } | string;
-  status?: string | null;
-  accountLogin?: string | null;
-  lastWebhookAt?: Date | null;
-};
-
-type InstallationRepoRow = {
-  id: { valueOf: () => string } | string;
-  installationId?: string | null;
-  removedAt?: Date | null;
-  fullName?: string | null;
-  isFork?: boolean | null;
-  defaultBranch?: string | null;
-};
-
-type RepoLinkRow = {
-  id: { valueOf: () => string } | string;
-  repoId?: string | null;
 };
 
 const toExternalId = (value: unknown) => {
@@ -374,18 +353,21 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const installations = (await fragments.githubApp.db.find(
-        "installation",
-      )) as InstallationRow[];
+      const installations = (
+        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+      )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
       expect(installations[0]?.status).toBe("active");
       expect(installations[0]?.accountLogin).toBe("octo");
       expect(installations[0]?.lastWebhookAt).toBeInstanceOf(Date);
 
-      const repos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const repos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       expect(repos).toHaveLength(1);
       expect(repos[0]?.fullName).toBe("octo/new-repo");
 
@@ -401,9 +383,12 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const reposAfter = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const reposAfter = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       expect(reposAfter).toHaveLength(1);
     } finally {
       await test.cleanup();
@@ -445,16 +430,19 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const installations = (await fragments.githubApp.db.find(
-        "installation",
-      )) as InstallationRow[];
+      const installations = (
+        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+      )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
       expect(installations[0]?.status).toBe("active");
 
-      const repos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const repos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       expect(repos).toHaveLength(0);
     } finally {
       await test.cleanup();
@@ -522,9 +510,12 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const repos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const repos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       expect(repos).toHaveLength(1);
       expect(repos[0]?.fullName).toBe("octo/payload-repo");
       expect(toExternalId(repos[0]?.id)).toBe("201");
@@ -551,7 +542,7 @@ describe("github-app webhooks", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -561,7 +552,7 @@ describe("github-app webhooks", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "201",
         installationId,
         ownerLogin: "octo",
@@ -606,9 +597,12 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const repos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const repos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       expect(repos).toHaveLength(1);
       expect(repos[0]?.isFork).toBe(true);
       expect(repos[0]?.defaultBranch).toBe("develop");
@@ -628,7 +622,7 @@ describe("github-app webhooks", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -638,7 +632,7 @@ describe("github-app webhooks", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "10",
         installationId,
         ownerLogin: "octo",
@@ -650,7 +644,7 @@ describe("github-app webhooks", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "10",
         linkKey: "default",
       });
@@ -701,16 +695,21 @@ describe("github-app webhooks", () => {
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
-      const repos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const repos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
       const byId = new Map(repos.map((repo) => [toExternalId(repo.id), repo]));
 
       expect(byId.get("20")?.removedAt).toBeNull();
       expect(byId.get("20")?.fullName).toBe("octo/added-repo");
       expect(byId.get("10")?.removedAt).toBeInstanceOf(Date);
 
-      const links = (await fragments.githubApp.db.find("repo_link")) as RepoLinkRow[];
+      const links = (
+        await fragments.githubApp.db.createUnitOfWork("read").find("repo_link").executeRetrieve()
+      )[0];
       expect(links).toHaveLength(0);
     } finally {
       await test.cleanup();
@@ -738,7 +737,7 @@ describe("github-app webhooks", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",

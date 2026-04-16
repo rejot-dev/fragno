@@ -1,9 +1,12 @@
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { TableToInsertValues } from "@fragno-dev/db/query";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
 import { instantiate } from "@fragno-dev/core";
+import type { DatabaseAdapter } from "@fragno-dev/db";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
+import { workflowsSchema } from "@fragno-dev/workflows";
 import type { WorkflowLiveStateStore } from "@fragno-dev/workflows";
 
 import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
@@ -26,6 +29,56 @@ import type {
   PiWorkflowsService,
 } from "./types";
 import { createPiWorkflows } from "./workflow/workflow";
+
+/** Matches `withDatabase(piSchema)` default namespace (sanitized schema name). */
+export const PI_DB_NAMESPACE = "pi_fragment";
+
+/** Workflows fragment default namespace. */
+export const WORKFLOWS_DB_NAMESPACE = "workflows";
+
+/** Typed UOW for the pi fragment schema (query engine is not exposed). */
+export function createPiUnitOfWork(adapter: DatabaseAdapter, name: string) {
+  return adapter.createQueryEngine(piSchema, PI_DB_NAMESPACE).createUnitOfWork(name);
+}
+
+/** Typed UOW for the workflows schema (query engine is not exposed). */
+export function createWorkflowsUnitOfWork(adapter: DatabaseAdapter, name: string) {
+  return adapter.createQueryEngine(workflowsSchema, WORKFLOWS_DB_NAMESPACE).createUnitOfWork(name);
+}
+
+export async function findPiSessions(adapter: DatabaseAdapter) {
+  const [rows] = await createPiUnitOfWork(adapter, "find-sessions")
+    .find("session")
+    .executeRetrieve();
+  return rows;
+}
+
+export async function createPiSessionRow(
+  adapter: DatabaseAdapter,
+  values: TableToInsertValues<(typeof piSchema)["tables"]["session"]>,
+): Promise<FragnoId> {
+  const uow = createPiUnitOfWork(adapter, "create-session");
+  const id = uow.create("session", values);
+  const { success } = await uow.executeMutations();
+  if (!success) {
+    throw new Error("Failed to create session row");
+  }
+  return id;
+}
+
+export async function findWorkflowInstances(adapter: DatabaseAdapter) {
+  const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-instances")
+    .find("workflow_instance")
+    .executeRetrieve();
+  return rows;
+}
+
+export async function findWorkflowSteps(adapter: DatabaseAdapter) {
+  const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-steps")
+    .find("workflow_step")
+    .executeRetrieve();
+  return rows;
+}
 
 export const mockModel: Model<Api> = {
   id: "test-model",
@@ -224,7 +277,6 @@ export type DatabaseFragmentsTest = {
     pi: {
       callRoute: PiFragmentInstance["callRoute"];
       callRouteRaw: PiFragmentInstance["callRouteRaw"];
-      db: SimpleQueryInterface<typeof piSchema>;
     };
   };
   workflows: WorkflowsHarness;
@@ -276,16 +328,11 @@ export const buildHarness = async (
 
   await migrate(fragment);
 
-  const deps = fragment.$internal?.deps as { schema?: typeof piSchema; namespace?: string | null };
-  const namespace = deps?.namespace ?? "pi_fragment";
-  const db = workflowsHarness.test.adapter.createQueryEngine(piSchema, namespace);
-
   return {
     fragments: {
       pi: {
         callRoute: fragment.callRoute.bind(fragment),
         callRouteRaw: fragment.callRouteRaw.bind(fragment),
-        db,
       },
     },
     workflows: workflowsHarness,

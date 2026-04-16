@@ -3,25 +3,25 @@ import { rm } from "node:fs/promises";
 
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 
+import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
 import type { AdapterFactoryResult, KyselyPgliteAdapter, SchemaConfig } from "../adapters";
 
 const createCommonTestContextMethods = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string | null, SimpleQueryInterface<any, any>>,
+  ormMap: Map<string | null, FragnoDatabase<any, any>>,
 ) => ({
-  getOrm: <TSchema extends AnySchema>(namespace: string | null): SimpleQueryInterface<TSchema> => {
+  getOrm: <TSchema extends AnySchema>(namespace: string | null): FragnoDatabase<TSchema> => {
     const orm = ormMap.get(namespace);
     if (!orm) {
       throw new Error(`No ORM found for namespace: ${String(namespace)}`);
     }
-    return orm as SimpleQueryInterface<TSchema>;
+    return orm as FragnoDatabase<TSchema>;
   },
 });
 
@@ -78,7 +78,7 @@ export async function createKyselyPgliteAdapter(
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
+    const ormMap = new Map<string | null, FragnoDatabase<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);

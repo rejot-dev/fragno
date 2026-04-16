@@ -3,8 +3,8 @@ import type { CompiledQuery } from "kysely";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import { buildCondition } from "../../../query/condition-builder";
 import type { Condition } from "../../../query/condition-builder";
-import { buildFindOptions } from "../../../query/orm/orm";
-import type { AnySelectClause } from "../../../query/simple-query-interface";
+import { buildFindOptions } from "../../../query/find-options";
+import type { AnySelectClause } from "../../../query/mod";
 import type {
   RetrievalOperation,
   MutationOperation,

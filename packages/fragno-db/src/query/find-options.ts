@@ -1,12 +1,12 @@
-import type { AnyColumn, AnyRelation, AnyTable } from "../../schema/create";
-import { buildCondition, type Condition } from "../condition-builder";
+import type { AnyColumn, AnyRelation, AnyTable } from "../schema/create";
+import { buildCondition, type Condition } from "./condition-builder";
 import type {
   AnySelectClause,
   FindFirstOptions,
   FindManyOptions,
   JoinBuilder,
   OrderBy,
-} from "../simple-query-interface";
+} from "./mod";
 
 export interface CompiledJoin {
   relation: AnyRelation;

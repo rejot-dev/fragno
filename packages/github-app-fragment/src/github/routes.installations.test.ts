@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
 
-import { buildHarness } from "./test-utils";
+import { buildHarness, runGithubUowCreate } from "./test-utils";
 
 type FetchCall = {
   url: URL;
@@ -16,20 +16,6 @@ type SyncResponse =
 type InstallationsResponse =
   | { type: "json"; data: Array<{ id: string; status: string }> }
   | { type: "error"; error: { code: string; message?: string } };
-
-type InstallationRepoRow = {
-  id: { valueOf: () => string } | string;
-  name?: string | null;
-  fullName?: string | null;
-  isPrivate?: boolean | null;
-  defaultBranch?: string | null;
-  removedAt?: Date | null;
-};
-
-type RepoLinkRow = {
-  id: { valueOf: () => string } | string;
-  repoId?: string | null;
-};
 
 const toExternalId = (value: unknown) => {
   if (value === null || value === undefined) {
@@ -161,7 +147,7 @@ describe("github-app installation sync", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -171,7 +157,7 @@ describe("github-app installation sync", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "202",
         installationId,
         ownerLogin: "octo",
@@ -183,7 +169,7 @@ describe("github-app installation sync", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "303",
         installationId,
         ownerLogin: "octo",
@@ -195,7 +181,7 @@ describe("github-app installation sync", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "303",
         linkKey: "default",
       });
@@ -215,9 +201,12 @@ describe("github-app installation sync", () => {
 
       expect(typedResponse.data).toEqual({ added: 1, removed: 1, updated: 1 });
 
-      const scopedRepos = (await fragments.githubApp.db.find(
-        "installation_repo",
-      )) as InstallationRepoRow[];
+      const scopedRepos = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .find("installation_repo")
+          .executeRetrieve()
+      )[0];
 
       const repoById = new Map(scopedRepos.map((repo) => [toExternalId(repo.id), repo]));
 
@@ -237,7 +226,9 @@ describe("github-app installation sync", () => {
       expect(removedRepo).toBeTruthy();
       expect(removedRepo?.removedAt).not.toBeNull();
 
-      const repoLinks = (await fragments.githubApp.db.find("repo_link")) as RepoLinkRow[];
+      const repoLinks = (
+        await fragments.githubApp.db.createUnitOfWork("read").find("repo_link").executeRetrieve()
+      )[0];
       expect(repoLinks).toHaveLength(0);
 
       expect(fetchMock.calls.length).toBe(2);
@@ -286,10 +277,9 @@ describe("github-app installation sync", () => {
 
       expect(typedResponse.data).toEqual({ added: 1, removed: 0, updated: 0 });
 
-      const installations = (await fragments.githubApp.db.find("installation")) as Array<{
-        id: { valueOf: () => string } | string;
-        accountLogin?: string | null;
-      }>;
+      const installations = (
+        await fragments.githubApp.db.createUnitOfWork("read").find("installation").executeRetrieve()
+      )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
       expect(installations[0]?.accountLogin).toBe("octo");
@@ -314,7 +304,7 @@ describe("github-app installation listing", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "1",
         accountId: "1",
         accountLogin: "octo",
@@ -324,7 +314,7 @@ describe("github-app installation listing", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "2",
         accountId: "2",
         accountLogin: "hubot",

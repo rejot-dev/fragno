@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
 
-import { buildHarness } from "./test-utils";
+import { buildHarness, runGithubUowCreate } from "./test-utils";
 
 type FetchCall = {
   url: URL;
@@ -192,7 +192,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -202,7 +202,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "100",
         installationId,
         ownerLogin: "octo",
@@ -214,7 +214,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "100",
         linkKey: "default",
       });
@@ -263,7 +263,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -273,7 +273,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "101",
         installationId,
         ownerLogin: "octo",
@@ -285,7 +285,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "101",
         linkKey: "alpha",
       });
@@ -343,7 +343,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "9",
         accountId: "1",
         accountLogin: "octo",
@@ -353,7 +353,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "90",
         installationId: "9",
         ownerLogin: "octo",
@@ -391,7 +391,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "10",
         accountId: "1",
         accountLogin: "octo",
@@ -401,7 +401,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "100",
         installationId: "10",
         ownerLogin: "octo",
@@ -439,7 +439,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "11",
         accountId: "1",
         accountLogin: "octo",
@@ -449,7 +449,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "110",
         installationId: "11",
         ownerLogin: "octo",
@@ -461,7 +461,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "110",
         linkKey: "default",
       });
@@ -492,7 +492,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "120",
         installationId: 999n,
         ownerLogin: "octo",
@@ -539,7 +539,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -549,7 +549,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "130",
         installationId,
         ownerLogin: "octo",
@@ -561,7 +561,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "130",
         linkKey: "default",
       });
@@ -644,7 +644,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "14",
         accountId: "1",
         accountLogin: "octo",
@@ -654,7 +654,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "140",
         installationId: "14",
         ownerLogin: "octo",
@@ -692,7 +692,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "15",
         accountId: "1",
         accountLogin: "octo",
@@ -702,7 +702,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "150",
         installationId: "15",
         ownerLogin: "octo",
@@ -740,7 +740,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: "16",
         accountId: "1",
         accountLogin: "octo",
@@ -750,7 +750,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "160",
         installationId: "16",
         ownerLogin: "octo",
@@ -762,7 +762,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "160",
         linkKey: "default",
       });
@@ -793,7 +793,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "170",
         installationId: 1000n,
         ownerLogin: "octo",
@@ -840,7 +840,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -850,7 +850,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "180",
         installationId,
         ownerLogin: "octo",
@@ -862,7 +862,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "180",
         linkKey: "default",
       });
@@ -901,7 +901,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -911,7 +911,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "200",
         installationId,
         ownerLogin: "octo",
@@ -923,7 +923,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "200",
         linkKey: "default",
       });
@@ -974,7 +974,7 @@ describe("github-app pull request routes", () => {
     });
 
     try {
-      await fragments.githubApp.db.create("installation", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
         accountLogin: "octo",
@@ -984,7 +984,7 @@ describe("github-app pull request routes", () => {
         events: [],
       });
 
-      await fragments.githubApp.db.create("installation_repo", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
         id: "201",
         installationId,
         ownerLogin: "octo",
@@ -996,7 +996,7 @@ describe("github-app pull request routes", () => {
         removedAt: null,
       });
 
-      await fragments.githubApp.db.create("repo_link", {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
         repoId: "201",
         linkKey: "alpha",
       });
