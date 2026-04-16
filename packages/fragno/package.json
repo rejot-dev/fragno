@@ -42,10 +42,6 @@
       "types": "./dist/api/request-context-storage.d.ts",
       "default": "./dist/api/request-context-storage.js"
     },
-    "./internal/trace-context": {
-      "types": "./dist/internal/trace-context.d.ts",
-      "default": "./dist/internal/trace-context.js"
-    },
     "./internal/symbols": {
       "types": "./dist/internal/symbols.d.ts",
       "default": "./dist/internal/symbols.js"
