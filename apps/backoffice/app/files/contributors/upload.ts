@@ -67,6 +67,49 @@ export type CreateUploadMountedFileSystemOptions = {
   provider?: UploadProvider;
 };
 
+const readUploadFileContentResponse = async ({
+  ctx,
+  provider,
+  path,
+  fileKey,
+  operation,
+}: {
+  ctx: FilesContext;
+  provider: UploadProvider;
+  path: string;
+  fileKey: string;
+  operation: string;
+}) => {
+  const response = await requestUpload(ctx, "GET", "/files/by-key/content", {
+    query: {
+      provider,
+      key: fileKey,
+    },
+  });
+
+  if (response.status === 404) {
+    throw createPathNotFoundFileSystemError(operation, path);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to read file (${response.status}).`);
+  }
+
+  return response;
+};
+
+const normalizeUploadContentType = (contentType: string | null | undefined): string | null => {
+  const normalizedContentType = contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return normalizedContentType || null;
+};
+
+const resolveUploadReadContentType = (response: Response, fileKey: string): string | null => {
+  return resolveUploadContentType({
+    fileKey,
+    contentType: normalizeUploadContentType(response.headers.get("content-type")),
+  });
+};
+
 export const createUploadMountedFileSystem = (
   ctx: FilesContext,
   options: CreateUploadMountedFileSystemOptions = {},
@@ -138,74 +181,53 @@ export const createUploadMountedFileSystem = (
       }));
     },
     async readFile(path) {
-      const detail = await fetchUploadFileFromRuntime(
+      const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
+      if (isRoot || !fileKey || isDirectoryPath) {
+        throw createPathNotFoundFileSystemError("read", path);
+      }
+
+      const response = await readUploadFileContentResponse({
         ctx,
         provider,
-        stripLeadingSlash(path.slice(mountPoint.length)),
-      );
-      if (!detail || isUploadDirectoryMarker(detail)) {
-        throw new Error("File not found.");
-      }
-      if (!isProbablyTextContent(resolveUploadContentType(detail), detail.fileKey)) {
-        throw new Error("Binary files cannot be read as text.");
-      }
-
-      const response = await requestUpload(ctx, "GET", "/files/by-key/content", {
-        query: {
-          provider: detail.provider,
-          key: detail.fileKey,
-        },
+        path,
+        fileKey,
+        operation: "read",
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to read file (${response.status}).`);
+      if (!isProbablyTextContent(resolveUploadReadContentType(response, fileKey), fileKey)) {
+        throw new Error("Binary files cannot be read as text.");
       }
 
       return response.text();
     },
     async readFileBuffer(path) {
-      const detail = await fetchUploadFileFromRuntime(
+      const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
+      if (isRoot || !fileKey || isDirectoryPath) {
+        throw createPathNotFoundFileSystemError("read", path);
+      }
+
+      const response = await readUploadFileContentResponse({
         ctx,
         provider,
-        stripLeadingSlash(path.slice(mountPoint.length)),
-      );
-      if (!detail || isUploadDirectoryMarker(detail)) {
-        throw new Error("File not found.");
-      }
-
-      const response = await requestUpload(ctx, "GET", "/files/by-key/content", {
-        query: {
-          provider: detail.provider,
-          key: detail.fileKey,
-        },
+        path,
+        fileKey,
+        operation: "read",
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to read file (${response.status}).`);
-      }
 
       return new Uint8Array(await response.arrayBuffer());
     },
     async readFileStream(path) {
-      const detail = await fetchUploadFileFromRuntime(
+      const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
+      if (isRoot || !fileKey || isDirectoryPath) {
+        throw createPathNotFoundFileSystemError("read stream", path);
+      }
+
+      const response = await readUploadFileContentResponse({
         ctx,
         provider,
-        stripLeadingSlash(path.slice(mountPoint.length)),
-      );
-      if (!detail || isUploadDirectoryMarker(detail)) {
-        throw new Error("File not found.");
-      }
-
-      const response = await requestUpload(ctx, "GET", "/files/by-key/content", {
-        query: {
-          provider: detail.provider,
-          key: detail.fileKey,
-        },
+        path,
+        fileKey,
+        operation: "read stream",
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to read file (${response.status}).`);
-      }
 
       if (!response.body) {
         throw createUnsupportedOperationFileSystemError("read stream", path);
@@ -1105,7 +1127,7 @@ const inferUploadContentTypeFromFileKey = (fileKey: string): string | null => {
 };
 
 const isGenericBinaryContentType = (contentType: string | null | undefined): boolean => {
-  const normalizedContentType = contentType?.trim().toLowerCase() ?? "";
+  const normalizedContentType = normalizeUploadContentType(contentType) ?? "";
   return (
     normalizedContentType === "application/octet-stream" ||
     normalizedContentType === "binary/octet-stream"
@@ -1118,12 +1140,13 @@ const resolveUploadContentType = (
   },
 ): string | null => {
   const inferredContentType = inferUploadContentTypeFromFileKey(file.fileKey);
+  const normalizedContentType = normalizeUploadContentType(file.contentType);
 
-  if (file.contentType && !isGenericBinaryContentType(file.contentType)) {
-    return file.contentType;
+  if (normalizedContentType && !isGenericBinaryContentType(normalizedContentType)) {
+    return normalizedContentType;
   }
 
-  return inferredContentType ?? file.contentType ?? null;
+  return inferredContentType ?? normalizedContentType ?? null;
 };
 
 const toRelativeUploadPath = (

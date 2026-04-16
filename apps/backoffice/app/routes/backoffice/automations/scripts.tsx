@@ -1,18 +1,25 @@
 import { ChevronRight, Play } from "lucide-react";
 import { useState } from "react";
-import { Link, useFetcher, useOutletContext, useSearchParams } from "react-router";
+import { Link, useFetcher, useLoaderData, useOutletContext, useSearchParams } from "react-router";
 
 import { Collapsible } from "@base-ui/react";
 
 import type { AutomationSimulationResult } from "@/fragno/automation";
+import { AUTOMATION_TRIGGER_ORDER_LAST } from "@/fragno/automation/schema";
 
 import type { Route } from "./+types/scripts";
-import { runAutomationScenario } from "./data";
+import {
+  loadAutomationScenariosForScript,
+  loadAutomationScriptSource,
+  runAutomationScenario,
+  toAutomationScriptId,
+} from "./data";
 import type {
   AutomationLayoutContext,
   AutomationScenarioItem,
   AutomationScenarioStepItem,
   AutomationScriptItem,
+  AutomationTriggerItem,
 } from "./shared";
 import {
   AutomationBadge,
@@ -69,6 +76,197 @@ const isEmptyJsonObject = (value: unknown) => {
 
   return Object.keys(value).length === 0;
 };
+
+const normalizeScenarios = (
+  scenarios: Awaited<ReturnType<typeof loadAutomationScenariosForScript>>["scenarios"],
+): AutomationScenarioItem[] => {
+  return scenarios
+    .map((scenario, index) => ({
+      id: scenario.id?.trim() || `automation-scenario-${index}`,
+      path: scenario.path?.trim() || "",
+      relativePath: scenario.relativePath?.trim() || scenario.fileName?.trim() || "",
+      fileName: scenario.fileName?.trim() || scenario.relativePath?.trim() || "scenario.json",
+      name: scenario.name?.trim() || scenario.fileName?.trim() || `Scenario ${index + 1}`,
+      description: scenario.description?.trim() || undefined,
+      env:
+        scenario.env && typeof scenario.env === "object"
+          ? Object.fromEntries(
+              Object.entries(scenario.env).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[0] === "string" && typeof entry[1] === "string",
+              ),
+            )
+          : {},
+      initialState: scenario.initialState,
+      commandMocks: scenario.commandMocks,
+      stepCount:
+        typeof scenario.stepCount === "number" && Number.isFinite(scenario.stepCount)
+          ? scenario.stepCount
+          : 0,
+      relatedBindingIds: Array.isArray(scenario.relatedBindingIds)
+        ? scenario.relatedBindingIds.filter((value): value is string => typeof value === "string")
+        : [],
+      relatedScriptIds: Array.isArray(scenario.relatedScriptPaths)
+        ? scenario.relatedScriptPaths
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => toAutomationScriptId(value))
+        : [],
+      relatedScriptKeys: Array.isArray(scenario.relatedScriptKeys)
+        ? scenario.relatedScriptKeys.filter((value): value is string => typeof value === "string")
+        : [],
+      relatedScriptPaths: Array.isArray(scenario.relatedScriptPaths)
+        ? scenario.relatedScriptPaths.filter((value): value is string => typeof value === "string")
+        : [],
+      sources: Array.isArray(scenario.sources)
+        ? scenario.sources.filter((value): value is string => typeof value === "string")
+        : [],
+      eventTypes: Array.isArray(scenario.eventTypes)
+        ? scenario.eventTypes.filter((value): value is string => typeof value === "string")
+        : [],
+      steps: Array.isArray(scenario.steps)
+        ? scenario.steps.map((step, stepIndex) => {
+            const rawStep = step as Record<string, unknown>;
+            const rawEvent =
+              rawStep.event && typeof rawStep.event === "object"
+                ? (rawStep.event as Record<string, unknown>)
+                : null;
+
+            return {
+              index:
+                typeof rawStep.index === "number" && Number.isFinite(rawStep.index)
+                  ? rawStep.index
+                  : stepIndex,
+              id:
+                typeof rawStep.id === "string" && rawStep.id.trim()
+                  ? rawStep.id
+                  : `step-${stepIndex + 1}`,
+              title:
+                typeof rawStep.title === "string" && rawStep.title.trim()
+                  ? rawStep.title
+                  : undefined,
+              event: rawEvent
+                ? {
+                    id:
+                      typeof rawEvent.id === "string" && rawEvent.id.trim()
+                        ? rawEvent.id
+                        : `event-${stepIndex + 1}`,
+                    orgId:
+                      typeof rawEvent.orgId === "string" && rawEvent.orgId.trim()
+                        ? rawEvent.orgId
+                        : undefined,
+                    source:
+                      typeof rawEvent.source === "string" && rawEvent.source.trim()
+                        ? rawEvent.source
+                        : "unknown",
+                    eventType:
+                      typeof rawEvent.eventType === "string" && rawEvent.eventType.trim()
+                        ? rawEvent.eventType
+                        : "unknown",
+                    occurredAt:
+                      typeof rawEvent.occurredAt === "string" && rawEvent.occurredAt.trim()
+                        ? rawEvent.occurredAt
+                        : "",
+                    payload:
+                      rawEvent.payload && typeof rawEvent.payload === "object"
+                        ? (rawEvent.payload as Record<string, unknown>)
+                        : {},
+                    actor:
+                      rawEvent.actor && typeof rawEvent.actor === "object"
+                        ? (rawEvent.actor as {
+                            type?: string;
+                            externalId?: string;
+                            [key: string]: unknown;
+                          })
+                        : null,
+                    subject:
+                      rawEvent.subject && typeof rawEvent.subject === "object"
+                        ? (rawEvent.subject as {
+                            orgId?: string;
+                            userId?: string;
+                            [key: string]: unknown;
+                          })
+                        : null,
+                  }
+                : {
+                    id: `event-${stepIndex + 1}`,
+                    source: "unknown",
+                    eventType: "unknown",
+                    occurredAt: "",
+                    payload: {},
+                    actor: null,
+                    subject: null,
+                  },
+              matchedBindingIds: Array.isArray(rawStep.matchedBindingIds)
+                ? rawStep.matchedBindingIds.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              matchedScriptIds: Array.isArray(rawStep.matchedScriptPaths)
+                ? rawStep.matchedScriptPaths
+                    .filter((value): value is string => typeof value === "string")
+                    .map((value) => toAutomationScriptId(value))
+                : [],
+              matchedScriptKeys: Array.isArray(rawStep.matchedScriptKeys)
+                ? rawStep.matchedScriptKeys.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              matchedScriptPaths: Array.isArray(rawStep.matchedScriptPaths)
+                ? rawStep.matchedScriptPaths.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+            };
+          })
+        : [],
+    }))
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name) || left.relativePath.localeCompare(right.relativePath),
+    );
+};
+
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  if (!params.orgId) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const url = new URL(request.url);
+  const selectedScriptId = url.searchParams.get("script")?.trim() ?? "";
+  const activeView = getScriptDetailView(url.searchParams.get("view"));
+
+  if (!selectedScriptId) {
+    return {
+      selectedScriptSource: { script: null, scriptError: null },
+      scenarios: [] as AutomationScenarioItem[],
+      scenariosError: null,
+    };
+  }
+
+  if (activeView === "tests") {
+    const scenariosResult = await loadAutomationScenariosForScript({
+      context,
+      orgId: params.orgId,
+      scriptId: selectedScriptId,
+    });
+
+    return {
+      selectedScriptSource: { script: null, scriptError: null },
+      scenarios: normalizeScenarios(scenariosResult.scenarios),
+      scenariosError: scenariosResult.scenariosError,
+    };
+  }
+
+  return {
+    selectedScriptSource: await loadAutomationScriptSource({
+      context,
+      orgId: params.orgId,
+      scriptId: selectedScriptId,
+    }),
+    scenarios: [] as AutomationScenarioItem[],
+    scenariosError: null,
+  };
+}
 
 function JsonPanel({
   title,
@@ -145,6 +343,98 @@ function PrettyCollapsible({
         </Collapsible.Panel>
       </div>
     </Collapsible.Root>
+  );
+}
+
+function ScriptTriggerBindingsPanel({
+  script,
+  triggerBindings,
+  triggerBindingsError,
+}: {
+  script: AutomationScriptItem;
+  triggerBindings: AutomationTriggerItem[];
+  triggerBindingsError: string | null;
+}) {
+  const scriptBindings = triggerBindings
+    .filter((binding) => binding.scriptId === script.id)
+    .sort((left, right) => {
+      const leftOrder =
+        left.triggerOrder != null && Number.isFinite(left.triggerOrder)
+          ? left.triggerOrder
+          : AUTOMATION_TRIGGER_ORDER_LAST;
+      const rightOrder =
+        right.triggerOrder != null && Number.isFinite(right.triggerOrder)
+          ? right.triggerOrder
+          : AUTOMATION_TRIGGER_ORDER_LAST;
+
+      return (
+        leftOrder - rightOrder ||
+        left.source.localeCompare(right.source) ||
+        left.eventType.localeCompare(right.eventType) ||
+        left.id.localeCompare(right.id)
+      );
+    });
+
+  if (triggerBindingsError && scriptBindings.length === 0) {
+    return (
+      <AutomationNotice tone="error">
+        <p className="text-[10px] tracking-[0.22em] uppercase">Could not load script triggers</p>
+        <p className="mt-2 text-sm">{triggerBindingsError}</p>
+      </AutomationNotice>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Triggers</p>
+      </div>
+
+      {scriptBindings.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-[var(--bo-muted)]">
+          This script has no trigger bindings yet.
+        </div>
+      ) : (
+        <ul className="divide-y divide-[color:var(--bo-border)]">
+          {scriptBindings.map((binding) => {
+            const hasScriptError = Boolean(binding.scriptLoadError);
+            const isEnabled = !hasScriptError && binding.enabled;
+
+            return (
+              <li
+                key={binding.id}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+              >
+                <span className="min-w-0 font-mono text-[var(--bo-fg)]">
+                  {binding.source}.{binding.eventType}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-2 text-xs ${
+                    hasScriptError
+                      ? "text-red-700 dark:text-red-200"
+                      : isEnabled
+                        ? "text-emerald-700 dark:text-emerald-200"
+                        : "text-[var(--bo-muted)]"
+                  }`}
+                >
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      hasScriptError
+                        ? "bg-red-500"
+                        : isEnabled
+                          ? "bg-emerald-500"
+                          : "bg-[var(--bo-muted-2)]"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  {hasScriptError ? "Error" : isEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -464,30 +754,25 @@ function ScenarioList({
   );
 }
 
-function ScriptSourcePanel({ script }: { script: AutomationScriptItem }) {
-  return (
-    <div className="space-y-4">
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-          Filesystem location
-        </p>
-        <p className="mt-2 font-mono text-xs text-[var(--bo-fg)]">{script.absolutePath}</p>
-      </div>
+function ScriptSourcePanel({
+  source,
+}: {
+  source: { script: string | null; scriptError: string | null };
+}) {
+  if (source.scriptError) {
+    return null;
+  }
 
-      <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-        <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Bash source
-          </p>
-        </div>
-        <pre className="backoffice-scroll max-h-[42rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
-          <code>
-            {script.scriptLoadError
-              ? "# Script source unavailable"
-              : script.script || "# Empty script"}
-          </code>
-        </pre>
+  return (
+    <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+          Bash source
+        </p>
       </div>
+      <pre className="backoffice-scroll max-h-[42rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
+        <code>{source.script || "# Empty script"}</code>
+      </pre>
     </div>
   );
 }
@@ -554,23 +839,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationAutomationScripts() {
-  const { orgId, scripts, scriptsError, scenarios, scenariosError } =
+  const { orgId, scripts, scriptsError, triggerBindings, triggerBindingsError } =
     useOutletContext<AutomationLayoutContext>();
+  const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
   const selectedScript = scripts.find((script) => script.id === selectedScriptId) ?? null;
   const activeView = getScriptDetailView(searchParams.get("view"));
   const isDetailVisible = Boolean(selectedScript);
   const basePath = `/backoffice/automations/${orgId}/scripts`;
-  const scenarioCounts = new Map(
-    scripts.map((script) => [
-      script.id,
-      scenarios.filter((scenario) => scenario.relatedScriptIds.includes(script.id)).length,
-    ]),
-  );
-  const visibleScenarios = selectedScript
-    ? scenarios.filter((scenario) => scenario.relatedScriptIds.includes(selectedScript.id))
-    : scenarios;
   const hasScriptLoadError = Boolean(scriptsError);
 
   if (hasScriptLoadError && scripts.length === 0) {
@@ -618,12 +895,12 @@ export default function BackofficeOrganisationAutomationScripts() {
           <div className="mt-4 space-y-2">
             {scripts.map((script) => {
               const isSelected = script.id === selectedScriptId;
-              const scenarioCount = scenarioCounts.get(script.id) ?? 0;
               const status = script.scriptLoadError
                 ? "Error"
                 : script.enabled
                   ? "Enabled"
                   : "Disabled";
+              const showStatusBadge = script.scriptLoadError || script.bindingCount > 0;
 
               return (
                 <Link
@@ -653,15 +930,20 @@ export default function BackofficeOrganisationAutomationScripts() {
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
-                      <AutomationBadge tone="accent">Workspace</AutomationBadge>
-                      <AutomationBadge
-                        tone={
-                          script.scriptLoadError ? "error" : script.enabled ? "success" : "neutral"
-                        }
-                      >
-                        {status}
-                      </AutomationBadge>
-                      <AutomationBadge>{pluralize(scenarioCount, "scenario")}</AutomationBadge>
+                      {showStatusBadge ? (
+                        <AutomationBadge
+                          tone={
+                            script.scriptLoadError
+                              ? "error"
+                              : script.enabled
+                                ? "success"
+                                : "neutral"
+                          }
+                        >
+                          {status}
+                        </AutomationBadge>
+                      ) : null}
+                      <AutomationBadge>{pluralize(script.bindingCount, "binding")}</AutomationBadge>
                     </div>
                   </div>
                 </Link>
@@ -686,23 +968,24 @@ export default function BackofficeOrganisationAutomationScripts() {
                     </Link>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <AutomationBadge tone="accent">Workspace</AutomationBadge>
                     <AutomationBadge>{selectedScript.engine}</AutomationBadge>
-                    <AutomationBadge
-                      tone={
-                        selectedScript.scriptLoadError
-                          ? "neutral"
+                    {selectedScript.scriptLoadError || selectedScript.bindingCount > 0 ? (
+                      <AutomationBadge
+                        tone={
+                          selectedScript.scriptLoadError
+                            ? "error"
+                            : selectedScript.enabled
+                              ? "success"
+                              : "neutral"
+                        }
+                      >
+                        {selectedScript.scriptLoadError
+                          ? "Error"
                           : selectedScript.enabled
-                            ? "success"
-                            : "neutral"
-                      }
-                    >
-                      {selectedScript.scriptLoadError
-                        ? "Error"
-                        : selectedScript.enabled
-                          ? "Enabled"
-                          : "Disabled"}
-                    </AutomationBadge>
+                            ? "Enabled"
+                            : "Disabled"}
+                      </AutomationBadge>
+                    ) : null}
                   </div>
                   <div>
                     <h2 className="text-2xl font-semibold text-[var(--bo-fg)]">
@@ -720,7 +1003,7 @@ export default function BackofficeOrganisationAutomationScripts() {
                       Version
                     </dt>
                     <dd className="mt-1 font-semibold text-[var(--bo-fg)]">
-                      v{selectedScript.version}
+                      {selectedScript.version != null ? `v${selectedScript.version}` : "—"}
                     </dd>
                   </div>
                   <div>
@@ -742,13 +1025,14 @@ export default function BackofficeOrganisationAutomationScripts() {
                 </dl>
               </div>
 
-              {selectedScript.scriptLoadError ? (
+              {activeView === "source" &&
+              (selectedScript.scriptLoadError || loaderData.selectedScriptSource.scriptError) ? (
                 <AutomationNotice tone="error">
                   <p className="text-[10px] tracking-[0.22em] uppercase">
                     Could not load script source
                   </p>
                   <p className="mt-2 text-sm whitespace-pre-wrap">
-                    {selectedScript.scriptLoadError}
+                    {loaderData.selectedScriptSource.scriptError ?? selectedScript.scriptLoadError}
                   </p>
                 </AutomationNotice>
               ) : null}
@@ -761,12 +1045,19 @@ export default function BackofficeOrganisationAutomationScripts() {
 
               {activeView === "tests" ? (
                 <ScriptTestsPanel
-                  scenarios={visibleScenarios}
-                  scenariosError={scenariosError}
+                  scenarios={loaderData.scenarios}
+                  scenariosError={loaderData.scenariosError}
                   selectedScript={selectedScript}
                 />
               ) : (
-                <ScriptSourcePanel script={selectedScript} />
+                <div className="space-y-4">
+                  <ScriptTriggerBindingsPanel
+                    script={selectedScript}
+                    triggerBindings={triggerBindings}
+                    triggerBindingsError={triggerBindingsError}
+                  />
+                  <ScriptSourcePanel source={loaderData.selectedScriptSource} />
+                </div>
               )}
             </div>
           ) : (

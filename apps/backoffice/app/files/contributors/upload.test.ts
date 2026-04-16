@@ -144,14 +144,24 @@ describe("upload file contributor", () => {
   });
 
   test("lists, stats, and reads upload-backed files through the mounted filesystem contract", async () => {
-    const { fs } = createUploadFs({
+    const { fs, runtime } = createUploadFs({
       "images/logo.png": { content: new Uint8Array([137, 80, 78, 71]) },
+      "reports/config": {
+        content: '{"ok":true}',
+        contentType: "application/json; charset=utf-8",
+      },
       "reports/q1.txt": { content: "ready" },
       "reports/q2.json": { content: '{"ok":true}' },
     });
 
     await expect(fs.readdir?.("/uploads")).resolves.toEqual(["images", "reports"]);
     await expect(fs.readdirWithFileTypes?.("/uploads/reports/")).resolves.toEqual([
+      {
+        name: "config",
+        isFile: true,
+        isDirectory: false,
+        isSymbolicLink: false,
+      },
       {
         name: "q1.txt",
         isFile: true,
@@ -184,12 +194,22 @@ describe("upload file contributor", () => {
       },
     });
 
+    await expect(fs.readFile?.("/uploads/reports/config")).resolves.toBe('{"ok":true}');
     await expect(fs.readFile?.("/uploads/reports/q1.txt")).resolves.toBe("ready");
     await expect(fs.readFileBuffer?.("/uploads/images/logo.png")).resolves.toEqual(
       new Uint8Array([137, 80, 78, 71]),
     );
     await expect(fs.readFile?.("/uploads/images/logo.png")).rejects.toThrow(
       /Binary files cannot be read as text/,
+    );
+    expect(runtime.requests).toContain(
+      "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
+    );
+    expect(runtime.requests).toContain(
+      "GET /api/upload/files/by-key/content?provider=r2&key=images%2Flogo.png",
+    );
+    expect(runtime.requests).not.toContain(
+      "GET /api/upload/files/by-key?provider=r2&key=images%2Flogo.png",
     );
   });
 
@@ -204,11 +224,11 @@ describe("upload file contributor", () => {
 
     const stream = await fs.readFileStream("/uploads/reports/q1.txt");
     await expect(readStream(stream)).resolves.toBe("ready");
-    expect(runtime.requests).toEqual(
-      expect.arrayContaining([
-        "GET /api/upload/files/by-key?provider=r2&key=reports%2Fq1.txt",
-        "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
-      ]),
+    expect(runtime.requests).toContain(
+      "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
+    );
+    expect(runtime.requests).not.toContain(
+      "GET /api/upload/files/by-key?provider=r2&key=reports%2Fq1.txt",
     );
   });
 
@@ -370,7 +390,9 @@ describe("upload file contributor", () => {
     await expect(fs.describeEntry?.("/uploads/reports/q1.txt")).resolves.toBe(null);
     await expect(fs.exists?.("/uploads/reports/q1.txt")).resolves.toBe(false);
     await expect(fs.stat?.("/uploads/reports/q1.txt")).rejects.toThrow("Path not found.");
-    await expect(fs.readFile?.("/uploads/reports/q1.txt")).rejects.toThrow("File not found.");
+    await expect(fs.readFile?.("/uploads/reports/q1.txt")).rejects.toThrow(
+      "ENOENT: no such file or directory, read '/uploads/reports/q1.txt'",
+    );
     await expect(fs.readdir?.("/uploads/reports")).resolves.toEqual([]);
   });
 

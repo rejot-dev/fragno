@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { defineAutomationScenario, simulateAutomationScenario } from "./index";
+import {
+  automationScenarioSchema,
+  defineAutomationScenario,
+  simulateAutomationScenario,
+} from "./index";
 import {
   STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
   buildManifest,
@@ -9,6 +13,31 @@ import {
 } from "./scenario-test-utils";
 
 describe("automation scenario simulator", () => {
+  test("preserves telegram.chat.send command mocks during scenario parsing", () => {
+    const scenario = automationScenarioSchema.parse({
+      version: 1,
+      name: "telegram-mock",
+      commandMocks: {
+        "telegram.chat.send": {
+          results: [{ data: { ok: true } }],
+          onExhausted: "repeat-last",
+        },
+      },
+      steps: [
+        {
+          event: createTelegramMessageEvent(),
+        },
+      ],
+    });
+
+    expect(scenario.commandMocks).toMatchObject({
+      "telegram.chat.send": {
+        results: [{ data: { ok: true } }],
+        onExhausted: "repeat-last",
+      },
+    });
+  });
+
   test("sorts matching bindings by trigger order and binding id while skipping disabled bindings", async () => {
     const fileSystem = await createAutomationFileSystem({
       [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([

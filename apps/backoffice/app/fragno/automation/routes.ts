@@ -30,6 +30,11 @@ const identityBindingOutputSchema = z.object({
 const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
   query.get("orgId")?.trim() || undefined;
 
+const isAutomationScenarioNotFoundError = (cause: unknown): cause is Error =>
+  cause instanceof Error &&
+  cause.message.startsWith("Automation scenario file '") &&
+  cause.message.includes("' was not found:");
+
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, config }) => {
     return [
@@ -113,8 +118,23 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         }),
         outputSchema: z.record(z.string(), z.unknown()),
         handler: async function ({ input, query }, { json, error }) {
+          const payload = await input.valid();
+
+          let scenarioPath: string;
           try {
-            const payload = await input.valid();
+            scenarioPath = resolveAutomationScenarioPath(payload.path);
+          } catch (cause) {
+            return error(
+              {
+                message:
+                  cause instanceof Error ? cause.message : "Invalid automation scenario path.",
+                code: "AUTOMATION_SCENARIO_PATH_INVALID",
+              },
+              400,
+            );
+          }
+
+          try {
             const fileSystem = await resolveAutomationFileSystem(config, {
               orgId: getOrgIdFromRequestQuery(query),
               purpose: "route",
@@ -123,10 +143,20 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
             return json(
               await runAutomationScenarioFile({
                 fileSystem,
-                path: resolveAutomationScenarioPath(payload.path),
+                path: scenarioPath,
               }),
             );
           } catch (cause) {
+            if (isAutomationScenarioNotFoundError(cause)) {
+              return error(
+                {
+                  message: cause.message,
+                  code: "AUTOMATION_SCENARIO_NOT_FOUND",
+                },
+                404,
+              );
+            }
+
             return error(
               {
                 message:

@@ -9,6 +9,8 @@ import {
   getAutomationBindingsForEvent,
   loadAutomationCatalog,
   type AutomationBindingCatalogEntry,
+  type AutomationCatalog,
+  type AutomationManifestSummary,
 } from "./catalog";
 import {
   buildCommandHelp,
@@ -433,6 +435,7 @@ const scenarioCommandMocksSchema = z
     "pi.session.get": commandMockSchema.optional(),
     "pi.session.list": commandMockSchema.optional(),
     "pi.session.turn": commandMockSchema.optional(),
+    "telegram.chat.send": commandMockSchema.optional(),
   })
   .partial();
 
@@ -1458,10 +1461,28 @@ export const resolveAutomationScenarioPath = (relativePath: string) => {
   return `${AUTOMATION_SIMULATION_SCENARIOS_ROOT}/${normalized}`;
 };
 
+export type ListAutomationScenariosOptions = {
+  catalog?: AutomationCatalog | AutomationManifestSummary | null;
+  allowCatalogErrors?: boolean;
+};
+
 export const listAutomationScenarios = async (
   fileSystem: IFileSystem,
+  options: ListAutomationScenariosOptions = {},
 ): Promise<AutomationScenarioCatalogEntry[]> => {
-  const catalog = await loadAutomationCatalog(fileSystem);
+  let catalog = options.catalog;
+
+  if (catalog === undefined) {
+    try {
+      catalog = await loadAutomationCatalog(fileSystem);
+    } catch (error) {
+      if (!options.allowCatalogErrors) {
+        throw error;
+      }
+
+      catalog = null;
+    }
+  }
 
   let names: string[];
   try {
@@ -1489,7 +1510,9 @@ export const listAutomationScenarios = async (
           sources.add(step.event.source);
           eventTypes.add(step.event.eventType);
 
-          const matchingBindings = getAutomationBindingsForEvent(catalog, step.event);
+          const matchingBindings = catalog
+            ? getAutomationBindingsForEvent(catalog, step.event)
+            : [];
           const matchedBindingIds = new Set<string>();
           const matchedScriptIds = new Set<string>();
           const matchedScriptKeys = new Set<string>();

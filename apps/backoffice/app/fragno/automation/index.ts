@@ -46,8 +46,12 @@ export {
   AUTOMATION_WORKSPACE_ROOT,
   createMinimalFileSystem,
   getAutomationBindingsForEvent,
+  listAutomationWorkspaceScripts,
   loadAutomationCatalog,
   loadAutomationCatalogFromConfig,
+  loadAutomationManifest,
+  loadAutomationManifestSummary,
+  readAutomationWorkspaceScript,
   resolveAutomationFileSystem,
 } from "./catalog";
 export {
@@ -68,7 +72,13 @@ export type {
   AutomationFileSystemResolvePurpose,
   AutomationFileSystemResolver,
   AutomationFileSystemResolverInput,
+  AutomationManifest,
+  AutomationManifestBinding,
+  AutomationManifestBindingEntry,
+  AutomationManifestScriptEntry,
+  AutomationManifestSummary,
   AutomationScriptCatalogEntry,
+  AutomationWorkspaceScriptEntry,
 } from "./catalog";
 export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./contracts";
 export type { AutomationEvent, AutomationIngestResult };
