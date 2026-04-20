@@ -85,7 +85,15 @@ for (const file of files) {
 const exitCodes = [];
 
 if (supportedFiles.length > 0) {
-  exitCodes.push(run("pnpm", ["exec", "oxfmt", ...(check ? ["--check"] : []), ...supportedFiles]));
+  exitCodes.push(
+    run("pnpm", [
+      "exec",
+      "oxfmt",
+      "--no-error-on-unmatched-pattern",
+      ...(check ? ["--check"] : []),
+      ...supportedFiles,
+    ]),
+  );
 }
 
 if (unsupportedFiles.length > 0) {

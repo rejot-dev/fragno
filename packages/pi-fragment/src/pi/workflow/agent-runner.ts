@@ -209,9 +209,10 @@ const createAgent = async (options: {
     thinkingBudgets: options.agent.thinkingBudgets,
     maxRetryDelayMs: options.agent.maxRetryDelayMs,
     sessionId: options.params.sessionId,
+    toolExecution: "sequential",
   });
 
-  agent.setSteeringMode(options.steeringMode);
+  agent.steeringMode = options.steeringMode;
 
   const trace: AgentEvent[] = [];
   const unsubscribe = agent.subscribe((event) => {
@@ -239,9 +240,8 @@ const createAgent = async (options: {
   }
 
   const assistant = findLastAssistantMessage(agent.state.messages);
-  const stateError = agent.state.error as unknown;
-  if (stateError) {
-    throw stateError instanceof Error ? stateError : new Error(String(stateError));
+  if (typeof agent.state.errorMessage === "string" && agent.state.errorMessage.length > 0) {
+    throw new Error(agent.state.errorMessage);
   }
   if (assistant && "errorMessage" in assistant && typeof assistant.errorMessage === "string") {
     throw new Error(assistant.errorMessage);
