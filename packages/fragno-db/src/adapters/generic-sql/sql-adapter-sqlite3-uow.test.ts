@@ -163,7 +163,7 @@ describe("SqlAdapter SQLite", () => {
     });
 
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
-      Parameters<typeof createUow.find>[0]
+      Parameters<typeof createUow.findNew>[0]
     >();
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
       "users" | "emails" | "posts" | "comments" | "optional_emails"
@@ -178,7 +178,7 @@ describe("SqlAdapter SQLite", () => {
     // Verify both users were created by fetching them
     const [allUsers] = await queryEngine
       .createUnitOfWork("get-all-users")
-      .find("users")
+      .findNew("users", (b) => b.whereIndex("primary"))
       .executeRetrieve();
 
     expect(allUsers).toHaveLength(2);
@@ -210,7 +210,7 @@ describe("SqlAdapter SQLite", () => {
     const uow = queryEngine
       .createUnitOfWork("update-user-age")
       // Retrieval phase: find Alice
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
 
     // Execute retrieval and transition to mutation phase
     const [users] = await uow.executeRetrieve();
@@ -229,7 +229,7 @@ describe("SqlAdapter SQLite", () => {
     // Verify Alice was updated
     const [[updatedUser]] = await queryEngine
       .createUnitOfWork("get-updated-user")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(updatedUser).toMatchObject({
@@ -255,7 +255,7 @@ describe("SqlAdapter SQLite", () => {
     // Verify Alice was NOT updated
     const [[unchangedUser]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(unchangedUser).toMatchObject({
@@ -297,7 +297,7 @@ describe("SqlAdapter SQLite", () => {
 
     const verifyUow = queryEngine.createUnitOfWork("verify-duplicate-hook-id");
     const internalUow = verifyUow.forSchema(internalSchema);
-    const findUow = internalUow.find("fragno_hooks", (b) =>
+    const findUow = internalUow.findNew("fragno_hooks", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", hookId)),
     );
     const [events] = await findUow.executeRetrieve();
@@ -317,7 +317,7 @@ describe("SqlAdapter SQLite", () => {
     // Count all users
     const [totalCount] = await queryEngine
       .createUnitOfWork("count-all")
-      .find("users", (b) => b.whereIndex("primary").selectCount())
+      .findNew("users", (b) => b.whereIndex("primary").selectCount())
       .executeRetrieve();
 
     // Tests are not isolated, so we can't use expect(totalCount).toBe(3)
@@ -340,7 +340,7 @@ describe("SqlAdapter SQLite", () => {
     // Fetch first page ordered by name
     const [firstPage] = await queryEngine
       .createUnitOfWork("first-page")
-      .find("users", (b) => b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(2))
+      .findNew("users", (b) => b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(2))
       .executeRetrieve();
 
     // Verify first page contains the first 2 users alphabetically
@@ -359,7 +359,7 @@ describe("SqlAdapter SQLite", () => {
     // Fetch next page using cursor
     const [secondPage] = await queryEngine
       .createUnitOfWork("second-page")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx").orderByIndex("name_idx", "asc").after(cursor).pageSize(2),
       )
       .executeRetrieve();
@@ -387,7 +387,7 @@ describe("SqlAdapter SQLite", () => {
     // Fetch the created user to get the proper ID
     const [usersResult] = await queryEngine
       .createUnitOfWork("get-created-user")
-      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Email User")))
+      .findNew("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Email User")))
       .executeRetrieve();
 
     expect(usersResult).toHaveLength(1);
@@ -407,10 +407,14 @@ describe("SqlAdapter SQLite", () => {
     // Test join query
     const uow = queryEngine
       .createUnitOfWork("test-joins")
-      .find("emails", (b) =>
+      .findNew("emails", (b) =>
         b
           .whereIndex("user_emails", (eb) => eb("user_id", "=", createdUser.id))
-          .join((jb) => jb.user((builder) => builder.select(["name", "id", "age"]))),
+          .joinOne("user", "users", (builder) =>
+            builder
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+              .select(["name", "id", "age"]),
+          ),
       );
 
     const [[email]] = await uow.executeRetrieve();
@@ -448,7 +452,13 @@ describe("SqlAdapter SQLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("join-optional-email")
-      .find("optional_emails", (b) => b.whereIndex("primary").join((jb) => jb.user()));
+      .findNew("optional_emails", (b) =>
+        b
+          .whereIndex("primary")
+          .joinOne("user", "users", (builder) =>
+            builder.onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id"))),
+          ),
+      );
 
     const [[email]] = await uow.executeRetrieve();
 
@@ -467,7 +477,7 @@ describe("SqlAdapter SQLite", () => {
     // Fetch the created author to get the proper ID
     const [[author]] = await queryEngine
       .createUnitOfWork("get-author")
-      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Blog Author")))
+      .findNew("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Blog Author")))
       .executeRetrieve();
 
     // Create a post by the author
@@ -482,7 +492,9 @@ describe("SqlAdapter SQLite", () => {
     // Fetch the created post to get the proper ID
     const [[post]] = await queryEngine
       .createUnitOfWork("get-post")
-      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)))
+      .findNew("posts", (b) =>
+        b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)),
+      )
       .executeRetrieve();
 
     // Create a commenter
@@ -493,7 +505,7 @@ describe("SqlAdapter SQLite", () => {
     // Fetch the created commenter to get the proper ID
     const [[commenter]] = await queryEngine
       .createUnitOfWork("get-commenter")
-      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Commenter User")))
+      .findNew("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Commenter User")))
       .executeRetrieve();
 
     // Create a comment on the post
@@ -504,25 +516,30 @@ describe("SqlAdapter SQLite", () => {
       text: "Great post!",
     });
     await createCommentUow.executeMutations();
+    const createdCommentId = createCommentUow.getCreatedIds()[0]!;
 
     // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
-    const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
-      b.whereIndex("primary").join((jb) =>
-        jb
-          .post((postBuilder) =>
-            postBuilder
-              .select(["id", "title", "content"])
-              .orderByIndex("primary", "desc")
-              .pageSize(1)
-              .join((jb2) =>
-                // Nested join to the post's author
-                jb2.author((authorBuilder) =>
-                  authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
-                ),
-              ),
-          )
-          .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
-      ),
+    const uow = queryEngine.createUnitOfWork("test-complex-joins").findNew("comments", (b) =>
+      b
+        .whereIndex("primary", (eb) => eb("id", "=", createdCommentId))
+        .joinOne("post", "posts", (postBuilder) =>
+          postBuilder
+            .onIndex("primary", (eb) => eb("id", "=", eb.parent("post_id")))
+            .select(["id", "title", "content"])
+            .orderByIndex("primary", "desc")
+            .pageSize(1)
+            .joinOne("author", "users", (authorBuilder) =>
+              authorBuilder
+                .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+                .select(["id", "name", "age"])
+                .orderByIndex("name_idx", "asc"),
+            ),
+        )
+        .joinOne("commenter", "users", (commenterBuilder) =>
+          commenterBuilder
+            .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+            .select(["id", "name"]),
+        ),
     );
 
     const [[comment]] = await uow.executeRetrieve();
@@ -597,7 +614,7 @@ describe("SqlAdapter SQLite", () => {
     const user1 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
         );
       await uow.executeRetrieve();
@@ -607,7 +624,7 @@ describe("SqlAdapter SQLite", () => {
     const user2 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
         );
       await uow.executeRetrieve();
@@ -617,7 +634,7 @@ describe("SqlAdapter SQLite", () => {
     const user3 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
         );
       await uow.executeRetrieve();
@@ -685,7 +702,7 @@ describe("SqlAdapter SQLite", () => {
     const customIdUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -709,7 +726,7 @@ describe("SqlAdapter SQLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-timestamp")
-      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Timestamp User")))
+      .findNew("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Timestamp User")))
       .executeRetrieve();
 
     // Create a post (note: SQLite schema doesn't have created_at column)
@@ -724,7 +741,7 @@ describe("SqlAdapter SQLite", () => {
     // Retrieve the post
     const [[post]] = await queryEngine
       .createUnitOfWork("get-post-for-timestamp")
-      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .findNew("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
     expect(post).toBeDefined();
@@ -779,12 +796,12 @@ describe("SqlAdapter SQLite", () => {
 
     const view1 = uow
       .forSchema(testSchema)
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "Multi Schema User"))
           .select(["id", "name"]),
       )
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "Multi Schema User"))
           .select(["name", "age"]),
@@ -792,7 +809,7 @@ describe("SqlAdapter SQLite", () => {
 
     const view2 = uow
       .forSchema(schema2)
-      .find("products", (b) => b.whereIndex("primary").select(["name", "price"]));
+      .findNew("products", (b) => b.whereIndex("primary").select(["name", "price"]));
 
     // Execute the retrieval phase once
     await uow.executeRetrieve();
@@ -866,7 +883,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Test 1: First page with more results available (pageSize=10, total=15)
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -882,7 +899,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Test 2: Second page (last page, partial results: 5 items remaining)
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(firstPage.cursor!)
@@ -899,7 +916,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Test 3: Empty results
     const emptyPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
           .orderByIndex("name_idx", "asc")
@@ -927,7 +944,7 @@ describe("SqlAdapter SQLite", () => {
     const all = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .find("users", (b) =>
+        .findNew("users", (b) =>
           b
             .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
             .orderByIndex("name_id_idx", "asc"),
@@ -937,7 +954,7 @@ describe("SqlAdapter SQLite", () => {
     })();
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .orderByIndex("name_id_idx", "asc")
@@ -948,7 +965,7 @@ describe("SqlAdapter SQLite", () => {
     })();
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .after(firstPage.cursor!)
@@ -980,7 +997,9 @@ describe("SqlAdapter SQLite", () => {
     // Fetch the user to get their ID
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-execute-uow")
-      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Execute UOW User")))
+      .findNew("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Execute UOW User")),
+      )
       .executeRetrieve();
 
     // Use handlerTx to increment age with optimistic locking
@@ -990,7 +1009,7 @@ describe("SqlAdapter SQLite", () => {
     const getUserById = (userId: typeof user.id) => {
       return createServiceTxBuilder(testSchema, currentUow!)
         .retrieve((uow) =>
-          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+          uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
         .transformRetrieve(([users]) => users[0] ?? null)
         .build();
@@ -1029,7 +1048,7 @@ describe("SqlAdapter SQLite", () => {
     const updatedUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id)));
+        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -1058,7 +1077,7 @@ describe("SqlAdapter SQLite", () => {
     // Get the user
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-version-conflict")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Version Conflict User SQLite")),
       )
       .executeRetrieve();
@@ -1083,7 +1102,7 @@ describe("SqlAdapter SQLite", () => {
     // Verify the post was NOT created
     const [posts] = await queryEngine
       .createUnitOfWork("get-posts-for-version-conflict")
-      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .findNew("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
     const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created SQLite");

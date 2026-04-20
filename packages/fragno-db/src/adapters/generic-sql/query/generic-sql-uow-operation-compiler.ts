@@ -17,6 +17,7 @@ import { createColdKysely } from "../migration/cold-kysely";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
+import { QueryTreeSQLCompiler } from "./query-tree-sql-compiler";
 import { SQLQueryCompiler } from "./sql-query-compiler";
 
 /**
@@ -56,6 +57,22 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     );
   }
 
+  private getQueryTreeCompiler(
+    schema: AnySchema,
+    namespace: string | null | undefined,
+  ): QueryTreeSQLCompiler {
+    const resolver = this.getNamingResolver(schema, namespace ?? null);
+    const kysely = createColdKysely(this.driverConfig.databaseType);
+    const schemaName = resolver.getSchemaName();
+    const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
+    return new QueryTreeSQLCompiler(
+      scopedKysely,
+      this.driverConfig,
+      this.sqliteStorageMode,
+      resolver,
+    );
+  }
+
   override compileCount(
     op: RetrievalOperation<AnySchema> & { type: "count" },
   ): CompiledQuery | null {
@@ -84,11 +101,20 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       useIndex: _useIndex,
       orderByIndex,
       joins: join,
+      queryTree,
       after,
       before,
       pageSize,
       ...findManyOptions
     } = op.options;
+
+    if (queryTree) {
+      const queryTreeCompiler = this.getQueryTreeCompiler(op.schema, op.namespace);
+      return queryTreeCompiler.compile(queryTree, {
+        readTracking: op.readTracking,
+        withCursor: op.withCursor,
+      });
+    }
 
     // Get index columns for ordering and cursor pagination
     let indexColumns: AnyColumn[] = [];

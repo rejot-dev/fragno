@@ -108,7 +108,7 @@ describe("in-memory uow mutations", () => {
     expect(updateResult.success).toBe(true);
 
     const findAfterUpdate = createUow();
-    findAfterUpdate.find("users", (b) => b.whereIndex("primary"));
+    findAfterUpdate.findNew("users", (b) => b.whereIndex("primary"));
     const rows = (await findAfterUpdate.executeRetrieve()) as unknown[];
     const updatedUser = (rows[0] as { id: FragnoId; name: string }[])[0];
 
@@ -122,7 +122,7 @@ describe("in-memory uow mutations", () => {
     expect(staleResult.success).toBe(false);
 
     const findAfterStale = createUow();
-    findAfterStale.find("users", (b) => b.whereIndex("primary"));
+    findAfterStale.findNew("users", (b) => b.whereIndex("primary"));
     const staleRows = (await findAfterStale.executeRetrieve()) as unknown[];
     const staleUser = (staleRows[0] as { id: FragnoId; name: string }[])[0];
 
@@ -162,7 +162,7 @@ describe("in-memory uow mutations", () => {
     expect(badDeleteResult.success).toBe(false);
 
     const findBeforeDelete = createUow();
-    findBeforeDelete.find("users", (b) => b.whereIndex("primary"));
+    findBeforeDelete.findNew("users", (b) => b.whereIndex("primary"));
     const beforeDeleteRows = (await findBeforeDelete.executeRetrieve()) as unknown[];
     expect(beforeDeleteRows[0]).toHaveLength(1);
 
@@ -172,7 +172,7 @@ describe("in-memory uow mutations", () => {
     expect(deleteResult.success).toBe(true);
 
     const findAfterDelete = createUow();
-    findAfterDelete.find("users", (b) => b.whereIndex("primary"));
+    findAfterDelete.findNew("users", (b) => b.whereIndex("primary"));
     const afterDeleteRows = (await findAfterDelete.executeRetrieve()) as unknown[];
     expect(afterDeleteRows[0]).toHaveLength(0);
   });
@@ -302,7 +302,7 @@ describe("in-memory uow mutations", () => {
     expect(secondResult.success).toBe(true);
 
     const findDupes = createUow();
-    findDupes.find("users", (b) => b.whereIndex("primary"));
+    findDupes.findNew("users", (b) => b.whereIndex("primary"));
     const dupeRows = (await findDupes.executeRetrieve()) as unknown[];
     expect(dupeRows[0]).toHaveLength(2);
 

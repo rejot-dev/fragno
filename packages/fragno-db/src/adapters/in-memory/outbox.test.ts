@@ -97,7 +97,7 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
   return internalFragment.inContext(async function (this: DatabaseRequestContext) {
     return await this.handlerTx()
       .retrieve(({ forSchema }) =>
-        forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
+        forSchema(internalSchema).findNew("fragno_db_outbox_mutations", (b) =>
           b
             .whereIndex("idx_outbox_mutations_entry")
             .orderByIndex("idx_outbox_mutations_entry", "asc"),
@@ -116,7 +116,7 @@ async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email
 
     const user = await this.handlerTx()
       .retrieve(({ forSchema }) =>
-        forSchema(outboxSchema).findFirst("users", (b) =>
+        forSchema(outboxSchema).findFirstNew("users", (b) =>
           b.whereIndex("idx_users_email", (eb) => eb("email", "=", email)),
         ),
       )
@@ -272,7 +272,7 @@ describe("in-memory outbox", () => {
 
         const user = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(schemaA).findFirst("users", (b) =>
+            forSchema(schemaA).findFirstNew("users", (b) =>
               b.whereIndex("idx_users_email", (eb) => eb("email", "=", "tenant-a@example.com")),
             ),
           )
@@ -295,7 +295,7 @@ describe("in-memory outbox", () => {
 
         const user = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(schemaB).findFirst("users", (b) =>
+            forSchema(schemaB).findFirstNew("users", (b) =>
               b.whereIndex("idx_users_email", (eb) => eb("email", "=", "tenant-b@example.com")),
             ),
           )

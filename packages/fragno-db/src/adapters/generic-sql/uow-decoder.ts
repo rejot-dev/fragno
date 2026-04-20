@@ -1,5 +1,6 @@
 import type { NamingResolver } from "../../naming/sql-naming";
 import { createCursorFromRecord, type Cursor, type CursorResult } from "../../query/cursor";
+import { decodeQueryTreeRow } from "../../query/unit-of-work/query-tree-decoder";
 import type { UOWDecoder } from "../../query/unit-of-work/unit-of-work";
 import type { RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
 import { decodeResult } from "../../query/value-decoding";
@@ -71,13 +72,21 @@ export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
     }
 
     const decodedRows = rows.map((row) =>
-      decodeResult(
-        row,
-        operation.table,
-        this.#driverConfig,
-        this.#sqliteStorageMode,
-        this.#resolver,
-      ),
+      operation.options.queryTree
+        ? decodeQueryTreeRow(
+            row,
+            operation.options.queryTree,
+            this.#driverConfig,
+            this.#sqliteStorageMode,
+            this.#resolver,
+          )
+        : decodeResult(
+            row,
+            operation.table,
+            this.#driverConfig,
+            this.#sqliteStorageMode,
+            this.#resolver,
+          ),
     );
 
     if (operation.withCursor) {
