@@ -124,7 +124,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const pwdResult = await tool.execute("tool-call-1", {
@@ -170,7 +169,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const result = await tool.execute("tool-call-3", {
@@ -208,7 +206,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
@@ -241,7 +238,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const listResult = await tool.execute("tool-call-resend-1", {
@@ -283,7 +279,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const readResult = await tool.execute("tool-call-4", {
@@ -335,7 +330,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const parentListResult = await tool.execute("tool-call-deleted-1", {
@@ -377,7 +371,6 @@ describe("Pi bash tool", () => {
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
-      replay: { journal: [], sideEffects: {} },
     } as never);
 
     const touchResult = await tool.execute("tool-call-readonly-1", {
@@ -424,7 +417,6 @@ describe("Pi bash tool", () => {
         turnId: "turn-1",
         toolConfig: null,
         messages: [],
-        replay: { journal: [], sideEffects: {} },
       } as never;
 
       const firstToolPromise = bashFactory(toolContext);

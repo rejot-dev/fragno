@@ -5,8 +5,6 @@ import type {
   PiFragmentConfig,
   PiToolFactory,
   PiToolRegistry,
-  PiToolSideEffectReducer,
-  PiToolSideEffectReducerRegistry,
 } from "./types";
 import { createPiWorkflows, type PiWorkflowsRegistry } from "./workflow/workflow";
 
@@ -33,7 +31,6 @@ export const defineAgent = (
 export const createPi = () => {
   const agents: PiAgentRegistry = {};
   const tools: PiToolRegistry = {};
-  const toolSideEffectReducers: PiToolSideEffectReducerRegistry = {};
   let defaultSteeringMode: PiSteeringMode | undefined;
   let logging: PiFragmentConfig["logging"];
 
@@ -54,14 +51,6 @@ export const createPi = () => {
       Object.assign(tools, registry);
       return builder;
     },
-    toolSideEffectReducer(toolName: string, reducer: PiToolSideEffectReducer) {
-      toolSideEffectReducers[toolName] = reducer;
-      return builder;
-    },
-    toolSideEffectReducers(registry: PiToolSideEffectReducerRegistry) {
-      Object.assign(toolSideEffectReducers, registry);
-      return builder;
-    },
     defaultSteeringMode(mode: PiSteeringMode) {
       defaultSteeringMode = mode;
       return builder;
@@ -73,12 +62,10 @@ export const createPi = () => {
     build(): PiRuntime {
       const agentsSnapshot = { ...agents };
       const toolsSnapshot = { ...tools };
-      const reducersSnapshot = { ...toolSideEffectReducers };
       const config: PiFragmentConfig = {
         agents: agentsSnapshot,
         tools: toolsSnapshot,
         defaultSteeringMode,
-        toolSideEffectReducers: reducersSnapshot,
         logging,
       };
       return {
@@ -86,7 +73,6 @@ export const createPi = () => {
         workflows: createPiWorkflows({
           agents: agentsSnapshot,
           tools: toolsSnapshot,
-          toolSideEffectReducers: reducersSnapshot,
           logging,
         }),
       };

@@ -235,7 +235,6 @@ const buildPiRuntime = (config: StoredPiConfig, tools: PiToolRegistry) => {
     workflows: createPiWorkflows({
       agents: runtime.config.agents,
       tools: runtime.config.tools,
-      toolSideEffectReducers: runtime.config.toolSideEffectReducers,
       logging: runtime.config.logging,
     }),
   };

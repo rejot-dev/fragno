@@ -56,7 +56,7 @@ export const showcaseTabs: ShowcaseTab[] = [
       "This is from our backoffice. A Pi agent is defined with a system prompt, a model, " +
       "and tools. The fragment creates durable " +
       "workflow-backed sessions, so agent state survives restarts and tool calls are " +
-      "replayed rather than re-executed. The React client gets typed hooks for sessions " +
+      "executed through normal workflow turns. The React client gets typed hooks for sessions " +
       "and messages with zero glue code.",
     snippets: [
       {
