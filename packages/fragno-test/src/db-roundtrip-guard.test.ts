@@ -78,7 +78,7 @@ describe("dbRoundtripGuard", () => {
         defineService({
           listUsers: function () {
             return this.serviceTx(userSchema)
-              .retrieve((uow) => uow.find("users"))
+              .retrieve((uow) => uow.find("users", (b) => b.whereIndex("primary")))
               .build();
           },
         }),
@@ -138,7 +138,9 @@ describe("dbRoundtripGuard", () => {
       outputSchema: z.object({ count: z.number() }),
       handler: async function (this: DatabaseRequestContext, _input, { json }) {
         const existing = await this.handlerTx()
-          .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
+          .retrieve(({ forSchema }) =>
+            forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+          )
           .transformRetrieve(([users]) => users)
           .execute();
 
@@ -188,11 +190,15 @@ describe("dbRoundtripGuard", () => {
     const result = await fragments.user.fragment.inContext(
       async function (this: DatabaseRequestContext) {
         await this.handlerTx()
-          .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
+          .retrieve(({ forSchema }) =>
+            forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+          )
           .execute();
 
         await this.handlerTx()
-          .retrieve(({ forSchema }) => forSchema(userSchema).find("users"))
+          .retrieve(({ forSchema }) =>
+            forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+          )
           .execute();
 
         return "ok";

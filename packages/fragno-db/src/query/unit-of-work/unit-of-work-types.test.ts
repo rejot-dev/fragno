@@ -123,7 +123,7 @@ describe("UnitOfWork type tests", () => {
   it("should type find without joins correctly", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) => b.whereIndex("primary"));
+    const uow1 = uow.find("users", (b) => b.whereIndex("primary"));
     const [_userResult] = await uow1.executeRetrieve();
     type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
 
@@ -139,7 +139,7 @@ describe("UnitOfWork type tests", () => {
   it("should type find with select clause correctly", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+    const uow1 = uow.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
     const [_userResult] = await uow1.executeRetrieve();
     type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
 
@@ -152,7 +152,7 @@ describe("UnitOfWork type tests", () => {
   it("should type find with joins correctly", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) =>
+    const uow1 = uow.find("users", (b) =>
       b
         .whereIndex("primary")
         .joinOne("inviter", "users", (ib) =>
@@ -238,7 +238,7 @@ describe("UnitOfWork type tests", () => {
   it("preserves nested select narrowing via UOW find", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) =>
+    const uow1 = uow.find("users", (b) =>
       b.whereIndex("primary").joinMany("posts", "posts", (pb) =>
         pb
           .onIndex("idx_user", (eb) => eb("userId", "=", eb.parent("id")))
@@ -259,10 +259,10 @@ describe("UnitOfWork type tests", () => {
     expectTypeOf<Author>().toEqualTypeOf<{ name: string }>();
   });
 
-  it("should type findNew without joins correctly", async () => {
+  it("should type find without joins correctly", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) => b.whereIndex("primary"));
+    const uow1 = uow.find("users", (b) => b.whereIndex("primary"));
     const [_userResult] = await uow1.executeRetrieve();
     type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
 
@@ -275,10 +275,10 @@ describe("UnitOfWork type tests", () => {
     }>();
   });
 
-  it("should type findNew with select clause correctly", async () => {
+  it("should type find with select clause correctly", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+    const uow1 = uow.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
     const [_userResult] = await uow1.executeRetrieve();
     type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
 
@@ -353,10 +353,10 @@ describe("UnitOfWork type tests", () => {
     expectTypeOf<Like>().toEqualTypeOf<{ reaction: string }>();
   });
 
-  it("preserves nested select narrowing via UOW findNew", async () => {
+  it("preserves nested select narrowing via UOW find", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("users", (b) =>
+    const uow1 = uow.find("users", (b) =>
       b
         .whereIndex("primary")
         .select(["id", "name"])
@@ -399,10 +399,10 @@ describe("UnitOfWork type tests", () => {
     expectTypeOf<Author>().toEqualTypeOf<{ name: string }>();
   });
 
-  it("supports sibling query-tree joins via UOW findNew", async () => {
+  it("supports sibling query-tree joins via UOW find", async () => {
     const uow = createTestUOW();
 
-    const uow1 = uow.findNew("posts", (b) =>
+    const uow1 = uow.find("posts", (b) =>
       b
         .whereIndex("primary")
         .select(["id", "title", "userId"])
@@ -442,12 +442,12 @@ describe("UnitOfWork type tests", () => {
     expectTypeOf<Like>().toEqualTypeOf<{ reaction: string }>();
   });
 
-  it("appends findNew results to the typed retrieval tuple", async () => {
+  it("appends find results to the typed retrieval tuple", async () => {
     const uow = createTestUOW();
 
     const uow1 = uow
-      .findNew("users", (b) => b.whereIndex("primary").select(["id", "name"]))
-      .findNew("posts", (b) =>
+      .find("users", (b) => b.whereIndex("primary").select(["id", "name"]))
+      .find("posts", (b) =>
         b
           .whereIndex("primary")
           .select(["id", "title", "userId"])
@@ -469,7 +469,7 @@ describe("UnitOfWork type tests", () => {
     }>();
   });
 
-  it("restricts findNew whereIndex condition builders to columns of the chosen index", () => {
+  it("restricts find whereIndex condition builders to columns of the chosen index", () => {
     new QueryTreeFindBuilder(testSchema, "users", testSchema.tables.users)
       .whereIndex("primary", (eb) => {
         type ColumnName = Parameters<typeof eb>[0];
@@ -523,12 +523,12 @@ describe("UnitOfWork type tests", () => {
       });
   });
 
-  it("types findNew and findFirstNew count results correctly", async () => {
+  it("types find and findFirst count results correctly", async () => {
     const uow = createTestUOW();
 
     const uow1 = uow
-      .findNew("users", (b) => b.whereIndex("primary").selectCount())
-      .findFirstNew("users", (b) => b.whereIndex("primary").selectCount());
+      .find("users", (b) => b.whereIndex("primary").selectCount())
+      .findFirst("users", (b) => b.whereIndex("primary").selectCount());
 
     const results = await uow1.executeRetrieve();
     type CountResult = (typeof results)[0];
@@ -538,12 +538,12 @@ describe("UnitOfWork type tests", () => {
     expectTypeOf<FirstCountResult>().toEqualTypeOf<number>();
   });
 
-  it("types findFirstNew and findWithCursorNew results correctly", async () => {
+  it("types findFirst and findWithCursor results correctly", async () => {
     const uow = createTestUOW();
 
     const uow1 = uow
-      .findFirstNew("users", (b) => b.whereIndex("primary").select(["id", "name"]))
-      .findWithCursorNew("users", (b) =>
+      .findFirst("users", (b) => b.whereIndex("primary").select(["id", "name"]))
+      .findWithCursor("users", (b) =>
         b
           .whereIndex("idx_name", (eb) => eb("name", "=", "Ada"))
           .orderByIndex("idx_name", "asc")

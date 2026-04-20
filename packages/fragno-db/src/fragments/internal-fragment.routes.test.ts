@@ -301,7 +301,7 @@ describe("internal fragment sync routes", () => {
     const syncRecord = await internalFragment.inContext(async function () {
       return await this.handlerTx()
         .retrieve(({ forSchema }) =>
-          forSchema(internalSchema).findFirstNew("fragno_db_sync_requests", (b) =>
+          forSchema(internalSchema).findFirst("fragno_db_sync_requests", (b) =>
             b.whereIndex("idx_sync_request_id", (eb) => eb("requestId", "=", "req-1")),
           ),
         )
@@ -475,7 +475,7 @@ describe("internal fragment sync routes", () => {
           countItems() {
             return this.serviceTx(alphaSchema)
               .retrieve((uow) =>
-                uow.findNew("alpha_items", (b) => b.whereIndex("primary").selectCount()),
+                uow.find("alpha_items", (b) => b.whereIndex("primary").selectCount()),
               )
               .transformRetrieve(([count]) => (typeof count === "number" ? count : 0))
               .build();
@@ -557,7 +557,7 @@ describe("internal fragment sync routes", () => {
     const createdItem = await alphaFragment.inContext(async function () {
       return await this.handlerTx()
         .retrieve(({ forSchema }) =>
-          forSchema(alphaSchema).findFirstNew("alpha_items", (b) => b.whereIndex("primary")),
+          forSchema(alphaSchema).findFirst("alpha_items", (b) => b.whereIndex("primary")),
         )
         .transformRetrieve(([result]) => result)
         .execute();

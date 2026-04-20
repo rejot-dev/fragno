@@ -159,7 +159,7 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
   return internalFragment.inContext(async function (this: DatabaseRequestContext) {
     return await this.handlerTx()
       .retrieve(({ forSchema }) =>
-        forSchema(internalSchema).findNew("fragno_db_outbox_mutations", (b) =>
+        forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
           b
             .whereIndex("idx_outbox_mutations_entry")
             .orderByIndex("idx_outbox_mutations_entry", "asc"),
@@ -178,7 +178,7 @@ async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email
 
     const user = await this.handlerTx()
       .retrieve(({ forSchema }) =>
-        forSchema(outboxSchema).findFirstNew("users", (b) =>
+        forSchema(outboxSchema).findFirst("users", (b) =>
           b.whereIndex("idx_users_email", (eb) => eb("email", "=", email)),
         ),
       )

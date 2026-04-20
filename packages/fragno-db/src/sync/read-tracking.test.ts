@@ -91,7 +91,7 @@ describe("read tracking", () => {
     const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
     baseUow.enableReadTracking();
 
-    baseUow.forSchema(testSchema).findNew("comments", (b) =>
+    baseUow.forSchema(testSchema).find("comments", (b) =>
       b
         .whereIndex("primary")
         .select(["text"])
@@ -174,7 +174,7 @@ describe("read tracking", () => {
     const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
     baseUow.enableReadTracking();
 
-    baseUow.forSchema(testSchema).findNew("comments", (q) =>
+    baseUow.forSchema(testSchema).find("comments", (q) =>
       q
         .whereIndex("primary")
         .select(["text"])

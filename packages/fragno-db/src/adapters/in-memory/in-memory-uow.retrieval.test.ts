@@ -157,7 +157,7 @@ describe("in-memory uow retrieval", () => {
     await createData.executeMutations();
 
     const query = createUow();
-    query.findNew("users", (b) =>
+    query.find("users", (b) =>
       b
         .whereIndex("primary", (eb) => eb("id", "=", "user-1"))
         .joinMany("memberships", "memberships", (mb) =>
@@ -208,7 +208,7 @@ describe("in-memory uow retrieval", () => {
     await createData.executeMutations();
 
     const query = createUow();
-    query.findNew("left", (b) =>
+    query.find("left", (b) =>
       b
         .whereIndex("primary", (eb) => eb("id", "=", "shared-id"))
         .joinOne("rightMatch", "right", (rb) =>
@@ -256,7 +256,7 @@ describe("in-memory uow retrieval", () => {
     await createData.executeMutations();
 
     const query = createUow();
-    query.findNew("users", (q) =>
+    query.find("users", (q) =>
       q
         .whereIndex("primary", (eb) => eb("id", "=", "user-1"))
         .select(["id", "name"])
@@ -306,7 +306,7 @@ describe("in-memory uow retrieval", () => {
     });
   });
 
-  it("supports findFirstNew and child whereIndex filtering", async () => {
+  it("supports findFirst and child whereIndex filtering", async () => {
     const { createUow } = createHarness();
 
     const createData = createUow();
@@ -327,7 +327,7 @@ describe("in-memory uow retrieval", () => {
     await createData.executeMutations();
 
     const query = createUow();
-    query.findFirstNew("users", (q) =>
+    query.findFirst("users", (q) =>
       q
         .whereIndex("idx_users_name", (eb) => eb("name", "=", "Ada"))
         .select(["id", "name"])
@@ -389,7 +389,7 @@ describe("in-memory uow retrieval", () => {
     await createData.executeMutations();
 
     const query = createUow();
-    query.findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-2")));
+    query.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-2")));
 
     const [[user]] = (await query.executeRetrieve()) as Array<
       [

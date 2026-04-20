@@ -140,7 +140,7 @@ describe("SqlAdapter PGLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("update-user-age")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
 
     const [users] = await uow.executeRetrieve();
 
@@ -153,7 +153,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[updatedUser]] = await queryEngine
       .createUnitOfWork("get-updated-user")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(updatedUser).toMatchObject({
@@ -172,7 +172,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[unchangedUser]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(unchangedUser).toMatchObject({
@@ -194,7 +194,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [totalCount] = await queryEngine
       .createUnitOfWork("count-all")
-      .findNew("users", (b) => b.whereIndex("primary").selectCount())
+      .find("users", (b) => b.whereIndex("primary").selectCount())
       .executeRetrieve();
 
     expect(totalCount).toBeGreaterThanOrEqual(3);
@@ -216,7 +216,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [firstPage] = await queryEngine
       .createUnitOfWork("first-page")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -237,7 +237,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [secondPage] = await queryEngine
       .createUnitOfWork("second-page")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -270,7 +270,7 @@ describe("SqlAdapter PGLite", () => {
     }
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -285,7 +285,7 @@ describe("SqlAdapter PGLite", () => {
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(firstPage.cursor!)
@@ -301,7 +301,7 @@ describe("SqlAdapter PGLite", () => {
     expect(secondPage.cursor).toBeInstanceOf(Cursor);
 
     const thirdPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(secondPage.cursor!)
@@ -317,7 +317,7 @@ describe("SqlAdapter PGLite", () => {
     expect(thirdPage.cursor).toBeUndefined();
 
     const emptyPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "NoMatchPrefix"))
           .orderByIndex("name_idx", "asc")
@@ -345,7 +345,7 @@ describe("SqlAdapter PGLite", () => {
     const all = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findNew("users", (b) =>
+        .find("users", (b) =>
           b
             .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
             .orderByIndex("name_id_idx", "asc"),
@@ -355,7 +355,7 @@ describe("SqlAdapter PGLite", () => {
     })();
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .orderByIndex("name_id_idx", "asc")
@@ -366,7 +366,7 @@ describe("SqlAdapter PGLite", () => {
     })();
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .after(firstPage.cursor!)
@@ -406,7 +406,7 @@ describe("SqlAdapter PGLite", () => {
       })();
     }
 
-    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursorNew("users", (b) =>
+    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursor("users", (b) =>
       b
         .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
         .orderByIndex("name_idx", "asc")
@@ -431,7 +431,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [usersResult] = await queryEngine
       .createUnitOfWork("get-created-user")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Email User")),
       )
       .executeRetrieve();
@@ -450,7 +450,7 @@ describe("SqlAdapter PGLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("test-joins", { onQuery: (query) => queries.push(query) })
-      .findNew("emails", (b) =>
+      .find("emails", (b) =>
         b
           .whereIndex("user_emails", (eb) => eb("user_id", "=", createdUser.id))
           .joinOne("user", "users", (builder) =>
@@ -497,7 +497,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-external-id")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite External ID User")),
       )
       .executeRetrieve();
@@ -514,7 +514,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[email]] = await queryEngine
       .createUnitOfWork("get-email-by-external-id")
-      .findNew("emails", (b) =>
+      .find("emails", (b) =>
         b
           .whereIndex("unique_email", (eb) =>
             eb("email", "=", "prisma-pglite-external-id@example.com"),
@@ -565,12 +565,12 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("verify-user")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
       .executeRetrieve();
 
     const [[post]] = await queryEngine
       .createUnitOfWork("verify-post")
-      .findNew("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
+      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
       .executeRetrieve();
 
     expect(user.name).toBe("SqlAdapter PGLite UOW User");
@@ -590,7 +590,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[author]] = await queryEngine
       .createUnitOfWork("get-author")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Author")),
       )
       .executeRetrieve();
@@ -605,9 +605,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[post]] = await queryEngine
       .createUnitOfWork("get-post")
-      .findNew("posts", (b) =>
-        b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)),
-      )
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)))
       .executeRetrieve();
 
     const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
@@ -616,7 +614,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[commenter]] = await queryEngine
       .createUnitOfWork("get-commenter")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Commenter")),
       )
       .executeRetrieve();
@@ -632,7 +630,7 @@ describe("SqlAdapter PGLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("test-complex-joins", { onQuery: (query) => queries.push(query) })
-      .findNew("comments", (b) =>
+      .find("comments", (b) =>
         b
           .whereIndex("primary", (eb) => eb("id", "=", createdCommentId))
           .joinOne("post", "posts", (postBuilder) =>
@@ -724,7 +722,7 @@ describe("SqlAdapter PGLite", () => {
     const user1 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
         );
       await uow.executeRetrieve();
@@ -733,7 +731,7 @@ describe("SqlAdapter PGLite", () => {
     const user2 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
         );
       await uow.executeRetrieve();
@@ -742,7 +740,7 @@ describe("SqlAdapter PGLite", () => {
     const user3 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
         );
       await uow.executeRetrieve();
@@ -802,7 +800,7 @@ describe("SqlAdapter PGLite", () => {
     const customIdUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -830,7 +828,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event-for-timestamp")
-      .findNew("events", (b) =>
+      .find("events", (b) =>
         b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Timestamp Event PGLite")),
       )
       .executeRetrieve();
@@ -862,7 +860,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-version-conflict")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) =>
           eb("name", "=", "SqlAdapter PGLite Version Conflict User"),
         ),
@@ -886,7 +884,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [posts] = await queryEngine
       .createUnitOfWork("get-posts-for-version-conflict")
-      .findNew("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
     const conflictPosts = posts.filter(
@@ -913,7 +911,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event")
-      .findNew("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
+      .find("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
       .executeRetrieve();
 
     expect(event).toBeDefined();

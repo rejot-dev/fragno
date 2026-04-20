@@ -52,7 +52,7 @@ describe("FindBuilder", () => {
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -73,7 +73,7 @@ describe("FindBuilder", () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     uow
       .forSchema(testSchema)
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
       );
 
@@ -92,7 +92,7 @@ describe("FindBuilder", () => {
     const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXIxMjMifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9";
     uow
       .forSchema(testSchema)
-      .findNew("users", (b) => b.whereIndex("primary").after(cursor).pageSize(10));
+      .find("users", (b) => b.whereIndex("primary").after(cursor).pageSize(10));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -112,7 +112,7 @@ describe("FindBuilder", () => {
     const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXI0NTYifSwiZGlyZWN0aW9uIjoiYmFja3dhcmQifQ==";
     uow
       .forSchema(testSchema)
-      .findNew("users", (b) => b.whereIndex("primary").before(cursor).pageSize(5));
+      .find("users", (b) => b.whereIndex("primary").before(cursor).pageSize(5));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -130,15 +130,15 @@ describe("FindBuilder", () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(0));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(0));
     }).toThrow(RangeError);
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(-1));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(-1));
     }).toThrow(RangeError);
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(-10));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(-10));
     }).toThrow(RangeError);
   });
 
@@ -150,19 +150,19 @@ describe("FindBuilder", () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(1.5));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(1.5));
     }).toThrow(RangeError);
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(3.14));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(3.14));
     }).toThrow(RangeError);
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(NaN));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(NaN));
     }).toThrow(RangeError);
 
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").pageSize(Infinity));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(Infinity));
     }).toThrow(RangeError);
   });
 
@@ -173,7 +173,7 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("nonexistent" as "primary"));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("nonexistent" as "primary"));
     }).toThrow('Index "nonexistent" not found on table "users"');
   });
 
@@ -184,13 +184,13 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     expect(() => {
-      uow.forSchema(testSchema).findNew("users", (b) => b);
+      uow.forSchema(testSchema).find("users", (b) => b);
     }).toThrow(
-      'Must specify an index using .whereIndex() before finalizing findNew() on table "users"',
+      'Must specify an index using .whereIndex() before finalizing find() on table "users"',
     );
   });
 
-  it("should support count operations in findNew and findFirstNew", () => {
+  it("should support count operations in find and findFirst", () => {
     const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("age", "integer"),
@@ -198,10 +198,10 @@ describe("FindBuilder", () => {
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary").selectCount());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").selectCount());
 
     const uow2 = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
-    uow2.forSchema(testSchema).findFirstNew("users", (b) => b.whereIndex("primary").selectCount());
+    uow2.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary").selectCount());
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -223,7 +223,7 @@ describe("FindBuilder", () => {
     expect(() => {
       uow
         .forSchema(testSchema)
-        .findNew("users", (b) => b.whereIndex("primary").select(["name"]).selectCount());
+        .find("users", (b) => b.whereIndex("primary").select(["name"]).selectCount());
     }).toThrow(/cannot call selectCount/i);
 
     // selectCount() then select()
@@ -231,11 +231,11 @@ describe("FindBuilder", () => {
     expect(() => {
       uow2
         .forSchema(testSchema)
-        .findNew("users", (b) => b.whereIndex("primary").selectCount().select(["name"]));
+        .find("users", (b) => b.whereIndex("primary").selectCount().select(["name"]));
     }).toThrow(/cannot call select/i);
   });
 
-  it("should throw when using selectCount with findWithCursorNew", () => {
+  it("should throw when using selectCount with findWithCursor", () => {
     const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").createIndex("idx_name", ["name"]),
@@ -246,7 +246,7 @@ describe("FindBuilder", () => {
     expect(() => {
       uow
         .forSchema(testSchema)
-        .findWithCursorNew("users", (b) => b.whereIndex("primary").selectCount());
+        .findWithCursor("users", (b) => b.whereIndex("primary").selectCount());
     }).toThrow(/does not support selectCount/i);
   });
 
@@ -264,7 +264,7 @@ describe("FindBuilder", () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     uow
       .forSchema(testSchema)
-      .findNew("users", (b) => b.whereIndex("primary").orderByIndex("idx_created", "desc"));
+      .find("users", (b) => b.whereIndex("primary").orderByIndex("idx_created", "desc"));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -301,7 +301,7 @@ describe("FindBuilder", () => {
 
     uow
       .forSchema(testSchema)
-      .findNew("posts", (b) =>
+      .find("posts", (b) =>
         b
           .whereIndex("primary")
           .joinOne("user", "users", (builder) =>
@@ -339,7 +339,7 @@ describe("FindBuilder", () => {
 
     uow
       .forSchema(testSchema)
-      .findNew("posts", (b) =>
+      .find("posts", (b) =>
         b
           .whereIndex("primary")
           .joinOne("user", "users", (builder) =>
@@ -381,7 +381,7 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.forSchema(testSchema).findNew("posts", (b) =>
+    uow.forSchema(testSchema).find("posts", (b) =>
       b.whereIndex("primary").joinOne("user", "users", (builder) =>
         builder
           .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
@@ -427,7 +427,7 @@ describe("FindBuilder", () => {
 
     uow
       .forSchema(testSchema)
-      .findNew("posts", (b) =>
+      .find("posts", (b) =>
         b
           .whereIndex("primary")
           .joinOne("user", "users", (builder) =>
@@ -470,7 +470,7 @@ describe("FindBuilder", () => {
 
     uow
       .forSchema(testSchema)
-      .findNew("posts", (b) =>
+      .find("posts", (b) =>
         b
           .whereIndex("primary")
           .joinOne("user", "users", (builder) =>
@@ -508,7 +508,7 @@ describe("FindBuilder", () => {
     expect(() => {
       uow
         .forSchema(testSchema)
-        .findNew("posts", (b) =>
+        .find("posts", (b) =>
           b
             .whereIndex("primary")
             .joinOne("user", "users", (builder) =>
@@ -520,7 +520,7 @@ describe("FindBuilder", () => {
     expect(() => {
       uow
         .forSchema(testSchema)
-        .findNew("posts", (b) =>
+        .find("posts", (b) =>
           b
             .whereIndex("primary")
             .joinOne("user", "users", (builder) =>
@@ -532,7 +532,7 @@ describe("FindBuilder", () => {
     expect(() => {
       uow
         .forSchema(testSchema)
-        .findNew("posts", (b) =>
+        .find("posts", (b) =>
           b
             .whereIndex("primary")
             .joinOne("user", "users", (builder) =>
@@ -576,7 +576,7 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.forSchema(testSchema).findNew("comments", (b) =>
+    uow.forSchema(testSchema).find("comments", (b) =>
       b.whereIndex("primary").joinOne("post", "posts", (postBuilder) =>
         postBuilder
           .onIndex("primary", (eb) => eb("id", "=", eb.parent("postId")))
@@ -784,7 +784,7 @@ describe("IndexedConditionBuilder", () => {
 
       expectTypeOf<Parameters<typeof uow.find>[0]>().toEqualTypeOf<"users">();
 
-      uow.findNew("users", (b) =>
+      uow.find("users", (b) =>
         b.whereIndex("primary", (eb) => {
           type _EbFirstParameter = Parameters<typeof eb>[0];
           expectTypeOf<_EbFirstParameter>().toEqualTypeOf<"id">();
@@ -792,14 +792,14 @@ describe("IndexedConditionBuilder", () => {
         }),
       );
 
-      uow.findNew("users", (b) =>
+      uow.find("users", (b) =>
         b.whereIndex("idx_email", (eb) => {
           expectTypeOf(eb).parameter(0).toEqualTypeOf<"email">();
           return eb("email", "=", "123");
         }),
       );
 
-      uow.findNew("users", (b) =>
+      uow.find("users", (b) =>
         b.whereIndex("idx_name_age", (eb) => {
           expectTypeOf(eb).parameter(0).toEqualTypeOf<"name" | "age">();
           return eb("name", "=", "123");
@@ -1101,13 +1101,13 @@ describe("Phase promises with multiple views", () => {
     );
 
     // Add a find operation via a schema1 view (but don't keep a reference to this view)
-    parentUow.forSchema(schema1).findNew("users", (b) => b.whereIndex("primary"));
+    parentUow.forSchema(schema1).find("users", (b) => b.whereIndex("primary"));
 
     // Create a view for schema1 and add another find operation
-    const view1 = parentUow.forSchema(schema1).findNew("users", (b) => b.whereIndex("primary"));
+    const view1 = parentUow.forSchema(schema1).find("users", (b) => b.whereIndex("primary"));
 
     // Create a view for schema2 and add a find operation
-    const view2 = parentUow.forSchema(schema2).findNew("posts", (b) => b.whereIndex("primary"));
+    const view2 = parentUow.forSchema(schema2).find("posts", (b) => b.whereIndex("primary"));
 
     // Execute retrieval phase on parent
     const parentResults = await parentUow.executeRetrieve();
@@ -1157,9 +1157,9 @@ describe("Phase promises with multiple views", () => {
     );
 
     // Simulate what happens in db-fragment-definition-builder when getUnitOfWork(schema) is called twice
-    const view1 = parentUow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    const view1 = parentUow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
-    const view2 = parentUow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    const view2 = parentUow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Execute retrieval
     await parentUow.executeRetrieve();
@@ -1360,7 +1360,7 @@ describe("Instrumentation", () => {
     });
 
     const typed = uow.forSchema(testSchema);
-    typed.findNew("users", (b) => b.whereIndex("primary"));
+    typed.find("users", (b) => b.whereIndex("primary"));
     typed.create("users", { name: "Alice", email: "alice@example.com" });
 
     await uow.executeRetrieve();
@@ -1420,7 +1420,7 @@ describe("Instrumentation", () => {
       },
     });
 
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     await expect(uow.executeRetrieve()).rejects.toThrow("Injected failure");
     expect(retrievalExecuted).toBe(false);
@@ -1443,7 +1443,7 @@ describe("Error Handling", () => {
     };
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     await expect(uow.executeRetrieve()).rejects.toThrow("Database connection failed");
   });
@@ -1471,7 +1471,7 @@ describe("Error Handling", () => {
     };
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Start executing (this will fail)
     const executePromise = uow.executeRetrieve().catch((e) => {
@@ -1528,7 +1528,7 @@ describe("Error Handling", () => {
     };
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Access the retrievalPhase promise but don't await it
     // This simulates the internal coordination promise that might not be awaited
@@ -1588,7 +1588,7 @@ describe("Error Handling", () => {
     };
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Don't access retrievalPhase at all - this is the most common case
     // The internal coordination promise should not cause unhandled rejection
@@ -1641,7 +1641,7 @@ describe("Error Handling", () => {
     };
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    uow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // First attempt fails
     const errorResolver = Promise.withResolvers<void>();
@@ -1743,9 +1743,7 @@ describe("findFirst convenience method", () => {
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
     // Use findFirst instead of find
-    const typedUow = uow
-      .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary"));
+    const typedUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
 
     // Execute retrieval
     await uow.executeRetrieve();
@@ -1770,9 +1768,7 @@ describe("findFirst convenience method", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), emptyExecutor, createMockDecoder());
 
-    const typedUow = uow
-      .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary"));
+    const typedUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;
@@ -1785,7 +1781,7 @@ describe("findFirst convenience method", () => {
   it("should automatically set pageSize to 1", () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.forSchema(testSchema).findFirstNew("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
 
     // Check that pageSize was set to 1 in the operation
     const ops = uow.getRetrievalOperations();
@@ -1808,7 +1804,7 @@ describe("findFirst convenience method", () => {
 
     const typedUow = uow
       .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary").select(["id", "name"] as const));
+      .findFirst("users", (b) => b.whereIndex("primary").select(["id", "name"] as const));
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;
@@ -1831,7 +1827,7 @@ describe("findFirst convenience method", () => {
 
     const typedUow = uow
       .forSchema(testSchema)
-      .findFirstNew("users", (b) =>
+      .findFirst("users", (b) =>
         b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
       );
 
@@ -1857,8 +1853,8 @@ describe("findFirst convenience method", () => {
 
     const typedUow = uow
       .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary"))
-      .findFirstNew("posts", (b) => b.whereIndex("primary"));
+      .findFirst("users", (b) => b.whereIndex("primary"))
+      .findFirst("posts", (b) => b.whereIndex("primary"));
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;
@@ -1889,8 +1885,8 @@ describe("findFirst convenience method", () => {
 
     const typedUow = uow
       .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary")) // Single result
-      .findNew("posts", (b) => b.whereIndex("primary")); // Array of results
+      .findFirst("users", (b) => b.whereIndex("primary")) // Single result
+      .find("posts", (b) => b.whereIndex("primary")); // Array of results
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;
@@ -1917,7 +1913,7 @@ describe("findFirst convenience method", () => {
 
     const typedUow = uow
       .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("idx_name").orderByIndex("idx_name", "asc"));
+      .findFirst("users", (b) => b.whereIndex("idx_name").orderByIndex("idx_name", "asc"));
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;
@@ -1937,9 +1933,7 @@ describe("findFirst convenience method", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
-    const typedUow = uow
-      .forSchema(testSchema)
-      .findFirstNew("users", (b) => b.whereIndex("primary"));
+    const typedUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
 
     await uow.executeRetrieve();
     const results = await typedUow.retrievalPhase;

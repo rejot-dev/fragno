@@ -543,7 +543,7 @@ export class QueryTreeFindBuilder<
       );
       if (compiled === false) {
         throw new Error(
-          `whereIndex() cannot compile to false on table "${this.#tableName}" in findNew().`,
+          `whereIndex() cannot compile to false on table "${this.#tableName}" in find().`,
         );
       }
       this.#whereClause = compiled === true ? undefined : compiled;
@@ -776,7 +776,7 @@ export class QueryTreeFindBuilder<
 
     if (!indexName) {
       throw new Error(
-        `Must specify an index using .whereIndex() before finalizing findNew() on table "${this.#tableName}"`,
+        `Must specify an index using .whereIndex() before finalizing find() on table "${this.#tableName}"`,
       );
     }
 

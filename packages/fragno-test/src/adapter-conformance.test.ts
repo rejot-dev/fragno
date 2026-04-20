@@ -247,12 +247,20 @@ for (const adapterCase of adapterCases) {
             .find("comments", (b) =>
               b
                 .whereIndex("primary")
-                .join((jb) =>
-                  jb
-                    .post((pb) =>
-                      pb.select(["title"]).join((jb2) => jb2.author((ab) => ab.select(["name"]))),
-                    )
-                    .commenter((cb) => cb.select(["name"])),
+                .joinOne("post", "posts", (pb) =>
+                  pb
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("postId")))
+                    .select(["title"])
+                    .joinOne("author", "users", (ab) =>
+                      ab
+                        .onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId")))
+                        .select(["name"]),
+                    ),
+                )
+                .joinOne("commenter", "users", (cb) =>
+                  cb
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId")))
+                    .select(["name"]),
                 ),
             );
           await uow.executeRetrieve();
