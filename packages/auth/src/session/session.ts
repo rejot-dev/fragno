@@ -304,10 +304,10 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           uow.find("organizationMember", (b) =>
             b
               .whereIndex("idx_org_member_user", (eb) => eb("userId", "=", userId))
-              .join((j) =>
-                j.organizationMemberOrganization((ob) =>
-                  ob.select(["id", "deletedAt", "createdAt"]),
-                ),
+              .joinOne("organizationMemberOrganization", "organization", (organization) =>
+                organization
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                  .select(["id", "deletedAt", "createdAt"]),
               ),
           ),
         )
@@ -395,7 +395,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -435,7 +439,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           uow.findFirst("session", (b) =>
             b
               .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
+              .joinOne("sessionOwner", "user", (owner) =>
+                owner
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                  .select(["id", "email", "role", "bannedAt"]),
+              ),
           ),
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
@@ -481,7 +489,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", sessionId ?? ""), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -625,7 +637,11 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
                     .whereIndex("idx_session_id_expiresAt", (eb) =>
                       eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
                     )
-                    .join((jb) => jb.sessionOwner((ub) => ub.select(["id", "email", "role"]))),
+                    .joinOne("sessionOwner", "user", (owner) =>
+                      owner
+                        .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                        .select(["id", "email", "role"]),
+                    ),
                 );
                 scheduleExpiredLookup();
                 return uow;
@@ -636,16 +652,32 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
                   .whereIndex("idx_session_id_expiresAt", (eb) =>
                     eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
                   )
-                  .join((jb) =>
-                    jb
-                      .sessionOwner((ub) => ub.select(["id", "email", "role"]))
-                      .sessionActiveOrganization((ob) => ob.select(["id"]))
-                      .sessionMembers((mb) =>
-                        mb.join((jb2) =>
-                          jb2["organization"]((ob) => ob.select(organizationSelect))["roles"](
-                            (rb) => rb.select(["role"]),
-                          ),
-                        ),
+                  .joinOne("sessionOwner", "user", (owner) =>
+                    owner
+                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                      .select(["id", "email", "role"]),
+                  )
+                  .joinOne("sessionActiveOrganization", "organization", (organization) =>
+                    organization
+                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("activeOrganizationId")))
+                      .select(["id"]),
+                  )
+                  .joinMany("sessionMembers", "organizationMember", (member) =>
+                    member
+                      .onIndex("idx_org_member_user", (eb) =>
+                        eb("userId", "=", eb.parent("userId")),
+                      )
+                      .joinOne("organization", "organization", (organization) =>
+                        organization
+                          .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                          .select(organizationSelect),
+                      )
+                      .joinMany("roles", "organizationMemberRole", (role) =>
+                        role
+                          .onIndex("idx_org_member_role_member", (eb) =>
+                            eb("memberId", "=", eb.parent("id")),
+                          )
+                          .select(["role"]),
                       ),
                   ),
               );
@@ -655,18 +687,23 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
                   .whereIndex("idx_session_id_expiresAt", (eb) =>
                     eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
                   )
-                  .join((jb) =>
-                    jb.sessionOwner((ub) =>
-                      ub
-                        .select(["id", "email", "role"])
-                        .join((jb2) =>
-                          jb2["invitations"]((ib) =>
-                            ib.join((jb3) =>
-                              jb3["organization"]((ob) => ob.select(organizationSelect)),
-                            ),
+                  .joinOne("sessionOwner", "user", (owner) =>
+                    owner
+                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                      .select(["id", "email", "role"])
+                      .joinMany("invitations", "organizationInvitation", (invitation) =>
+                        invitation
+                          .onIndex("idx_org_invitation_email", (eb) =>
+                            eb("email", "=", eb.parent("email")),
+                          )
+                          .joinOne("organization", "organization", (organization) =>
+                            organization
+                              .onIndex("primary", (eb) =>
+                                eb("id", "=", eb.parent("organizationId")),
+                              )
+                              .select(organizationSelect),
                           ),
-                        ),
-                    ),
+                      ),
                   ),
               );
 

@@ -47,7 +47,7 @@ export function createWorkflowsUnitOfWork(adapter: DatabaseAdapter, name: string
 
 export async function findPiSessions(adapter: DatabaseAdapter) {
   const [rows] = await createPiUnitOfWork(adapter, "find-sessions")
-    .find("session")
+    .find("session", (b) => b.whereIndex("primary"))
     .executeRetrieve();
   return rows;
 }
@@ -67,14 +67,14 @@ export async function createPiSessionRow(
 
 export async function findWorkflowInstances(adapter: DatabaseAdapter) {
   const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-instances")
-    .find("workflow_instance")
+    .find("workflow_instance", (b) => b.whereIndex("primary"))
     .executeRetrieve();
   return rows;
 }
 
 export async function findWorkflowSteps(adapter: DatabaseAdapter) {
   const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-steps")
-    .find("workflow_step")
+    .find("workflow_step", (b) => b.whereIndex("primary"))
     .executeRetrieve();
   return rows;
 }

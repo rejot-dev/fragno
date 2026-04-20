@@ -339,7 +339,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           uow.findFirst("organization", (b) =>
             b
               .whereIndex("primary", (eb) => eb("id", "=", organizationId))
-              .join((j) => j.organizationCreator()),
+              .joinOne("organizationCreator", "user", (creator) =>
+                creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+              ),
           ),
         )
         .transformRetrieve(([organization]) =>
@@ -379,7 +381,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           uow.findFirst("organization", (b) =>
             b
               .whereIndex("idx_organization_slug", (eb) => eb("slug", "=", normalizedSlug))
-              .join((j) => j.organizationCreator()),
+              .joinOne("organizationCreator", "user", (creator) =>
+                creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+              ),
           ),
         )
         .transformRetrieve(([organization]) =>
@@ -435,7 +439,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             .findFirst("organization", (b) =>
               b
                 .whereIndex("primary", (eb) => eb("id", "=", organizationId))
-                .join((j) => j.organizationCreator()),
+                .joinOne("organizationCreator", "user", (creator) =>
+                  creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+                ),
             )
             .findFirst("organization", (b) =>
               b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", nextSlug ?? "")),
@@ -447,7 +453,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             )
             // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
-              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+              b
+                .whereIndex("primary")
+                .joinOne("organizationMemberRoleMember", "organizationMember", (member) =>
+                  member.onIndex("primary", (eb) => eb("id", "=", eb.parent("memberId"))),
+                ),
             )
             .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", actor.userId))),
         )
@@ -545,7 +555,9 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             .findFirst("organization", (b) =>
               b
                 .whereIndex("primary", (eb) => eb("id", "=", organizationId))
-                .join((j) => j.organizationCreator()),
+                .joinOne("organizationCreator", "user", (creator) =>
+                  creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+                ),
             )
             .findFirst("organizationMember", (b) =>
               b.whereIndex("idx_org_member_org_user", (eb) =>
@@ -554,7 +566,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             )
             // NOTE: actorMember is resolved in the same retrieve phase, so we filter in memory.
             .find("organizationMemberRole", (b) =>
-              b.whereIndex("primary").join((j) => j.organizationMemberRoleMember()),
+              b
+                .whereIndex("primary")
+                .joinOne("organizationMemberRoleMember", "organizationMember", (member) =>
+                  member.onIndex("primary", (eb) => eb("id", "=", eb.parent("memberId"))),
+                ),
             )
             .find("organizationInvitation", (b) =>
               b.whereIndex("idx_org_invitation_org_status", (eb) =>
@@ -644,10 +660,15 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               .whereIndex("idx_org_member_user", (eb) => eb("userId", "=", userId))
               .orderByIndex("idx_org_member_user", effectiveSortOrder)
               .pageSize(effectivePageSize)
-              .join((j) =>
-                j
-                  .organizationMemberOrganization((org) => org.join((j) => j.organizationCreator()))
-                  .organizationMemberUser(),
+              .joinOne("organizationMemberOrganization", "organization", (organization) =>
+                organization
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                  .joinOne("organizationCreator", "user", (creator) =>
+                    creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+                  ),
+              )
+              .joinOne("organizationMemberUser", "user", (user) =>
+                user.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
               );
 
             return cursor ? query.after(cursor) : query;
@@ -723,10 +744,15 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) =>
-                  j
-                    .sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))
-                    .sessionMembers(),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role", "bannedAt"]),
+                )
+                .joinMany("sessionMembers", "organizationMember", (member) =>
+                  member.onIndex("idx_org_member_user", (eb) =>
+                    eb("userId", "=", eb.parent("userId")),
+                  ),
                 ),
             )
             .findFirst("session", (b) =>
@@ -902,24 +928,37 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) =>
-                  j
-                    .sessionOwner((b) => b.select(["id"]))
-                    .sessionMembers((mb) => {
-                      let memberQuery = mb
-                        .orderByIndex("primary", effectiveSortOrder)
-                        .pageSize(effectivePageSize + 1)
-                        .join((jb) => jb["organization"]()["roles"]((rb) => rb.select(["role"])));
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id"]),
+                )
+                .joinMany("sessionMembers", "organizationMember", (member) => {
+                  let memberQuery = member
+                    .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                    .orderByIndex("primary", effectiveSortOrder)
+                    .pageSize(effectivePageSize + 1)
+                    .joinOne("organization", "organization", (organization) =>
+                      organization.onIndex("primary", (eb) =>
+                        eb("id", "=", eb.parent("organizationId")),
+                      ),
+                    )
+                    .joinMany("roles", "organizationMemberRole", (role) =>
+                      role
+                        .onIndex("idx_org_member_role_member", (eb) =>
+                          eb("memberId", "=", eb.parent("id")),
+                        )
+                        .select(["role"]),
+                    );
 
-                      if (cursorId) {
-                        memberQuery = memberQuery.whereIndex("primary", (eb) =>
-                          eb("id", effectiveSortOrder === "asc" ? ">" : "<", cursorId),
-                        );
-                      }
+                  if (cursorId) {
+                    memberQuery = memberQuery.whereIndex("primary", (eb) =>
+                      eb("id", effectiveSortOrder === "asc" ? ">" : "<", cursorId),
+                    );
+                  }
 
-                      return memberQuery;
-                    }),
-                ),
+                  return memberQuery;
+                }),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -1075,11 +1114,24 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) =>
-                  j
-                    .sessionOwner((b) => b.select(["id"]))
-                    .sessionActiveOrganization()
-                    .sessionMembers((mb) => mb.join((jb) => jb["organizationMemberRoles"]())),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id"]),
+                )
+                .joinOne("sessionActiveOrganization", "organization", (organization) =>
+                  organization.onIndex("primary", (eb) =>
+                    eb("id", "=", eb.parent("activeOrganizationId")),
+                  ),
+                )
+                .joinMany("sessionMembers", "organizationMember", (member) =>
+                  member
+                    .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                    .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                      role.onIndex("idx_org_member_role_member", (eb) =>
+                        eb("memberId", "=", eb.parent("id")),
+                      ),
+                    ),
                 ),
             )
             .findFirst("session", (b) =>
@@ -1177,7 +1229,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -1192,7 +1248,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_org_member_org", (eb) =>
                   eb("organizationId", "=", params.organizationId),
                 )
-                .join((j) => j["organizationMemberRoles"]()),
+                .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                  role.onIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", eb.parent("id")),
+                  ),
+                ),
             ),
         )
         .mutate(({ uow, retrieveResult: [session, expiredSession, organization, members] }) => {
@@ -1277,7 +1337,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -1292,7 +1356,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_org_member_org", (eb) =>
                   eb("organizationId", "=", params.organizationId),
                 )
-                .join((j) => j["organizationMemberRoles"]()),
+                .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                  role.onIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", eb.parent("id")),
+                  ),
+                ),
             ),
         )
         .mutate(({ uow, retrieveResult: [session, expiredSession, organization, members] }) => {
@@ -1383,7 +1451,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role", "bannedAt"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -1401,7 +1473,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_org_member_org", (eb) =>
                   eb("organizationId", "=", params.organizationId),
                 )
-                .join((j) => j["organizationMemberRoles"]()),
+                .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                  role.onIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", eb.parent("id")),
+                  ),
+                ),
             ),
         )
         .mutate(
@@ -1533,7 +1609,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role", "bannedAt"]),
+                ),
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
@@ -1556,7 +1636,11 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .whereIndex("idx_org_member_org", (eb) =>
                   eb("organizationId", "=", params.organizationId),
                 )
-                .join((j) => j["organizationMemberRoles"]()),
+                .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                  role.onIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", eb.parent("id")),
+                  ),
+                ),
             ),
         )
         .mutate(

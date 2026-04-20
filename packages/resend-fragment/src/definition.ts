@@ -322,7 +322,9 @@ const createResendServiceMethods = () => {
           uow.findFirst("emailMessage", (b) =>
             b
               .whereIndex("idx_emailMessage_messageId", (eb) => eb("messageId", "=", messageId))
-              .join((j) => j.emailMessageThread()),
+              .joinOne("emailMessageThread", "emailThread", (thread) =>
+                thread.onIndex("primary", (eb) => eb("id", "=", eb.parent("threadId"))),
+              ),
           ),
         )
         .transformRetrieve(([message]) => message?.emailMessageThread ?? null)

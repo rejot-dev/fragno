@@ -261,7 +261,11 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
                 .whereIndex("idx_installation_repo_installation", (eb) =>
                   eb("installationId", "=", installationId),
                 )
-                .join((jb) => jb.links()),
+                .joinMany("links", "repo_link", (link) =>
+                  link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                    eb("repoId", "=", eb.parent("id")),
+                  ),
+                ),
             );
         })
         .execute();

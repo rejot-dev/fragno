@@ -331,7 +331,9 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
             forSchema(cloudflareSchema).findFirst("deployment", (b) =>
               b
                 .whereIndex("primary", (eb) => eb("id", "=", input.deploymentId))
-                .join((j) => j.app()),
+                .joinOne("app", "app", (app) =>
+                  app.onIndex("primary", (eb) => eb("id", "=", eb.parent("appId"))),
+                ),
             ),
           )
           .mutate(({ forSchema, retrieveResult: [deployment] }) => {
@@ -438,7 +440,9 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
                   .findFirst("deployment", (b) =>
                     b
                       .whereIndex("primary", (eb) => eb("id", "=", input.deploymentId))
-                      .join((j) => j.app()),
+                      .joinOne("app", "app", (app) =>
+                        app.onIndex("primary", (eb) => eb("id", "=", eb.parent("appId"))),
+                      ),
                   )
                   .findFirst("deployment", (b) =>
                     b.whereIndex("primary", (eb) => eb("id", "=", remoteDeploymentId)),
@@ -453,7 +457,9 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
                 forSchema(cloudflareSchema).findFirst("deployment", (b) =>
                   b
                     .whereIndex("primary", (eb) => eb("id", "=", input.deploymentId))
-                    .join((j) => j.app()),
+                    .joinOne("app", "app", (app) =>
+                      app.onIndex("primary", (eb) => eb("id", "=", eb.parent("appId"))),
+                    ),
                 ),
               )
               .transformRetrieve(([deployment]) => ({
@@ -765,7 +771,11 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
         return this.serviceTx(cloudflareSchema)
           .retrieve((uow) =>
             uow.findFirst("deployment", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", deploymentId)).join((j) => j.app()),
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", deploymentId))
+                .joinOne("app", "app", (app) =>
+                  app.onIndex("primary", (eb) => eb("id", "=", eb.parent("appId"))),
+                ),
             ),
           )
           .transformRetrieve(([deployment]) => {
@@ -802,7 +812,13 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
           .retrieve((uow) =>
             uow
               .find("app", (b) => b.whereIndex("primary"))
-              .find("deployment", (b) => b.whereIndex("primary").join((j) => j.app())),
+              .find("deployment", (b) =>
+                b
+                  .whereIndex("primary")
+                  .joinOne("app", "app", (app) =>
+                    app.onIndex("primary", (eb) => eb("id", "=", eb.parent("appId"))),
+                  ),
+              ),
           )
           .transformRetrieve(([apps, deployments]) => {
             const latestDeploymentsByAppId = new Map<string, (typeof deployments)[number]>();
