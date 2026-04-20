@@ -35,14 +35,17 @@ const testSchema = schema("test", (s) =>
       t
         .addColumn("id", idColumn())
         .addColumn("author_id", referenceColumn())
-        .addColumn("title", column("string")),
+        .addColumn("title", column("string"))
+        .createIndex("posts_author_idx", ["author_id"]),
     )
     .addTable("comments", (t) =>
       t
         .addColumn("id", idColumn())
         .addColumn("post_id", referenceColumn())
         .addColumn("commenter_id", referenceColumn())
-        .addColumn("text", column("string")),
+        .addColumn("text", column("string"))
+        .createIndex("comments_post_idx", ["post_id"])
+        .createIndex("comments_commenter_idx", ["commenter_id"]),
     )
     .addReference("post", {
       type: "one",
@@ -88,14 +91,107 @@ describe("read tracking", () => {
     const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
     baseUow.enableReadTracking();
 
-    baseUow.forSchema(testSchema).find("comments", (b) =>
+    baseUow.forSchema(testSchema).findNew("comments", (b) =>
       b
         .whereIndex("primary")
         .select(["text"])
-        .join((jb) =>
-          jb["post"]((pb) =>
-            pb.select(["title"]).join((jb2) => jb2["author"]((ab) => ab.select(["name"]))),
-          )["commenter"]((cb) => cb.select(["name"])),
+        .joinOne("post", "posts", (pb) =>
+          pb
+            .onIndex("primary", (eb) => eb("id", "=", eb.parent("post_id")))
+            .select(["title"])
+            .joinOne("author", "users", (ab) =>
+              ab.onIndex("primary", (eb) => eb("id", "=", eb.parent("author_id"))).select(["name"]),
+            ),
+        )
+        .joinOne("commenter", "users", (cb) =>
+          cb.onIndex("primary", (eb) => eb("id", "=", eb.parent("commenter_id"))).select(["name"]),
+        ),
+    );
+
+    const operations = baseUow.getRetrievalOperations();
+    const commentId = FragnoId.fromExternal("c1", 1);
+    const postId = FragnoId.fromExternal("p1", 1);
+    const authorId = FragnoId.fromExternal("a1", 1);
+    const commenterId = FragnoId.fromExternal("u2", 1);
+
+    const results = [
+      [
+        {
+          id: commentId,
+          text: "hello",
+          post: {
+            id: postId,
+            title: "post",
+            author: {
+              id: authorId,
+              name: "author",
+            },
+          },
+          commenter: {
+            id: commenterId,
+            name: "commenter",
+          },
+        },
+      ],
+    ];
+
+    const scopes = collectReadScopes(operations);
+    expect(scopes).toHaveLength(1);
+    expect(scopes[0]).toMatchObject({
+      schema: "tenant",
+      table: testSchema.tables.comments,
+      indexName: "_primary",
+    });
+
+    const keys = collectReadKeys(operations, results);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        { schema: "tenant", table: "comments", externalId: "c1" },
+        { schema: "tenant", table: "posts", externalId: "p1" },
+        { schema: "tenant", table: "users", externalId: "a1" },
+        { schema: "tenant", table: "users", externalId: "u2" },
+      ]),
+    );
+
+    stripReadTrackingResults(operations, results);
+
+    const [comment] = results[0] as Array<Record<string, unknown>>;
+    expect(comment["id"]).toBeUndefined();
+    expect((comment["post"] as Record<string, unknown>)["id"]).toBeUndefined();
+    expect((comment["commenter"] as Record<string, unknown>)["id"]).toBeUndefined();
+    expect(
+      ((comment["post"] as Record<string, unknown>)["author"] as Record<string, unknown>)["id"],
+    ).toBeUndefined();
+  });
+
+  it("collects query-tree read keys and strips injected ids", () => {
+    const compiler = createMockCompiler();
+    const executor = createMockExecutor();
+    const decoder = createMockDecoder();
+    const schemaNamespaceMap: WeakMap<AnySchema, string | null> = new WeakMap();
+    schemaNamespaceMap.set(testSchema, "tenant");
+
+    const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
+    baseUow.enableReadTracking();
+
+    baseUow.forSchema(testSchema).findNew("comments", (q) =>
+      q
+        .whereIndex("primary")
+        .select(["text"])
+        .joinOne("post", "posts", (post) =>
+          post
+            .onIndex("primary", (eb) => eb("id", "=", eb.parent("post_id")))
+            .select(["title"])
+            .joinOne("author", "users", (author) =>
+              author
+                .onIndex("primary", (eb) => eb("id", "=", eb.parent("author_id")))
+                .select(["name"]),
+            ),
+        )
+        .joinOne("commenter", "users", (commenter) =>
+          commenter
+            .onIndex("primary", (eb) => eb("id", "=", eb.parent("commenter_id")))
+            .select(["name"]),
         ),
     );
 

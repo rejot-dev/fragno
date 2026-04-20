@@ -140,7 +140,7 @@ describe("SqlAdapter PGLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("update-user-age")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
 
     const [users] = await uow.executeRetrieve();
 
@@ -153,7 +153,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[updatedUser]] = await queryEngine
       .createUnitOfWork("get-updated-user")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(updatedUser).toMatchObject({
@@ -172,7 +172,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[unchangedUser]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(unchangedUser).toMatchObject({
@@ -194,7 +194,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [totalCount] = await queryEngine
       .createUnitOfWork("count-all")
-      .find("users", (b) => b.whereIndex("primary").selectCount())
+      .findNew("users", (b) => b.whereIndex("primary").selectCount())
       .executeRetrieve();
 
     expect(totalCount).toBeGreaterThanOrEqual(3);
@@ -216,7 +216,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [firstPage] = await queryEngine
       .createUnitOfWork("first-page")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -237,7 +237,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [secondPage] = await queryEngine
       .createUnitOfWork("second-page")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -270,7 +270,7 @@ describe("SqlAdapter PGLite", () => {
     }
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -285,7 +285,7 @@ describe("SqlAdapter PGLite", () => {
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(firstPage.cursor!)
@@ -301,7 +301,7 @@ describe("SqlAdapter PGLite", () => {
     expect(secondPage.cursor).toBeInstanceOf(Cursor);
 
     const thirdPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(secondPage.cursor!)
@@ -317,7 +317,7 @@ describe("SqlAdapter PGLite", () => {
     expect(thirdPage.cursor).toBeUndefined();
 
     const emptyPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "NoMatchPrefix"))
           .orderByIndex("name_idx", "asc")
@@ -345,7 +345,7 @@ describe("SqlAdapter PGLite", () => {
     const all = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .find("users", (b) =>
+        .findNew("users", (b) =>
           b
             .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
             .orderByIndex("name_id_idx", "asc"),
@@ -355,7 +355,7 @@ describe("SqlAdapter PGLite", () => {
     })();
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .orderByIndex("name_id_idx", "asc")
@@ -366,7 +366,7 @@ describe("SqlAdapter PGLite", () => {
     })();
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .after(firstPage.cursor!)
@@ -406,7 +406,7 @@ describe("SqlAdapter PGLite", () => {
       })();
     }
 
-    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursor("users", (b) =>
+    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursorNew("users", (b) =>
       b
         .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
         .orderByIndex("name_idx", "asc")
@@ -431,7 +431,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [usersResult] = await queryEngine
       .createUnitOfWork("get-created-user")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Email User")),
       )
       .executeRetrieve();
@@ -450,17 +450,21 @@ describe("SqlAdapter PGLite", () => {
 
     const uow = queryEngine
       .createUnitOfWork("test-joins", { onQuery: (query) => queries.push(query) })
-      .find("emails", (b) =>
+      .findNew("emails", (b) =>
         b
           .whereIndex("user_emails", (eb) => eb("user_id", "=", createdUser.id))
-          .join((jb) => jb.user((builder) => builder.select(["name", "id", "age"]))),
+          .joinOne("user", "users", (builder) =>
+            builder
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+              .select(["name", "id", "age"]),
+          ),
       );
 
     const [[email]] = await uow.executeRetrieve();
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "namespace"."emails"."id" as "id", "namespace"."emails"."user_id" as "user_id", "namespace"."emails"."email" as "email", "namespace"."emails"."is_primary" as "is_primary", "namespace"."emails"."_internalId" as "_internalId", "namespace"."emails"."_version" as "_version" from "namespace"."emails" left join "namespace"."users" as "user" on "namespace"."emails"."user_id" = "user"."_internalId" where "namespace"."emails"."user_id" = $1"`,
+      `"select "_fragno_root"."id" as "id", "_fragno_root"."user_id" as "user_id", "_fragno_root"."email" as "email", "_fragno_root"."is_primary" as "is_primary", "_fragno_root"."_internalId" as "_internalId", "_fragno_root"."_version" as "_version", ((select json_build_object('name', "_fragno_user_0"."name", 'id', "_fragno_user_0"."id", 'age', "_fragno_user_0"."age", '_internalId', "_fragno_user_0"."_internalId", '_version', "_fragno_user_0"."_version") as "_fragno_item" from "namespace"."users" as "_fragno_user_0" where "_fragno_user_0"."_internalId" = "_fragno_root"."user_id" limit $1)) as "user" from "namespace"."emails" as "_fragno_root" where "_fragno_root"."user_id" = $2"`,
     );
 
     expect(email).toMatchObject({
@@ -493,7 +497,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-external-id")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite External ID User")),
       )
       .executeRetrieve();
@@ -510,12 +514,16 @@ describe("SqlAdapter PGLite", () => {
 
     const [[email]] = await queryEngine
       .createUnitOfWork("get-email-by-external-id")
-      .find("emails", (b) =>
+      .findNew("emails", (b) =>
         b
           .whereIndex("unique_email", (eb) =>
             eb("email", "=", "prisma-pglite-external-id@example.com"),
           )
-          .join((jb) => jb.user((builder) => builder.select(["name", "id"]))),
+          .joinOne("user", "users", (builder) =>
+            builder
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+              .select(["name", "id"]),
+          ),
       )
       .executeRetrieve();
 
@@ -557,12 +565,12 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("verify-user")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
+      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
       .executeRetrieve();
 
     const [[post]] = await queryEngine
       .createUnitOfWork("verify-post")
-      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
+      .findNew("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
       .executeRetrieve();
 
     expect(user.name).toBe("SqlAdapter PGLite UOW User");
@@ -582,7 +590,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[author]] = await queryEngine
       .createUnitOfWork("get-author")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Author")),
       )
       .executeRetrieve();
@@ -597,7 +605,9 @@ describe("SqlAdapter PGLite", () => {
 
     const [[post]] = await queryEngine
       .createUnitOfWork("get-post")
-      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)))
+      .findNew("posts", (b) =>
+        b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)),
+      )
       .executeRetrieve();
 
     const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
@@ -606,7 +616,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[commenter]] = await queryEngine
       .createUnitOfWork("get-commenter")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Commenter")),
       )
       .executeRetrieve();
@@ -618,25 +628,31 @@ describe("SqlAdapter PGLite", () => {
       text: "Great Prisma post!",
     });
     await createCommentUow.executeMutations();
+    const createdCommentId = createCommentUow.getCreatedIds()[0]!;
 
     const uow = queryEngine
       .createUnitOfWork("test-complex-joins", { onQuery: (query) => queries.push(query) })
-      .find("comments", (b) =>
-        b.whereIndex("primary").join((jb) =>
-          jb
-            .post((postBuilder) =>
-              postBuilder
-                .select(["id", "title", "content"])
-                .orderByIndex("primary", "desc")
-                .pageSize(1)
-                .join((jb2) =>
-                  jb2.author((authorBuilder) =>
-                    authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
-                  ),
-                ),
-            )
-            .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
-        ),
+      .findNew("comments", (b) =>
+        b
+          .whereIndex("primary", (eb) => eb("id", "=", createdCommentId))
+          .joinOne("post", "posts", (postBuilder) =>
+            postBuilder
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("post_id")))
+              .select(["id", "title", "content"])
+              .orderByIndex("primary", "desc")
+              .pageSize(1)
+              .joinOne("author", "users", (authorBuilder) =>
+                authorBuilder
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+                  .select(["id", "name", "age"])
+                  .orderByIndex("name_idx", "asc"),
+              ),
+          )
+          .joinOne("commenter", "users", (commenterBuilder) =>
+            commenterBuilder
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("user_id")))
+              .select(["id", "name"]),
+          ),
       );
 
     const [[comment]] = await uow.executeRetrieve();
@@ -671,7 +687,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "namespace"."comments"."id" as "id", "namespace"."comments"."post_id" as "post_id", "namespace"."comments"."user_id" as "user_id", "namespace"."comments"."text" as "text", "namespace"."comments"."_internalId" as "_internalId", "namespace"."comments"."_version" as "_version" from "namespace"."comments" left join "namespace"."posts" as "post" on "namespace"."comments"."post_id" = "post"."_internalId" left join "namespace"."users" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "namespace"."users" as "commenter" on "namespace"."comments"."user_id" = "commenter"."_internalId""`,
+      `"select "_fragno_root"."id" as "id", "_fragno_root"."post_id" as "post_id", "_fragno_root"."user_id" as "user_id", "_fragno_root"."text" as "text", "_fragno_root"."_internalId" as "_internalId", "_fragno_root"."_version" as "_version", ((select json_build_object('id', "_fragno_post_0"."id", 'title', "_fragno_post_0"."title", 'content', "_fragno_post_0"."content", '_internalId', "_fragno_post_0"."_internalId", '_version', "_fragno_post_0"."_version", 'author', ((select json_build_object('id', "_fragno_post_author_1"."id", 'name', "_fragno_post_author_1"."name", 'age', "_fragno_post_author_1"."age", '_internalId', "_fragno_post_author_1"."_internalId", '_version', "_fragno_post_author_1"."_version") as "_fragno_item" from "namespace"."users" as "_fragno_post_author_1" where "_fragno_post_author_1"."_internalId" = "_fragno_post_0"."user_id" order by "_fragno_post_author_1"."name" asc limit $1))) as "_fragno_item" from "namespace"."posts" as "_fragno_post_0" where "_fragno_post_0"."_internalId" = "_fragno_root"."post_id" order by "_fragno_post_0"."id" desc limit $2)) as "post", ((select json_build_object('id', "_fragno_commenter_0"."id", 'name', "_fragno_commenter_0"."name", '_internalId', "_fragno_commenter_0"."_internalId", '_version', "_fragno_commenter_0"."_version") as "_fragno_item" from "namespace"."users" as "_fragno_commenter_0" where "_fragno_commenter_0"."_internalId" = "_fragno_root"."user_id" limit $3)) as "commenter" from "namespace"."comments" as "_fragno_root" where "_fragno_root"."id" = $4"`,
     );
   });
 
@@ -708,7 +724,7 @@ describe("SqlAdapter PGLite", () => {
     const user1 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
         );
       await uow.executeRetrieve();
@@ -717,7 +733,7 @@ describe("SqlAdapter PGLite", () => {
     const user2 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
         );
       await uow.executeRetrieve();
@@ -726,7 +742,7 @@ describe("SqlAdapter PGLite", () => {
     const user3 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) =>
+        .findFirstNew("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
         );
       await uow.executeRetrieve();
@@ -786,7 +802,7 @@ describe("SqlAdapter PGLite", () => {
     const customIdUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -814,7 +830,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event-for-timestamp")
-      .find("events", (b) =>
+      .findNew("events", (b) =>
         b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Timestamp Event PGLite")),
       )
       .executeRetrieve();
@@ -846,7 +862,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-version-conflict")
-      .find("users", (b) =>
+      .findNew("users", (b) =>
         b.whereIndex("name_idx", (eb) =>
           eb("name", "=", "SqlAdapter PGLite Version Conflict User"),
         ),
@@ -870,7 +886,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [posts] = await queryEngine
       .createUnitOfWork("get-posts-for-version-conflict")
-      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .findNew("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
     const conflictPosts = posts.filter(
@@ -897,7 +913,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event")
-      .find("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
+      .findNew("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
       .executeRetrieve();
 
     expect(event).toBeDefined();

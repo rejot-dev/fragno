@@ -43,6 +43,7 @@ import { FragnoId, FragnoReference } from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { evaluateCondition } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
+import { buildQueryTreeRowRaw } from "./query-tree";
 import { resolveReferenceSubqueries } from "./reference-resolution";
 import type {
   InMemoryNamespaceStore,
@@ -706,9 +707,11 @@ const findRows = (
 
   const entries = orderIndex.index.scan(scanOptions);
 
-  const whereResult = op.options.where
-    ? buildCondition(table.columns, op.options.where)
-    : undefined;
+  const whereResult = op.options.queryTree
+    ? op.options.queryTree.where
+    : op.options.where
+      ? buildCondition(table.columns, op.options.where)
+      : undefined;
 
   if (whereResult === false) {
     return [];
@@ -723,6 +726,23 @@ const findRows = (
       continue;
     }
     if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
+      continue;
+    }
+
+    if (op.options.queryTree) {
+      results.push(
+        buildQueryTreeRowRaw(
+          op.options.queryTree,
+          row,
+          namespaceStore,
+          resolver,
+          now,
+          op.readTracking,
+        ),
+      );
+      if (limit !== undefined && results.length >= limit) {
+        break;
+      }
       continue;
     }
 
@@ -1565,7 +1585,11 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
 
       const resolver = getResolver(op.schema, op.namespace, this.#resolverFactory);
       const rows = result as InMemoryRow[];
-      const decodedRows = rows.map((row) => this.decodeRow(row, op.table, resolver));
+      const decodedRows = rows.map((row) =>
+        op.options.queryTree
+          ? this.decodeQueryTreeRow(row, op.options.queryTree, resolver)
+          : this.decodeRow(row, op.table, resolver),
+      );
 
       if (op.withCursor) {
         return this.decodeCursorResult(decodedRows, op.table, op);
@@ -1669,6 +1693,32 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
       }
 
       output[key] = columnValues[key];
+    }
+
+    return output;
+  }
+
+  private decodeQueryTreeRow(
+    row: InMemoryRow,
+    node:
+      | import("../../query/unit-of-work/query-tree").CompiledQueryTreeRootNode
+      | import("../../query/unit-of-work/query-tree").CompiledQueryTreeChildNode,
+    resolver?: NamingResolver,
+  ): Record<string, unknown> {
+    const output = this.decodeRow(row, node.table, resolver);
+
+    for (const child of node.children) {
+      const value = row[child.alias];
+      if (child.cardinality === "many") {
+        output[child.alias] = Array.isArray(value)
+          ? value.map((item) => this.decodeQueryTreeRow(item as InMemoryRow, child, resolver))
+          : [];
+      } else {
+        output[child.alias] =
+          value && typeof value === "object"
+            ? this.decodeQueryTreeRow(value as InMemoryRow, child, resolver)
+            : null;
+      }
     }
 
     return output;

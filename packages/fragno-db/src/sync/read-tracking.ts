@@ -3,6 +3,10 @@ import { buildCondition } from "../query/condition-builder";
 import type { CursorResult } from "../query/cursor";
 import type { CompiledJoin } from "../query/find-options";
 import type { AnySelectClause } from "../query/mod";
+import type {
+  CompiledQueryTreeChildNode,
+  CompiledQueryTreeRootNode,
+} from "../query/unit-of-work/query-tree";
 import type { MutationOperation, RetrievalOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId } from "../schema/create";
@@ -91,6 +95,39 @@ const collectKeysFromRecord = (
   }
 };
 
+const collectKeysFromQueryTreeRecord = (
+  record: unknown,
+  node: CompiledQueryTreeRootNode | CompiledQueryTreeChildNode,
+  schemaName: string,
+  output: ReadKey[],
+): void => {
+  if (!record || typeof record !== "object") {
+    return;
+  }
+
+  const idKey = node.table.getIdColumn().name;
+  const externalId = getExternalId((record as Record<string, unknown>)[idKey]);
+  if (externalId !== undefined) {
+    output.push({ schema: schemaName, table: node.table.name, externalId });
+  }
+
+  for (const child of node.children) {
+    const childValue = (record as Record<string, unknown>)[child.alias];
+    if (childValue === null || childValue === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(childValue)) {
+      for (const item of childValue) {
+        collectKeysFromQueryTreeRecord(item, child, schemaName, output);
+      }
+      continue;
+    }
+
+    collectKeysFromQueryTreeRecord(childValue, child, schemaName, output);
+  }
+};
+
 const shouldStripId = (select: AnySelectClause | undefined, table: AnyTable): boolean => {
   if (!select || select === true) {
     return false;
@@ -98,6 +135,39 @@ const shouldStripId = (select: AnySelectClause | undefined, table: AnyTable): bo
 
   const idKey = table.getIdColumn().name;
   return !select.includes(idKey);
+};
+
+const stripKeysFromQueryTreeRecord = (
+  record: unknown,
+  node: CompiledQueryTreeRootNode | CompiledQueryTreeChildNode,
+  stripId: boolean,
+): void => {
+  if (!record || typeof record !== "object") {
+    return;
+  }
+
+  if (stripId) {
+    const idKey = node.table.getIdColumn().name;
+    delete (record as Record<string, unknown>)[idKey];
+  }
+
+  for (const child of node.children) {
+    const childValue = (record as Record<string, unknown>)[child.alias];
+    if (childValue === null || childValue === undefined) {
+      continue;
+    }
+
+    const stripChildId = shouldStripId(child.select, child.table);
+
+    if (Array.isArray(childValue)) {
+      for (const item of childValue) {
+        stripKeysFromQueryTreeRecord(item, child, stripChildId);
+      }
+      continue;
+    }
+
+    stripKeysFromQueryTreeRecord(childValue, child, stripChildId);
+  }
 };
 
 const stripKeysFromRecord = (
@@ -170,9 +240,11 @@ export const collectReadScopes = (
     }
 
     if (op.type === "find") {
-      const condition = op.options.where
-        ? buildCondition(op.table.columns, op.options.where)
-        : undefined;
+      const condition = op.options.queryTree
+        ? op.options.queryTree.where
+        : op.options.where
+          ? buildCondition(op.table.columns, op.options.where)
+          : undefined;
 
       if (condition === false) {
         continue;
@@ -215,7 +287,11 @@ export const collectReadKeys = (
     }
 
     for (const record of records) {
-      collectKeysFromRecord(record, op.table, op.options.joins, schemaName, keys);
+      if (op.options.queryTree) {
+        collectKeysFromQueryTreeRecord(record, op.options.queryTree, schemaName, keys);
+      } else {
+        collectKeysFromRecord(record, op.table, op.options.joins, schemaName, keys);
+      }
     }
   }
 
@@ -270,18 +346,30 @@ export const stripReadTrackingResults = (
 
     if (op.withCursor && isCursorResult(result)) {
       for (const record of result.items) {
-        stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+        if (op.options.queryTree) {
+          stripKeysFromQueryTreeRecord(record, op.options.queryTree, stripId);
+        } else {
+          stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+        }
       }
       continue;
     }
 
     if (Array.isArray(result)) {
       for (const record of result) {
-        stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+        if (op.options.queryTree) {
+          stripKeysFromQueryTreeRecord(record, op.options.queryTree, stripId);
+        } else {
+          stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+        }
       }
       continue;
     }
 
-    stripKeysFromRecord(result, op.table, op.options.joins, stripId);
+    if (op.options.queryTree) {
+      stripKeysFromQueryTreeRecord(result, op.options.queryTree, stripId);
+    } else {
+      stripKeysFromRecord(result, op.table, op.options.joins, stripId);
+    }
   }
 };

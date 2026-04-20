@@ -24,6 +24,13 @@ import type {
   ExtractSelect,
   ExtractJoinOut,
 } from "../mod";
+import {
+  QueryTreeFindBuilder,
+  type CompiledQueryTreeRootNode,
+  type ExtractQueryTreeBuilderCount,
+  type ExtractQueryTreeBuilderOut,
+  type ExtractQueryTreeBuilderSelect,
+} from "./query-tree";
 
 /**
  * Extract column names from a single index
@@ -37,6 +44,22 @@ type ExtractJoinBuilderSelect<T> =
 
 type ExtractJoinBuilderOut<T> =
   T extends JoinFindBuilder<infer _Table, infer _Select, infer TJoinOut> ? TJoinOut : {};
+
+type QueryTreeSelectedRow<TTable extends AnyTable, TBuilderResult> = SelectResult<
+  TTable,
+  ExtractQueryTreeBuilderOut<TBuilderResult>,
+  Extract<ExtractQueryTreeBuilderSelect<TBuilderResult>, SelectClause<TTable>>
+>;
+
+type QueryTreeFindResult<TTable extends AnyTable, TBuilderResult> =
+  ExtractQueryTreeBuilderCount<TBuilderResult> extends true
+    ? number
+    : QueryTreeSelectedRow<TTable, TBuilderResult>[];
+
+type QueryTreeFindFirstResult<TTable extends AnyTable, TBuilderResult> =
+  ExtractQueryTreeBuilderCount<TBuilderResult> extends true
+    ? number
+    : QueryTreeSelectedRow<TTable, TBuilderResult> | null;
 
 /**
  * Extract all indexed column names from a table's indexes
@@ -140,6 +163,10 @@ type FindOptions<
    * Join operations to include related data
    */
   joins?: CompiledJoin[];
+  /**
+   * New query-tree based join representation used by findNew().
+   */
+  queryTree?: CompiledQueryTreeRootNode<TTable>;
 };
 
 /**
@@ -2073,6 +2100,208 @@ export class TypedUnitOfWork<
     this.#operationIndices.push(operationIndex);
 
     // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  findNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [...TRetrievalResults, QueryTreeFindResult<TSchema["tables"][TTableName], TBuilderResult>],
+    TRawInput,
+    THooks
+  >;
+  findNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [...TRetrievalResults, QueryTreeFindResult<TSchema["tables"][TTableName], TBuilderResult>],
+    TRawInput,
+    THooks
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new QueryTreeFindBuilder(
+      this.#schema,
+      tableName,
+      table as TSchema["tables"][TTableName],
+    );
+    builderFn(builder);
+    const queryTree = builder.build();
+
+    const operationIndex =
+      queryTree.kind === "count"
+        ? this.#uow.addRetrievalOperation({
+            type: "count",
+            schema: this.#schema,
+            namespace: this.#namespace,
+            table: table as TSchema["tables"][TTableName],
+            indexName: queryTree.useIndex,
+            options: {
+              useIndex: queryTree.useIndex,
+              where: () => queryTree.where ?? true,
+            },
+          })
+        : this.#uow.addRetrievalOperation({
+            type: "find",
+            schema: this.#schema,
+            namespace: this.#namespace,
+            table: table as TSchema["tables"][TTableName],
+            indexName: queryTree.useIndex,
+            options: {
+              useIndex: queryTree.useIndex,
+              select: queryTree.select,
+              orderByIndex: queryTree.orderByIndex,
+              after: queryTree.after,
+              before: queryTree.before,
+              pageSize: queryTree.pageSize,
+              queryTree,
+            } as unknown as FindOptions<AnyTable, SelectClause<AnyTable>>,
+            readTracking: this.#uow.readTrackingEnabled,
+          });
+
+    this.#operationIndices.push(operationIndex);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  findFirstNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [...TRetrievalResults, QueryTreeFindFirstResult<TSchema["tables"][TTableName], TBuilderResult>],
+    TRawInput,
+    THooks
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new QueryTreeFindBuilder(
+      this.#schema,
+      tableName,
+      table as TSchema["tables"][TTableName],
+    );
+    builderFn(builder);
+    builder.pageSize(1);
+    const queryTree = builder.build();
+
+    const operationIndex =
+      queryTree.kind === "count"
+        ? this.#uow.addRetrievalOperation({
+            type: "count",
+            schema: this.#schema,
+            namespace: this.#namespace,
+            table: table as TSchema["tables"][TTableName],
+            indexName: queryTree.useIndex,
+            options: {
+              useIndex: queryTree.useIndex,
+              where: () => queryTree.where ?? true,
+            },
+          })
+        : this.#uow.addRetrievalOperation({
+            type: "find",
+            schema: this.#schema,
+            namespace: this.#namespace,
+            table: table as TSchema["tables"][TTableName],
+            indexName: queryTree.useIndex,
+            options: {
+              useIndex: queryTree.useIndex,
+              select: queryTree.select,
+              orderByIndex: queryTree.orderByIndex,
+              after: queryTree.after,
+              before: queryTree.before,
+              pageSize: queryTree.pageSize,
+              queryTree,
+            } as unknown as FindOptions<AnyTable, SelectClause<AnyTable>>,
+            withSingleResult: true,
+            readTracking: this.#uow.readTrackingEnabled,
+          });
+
+    this.#operationIndices.push(operationIndex);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  findWithCursorNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      CursorResult<
+        SelectResult<
+          TSchema["tables"][TTableName],
+          ExtractQueryTreeBuilderOut<TBuilderResult>,
+          Extract<
+            ExtractQueryTreeBuilderSelect<TBuilderResult>,
+            SelectClause<TSchema["tables"][TTableName]>
+          >
+        >
+      >,
+    ],
+    TRawInput,
+    THooks
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new QueryTreeFindBuilder(
+      this.#schema,
+      tableName,
+      table as TSchema["tables"][TTableName],
+    );
+    builderFn(builder);
+    const queryTree = builder.build();
+    if (queryTree.kind === "count") {
+      throw new Error(
+        `findWithCursorNew() does not support selectCount() on table "${tableName}". ` +
+          `Use findNew() or findFirstNew() instead.`,
+      );
+    }
+
+    const operationIndex = this.#uow.addRetrievalOperation({
+      type: "find",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: table as TSchema["tables"][TTableName],
+      indexName: queryTree.useIndex,
+      options: {
+        useIndex: queryTree.useIndex,
+        select: queryTree.select,
+        orderByIndex: queryTree.orderByIndex,
+        after: queryTree.after,
+        before: queryTree.before,
+        pageSize: queryTree.pageSize,
+        queryTree,
+      } as unknown as FindOptions<AnyTable, SelectClause<AnyTable>>,
+      withCursor: true,
+      readTracking: this.#uow.readTrackingEnabled,
+    });
+
+    this.#operationIndices.push(operationIndex);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this as any;
   }
