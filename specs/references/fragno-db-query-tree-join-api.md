@@ -1,9 +1,10 @@
 # Fragno DB query-tree join API sketch
 
-This document captures the desired shape of a new `findNew()` API for the Fragno DB query engine.
+This document captures the shape of the query-tree `find()` API for the Fragno DB query engine.
 
-The goal is to replace the current relation-join builder with a new **query tree** model while
-keeping the old API around during migration.
+It originally described the `findNew()` migration path. The query-tree API is now the canonical
+`find()` / `findFirst()` / `findWithCursor()` surface, and this document remains the reference for
+its nested-join model.
 
 ## Goals
 
@@ -15,7 +16,7 @@ keeping the old API around during migration.
 
 ## High-level model
 
-- `findNew()` creates a root query node
+- `find()` creates a root query node
 - `joinOne()` creates a child object node
 - `joinMany()` creates a child array node
 - Each child node is attached through `onIndex(...)`
@@ -80,7 +81,7 @@ Later, references may be used as optional sugar, but they should not be required
 ## Root
 
 ```ts
-uow.findNew("posts", (q) =>
+uow.find("posts", (q) =>
   q.whereIndex("primary", (eb) => eb("id", "=", postId)).select(["id", "title", "content"]),
 );
 ```
@@ -164,7 +165,7 @@ Example:
 ## Example: post with comments and comment authors
 
 ```ts
-uow.findNew("posts", (q) =>
+uow.find("posts", (q) =>
   q
     .whereIndex("primary", (eb) => eb("id", "=", postId))
     .select(["id", "title", "content"])
@@ -208,7 +209,7 @@ Equivalent shape for:
 - `comments -> commenter`
 
 ```ts
-uow.findNew("comments", (q) =>
+uow.find("comments", (q) =>
   q
     .whereIndex("primary")
     .select(["id", "text", "post_id", "user_id"])
@@ -286,6 +287,6 @@ This is not a classic flat SQL join API. It is a structured, index-aware graph q
 ## Migration stance
 
 - keep current `find()` join API working
-- add `findNew()` alongside it
-- use `findNew()` to validate the new query tree representation and compiler
+- add `find()` alongside it
+- use `find()` to validate the new query tree representation and compiler
 - later decide whether old joins become sugar over the new tree model

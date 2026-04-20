@@ -407,6 +407,113 @@ describe("IndexedDbAdapter", () => {
     db.close();
   });
 
+  it("recreates managed indexes when an existing index definition changes", async () => {
+    const schemaV1 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("email", column("string"))
+          .createIndex("idx_lookup", ["name"]),
+      ),
+    );
+
+    const dbName = createDbName();
+    const adapterV1 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV1 }],
+    });
+
+    await adapterV1.getMeta("app::schema_fingerprint");
+
+    const dbBefore = await openDb(dbName);
+    const rowsStoreBefore = dbBefore.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
+    const indexBefore = rowsStoreBefore.index("idx__app__users__idx_lookup");
+    expect(indexBefore.keyPath).toEqual(["endpoint", "schema", "table", "_lofi.norm.name", "id"]);
+    expect(indexBefore.unique).toBe(false);
+    dbBefore.close();
+
+    const schemaV2 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("email", column("string"))
+          .createIndex("idx_lookup", ["email"], { unique: true }),
+      ),
+    );
+
+    const adapterV2 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV2 }],
+    });
+
+    await adapterV2.getMeta("app::schema_fingerprint");
+
+    const dbAfter = await openDb(dbName);
+    const rowsStoreAfter = dbAfter.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
+    const indexAfter = rowsStoreAfter.index("idx__app__users__idx_lookup");
+    expect(indexAfter.keyPath).toEqual(["endpoint", "schema", "table", "_lofi.norm.email", "id"]);
+    expect(indexAfter.unique).toBe(true);
+    dbAfter.close();
+  });
+
+  it("clears registered custom cursor state on schema fingerprint changes", async () => {
+    const schemaV1 = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const dbName = createDbName();
+    const adapterV1 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV1 }],
+    });
+
+    const customCursorKey = "custom-client::cursor";
+    await adapterV1.applyOutboxEntry({
+      sourceKey: customCursorKey,
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+    await adapterV1.setMeta(customCursorKey, "vs1");
+
+    const schemaV2 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("email", column("string"))
+          .createIndex("idx_email", ["email"]),
+      ),
+    );
+
+    const adapterV2 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV2 }],
+    });
+
+    await adapterV2.getMeta("app::schema_fingerprint");
+
+    const dbAfter = await openDb(dbName);
+    expect(await getInboxRow(dbAfter, [customCursorKey, "uow-vs1", "vs1"])).toBeUndefined();
+    expect(await adapterV2.getMeta(customCursorKey)).toBeUndefined();
+    dbAfter.close();
+  });
+
   it("creates indexes and clears rows on schema fingerprint changes", async () => {
     const schemaV1 = schema("app", (s) =>
       s.addTable("users", (t) =>

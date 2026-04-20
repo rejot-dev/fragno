@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { column, FragnoId, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
+import type { Condition } from "../../query/conditions";
 import type { LofiAdapter, LofiQueryableAdapter } from "../../types";
 import { InMemoryLofiAdapter } from "../in-memory/adapter";
 import { createStackedQueryEngine } from "./merge";
@@ -34,6 +35,123 @@ const createStubBaseAdapter = (
     createQueryEngine: () => query,
   } as LofiAdapter & LofiQueryableAdapter;
 };
+
+type ParentAwareConditionBuilder = {
+  (column: string, operator: string, value?: unknown): Condition | boolean;
+  and: (...conditions: (Condition | boolean)[]) => Condition | boolean;
+  parent: (name: string) => unknown;
+};
+
+type JoinOneHost = {
+  joinOne: (...args: never[]) => unknown;
+};
+
+type JoinManyHost = {
+  joinMany: (...args: never[]) => unknown;
+};
+
+type OnIndexCapable = {
+  onIndex(indexName: string, condition?: (eb: unknown) => unknown): unknown;
+};
+
+type InferJoinOneBuilder<THostBuilder> = THostBuilder extends {
+  joinOne(alias: string, table: string, builderFn: (builder: infer TBuilder) => unknown): unknown;
+}
+  ? TBuilder
+  : never;
+
+type InferJoinManyBuilder<THostBuilder> = THostBuilder extends {
+  joinMany(alias: string, table: string, builderFn: (builder: infer TBuilder) => unknown): unknown;
+}
+  ? TBuilder
+  : never;
+
+const joinAuthor = <THostBuilder extends JoinOneHost>(
+  builder: THostBuilder,
+  configure?: (author: InferJoinOneBuilder<THostBuilder>) => unknown,
+) =>
+  (
+    builder.joinOne as (
+      alias: string,
+      table: string,
+      builderFn: (builder: InferJoinOneBuilder<THostBuilder>) => unknown,
+    ) => unknown
+  )("author", "users", (author) => {
+    (author as InferJoinOneBuilder<THostBuilder> & OnIndexCapable).onIndex(
+      "primary",
+      (eb: unknown) => {
+        const conditionBuilder = eb as ParentAwareConditionBuilder;
+        return conditionBuilder("id", "=", conditionBuilder.parent("authorId"));
+      },
+    );
+    return configure ? configure(author) : author;
+  });
+
+const joinPosts = <THostBuilder extends JoinManyHost>(
+  builder: THostBuilder,
+  configure?: (posts: InferJoinManyBuilder<THostBuilder>) => unknown,
+) =>
+  (
+    builder.joinMany as (
+      alias: string,
+      table: string,
+      builderFn: (builder: InferJoinManyBuilder<THostBuilder>) => unknown,
+    ) => unknown
+  )("posts", "posts", (posts) => {
+    (posts as InferJoinManyBuilder<THostBuilder> & OnIndexCapable).onIndex(
+      "idx_author",
+      (eb: unknown) => {
+        const conditionBuilder = eb as ParentAwareConditionBuilder;
+        return conditionBuilder("authorId", "=", conditionBuilder.parent("id"));
+      },
+    );
+    return configure ? configure(posts) : posts;
+  });
+
+const joinComments = <THostBuilder extends JoinManyHost>(
+  builder: THostBuilder,
+  configure?: (comments: InferJoinManyBuilder<THostBuilder>) => unknown,
+) =>
+  (
+    builder.joinMany as (
+      alias: string,
+      table: string,
+      builderFn: (builder: InferJoinManyBuilder<THostBuilder>) => unknown,
+    ) => unknown
+  )("comments", "comments", (comments) => {
+    (comments as InferJoinManyBuilder<THostBuilder> & OnIndexCapable).onIndex(
+      "idx_post",
+      (eb: unknown) => {
+        const conditionBuilder = eb as ParentAwareConditionBuilder;
+        return conditionBuilder("postId", "=", conditionBuilder.parent("id"));
+      },
+    );
+    return configure ? configure(comments) : comments;
+  });
+
+const joinMember = <THostBuilder extends JoinOneHost>(
+  builder: THostBuilder,
+  configure?: (member: InferJoinOneBuilder<THostBuilder>) => unknown,
+) =>
+  (
+    builder.joinOne as (
+      alias: string,
+      table: string,
+      builderFn: (builder: InferJoinOneBuilder<THostBuilder>) => unknown,
+    ) => unknown
+  )("member", "users", (member) => {
+    (member as InferJoinOneBuilder<THostBuilder> & OnIndexCapable).onIndex(
+      "idx_user_org_email",
+      (eb: unknown) => {
+        const conditionBuilder = eb as ParentAwareConditionBuilder;
+        return conditionBuilder.and(
+          conditionBuilder("orgId", "=", conditionBuilder.parent("orgId")),
+          conditionBuilder("email", "=", conditionBuilder.parent("userEmail")),
+        );
+      },
+    );
+    return configure ? configure(member) : member;
+  });
 
 describe("stacked merge", () => {
   it("backfills base joins for overlay-only rows", async () => {
@@ -83,9 +201,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const joined = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j["author"]()),
-    );
+    const joined = await query.find("posts", (b) => joinAuthor(b.whereIndex("idx_author")));
 
     expect(joined).toHaveLength(1);
     const author = (joined[0] as Record<string, unknown>)["author"] as
@@ -148,7 +264,7 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j["author"]((jb) => jb.select(["name"]))),
+      joinAuthor(b.whereIndex("idx_author"), (author) => author.select(["name"])),
     );
 
     expect(posts).toHaveLength(1);
@@ -169,7 +285,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("posts", {
           type: "many",
@@ -204,9 +321,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const users = await query.find("users", (b) =>
-      b.whereIndex("primary").join((j) => j["posts"]()),
-    );
+    const users = await query.find("users", (b) => joinPosts(b.whereIndex("primary")));
 
     expect(users).toHaveLength(1);
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
@@ -224,6 +339,7 @@ describe("stacked merge", () => {
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
             .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"])
             .createIndex("idx_title", ["title"]),
         )
         .addReference("posts", {
@@ -255,9 +371,9 @@ describe("stacked merge", () => {
     ]);
 
     const users = await query.find("users", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) => j["posts"]((jb) => jb.orderByIndex("idx_title", "desc").pageSize(2))),
+      joinPosts(b.whereIndex("primary"), (posts) =>
+        posts.orderByIndex("idx_title", "desc").pageSize(2),
+      ),
     );
 
     expect(users).toHaveLength(1);
@@ -274,7 +390,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("posts", {
           type: "many",
@@ -308,9 +425,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const users = await query.find("users", (b) =>
-      b.whereIndex("primary").join((j) => j["posts"]()),
-    );
+    const users = await query.find("users", (b) => joinPosts(b.whereIndex("primary")));
 
     expect(users).toHaveLength(1);
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
@@ -326,13 +441,15 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addTable("comments", (t) =>
           t
             .addColumn("id", idColumn())
             .addColumn("postId", referenceColumn())
-            .addColumn("body", column("string")),
+            .addColumn("body", column("string"))
+            .createIndex("idx_post", ["postId"]),
         )
         .addReference("posts", {
           type: "many",
@@ -377,7 +494,7 @@ describe("stacked merge", () => {
     ]);
 
     const users = await query.find("users", (b) =>
-      b.whereIndex("primary").join((j) => j["posts"]((pb) => pb.join((pj) => pj["comments"]()))),
+      joinPosts(b.whereIndex("primary"), (posts) => joinComments(posts)),
     );
 
     expect(users).toHaveLength(1);
@@ -400,7 +517,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -455,11 +573,9 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) => jb.whereIndex("idx_name", (eb) => eb("name", "=", "Ada"))),
-        ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("idx_name", (eb) => eb("name", "=", "Ada")),
+      ),
     );
 
     const adaPost = posts.find((post) => {
@@ -544,7 +660,7 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j["author"]((jb) => jb.select(["name"]))),
+      joinAuthor(b.whereIndex("idx_author"), (author) => author.select(["name"])),
     );
 
     expect(posts).toHaveLength(1);
@@ -618,9 +734,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const posts = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j["author"]()),
-    );
+    const posts = await query.find("posts", (b) => joinAuthor(b.whereIndex("idx_author")));
 
     expect(posts).toHaveLength(1);
     const author = (posts[0] as Record<string, unknown>)["author"] as
@@ -679,9 +793,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const memberships = await query.find("memberships", (b) =>
-      b.whereIndex("primary").join((j) => j["member"]()),
-    );
+    const memberships = await query.find("memberships", (b) => joinMember(b.whereIndex("primary")));
 
     const member = (memberships[0] as Record<string, unknown>)["member"] as
       | Record<string, unknown>
@@ -698,7 +810,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -734,19 +847,12 @@ describe("stacked merge", () => {
     });
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) =>
-            jb.whereIndex("primary", (eb) =>
-              (eb as unknown as (col: string, op: "=", value: string) => boolean)(
-                "id",
-                "=",
-                "user-1",
-              ),
-            ),
-          ),
-        ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("primary", (eb) => {
+          const compare = eb as unknown as (col: string, op: "=", value: unknown) => boolean;
+          return compare("id", "=", "user-1");
+        }),
+      ),
     );
 
     const author = (posts[0] as Record<string, unknown>)["author"] as
@@ -838,25 +944,19 @@ describe("stacked merge", () => {
     });
 
     const firstPage = await query.findWithCursor("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .orderByIndex("primary", "asc")
-        .pageSize(2)
-        .join((j) =>
-          j["author"]((jb) => jb.whereIndex("idx_name").orderByIndex("idx_name", "asc")),
-        ),
+      joinAuthor(b.whereIndex("primary").orderByIndex("primary", "asc").pageSize(2), (author) =>
+        author.whereIndex("idx_name").orderByIndex("idx_name", "asc"),
+      ),
     );
 
     expect(firstPage.items).toHaveLength(2);
     expect(firstPage.hasNextPage).toBe(true);
 
     const secondPage = await query.findWithCursor("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .orderByIndex("primary", "asc")
-        .pageSize(2)
-        .after(firstPage.cursor!)
-        .join((j) => j["author"]()),
+      joinAuthor(
+        b.whereIndex("primary").orderByIndex("primary", "asc").pageSize(2).after(firstPage.cursor!),
+        (author) => author.whereIndex("idx_name").orderByIndex("idx_name", "asc"),
+      ),
     );
 
     expect(secondPage.items).toHaveLength(1);
@@ -894,9 +994,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const posts = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j["author"]()),
-    );
+    const posts = await query.find("posts", (b) => joinAuthor(b.whereIndex("idx_author")));
 
     const author = (posts[0] as Record<string, unknown>)["author"] as unknown;
     expect(author ?? null).toBeNull();
@@ -955,11 +1053,9 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("idx_author")
-        .join((j) =>
-          j["author"]((jb) => jb.whereIndex("idx_name", (eb) => eb("name", "contains", "love"))),
-        ),
+      joinAuthor(b.whereIndex("idx_author"), (author) =>
+        author.whereIndex("idx_name", (eb) => eb("name", "contains", "love")),
+      ),
     );
 
     const author = (posts[0] as Record<string, unknown>)["author"] as
@@ -1038,11 +1134,9 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) => jb.whereIndex("idx_name", (eb) => eb("name", "not in", ["Grace"]))),
-        ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("idx_name", (eb) => eb("name", "not in", ["Grace"])),
+      ),
     );
 
     const adaPost = posts.find((post) => {
@@ -1171,15 +1265,16 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) =>
-            jb.join((oj) =>
-              oj["org"]((ob) => ob.whereIndex("idx_name", (eb) => eb("name", "=", "Org A"))),
-            ),
-          ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.joinOne("org", "orgs", (org) =>
+          org
+            .onIndex("primary", (eb) => {
+              const conditionBuilder = eb as ParentAwareConditionBuilder;
+              return conditionBuilder("id", "=", conditionBuilder.parent("orgId"));
+            })
+            .whereIndex("idx_name", (eb) => eb("name", "=", "Org A")),
         ),
+      ),
     );
 
     const post1 = posts.find((post) => {
@@ -1229,7 +1324,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -1284,9 +1380,9 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) => j["author"]((jb) => jb.whereIndex("idx_age", (eb) => eb("age", ">", 25)))),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("idx_age", (eb) => eb("age", ">", 25)),
+      ),
     );
 
     const youngPost = posts.find((post) => {
@@ -1334,7 +1430,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -1389,11 +1486,9 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) => jb.whereIndex("idx_name", (eb) => eb("name", "not contains", "Ada"))),
-        ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("idx_name", (eb) => eb("name", "not contains", "Ada")),
+      ),
     );
 
     const adaPost = posts.find((post) => {
@@ -1443,7 +1538,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -1498,13 +1594,11 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b.whereIndex("primary").join((j) =>
-        j["author"]((jb) =>
-          jb.whereIndex("idx_min", (eb) => {
-            const compare = eb as unknown as (col: string, op: "<=", value: unknown) => boolean;
-            return compare("minAge", "<=", appSchema.tables.users.columns.maxAge);
-          }),
-        ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("idx_min", (eb) => {
+          const compare = eb as unknown as (col: string, op: "<=", value: unknown) => boolean;
+          return compare("minAge", "<=", appSchema.tables.users.columns.maxAge);
+        }),
       ),
     );
 
@@ -1548,7 +1642,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -1603,19 +1698,15 @@ describe("stacked merge", () => {
     ]);
 
     const posts = await query.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((j) =>
-          j["author"]((jb) =>
-            jb.whereIndex("primary", (eb) =>
-              (eb as unknown as (col: string, op: "=", value: unknown) => boolean)(
-                "id",
-                "=",
-                FragnoId.fromExternal("user-1", 1),
-              ),
-            ),
+      joinAuthor(b.whereIndex("primary"), (author) =>
+        author.whereIndex("primary", (eb) =>
+          (eb as unknown as (col: string, op: "=", value: unknown) => boolean)(
+            "id",
+            "=",
+            FragnoId.fromExternal("user-1", 1),
           ),
         ),
+      ),
     );
 
     const adaPost = posts.find((post) => {
@@ -1658,7 +1749,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addReference("author", {
           type: "one",
@@ -1703,9 +1795,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const posts = await query.find("posts", (b) =>
-      b.whereIndex("primary").join((j) => j["author"]()),
-    );
+    const posts = await query.find("posts", (b) => joinAuthor(b.whereIndex("primary")));
 
     const author = (posts[0] as Record<string, unknown>)["author"] as unknown;
     expect(author ?? null).toBeNull();
@@ -1719,13 +1809,15 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
-            .addColumn("title", column("string")),
+            .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"]),
         )
         .addTable("comments", (t) =>
           t
             .addColumn("id", idColumn())
             .addColumn("postId", referenceColumn())
-            .addColumn("body", column("string")),
+            .addColumn("body", column("string"))
+            .createIndex("idx_post", ["postId"]),
         )
         .addReference("posts", {
           type: "many",
@@ -1769,7 +1861,7 @@ describe("stacked merge", () => {
     ]);
 
     const users = await query.find("users", (b) =>
-      b.whereIndex("primary").join((j) => j["posts"]((pb) => pb.join((pj) => pj["comments"]()))),
+      joinPosts(b.whereIndex("primary"), (posts) => joinComments(posts)),
     );
 
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
@@ -1842,23 +1934,20 @@ describe("stacked merge", () => {
     ]);
 
     const firstPage = await query.findWithCursor("posts", (b) =>
-      b
-        .whereIndex("idx_sort")
-        .orderByIndex("idx_sort", "asc")
-        .pageSize(2)
-        .join((j) => j["author"]()),
+      joinAuthor(b.whereIndex("idx_sort").orderByIndex("idx_sort", "asc").pageSize(2)),
     );
 
     expect(firstPage.items).toHaveLength(2);
     expect(firstPage.hasNextPage).toBe(true);
 
     const secondPage = await query.findWithCursor("posts", (b) =>
-      b
-        .whereIndex("idx_sort")
-        .orderByIndex("idx_sort", "asc")
-        .pageSize(2)
-        .after(firstPage.cursor!)
-        .join((j) => j["author"]()),
+      joinAuthor(
+        b
+          .whereIndex("idx_sort")
+          .orderByIndex("idx_sort", "asc")
+          .pageSize(2)
+          .after(firstPage.cursor!),
+      ),
     );
 
     expect(secondPage.items).toHaveLength(1);
@@ -1876,7 +1965,8 @@ describe("stacked merge", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("orgId", referenceColumn())
-            .addColumn("email", column("string")),
+            .addColumn("email", column("string"))
+            .createIndex("idx_user_org_email", ["orgId", "email"]),
         )
         .addTable("memberships", (t) =>
           t
@@ -1934,9 +2024,7 @@ describe("stacked merge", () => {
       },
     ]);
 
-    const memberships = await query.find("memberships", (b) =>
-      b.whereIndex("primary").join((j) => j["member"]()),
-    );
+    const memberships = await query.find("memberships", (b) => joinMember(b.whereIndex("primary")));
 
     const first = memberships.find((row) => {
       const id = (row as Record<string, unknown>)["id"] as
@@ -1973,6 +2061,7 @@ describe("stacked merge", () => {
             .addColumn("id", idColumn())
             .addColumn("authorId", referenceColumn())
             .addColumn("title", column("string"))
+            .createIndex("idx_author", ["authorId"])
             .createIndex("idx_title", ["title"]),
         )
         .addTable("comments", (t) =>
@@ -1980,6 +2069,7 @@ describe("stacked merge", () => {
             .addColumn("id", idColumn())
             .addColumn("postId", referenceColumn())
             .addColumn("body", column("string"))
+            .createIndex("idx_post", ["postId"])
             .createIndex("idx_body", ["body"]),
         )
         .addReference("posts", {
@@ -2020,12 +2110,9 @@ describe("stacked merge", () => {
     ]);
 
     const users = await query.find("users", (b) =>
-      b.whereIndex("primary").join((j) =>
-        j["posts"]((pb) =>
-          pb
-            .orderByIndex("idx_title", "desc")
-            .pageSize(1)
-            .join((pj) => pj["comments"]((cb) => cb.orderByIndex("idx_body", "asc").pageSize(1))),
+      joinPosts(b.whereIndex("primary"), (posts) =>
+        joinComments(posts.orderByIndex("idx_title", "desc").pageSize(1), (comments) =>
+          comments.orderByIndex("idx_body", "asc").pageSize(1),
         ),
       ),
     );

@@ -205,7 +205,11 @@ describe("outbox sync integration", () => {
       expect(count).toBe(3);
 
       const joined = await query.find("posts", (b) =>
-        b.whereIndex("idx_author").join((j) => j.author()),
+        b
+          .whereIndex("idx_author")
+          .joinOne("author", "users", (author) =>
+            author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+          ),
       );
       expect(joined).toHaveLength(1);
       expect(joined[0].author?.email).toBe("beta@example.com");

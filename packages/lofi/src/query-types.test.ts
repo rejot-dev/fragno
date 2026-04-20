@@ -37,10 +37,13 @@ describe("AsyncQueryFindFamily", () => {
   type TestSchema = typeof testSchema;
   type Query = AsyncQueryFindFamily<TestSchema>;
 
+  const findUsers = (query: Query) => query.find("users", (b) => b.whereIndex("primary"));
+  const findPostsFirst = (query: Query) => query.findFirst("posts", (b) => b.whereIndex("primary"));
+  const findUsersFirst = (query: Query) => query.findFirst("users", (b) => b.whereIndex("primary"));
+
   describe("findFirst", () => {
     it("returns all columns when select is omitted", () => {
-      const query = {} as Query;
-      type Result = Awaited<ReturnType<typeof query.findFirst<"users">>>;
+      type Result = Awaited<ReturnType<typeof findUsersFirst>>;
 
       expectTypeOf<Result>().toExtend<{
         _id: FragnoId;
@@ -52,9 +55,8 @@ describe("AsyncQueryFindFamily", () => {
     });
 
     it("returns selected columns only", () => {
-      function selectNameAndEmailFirst(query: Query) {
-        return query.findFirst("users", (b) => b.select(["name", "email"]));
-      }
+      const selectNameAndEmailFirst = (query: Query) =>
+        query.findFirst("users", (b) => b.whereIndex("primary").select(["name", "email"]));
 
       type Result = Awaited<ReturnType<typeof selectNameAndEmailFirst>>;
       expectTypeOf<Result>().toExtend<{
@@ -64,9 +66,8 @@ describe("AsyncQueryFindFamily", () => {
     });
 
     it("preserves nullable column types", () => {
-      function selectAge(query: Query) {
-        return query.findFirst("users", (b) => b.select(["age"]));
-      }
+      const selectAge = (query: Query) =>
+        query.findFirst("users", (b) => b.whereIndex("primary").select(["age"]));
 
       type Result = Awaited<ReturnType<typeof selectAge>>;
       type NonNullResult = Exclude<Result, null>;
@@ -76,8 +77,7 @@ describe("AsyncQueryFindFamily", () => {
 
   describe("find", () => {
     it("returns arrays of full rows when select is omitted", () => {
-      const query = {} as Query;
-      type Result = Awaited<ReturnType<typeof query.find<"users">>>;
+      type Result = Awaited<ReturnType<typeof findUsers>>;
 
       expectTypeOf<Result>().toExtend<
         {
@@ -91,9 +91,8 @@ describe("AsyncQueryFindFamily", () => {
     });
 
     it("returns arrays of selected columns only", () => {
-      function selectNameAndEmail(query: Query) {
-        return query.find("users", (b) => b.select(["name", "email"]));
-      }
+      const selectNameAndEmail = (query: Query) =>
+        query.find("users", (b) => b.whereIndex("primary").select(["name", "email"]));
 
       type Result = Awaited<ReturnType<typeof selectNameAndEmail>>;
       type ResultElement = Result[number];
@@ -108,23 +107,29 @@ describe("AsyncQueryFindFamily", () => {
       // @ts-expect-error isActive should not exist on the selected result
       type _IsActiveType = ResultElement["isActive"];
     });
+
+    it("returns number for selectCount", () => {
+      const countUsers = (query: Query) =>
+        query.find("users", (b) => b.whereIndex("primary").selectCount());
+
+      type Result = Awaited<ReturnType<typeof countUsers>>;
+      expectTypeOf<Result>().toEqualTypeOf<number>();
+    });
   });
 
   it("only allows valid table names", () => {
-    const query = {} as Query;
+    const validUsersFind = (query: Query) => query.find("users", (b) => b.whereIndex("primary"));
+    const validPostsFind = (query: Query) => query.find("posts", (b) => b.whereIndex("primary"));
+    const validCommentsFind = (query: Query) =>
+      query.find("comments", (b) => b.whereIndex("primary"));
 
-    type UsersParam = Parameters<typeof query.find<"users">>;
-    type PostsParam = Parameters<typeof query.find<"posts">>;
-    type CommentsParam = Parameters<typeof query.find<"comments">>;
-
-    expectTypeOf<UsersParam>().not.toEqualTypeOf<never>();
-    expectTypeOf<PostsParam>().not.toEqualTypeOf<never>();
-    expectTypeOf<CommentsParam>().not.toEqualTypeOf<never>();
+    expectTypeOf(validUsersFind).not.toEqualTypeOf<never>();
+    expectTypeOf(validPostsFind).not.toEqualTypeOf<never>();
+    expectTypeOf(validCommentsFind).not.toEqualTypeOf<never>();
   });
 
   it("infers column types correctly", () => {
-    const query = {} as Query;
-    type Result = Awaited<ReturnType<typeof query.findFirst<"posts">>>;
+    type Result = Awaited<ReturnType<typeof findPostsFirst>>;
     type Post = Exclude<Result, null>;
 
     expectTypeOf<Post["_id"]>().toEqualTypeOf<FragnoId>();

@@ -242,7 +242,11 @@ describe("StackedLofiAdapter", () => {
 
     const query = stacked.createQueryEngine(appSchema);
     const joined = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j.author()),
+      b
+        .joinOne("author", "users", (author) =>
+          author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+        )
+        .whereIndex("idx_author"),
     );
 
     expect(joined).toHaveLength(1);

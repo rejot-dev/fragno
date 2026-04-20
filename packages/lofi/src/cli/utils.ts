@@ -33,6 +33,26 @@ export function buildOutboxUrl(endpoint: string): string {
   return url.toString();
 }
 
+export function deriveInternalUrls(outboxUrl: string): {
+  submitUrl: string;
+  internalUrl: string;
+} {
+  const submitUrl = new URL(outboxUrl);
+  const internalUrl = new URL(outboxUrl);
+
+  if (!submitUrl.pathname.endsWith("/_internal/outbox")) {
+    throw new Error(`Invalid outbox URL: ${outboxUrl}`);
+  }
+
+  internalUrl.pathname = submitUrl.pathname.slice(0, -"/outbox".length);
+  submitUrl.pathname = `${internalUrl.pathname}/sync`;
+
+  return {
+    submitUrl: submitUrl.toString(),
+    internalUrl: internalUrl.toString(),
+  };
+}
+
 export function deriveEndpointName(outboxUrl: string): string {
   const url = new URL(outboxUrl);
   const raw = `${url.host}${url.pathname.replace(/\/_internal\/outbox$/, "")}`;

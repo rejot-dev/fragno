@@ -84,13 +84,10 @@ export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
 
       const baseQuery = this.base.createQueryEngine(schema);
       const baseRow = (await baseQuery.findFirst(mutation.table, (b) =>
-        b.whereIndex("primary", (eb) =>
-          (eb as unknown as (col: string, op: "=", value: string) => boolean)(
-            table.getIdColumn().name,
-            "=",
-            mutation.externalId,
-          ),
-        ),
+        b.whereIndex("primary", (eb) => {
+          const compare = eb as unknown as (col: string, op: "=", value: unknown) => boolean;
+          return compare(table.getIdColumn().name, "=", mutation.externalId);
+        }),
       )) as Record<string, unknown> | null;
 
       let values: Record<string, unknown> | null = null;

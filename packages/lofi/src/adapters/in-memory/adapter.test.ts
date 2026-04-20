@@ -31,7 +31,7 @@ describe("InMemoryLofiAdapter", () => {
     expect(first.applied).toBe(true);
 
     const query = adapter.createQueryEngine(appSchema);
-    const users = await query.find("users");
+    const users = await query.find("users", (b) => b.whereIndex("primary"));
     expect(users).toHaveLength(1);
     expect(users[0].name).toBe("Ada");
 

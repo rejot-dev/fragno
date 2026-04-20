@@ -101,6 +101,76 @@ describe("LofiSubmitClient", () => {
     expect(commandId).toBeTruthy();
   });
 
+  it("does not re-submit confirmed commands after local rebase failures", async () => {
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    const commandDef: LofiSubmitCommandDefinition = {
+      name: "noop",
+      target: { fragment: "app", schema: "app" },
+      handler: async () => undefined,
+    };
+
+    const overlay = {
+      applyCommand: vi.fn(async () => undefined),
+      rebuild: vi.fn(async () => undefined),
+    };
+    overlay.rebuild.mockRejectedValueOnce(new Error("overlay rebuild failed"));
+
+    const submitBodies: Array<{ requestId: string; commands: Array<{ id: string }> }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "https://example.com/_internal") {
+        return new Response(JSON.stringify({ adapterIdentity: "adapter-123" }), { status: 200 });
+      }
+
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      submitBodies.push(body);
+      return new Response(
+        JSON.stringify({
+          status: "applied",
+          requestId: body?.requestId ?? "req",
+          confirmedCommandIds: [body?.commands?.[0]?.id],
+          entries: [],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = new LofiSubmitClient({
+      endpointName: "app",
+      submitUrl: "https://example.com/_internal/sync",
+      internalUrl: "https://example.com/_internal",
+      adapter,
+      schemas: [appSchema],
+      commands: [commandDef],
+      overlay,
+      fetch: fetcher as typeof fetch,
+    });
+
+    await client.queueCommand({
+      name: "noop",
+      target: { fragment: "app", schema: "app" },
+      input: {},
+      optimistic: false,
+    });
+
+    await expect(client.submitOnce()).rejects.toThrow("overlay rebuild failed");
+    expect(submitBodies).toHaveLength(1);
+
+    const retried = await client.submitOnce();
+    expect(retried.status).toBe("applied");
+    expect(submitBodies).toHaveLength(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    const stored = await adapter.getMeta("app::submit-queue");
+    const deserialized = stored ? superjson.deserialize(JSON.parse(stored)) : null;
+    expect(deserialized).toEqual([]);
+  });
+
   it("routes optimistic commands through the overlay store", async () => {
     const adapter = new IndexedDbAdapter({
       dbName: createDbName(),
@@ -146,11 +216,11 @@ describe("LofiSubmitClient", () => {
     });
 
     const baseQuery = adapter.createQueryEngine(appSchema);
-    const baseUsers = await baseQuery.find("users");
+    const baseUsers = await baseQuery.find("users", (b) => b.whereIndex("primary"));
     expect(baseUsers).toHaveLength(0);
 
     const overlayQuery = overlay.createQueryEngine(appSchema);
-    const overlayUsers = await overlayQuery.find("users");
+    const overlayUsers = await overlayQuery.find("users", (b) => b.whereIndex("primary"));
     expect(overlayUsers).toHaveLength(1);
     expect(overlayUsers[0].email).toBe("ada@example.com");
   });
