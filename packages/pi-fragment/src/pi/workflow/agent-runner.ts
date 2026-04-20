@@ -9,25 +9,13 @@ import {
 } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 
-import { PiLogger } from "../../debug-log";
 import type {
   PiAgentDefinition,
-  PiPersistedToolCall,
-  PiPersistedToolResult,
   PiSession,
   PiToolFactory,
   PiToolFactoryContext,
-  PiToolReplayContext,
   PiToolRegistry,
 } from "../types";
-import {
-  buildStableToolCallKey,
-  buildToolErrorResult,
-  clonePersistedToolCall,
-  createPersistedToolCall,
-  extractToolErrorMessage,
-  takeNextReplaySequence,
-} from "./tool-journal";
 
 export type AgentLoopParams = {
   sessionId: string;
@@ -134,74 +122,12 @@ const resolveTool = async (
   return factory;
 };
 
-const wrapToolWithReplay = (options: {
-  toolName: string;
-  tool: AgentTool;
-  context: PiToolFactoryContext;
-}): AgentTool => ({
-  ...options.tool,
-  execute: async (toolCallId, params, signal, onUpdate) => {
-    const sessionId = options.context.session.id;
-    const toolCallIdValue = String(toolCallId);
-    const key = buildStableToolCallKey(sessionId, options.context.turnId, toolCallIdValue);
-    const replayEntry = options.context.replay.cache.get(key);
-
-    if (replayEntry) {
-      options.context.replay.journal.push(
-        clonePersistedToolCall({
-          ...replayEntry,
-          source: "replay",
-          seq: takeNextReplaySequence(options.context.replay),
-        }),
-      );
-      PiLogger.debug("tool replay hit", {
-        sessionId,
-        turnId: options.context.turnId,
-        toolName: replayEntry.toolName,
-        key,
-      });
-      if (replayEntry.isError) {
-        throw new Error(extractToolErrorMessage(replayEntry.result));
-      }
-      return structuredClone(replayEntry.result);
-    }
-
-    const argsSnapshot = structuredClone(params) as Record<string, unknown>;
-    const recordResult = (result: PiPersistedToolResult, isError: boolean) => {
-      const entry = createPersistedToolCall({
-        sessionId,
-        turnId: options.context.turnId,
-        toolCallId: toolCallIdValue,
-        toolName: options.toolName,
-        args: argsSnapshot,
-        result,
-        isError,
-        source: "executed",
-        seq: takeNextReplaySequence(options.context.replay),
-      });
-      options.context.replay.cache.set(entry.key, clonePersistedToolCall(entry));
-      options.context.replay.journal.push(clonePersistedToolCall(entry));
-      return entry;
-    };
-
-    try {
-      const result = await options.tool.execute(toolCallId, params, signal, onUpdate);
-      recordResult(structuredClone(result) as PiPersistedToolResult, false);
-      return result;
-    } catch (error) {
-      recordResult(buildToolErrorResult(error), true);
-      throw error;
-    }
-  },
-});
-
 const resolveTools = async (options: {
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
   session: PiSession;
   turnId: string;
   messages: AgentMessage[];
-  replay: PiToolReplayContext;
 }): Promise<AgentTool[]> => {
   const toolNames = options.agent.tools ?? [];
   if (toolNames.length === 0) {
@@ -213,13 +139,12 @@ const resolveTools = async (options: {
     turnId: options.turnId,
     toolConfig: options.agent.toolConfig ?? null,
     messages: options.messages,
-    replay: options.replay,
   };
 
   const resolved: AgentTool[] = [];
   for (const name of toolNames) {
     const tool = await resolveTool(name, options.tools[name], context);
-    resolved.push(wrapToolWithReplay({ toolName: name, tool, context }));
+    resolved.push(tool);
   }
 
   return resolved;
@@ -237,13 +162,11 @@ const createAgent = async (options: {
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
-  replay: PiToolReplayContext;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<{
   agent: Agent;
   trace: AgentEvent[];
   assistant: AgentMessage | null;
-  toolJournal: PiPersistedToolCall[];
 }> => {
   const now = new Date();
   const session: PiSession = {
@@ -264,7 +187,6 @@ const createAgent = async (options: {
     session,
     turnId: options.turnId,
     messages: options.messages,
-    replay: options.replay,
   });
 
   const initialState: Partial<AgentState> = {
@@ -328,7 +250,6 @@ const createAgent = async (options: {
     agent,
     trace,
     assistant,
-    toolJournal: options.replay.journal.map(clonePersistedToolCall),
   };
 };
 
@@ -339,7 +260,6 @@ export const runAgentTurn = async (options: {
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
-  replay: PiToolReplayContext;
   onEvent?: (event: AgentEvent) => void;
 }) => {
   const result = await createAgent(options);
@@ -348,6 +268,5 @@ export const runAgentTurn = async (options: {
     messages: result.agent.state.messages,
     trace: result.trace,
     assistant: result.assistant,
-    toolJournal: result.toolJournal,
   };
 };

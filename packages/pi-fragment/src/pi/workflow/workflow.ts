@@ -24,9 +24,7 @@ import type {
   PiAgentRegistry,
   PiFragmentConfig,
   PiSessionDetailEvent,
-  PiToolReplayContext,
   PiToolRegistry,
-  PiToolSideEffectReducerRegistry,
   PiTurnSummary,
 } from "../types";
 import {
@@ -35,7 +33,6 @@ import {
   ensurePiActiveSessionState,
 } from "./active-session";
 import { runAgentTurn, type AgentLoopParams } from "./agent-runner";
-import { createReplayContext, hydrateReplayCache, parsePersistedToolJournal } from "./tool-journal";
 
 export { createInitialPiAgentLoopState, ensurePiActiveSessionState };
 
@@ -44,7 +41,6 @@ export const PI_WORKFLOW_NAME = "agent-loop-workflow";
 type WorkflowsOptions = {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-  toolSideEffectReducers?: PiToolSideEffectReducerRegistry;
   logging?: PiFragmentConfig["logging"];
 };
 
@@ -74,7 +70,6 @@ type LoopState = {
   turn: number;
   phase: PiAgentLoopPhase;
   waitingFor: PiAgentLoopWaitingFor;
-  replayCache: PiToolReplayContext["cache"];
   activeSession: PiActiveSessionState;
 };
 
@@ -101,7 +96,6 @@ const initLoopState = (
     turn: 0,
     phase: "waiting-for-user",
     waitingFor: buildWaitingForUser(0),
-    replayCache: new Map(),
     activeSession,
   };
 };
@@ -218,7 +212,6 @@ const parseAssistantStepResult = (value: unknown, stepName: string) => {
     messages,
     trace,
     assistant,
-    toolJournal: parsePersistedToolJournal(value, stepName),
   };
 };
 
@@ -272,10 +265,6 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
         emitState(this, loop);
 
         // Run the AI agent turn as a retryable durable step.
-        const replay = createReplayContext({
-          cache: loop.replayCache,
-          reducers: options.toolSideEffectReducers,
-        });
         const assistantStepName = `assistant-${loop.turn}`;
         const traceLengthBeforeTurn = loop.trace.length;
         const turnId = `${event.instanceId}:${loop.turn}`;
@@ -297,7 +286,6 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
                 messages: loop.messages,
                 steeringMode,
                 turnId,
-                replay,
                 onEvent: (agentEvent) => {
                   loop.trace = [...loop.trace, agentEvent];
                   loop.activeSession.publishEvent(loop.turn, agentEvent);
@@ -324,7 +312,6 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
         if (summary) {
           loop.summaries = [...loop.summaries, summary];
         }
-        hydrateReplayCache(loop.replayCache, parsed.toolJournal);
 
         if (isDone) {
           setPhase(loop, "complete");

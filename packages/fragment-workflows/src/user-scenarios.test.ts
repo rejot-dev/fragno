@@ -482,21 +482,22 @@ describe("Workflows Runner (User Scenarios)", () => {
     await runScenario(scenario);
   });
 
-  test("constant step name consumes events in order in a loop", async () => {
-    // report: reusing a step name should create distinct occurrences and consume events in order.
-    const ConstantNameWorkflow = defineWorkflow(
-      { name: "constant-name-loop-workflow" },
+  test("unique step names in a loop consume events in order", async () => {
+    const LoopWorkflow = defineWorkflow(
+      { name: "loop-unique-names-workflow" },
       async (_event, step) => {
         let total = 0;
         for (let i = 0; i < 2; i += 1) {
-          const ready = await step.waitForEvent<{ value: number }>("ready", { type: "ready" });
+          const ready = await step.waitForEvent<{ value: number }>(`ready-${i}`, {
+            type: "ready",
+          });
           total += ready.payload.value;
         }
         return { total };
       },
     );
 
-    const workflows = { CONSTANT: ConstantNameWorkflow };
+    const workflows = { LOOP: LoopWorkflow };
 
     type ScenarioVars = {
       status?: { status: string; output?: { total: number } };
@@ -506,37 +507,37 @@ describe("Workflows Runner (User Scenarios)", () => {
 
     const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "constant-step-name-loop",
+      name: "unique-step-name-loop",
       workflows,
       steps: [
-        scenarioSteps.create({ workflow: "CONSTANT", id: "constant-1" }),
+        scenarioSteps.create({ workflow: "LOOP", id: "loop-1" }),
         scenarioSteps.event({
-          workflow: "CONSTANT",
-          instanceId: "constant-1",
+          workflow: "LOOP",
+          instanceId: "loop-1",
           event: { type: "ready", payload: { value: 4 } },
           timestamp: new Date(1000),
         }),
         scenarioSteps.event({
-          workflow: "CONSTANT",
-          instanceId: "constant-1",
+          workflow: "LOOP",
+          instanceId: "loop-1",
           event: { type: "ready", payload: { value: 7 } },
           timestamp: new Date(1001),
         }),
         scenarioSteps.runUntilIdle({
-          workflow: "CONSTANT",
-          instanceId: "constant-1",
+          workflow: "LOOP",
+          instanceId: "loop-1",
           reason: "create",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("CONSTANT", "constant-1"),
+          read: (ctx) => ctx.state.getStatus("LOOP", "loop-1"),
           storeAs: "status",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("CONSTANT", "constant-1"),
+          read: (ctx) => ctx.state.getSteps("LOOP", "loop-1"),
           storeAs: "steps",
         }),
         scenarioSteps.read({
-          read: (ctx) => ctx.state.getEvents("CONSTANT", "constant-1"),
+          read: (ctx) => ctx.state.getEvents("LOOP", "loop-1"),
           storeAs: "events",
         }),
         scenarioSteps.assert((ctx) => {
@@ -544,14 +545,14 @@ describe("Workflows Runner (User Scenarios)", () => {
           expect(ctx.vars.status?.output).toEqual({ total: 11 });
 
           const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
-          expect(stepKeys).toEqual(["waitForEvent:ready", "waitForEvent:ready#1"]);
+          expect(stepKeys).toEqual(["waitForEvent:ready-0", "waitForEvent:ready-1"]);
 
           expect(ctx.vars.events).toHaveLength(2);
           const events = [...(ctx.vars.events ?? [])].sort(
             (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
           );
-          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:ready");
-          expect(events[1]?.consumedByStepKey).toBe("waitForEvent:ready#1");
+          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:ready-0");
+          expect(events[1]?.consumedByStepKey).toBe("waitForEvent:ready-1");
         }),
       ],
     });

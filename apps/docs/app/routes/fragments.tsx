@@ -124,13 +124,14 @@ const fragments: FragmentCard[] = [
     id: "pi",
     name: "Pi",
     category: "AI Agents",
-    description: "Workflow-backed AI agents with durable sessions, tool replay, and typed clients.",
+    description:
+      "Workflow-backed AI agents with durable sessions, tool execution, and typed clients.",
     status: "available",
     href: "/fragments/pi",
     install: "npm install @fragno-dev/pi-fragment @fragno-dev/workflows @fragno-dev/db",
     highlights: [
       "Durable agent sessions",
-      "Deterministic tool replay",
+      "Tool execution traceability",
       "Typed session + message APIs",
     ],
     accentText: "text-fuchsia-700 dark:text-fuchsia-300",

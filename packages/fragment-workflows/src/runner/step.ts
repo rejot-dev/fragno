@@ -1,5 +1,7 @@
 // Runner implementation of the WorkflowStep interface.
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 
 import { isSystemEventActor } from "../system-events";
@@ -66,15 +68,11 @@ type StepTxQueue = {
 };
 
 /**
- * Build a deterministic step key from type, name, and optional occurrence.
- * Bigger picture: stable step keys are the identity for replayable workflow steps.
+ * Build a deterministic step key from type and name.
+ * Stable step keys are the identity for replayable workflow steps.
  */
-function buildStepKey(type: string, name: string, occurrence?: number): string {
-  const base = `${type}:${name}`;
-  if (occurrence === undefined || occurrence === 0) {
-    return base;
-  }
-  return `${base}#${occurrence}`;
+function buildStepKey(type: string, name: string): string {
+  return `${type}:${name}`;
 }
 
 /**
@@ -98,11 +96,10 @@ function stripDelayFields<T extends Record<string, unknown>>(data: T): T {
 }
 
 /**
- * Treat both \"complete\" and \"completed\" as terminal step statuses.
- * Bigger picture: keeps runner compatible with existing persisted values.
+ * Treat "completed" as the terminal success status for steps.
  */
 function isCompletedStatus(status?: string | null): boolean {
-  return status === "completed" || status === "complete";
+  return status === "completed";
 }
 
 /**
@@ -128,7 +125,8 @@ export class RunnerStep implements WorkflowStep {
   #state: RunnerState;
   #taskKind: RunnerTaskKind;
   #mode: "execute" | "restore";
-  #stepOccurrences = new Map<string, number>();
+  #usedStepKeys = new Set<string>();
+  #parentScope = new AsyncLocalStorage<string>();
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
@@ -188,7 +186,7 @@ export class RunnerStep implements WorkflowStep {
     const txQueue = this.#createStepTxQueue();
 
     try {
-      const result = await callback(txQueue.tx);
+      const result = await this.#parentScope.run(stepKey, () => callback(txQueue.tx));
       txQueue.commitSuccess();
 
       this.#upsertStep(stepKey, {
@@ -208,6 +206,10 @@ export class RunnerStep implements WorkflowStep {
 
       return result;
     } catch (err) {
+      if (err instanceof RunnerStepSuspended || err instanceof RunnerStepReplayStopped) {
+        throw err;
+      }
+
       const error = toError(err);
       const nonRetryable = isNonRetryableError(error);
       const retries = config?.retries;
@@ -534,10 +536,16 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #nextStepKey(type: string, name: string): string {
-    const baseKey = buildStepKey(type, name);
-    const occurrence = this.#stepOccurrences.get(baseKey) ?? 0;
-    this.#stepOccurrences.set(baseKey, occurrence + 1);
-    return buildStepKey(type, name, occurrence);
+    const segment = buildStepKey(type, name);
+    const parent = this.#parentScope.getStore();
+    const fullKey = parent ? `${parent}/${segment}` : segment;
+
+    if (this.#usedStepKeys.has(fullKey)) {
+      throw new Error(`DUPLICATE_STEP_NAME: step "${name}" (key "${fullKey}") already exists`);
+    }
+
+    this.#usedStepKeys.add(fullKey);
+    return fullKey;
   }
 
   #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {

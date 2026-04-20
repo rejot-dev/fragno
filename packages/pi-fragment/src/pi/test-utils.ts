@@ -24,7 +24,6 @@ import type { createPiFragment } from "./factory";
 import type {
   PiFragmentConfig,
   PiAgentRegistry,
-  PiToolSideEffectReducerRegistry,
   PiToolRegistry,
   PiWorkflowsService,
 } from "./types";
@@ -258,13 +257,11 @@ export const createDelayedStreamFn = (delayMs = 25): StreamFn => {
 export const createTestWorkflows = (options: {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-  toolSideEffectReducers?: PiToolSideEffectReducerRegistry;
   logging?: PiFragmentConfig["logging"];
 }) =>
   createPiWorkflows({
     agents: options.agents,
     tools: options.tools,
-    toolSideEffectReducers: options.toolSideEffectReducers,
     logging: options.logging,
   });
 
@@ -298,7 +295,6 @@ export const buildHarness = async (
   const workflows = createTestWorkflows({
     agents: config.agents,
     tools: config.tools,
-    toolSideEffectReducers: config.toolSideEffectReducers,
     logging: config.logging,
   });
   const workflowsHarness = await createWorkflowsTestHarness({

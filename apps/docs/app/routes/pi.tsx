@@ -18,7 +18,7 @@ export function meta() {
     {
       name: "description",
       content:
-        "Build durable AI agents with workflow-backed sessions, tool replay, and typed clients.",
+        "Build durable AI agents with workflow-backed sessions, robust tool execution, and typed clients.",
     },
   ];
 }
@@ -32,8 +32,9 @@ const features: Feature[] = [
     icon: <Workflow className="size-5" />,
   },
   {
-    title: "Deterministic tool replay",
-    description: "Tool calls are captured and replayed, so side effects do not run twice.",
+    title: "Tool execution",
+    description:
+      "Agent turns can invoke registered tools with structured messages and traceable results.",
     icon: <RotateCcw className="size-5" />,
   },
   {
@@ -115,8 +116,8 @@ export default function PiPage() {
         description={
           <>
             The Pi fragment is built on top of the Workflows fragment, and provides a minimal
-            runtime for agent turns. Sessions are automatically durable, and tool calls are
-            automatically replayed.
+            runtime for agent turns. Sessions are automatically durable, and tool calls are included
+            in persisted turn output for client visibility.
           </>
         }
         aside={
@@ -201,8 +202,8 @@ export default function PiPage() {
             </p>
             <p className="text-base leading-[1.8] text-[color-mix(in_srgb,var(--editorial-ink)_72%,white)]">
               Agent features fail when state and side effects are implicit. Pi makes both explicit:
-              sessions are queryable records, tool calls are replayable history, and clients consume
-              typed hooks instead of bespoke chat plumbing.
+              sessions are queryable records, tool calls are persisted in execution output, and
+              clients consume typed hooks instead of bespoke chat plumbing.
             </p>
           </FragmentPanel>
         </div>
