@@ -3,9 +3,7 @@ import { FragnoId } from "@fragno-dev/db/schema";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import type {
   CompiledMutation,
-  FindBuilder,
-  IndexedJoinBuilder,
-  JoinFindBuilder,
+  CompiledQueryTreeRootNode,
   MutationOperation,
   RetrievalOperation,
   UOWCompiler,
@@ -15,9 +13,10 @@ import type {
 
 import { createHandlerTxBuilder, UnitOfWork, type HandlerTxBuilder } from "@fragno-dev/db";
 
-import type { Condition, ConditionBuilder } from "../query/conditions";
+import { buildCondition, type Condition, type ConditionBuilder } from "../query/conditions";
 import type { IndexedDbQueryContext } from "../query/engine";
 import { executeIndexedDbRetrievalOperation } from "../query/engine";
+import { lofiExecuteReadPlan, type LofiExecutableQueryInterface } from "../query/read-plan";
 import type { LofiMutation, LofiQueryInterface, LofiQueryableAdapter } from "../types";
 
 type HandlerTxOptions = Parameters<typeof createHandlerTxBuilder>[0];
@@ -55,7 +54,7 @@ type LocalRetrievalOperation =
         after?: Cursor | string;
         before?: Cursor | string;
         pageSize?: number;
-        joins?: CompiledJoin[];
+        queryTree?: CompiledQueryTreeRootNode;
       };
       withCursor: boolean;
     }
@@ -69,19 +68,6 @@ type LocalRetrievalOperation =
           | Condition;
       };
     };
-
-type CompiledJoin = {
-  relation: { name: string; table: AnyTable; on: [string, string][] };
-  options:
-    | {
-        select: unknown;
-        where?: Condition;
-        orderBy?: [AnyColumn, "asc" | "desc"][];
-        join?: CompiledJoin[];
-        limit?: number;
-      }
-    | false;
-};
 
 export type LocalHandlerQueryExecutor<TContext> = {
   createQueryContext: (schemaName: string) => TContext;
@@ -170,164 +156,87 @@ const resolveQueryContext = <TContext>(
   schema: AnySchema,
 ): TContext => executor.createQueryContext(schema.name);
 
-const normalizeIndexName = (indexName: string): string =>
-  indexName === "_primary" ? "primary" : indexName;
-
-const resolveIndexNameFromOrderBy = (
-  table: AnyTable,
-  orderBy: [AnyColumn, "asc" | "desc"][],
-): string | null => {
-  if (orderBy.length === 0) {
-    return null;
-  }
-
-  const direction = orderBy[0]?.[1];
-  if (!direction || orderBy.some(([, dir]) => dir !== direction)) {
-    return null;
-  }
-
-  const orderColumns = orderBy.map(([column]) => column.name);
-  const idColumn = table.getIdColumn();
-  if (orderColumns.length === 1 && orderColumns[0] === idColumn.name) {
-    return "primary";
-  }
-
-  for (const [indexName, index] of Object.entries(table.indexes)) {
-    const indexColumns = index.columns.map((column) => column.name);
-    if (
-      indexColumns.length === orderColumns.length &&
-      indexColumns.every((name, idx) => name === orderColumns[idx])
-    ) {
-      return indexName;
-    }
-  }
-
-  return null;
-};
-
-const applyCompiledJoins = (
-  builder: IndexedJoinBuilder<AnyTable, {}>,
-  joins: CompiledJoin[] | undefined,
-): IndexedJoinBuilder<AnyTable, {}> => {
-  if (!joins || joins.length === 0) {
-    return builder;
-  }
-
-  let current: Record<string, unknown> = builder as Record<string, unknown>;
-
-  for (const join of joins) {
-    if (join.options === false) {
-      continue;
-    }
-    const joinOptions = join.options;
-
-    const relationName = join.relation.name;
-    const relationBuilder = current[relationName];
-    if (typeof relationBuilder !== "function") {
-      continue;
-    }
-
-    current = relationBuilder((joinBuilder: JoinFindBuilder<AnyTable>) => {
-      if (joinOptions.select && joinOptions.select !== true) {
-        joinBuilder.select(joinOptions.select as unknown as true | string[]);
-      }
-
-      if (joinOptions.where) {
-        joinBuilder.whereIndex("primary", () => joinOptions.where as Condition);
-      }
-
-      if (joinOptions.orderBy && joinOptions.orderBy.length > 0) {
-        const indexName = resolveIndexNameFromOrderBy(join.relation.table, joinOptions.orderBy);
-        const direction = joinOptions.orderBy[0][1];
-        if (indexName) {
-          joinBuilder.orderByIndex(indexName as "primary" | string, direction);
-        }
-      }
-
-      if (joinOptions.limit !== undefined) {
-        joinBuilder.pageSize(joinOptions.limit);
-      }
-
-      if (joinOptions.join && joinOptions.join.length > 0) {
-        joinBuilder.join((nestedBuilder) => applyCompiledJoins(nestedBuilder, joinOptions.join));
-      }
-
-      return joinBuilder;
-    }) as Record<string, unknown>;
-  }
-
-  return current as IndexedJoinBuilder<AnyTable, {}>;
-};
-
-const applyFindOptionsToBuilder = (
-  builder: Omit<FindBuilder<AnyTable>, "build">,
-  operation: LocalRetrievalOperation,
-): void => {
-  const useIndex = normalizeIndexName(
-    operation.type === "count" ? operation.indexName : operation.options.useIndex,
-  ) as "primary" | string;
-  if (operation.options.where) {
-    if (typeof operation.options.where === "function") {
-      builder.whereIndex(useIndex, operation.options.where as () => Condition);
-    } else {
-      builder.whereIndex(useIndex, () => operation.options.where as Condition);
-    }
-  } else {
-    builder.whereIndex(useIndex);
-  }
-
-  if (operation.type === "count") {
-    builder.selectCount();
-    return;
-  }
-
-  if (operation.options.select && operation.options.select !== true) {
-    builder.select(operation.options.select as unknown as true | string[]);
-  }
-
-  if (operation.options.orderByIndex) {
-    builder.orderByIndex(
-      normalizeIndexName(operation.options.orderByIndex.indexName) as "primary" | string,
-      operation.options.orderByIndex.direction,
-    );
-  }
-
-  if (operation.options.after) {
-    builder.after(operation.options.after);
-  }
-
-  if (operation.options.before) {
-    builder.before(operation.options.before);
-  }
-
-  if (operation.options.pageSize !== undefined) {
-    builder.pageSize(operation.options.pageSize);
-  }
-
-  if (operation.options.joins && operation.options.joins.length > 0) {
-    builder.join((joinBuilder) => applyCompiledJoins(joinBuilder, operation.options.joins));
-  }
-};
-
 const executeQueryEngineRetrievalOperation = async (
   operation: LocalRetrievalOperation,
   query: LofiQueryInterface<AnySchema>,
 ): Promise<unknown> => {
-  const tableName = operation.table.name;
-  const builderFn = (builder: Omit<FindBuilder<AnyTable>, "build">) => {
-    applyFindOptionsToBuilder(builder, operation);
-    return builder;
+  const executable = query as LofiExecutableQueryInterface<AnySchema>;
+  const executeReadPlan = executable[lofiExecuteReadPlan];
+  if (!executeReadPlan) {
+    throw new Error(
+      "Local handler tx requires a Lofi query engine that supports canonical read plans.",
+    );
+  }
+
+  const buildWhere = (
+    where:
+      | ((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean)
+      | Condition
+      | undefined,
+  ): Condition | undefined | false => {
+    if (!where) {
+      return undefined;
+    }
+    if (typeof where === "function") {
+      const built = buildCondition(operation.table.columns as Record<string, AnyColumn>, where);
+      if (built === true) {
+        return undefined;
+      }
+      return built;
+    }
+    return where;
   };
 
   if (operation.type === "count") {
-    return (query.find as unknown as typeof query.find)(tableName, builderFn);
+    const where = buildWhere(operation.options.where);
+    if (where === false) {
+      return 0;
+    }
+    return executeReadPlan({
+      kind: "count",
+      resultMode: "find",
+      table: operation.table,
+      queryTree: {
+        kind: "count",
+        table: operation.table,
+        useIndex: operation.indexName,
+        where,
+      },
+    });
   }
 
-  if (operation.withCursor) {
-    return (query.findWithCursor as unknown as typeof query.findWithCursor)(tableName, builderFn);
+  const queryTree = operation.options.queryTree;
+  if (queryTree) {
+    return executeReadPlan({
+      kind: "find",
+      resultMode: operation.withCursor ? "findWithCursor" : "find",
+      table: operation.table,
+      queryTree,
+    });
   }
 
-  return (query.find as unknown as typeof query.find)(tableName, builderFn);
+  const where = buildWhere(operation.options.where);
+  if (where === false) {
+    return operation.withCursor ? { items: [], hasNextPage: false } : [];
+  }
+
+  return executeReadPlan({
+    kind: "find",
+    resultMode: operation.withCursor ? "findWithCursor" : "find",
+    table: operation.table,
+    queryTree: {
+      kind: "root",
+      table: operation.table,
+      useIndex: operation.options.useIndex,
+      where,
+      select: (operation.options.select ?? true) as true | readonly string[],
+      orderByIndex: operation.options.orderByIndex,
+      after: operation.options.after,
+      before: operation.options.before,
+      pageSize: operation.options.pageSize,
+      children: [],
+    },
+  });
 };
 
 const getRowVersion = async <TContext>(

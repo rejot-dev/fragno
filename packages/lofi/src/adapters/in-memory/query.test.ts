@@ -127,7 +127,11 @@ describe("in-memory query engine", () => {
     const query = createInMemoryQueryEngine({ schema: appSchema, store });
 
     const joined = await query.find("posts", (b) =>
-      b.whereIndex("idx_author", (eb) => eb("authorId", "=", "user-2")).join((j) => j.author()),
+      b
+        .whereIndex("idx_author", (eb) => eb("authorId", "=", "user-2"))
+        .joinOne("author", "users", (author) =>
+          author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+        ),
     );
 
     expect(joined).toHaveLength(1);

@@ -715,7 +715,7 @@ export default function App() {
         for (const schema of selectedGroup.schemas) {
           const query = runtime.adapter.createQueryEngine(schema);
           for (const tableName of Object.keys(schema.tables)) {
-            const data = await query.find(tableName as never);
+            const data = await query.find(tableName as never, (b) => b);
             nextCounts[`${schema.name}.${tableName}`] = data.length;
           }
         }
@@ -792,7 +792,7 @@ export default function App() {
       setTableError(null);
       try {
         const query = runtime.adapter.createQueryEngine(schema);
-        const data = await query.find(selectedTable.tableName as never);
+        const data = await query.find(selectedTable.tableName as never, (b) => b);
         if (cancelled) {
           return;
         }

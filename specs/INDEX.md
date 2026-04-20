@@ -81,3 +81,6 @@ Format:
   — Tasks to implement file-on-success upload semantics, retries, and related updates.
 - [Workflows Reliability Fixes — Implementation Plan](./impl-workflows-smoke-fixes.md) —
   Implementation tasks for the workflows reliability fixes spec.
+- [Fragno Lofi Canonical `find()` Rewrite — Implementation Plan](./impl-lofi-canonical-find-rewrite.md)
+  — Implementation tasks to rewrite `@fragno-dev/lofi` around the canonical read API, remove legacy
+  join/builder coupling, and migrate runtime/tests/docs.

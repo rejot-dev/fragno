@@ -1,45 +1,36 @@
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
-import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import { FindBuilder } from "@fragno-dev/db/unit-of-work";
+import { isParentColumnRef, type CompiledQueryTreeChildNode } from "@fragno-dev/db/unit-of-work";
 
 import type { Condition } from "../../query/conditions";
 import { normalizeValue } from "../../query/normalize";
+import {
+  buildReadPlan,
+  lofiExecuteReadPlan,
+  type LofiExecutableQueryInterface,
+  type LofiReadPlan,
+} from "../../query/read-plan";
 import type { LofiQueryInterface, LofiQueryableAdapter } from "../../types";
 import type { InMemoryLofiAdapter } from "../in-memory/adapter";
 import type { InMemoryLofiRow } from "../in-memory/store";
 import { compareNormalizedValues } from "../in-memory/value-comparison";
 
 type CompiledJoin = {
-  relation: AnyRelation;
-  options:
-    | {
-        select: unknown;
-        where?: unknown;
-        orderBy?: [AnyColumn, "asc" | "desc"][];
-        join?: CompiledJoin[];
-        limit?: number;
-      }
-    | false;
-};
-
-type BuiltFindOptions = {
-  useIndex: string;
-  select?: unknown;
-  where?: unknown;
-  orderByIndex?: {
-    indexName: string;
-    direction: "asc" | "desc";
+  alias: string;
+  table: AnyTable;
+  parentTable: AnyTable;
+  cardinality: "one" | "many";
+  on?: Condition;
+  options: {
+    select: unknown;
+    where?: Condition;
+    orderBy?: [AnyColumn, "asc" | "desc"][];
+    join?: CompiledJoin[];
+    limit?: number;
   };
-  after?: Cursor | string;
-  before?: Cursor | string;
-  pageSize?: number;
-  joins?: CompiledJoin[];
 };
-
-const buildFindBuilder = <TTable extends AnyTable>(tableName: string, table: TTable) =>
-  new FindBuilder<TTable>(tableName, table);
 
 const buildOrderColumns = (table: AnyTable, indexName: string): AnyColumn[] => {
   if (indexName === "_primary") {
@@ -89,6 +80,9 @@ const resolveOrderValue = (value: unknown, column: AnyColumn): unknown => {
     if (value instanceof FragnoId) {
       return coerceLocalInternalId(value.internalId);
     }
+    if (typeof value === "string") {
+      return value;
+    }
     return coerceLocalInternalId(value);
   }
 
@@ -134,104 +128,6 @@ const bytesToHex = (bytes: Uint8Array): string => {
     hex += byte.toString(16).padStart(2, "0");
   }
   return hex;
-};
-
-type JoinCandidates = {
-  internal: unknown[];
-  external: unknown[];
-  normalized: unknown[];
-};
-
-const collectJoinCandidates = (value: unknown, column: AnyColumn): JoinCandidates => {
-  const candidates: JoinCandidates = { internal: [], external: [], normalized: [] };
-  if (isNullish(value)) {
-    return candidates;
-  }
-
-  const pushInternal = (input: unknown) => {
-    const coerced = coerceLocalInternalId(input);
-    if (coerced !== null) {
-      candidates.internal.push(coerced);
-    }
-  };
-
-  const pushExternal = (input: unknown) => {
-    if (input !== undefined) {
-      candidates.external.push(input);
-    }
-  };
-
-  if (value instanceof FragnoId) {
-    pushInternal(value.internalId);
-    pushExternal(value.externalId);
-    return candidates;
-  }
-
-  if (value instanceof FragnoReference) {
-    pushInternal(value.internalId);
-    return candidates;
-  }
-
-  if (typeof value === "object") {
-    if ("internalId" in value) {
-      pushInternal((value as { internalId?: unknown }).internalId);
-    }
-    if (
-      "externalId" in value &&
-      typeof (value as { externalId?: unknown }).externalId === "string"
-    ) {
-      pushExternal((value as { externalId: string }).externalId);
-    }
-  }
-
-  if (column.role === "external-id") {
-    if (typeof value === "string") {
-      pushExternal(value);
-      return candidates;
-    }
-    if (typeof value === "number" || typeof value === "bigint") {
-      pushInternal(value);
-      return candidates;
-    }
-  }
-
-  if (column.role === "reference" || column.role === "internal-id") {
-    if (typeof value === "string") {
-      pushExternal(value);
-      return candidates;
-    }
-    if (typeof value === "number" || typeof value === "bigint") {
-      pushInternal(value);
-      return candidates;
-    }
-  }
-
-  candidates.normalized.push(normalizeValue(value, column));
-  return candidates;
-};
-
-const hasCandidateMatch = (left: unknown[], right: unknown[]): boolean => {
-  for (const leftValue of left) {
-    for (const rightValue of right) {
-      if (compareNormalizedValues(leftValue, rightValue) === 0) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const matchesJoinCandidates = (left: JoinCandidates, right: JoinCandidates): boolean => {
-  if (left.internal.length > 0 && right.internal.length > 0) {
-    return hasCandidateMatch(left.internal, right.internal);
-  }
-  if (left.external.length > 0 && right.external.length > 0) {
-    return hasCandidateMatch(left.external, right.external);
-  }
-  if (left.normalized.length > 0 && right.normalized.length > 0) {
-    return hasCandidateMatch(left.normalized, right.normalized);
-  }
-  return false;
 };
 
 const getRowValueWithOverlay = (
@@ -280,6 +176,9 @@ const normalizeConditionValue = (value: unknown, column: AnyColumn): unknown => 
     }
     if (typeof value === "number" || typeof value === "bigint") {
       return coerceLocalInternalId(value);
+    }
+    if (typeof value === "string") {
+      return value;
     }
   }
 
@@ -462,6 +361,213 @@ const orderJoinRows = (
   });
 };
 
+const resolveComparableColumn = (column: AnyColumn, table: AnyTable): AnyColumn =>
+  column.role === "external-id" ? table.getInternalIdColumn() : column;
+
+const resolveCorrelatedConditionValue = (options: {
+  value: unknown;
+  column: AnyColumn;
+  row: Record<string, unknown>;
+  currentTable: AnyTable;
+  parentRow: Record<string, unknown>;
+  parentTable: AnyTable;
+  parentOverlayData?: Record<string, unknown>;
+}): { value: unknown; column: AnyColumn } => {
+  const { value, column, row, parentRow, parentOverlayData } = options;
+
+  if (isParentColumnRef(value)) {
+    return {
+      value: getRowValueWithOverlay(parentRow, value.column.name, parentOverlayData),
+      column: value.column,
+    };
+  }
+
+  if (isConditionColumn(value)) {
+    return { value: row[value.name], column: value };
+  }
+
+  return { value, column };
+};
+
+const evaluateCorrelatedCondition = (options: {
+  condition: Condition | undefined;
+  row: Record<string, unknown>;
+  currentTable: AnyTable;
+  parentRow: Record<string, unknown>;
+  parentTable: AnyTable;
+  parentOverlayData?: Record<string, unknown>;
+}): boolean => {
+  const { condition, row, currentTable, parentRow, parentTable, parentOverlayData } = options;
+  if (!condition) {
+    return true;
+  }
+
+  switch (condition.type) {
+    case "and":
+      return condition.items.every((item) =>
+        evaluateCorrelatedCondition({
+          condition: item,
+          row,
+          currentTable,
+          parentRow,
+          parentTable,
+          parentOverlayData,
+        }),
+      );
+    case "or":
+      return condition.items.some((item) =>
+        evaluateCorrelatedCondition({
+          condition: item,
+          row,
+          currentTable,
+          parentRow,
+          parentTable,
+          parentOverlayData,
+        }),
+      );
+    case "not":
+      return !evaluateCorrelatedCondition({
+        condition: condition.item,
+        row,
+        currentTable,
+        parentRow,
+        parentTable,
+        parentOverlayData,
+      });
+    case "compare":
+      break;
+    default: {
+      const exhaustiveCheck: never = condition;
+      throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+
+  const leftSourceColumn = condition.a;
+  let leftColumn = leftSourceColumn;
+  let rightColumn = leftSourceColumn;
+  const right = resolveCorrelatedConditionValue({
+    value: condition.b,
+    column: leftColumn,
+    row,
+    currentTable,
+    parentRow,
+    parentTable,
+    parentOverlayData,
+  });
+  const rightValue = right.value;
+
+  if (isParentColumnRef(condition.b)) {
+    const rawLeftValue = row[leftSourceColumn.name];
+    if (
+      leftColumn.role === "external-id" &&
+      right.column.role !== "external-id" &&
+      typeof rightValue !== "string"
+    ) {
+      leftColumn = resolveComparableColumn(leftColumn, currentTable);
+    }
+    if (
+      right.column.role === "external-id" &&
+      leftColumn.role !== "external-id" &&
+      typeof rawLeftValue !== "string"
+    ) {
+      rightColumn = resolveComparableColumn(right.column, parentTable);
+    } else {
+      rightColumn = right.column;
+    }
+  }
+
+  const leftValue = normalizeConditionValue(row[leftSourceColumn.name], leftColumn);
+
+  if (condition.operator === "is" || condition.operator === "is not") {
+    if (isNullish(rightValue)) {
+      const matches = isNullish(leftValue);
+      return condition.operator === "is" ? matches : !matches;
+    }
+    if (isNullish(leftValue)) {
+      return condition.operator === "is not";
+    }
+    const rightNormalized = normalizeConditionValue(rightValue, rightColumn);
+    const matches = compareNormalizedValues(leftValue, rightNormalized) === 0;
+    return condition.operator === "is" ? matches : !matches;
+  }
+
+  if (condition.operator === "in" || condition.operator === "not in") {
+    const values = Array.isArray(rightValue) ? rightValue : [];
+    let hasNull = false;
+    let hasMatch = false;
+
+    for (const entry of values) {
+      if (isNullish(entry)) {
+        hasNull = true;
+        continue;
+      }
+      const normalized = normalizeConditionValue(entry, leftColumn);
+      if (compareNormalizedValues(leftValue, normalized) === 0) {
+        hasMatch = true;
+        break;
+      }
+    }
+
+    if (hasMatch) {
+      return condition.operator === "in";
+    }
+    if (hasNull) {
+      return false;
+    }
+    return condition.operator === "not in";
+  }
+
+  if (
+    condition.operator === "contains" ||
+    condition.operator === "starts with" ||
+    condition.operator === "ends with" ||
+    condition.operator === "not contains" ||
+    condition.operator === "not starts with" ||
+    condition.operator === "not ends with"
+  ) {
+    const leftLike = normalizeLikeValue(leftValue, leftColumn);
+    const rightLike = normalizeLikeValue(rightValue, rightColumn);
+
+    if (leftLike === null || rightLike === null) {
+      return false;
+    }
+
+    const leftText = leftLike.toLowerCase();
+    const rightText = rightLike.toLowerCase();
+    let matches = false;
+
+    if (condition.operator.includes("contains")) {
+      matches = leftText.includes(rightText);
+    } else if (condition.operator.includes("starts with")) {
+      matches = leftText.startsWith(rightText);
+    } else {
+      matches = leftText.endsWith(rightText);
+    }
+
+    return condition.operator.startsWith("not ") ? !matches : matches;
+  }
+
+  const rightNormalized = normalizeConditionValue(rightValue, rightColumn);
+  const comparison = compareNormalizedValues(leftValue, rightNormalized);
+
+  switch (condition.operator) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${condition.operator}".`);
+  }
+};
+
 const matchesJoinOn = (options: {
   parentRow: Record<string, unknown>;
   targetRow: Record<string, unknown>;
@@ -470,37 +576,19 @@ const matchesJoinOn = (options: {
   schemaName: string;
 }): boolean => {
   const { parentRow, targetRow, join, overlay, schemaName } = options;
-  const parentTable = join.relation.referencer;
-  const targetTable = join.relation.table;
-  const parentExternalId = getExternalIdFromRow(parentRow, parentTable);
+  const parentExternalId = getExternalIdFromRow(parentRow, join.parentTable);
   const overlayParent = parentExternalId
-    ? overlay.store.getRow(schemaName, parentTable.name, parentExternalId)
+    ? overlay.store.getRow(schemaName, join.parentTable.name, parentExternalId)
     : undefined;
-  const overlayData = overlayParent?.data;
 
-  for (const [left, right] of join.relation.on) {
-    const leftColumn = parentTable.columns[left];
-    if (!leftColumn) {
-      throw new Error(`Column "${left}" not found on table "${parentTable.name}".`);
-    }
-
-    const rightColumn = targetTable.columns[right];
-    if (!rightColumn) {
-      throw new Error(`Column "${right}" not found on table "${targetTable.name}".`);
-    }
-
-    const leftValue = getRowValueWithOverlay(parentRow, left, overlayData);
-    const rightValue = targetRow[right];
-
-    const leftCandidates = collectJoinCandidates(leftValue, leftColumn);
-    const rightCandidates = collectJoinCandidates(rightValue, rightColumn);
-
-    if (!matchesJoinCandidates(leftCandidates, rightCandidates)) {
-      return false;
-    }
-  }
-
-  return true;
+  return evaluateCorrelatedCondition({
+    condition: join.on,
+    row: targetRow,
+    currentTable: join.table,
+    parentRow,
+    parentTable: join.parentTable,
+    parentOverlayData: overlayParent?.data,
+  });
 };
 
 const buildCursorValues = (
@@ -608,10 +696,12 @@ const buildOutputFromLofiRow = (
 
     if (column.role === "reference") {
       const value = row._lofi.norm[column.name];
-      output[column.name] =
-        value === null || value === undefined
-          ? null
-          : FragnoReference.fromInternal(BigInt(value as number));
+      if (value === null || value === undefined) {
+        const rawValue = row.data[column.name];
+        output[column.name] = rawValue ?? null;
+      } else {
+        output[column.name] = FragnoReference.fromInternal(BigInt(value as number));
+      }
       continue;
     }
 
@@ -666,17 +756,36 @@ const patchJoinRows = async <TSchema extends AnySchema>(options: {
   }
 
   for (const join of joins) {
-    if (join.options === false) {
-      continue;
-    }
-
     const joinOptions = join.options;
-    const relationName = join.relation.name;
+    const relationName = join.alias;
     let target = row[relationName];
 
     if (target !== undefined && target !== null) {
-      const canCheck = (targetRow: Record<string, unknown>) =>
-        join.relation.on.every(([, right]) => right in targetRow);
+      const canCheck = (targetRow: Record<string, unknown>) => {
+        if (!join.on) {
+          return true;
+        }
+
+        const stack: Condition[] = [join.on];
+        while (stack.length > 0) {
+          const next = stack.pop();
+          if (!next) {
+            continue;
+          }
+          if (next.type === "compare") {
+            if (!(next.a.name in targetRow)) {
+              return false;
+            }
+            continue;
+          }
+          if (next.type === "not") {
+            stack.push(next.item);
+            continue;
+          }
+          stack.push(...next.items);
+        }
+        return true;
+      };
 
       const needsRefresh = Array.isArray(target)
         ? target.some(
@@ -718,7 +827,7 @@ const patchJoinRows = async <TSchema extends AnySchema>(options: {
         baseRowsCache,
       });
       if (baseMatches.length > 0) {
-        target = join.relation.type === "many" ? baseMatches : baseMatches[0];
+        target = join.cardinality === "many" ? baseMatches : baseMatches[0];
         row[relationName] = target;
       }
     }
@@ -730,7 +839,7 @@ const patchJoinRows = async <TSchema extends AnySchema>(options: {
     const patchTarget = async (
       targetRow: Record<string, unknown>,
     ): Promise<Record<string, unknown> | null> => {
-      const targetTable = join.relation.table;
+      const targetTable = join.table;
       const externalId = getExternalIdFromRow(targetRow, targetTable);
       if (!externalId) {
         await patchJoinRows({
@@ -810,12 +919,9 @@ async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
   baseRowsCache: Map<string, Record<string, unknown>[]>;
 }): Promise<Record<string, unknown>[]> {
   const { parentRow, join, overlay, baseQuery, schemaName, baseRowsCache } = options;
-  if (join.options === false) {
-    return [];
-  }
 
   const joinOptions = join.options;
-  const targetTable = join.relation.table;
+  const targetTable = join.table;
   let baseRows = baseRowsCache.get(targetTable.name);
   if (!baseRows) {
     baseRows = (await baseQuery.find(targetTable.name, (b) => b.whereIndex("primary"))) as Record<
@@ -826,6 +932,19 @@ async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
   }
 
   const matches: Record<string, unknown>[] = [];
+  const matchedIds = new Set<string>();
+
+  const addMatch = (candidate: Record<string, unknown>) => {
+    const externalId = getExternalIdFromRow(candidate, targetTable);
+    if (externalId) {
+      if (matchedIds.has(externalId)) {
+        return;
+      }
+      matchedIds.add(externalId);
+    }
+    matches.push(candidate);
+  };
+
   for (const baseRow of baseRows) {
     if (!matchesJoinOn({ parentRow, targetRow: baseRow, join, overlay, schemaName })) {
       continue;
@@ -833,7 +952,22 @@ async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
     if (joinOptions.where && !evaluateCondition(joinOptions.where as Condition, baseRow)) {
       continue;
     }
-    matches.push({ ...baseRow });
+    addMatch({ ...baseRow });
+  }
+
+  for (const overlayRow of overlay.store.getTableRows(schemaName, targetTable.name)) {
+    if (overlay.store.hasTombstone(schemaName, targetTable.name, overlayRow.id)) {
+      continue;
+    }
+
+    const candidate = buildOutputFromLofiRow(overlayRow, targetTable, true);
+    if (!matchesJoinOn({ parentRow, targetRow: candidate, join, overlay, schemaName })) {
+      continue;
+    }
+    if (joinOptions.where && !evaluateCondition(joinOptions.where as Condition, candidate)) {
+      continue;
+    }
+    addMatch(candidate);
   }
 
   let ordered = orderJoinRows(matches, joinOptions.orderBy);
@@ -897,11 +1031,8 @@ const stripSelection = (options: {
 
   if (joins) {
     for (const join of joins) {
-      if (join.options === false) {
-        continue;
-      }
       const joinOptions = join.options;
-      const relationName = join.relation.name;
+      const relationName = join.alias;
       const child = stripped[relationName];
       if (!child) {
         continue;
@@ -910,7 +1041,7 @@ const stripSelection = (options: {
         stripped[relationName] = child.map((entry) =>
           stripSelection({
             row: entry as Record<string, unknown>,
-            table: join.relation.table,
+            table: join.table,
             select: joinOptions.select as undefined | true | readonly string[],
             joins: joinOptions.join,
           }),
@@ -918,7 +1049,7 @@ const stripSelection = (options: {
       } else if (typeof child === "object") {
         stripped[relationName] = stripSelection({
           row: child as Record<string, unknown>,
-          table: join.relation.table,
+          table: join.table,
           select: joinOptions.select as undefined | true | readonly string[],
           joins: joinOptions.join,
         });
@@ -948,6 +1079,32 @@ const augmentSelect = (options: {
   const result = Array.from(augmented);
   return result.length === select.length ? select : result;
 };
+
+const compileJoins = (
+  parentTable: AnyTable,
+  children: CompiledQueryTreeChildNode[],
+): CompiledJoin[] =>
+  children.map((child) => ({
+    alias: child.alias,
+    table: child.table,
+    parentTable,
+    cardinality: child.cardinality,
+    on: child.onIndex,
+    options: {
+      select: child.select,
+      where: child.where,
+      orderBy: child.orderByIndex
+        ? buildOrderColumns(child.table, child.orderByIndex.indexName).map(
+            (column) => [column, child.orderByIndex!.direction] as [AnyColumn, "asc" | "desc"],
+          )
+        : undefined,
+      join: compileJoins(child.table, child.children),
+      limit: child.pageSize,
+    },
+  }));
+
+const normalizeIndexName = (indexName: string): "primary" | string =>
+  indexName === "_primary" ? "primary" : indexName;
 
 const mergeRows = (options: {
   baseRows: Record<string, unknown>[];
@@ -1002,6 +1159,20 @@ const mergeRows = (options: {
   return merged;
 };
 
+type StackedFindBuilder = {
+  whereIndex(
+    indexName: string,
+    condition?: (builder: unknown) => Condition | boolean,
+  ): StackedFindBuilder;
+  select(columns: readonly string[]): StackedFindBuilder;
+  orderByIndex(indexName: string, direction: "asc" | "desc"): StackedFindBuilder;
+  after(cursor: Cursor | string): StackedFindBuilder;
+  before(cursor: Cursor | string): StackedFindBuilder;
+  pageSize(size: number): StackedFindBuilder;
+};
+
+type StackedFindBuilderFn = (builder: StackedFindBuilder) => unknown;
+
 export const createStackedQueryEngine = <T extends AnySchema>(options: {
   schema: T;
   base: LofiQueryableAdapter;
@@ -1013,55 +1184,80 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
   const overlayQuery = options.overlay.createQueryEngine(options.schema, { schemaName });
 
   const runFind = async (
-    tableName: string,
-    builderFn: ((builder: FindBuilder<AnyTable>) => unknown) | undefined,
-    withCursor: boolean,
-  ): Promise<Record<string, unknown>[] | CursorResult<Record<string, unknown>> | number> => {
-    const tableMap = options.schema.tables as Record<string, AnyTable>;
-    const table = tableMap[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
+    query: LofiQueryInterface<T>,
+    tableName: keyof T["tables"] & string,
+    builder: StackedFindBuilderFn,
+  ): Promise<Record<string, unknown>[] | number> =>
+    (await query.find(tableName, builder)) as Record<string, unknown>[] | number;
 
-    const baseFind = baseQuery.find as unknown as (
-      name: string,
-      builder: (builder: FindBuilder<AnyTable>) => unknown,
-    ) => Promise<Record<string, unknown>[] | number>;
-    const baseFindWithCursor = baseQuery.findWithCursor as unknown as (
-      name: string,
-      builder: (builder: FindBuilder<AnyTable>) => unknown,
-    ) => Promise<CursorResult<Record<string, unknown>>>;
-    const overlayFind = overlayQuery.find as unknown as (
-      name: string,
-      builder: (builder: FindBuilder<AnyTable>) => unknown,
-    ) => Promise<Record<string, unknown>[] | number>;
+  const runFindWithCursor = async (
+    query: LofiQueryInterface<T>,
+    tableName: keyof T["tables"] & string,
+    builder: StackedFindBuilderFn,
+  ): Promise<CursorResult<Record<string, unknown>>> =>
+    (await query.findWithCursor(tableName, builder)) as CursorResult<Record<string, unknown>>;
 
-    const builder = buildFindBuilder(tableName, table);
-    if (builderFn) {
-      builderFn(builder);
-    } else {
-      builder.whereIndex("primary");
-    }
+  const buildRootBuilder =
+    (
+      plan: LofiReadPlan,
+      selectOverride?: undefined | true | readonly string[],
+    ): StackedFindBuilderFn =>
+    (builder) => {
+      const useIndex = normalizeIndexName(plan.queryTree.useIndex);
+      if (plan.queryTree.where) {
+        builder.whereIndex(useIndex, () => plan.queryTree.where as Condition);
+      } else {
+        builder.whereIndex(useIndex);
+      }
 
-    const built = builder.build() as
-      | { type: "find"; indexName: string; options: BuiltFindOptions }
-      | { type: "count"; indexName: string; options: Pick<BuiltFindOptions, "where"> };
-
-    if (built.type === "count") {
-      const countBuilder = (b: FindBuilder<AnyTable>) => {
-        if (!built.options.where) {
-          b.whereIndex(built.indexName as "primary");
-          return;
+      if (plan.kind === "find") {
+        const select =
+          selectOverride ?? (plan.queryTree.select as undefined | true | readonly string[]);
+        if (select && select !== true) {
+          builder.select(select as readonly string[]);
         }
-        if (typeof built.options.where === "function") {
-          b.whereIndex(built.indexName as "primary", built.options.where as () => Condition);
-          return;
+        if (plan.queryTree.orderByIndex) {
+          builder.orderByIndex(
+            normalizeIndexName(plan.queryTree.orderByIndex.indexName),
+            plan.queryTree.orderByIndex.direction,
+          );
         }
-        b.whereIndex(built.indexName as "primary", () => built.options.where as Condition);
-      };
+        if (plan.queryTree.after) {
+          builder.after(plan.queryTree.after);
+        }
+        if (plan.queryTree.before) {
+          builder.before(plan.queryTree.before);
+        }
+        if (plan.queryTree.pageSize !== undefined) {
+          builder.pageSize(plan.queryTree.pageSize);
+        }
+      }
 
-      const baseRows = (await baseFind(tableName, countBuilder)) as Record<string, unknown>[];
-      const overlayRows = (await overlayFind(tableName, countBuilder)) as Record<string, unknown>[];
+      return builder;
+    };
+
+  const runPlan = async (
+    plan: LofiReadPlan,
+  ): Promise<
+    | Record<string, unknown>
+    | Record<string, unknown>[]
+    | CursorResult<Record<string, unknown>>
+    | number
+    | null
+  > => {
+    const table = plan.table;
+    const tableName = table.name as keyof T["tables"] & string;
+
+    if (plan.kind === "count") {
+      const rowBuilder = buildRootBuilder(plan);
+      const baseRows = (await runFind(baseQuery, tableName, rowBuilder)) as Record<
+        string,
+        unknown
+      >[];
+      const overlayRows = (await runFind(overlayQuery, tableName, rowBuilder)) as Record<
+        string,
+        unknown
+      >[];
 
       const merged = mergeRows({
         baseRows,
@@ -1075,85 +1271,55 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
       return merged.length;
     }
 
-    const orderIndexName = built.options.orderByIndex?.indexName ?? built.indexName;
-    const direction = built.options.orderByIndex?.direction ?? "asc";
+    const joins = compileJoins(table, plan.queryTree.children);
+    const orderIndexName = plan.queryTree.orderByIndex?.indexName ?? plan.queryTree.useIndex;
+    const direction = plan.queryTree.orderByIndex?.direction ?? "asc";
     const orderColumns = buildOrderColumns(table, orderIndexName);
-    const originalSelect = built.options.select as undefined | true | readonly string[];
-    const select = augmentSelect({
-      table,
-      select: originalSelect,
-      orderColumns,
-    });
+    const originalSelect = plan.queryTree.select as undefined | true | readonly string[];
+    const select = augmentSelect({ table, select: originalSelect, orderColumns });
 
-    const overlayPageSize = built.options.pageSize;
-    const overlayBuilder = (b: FindBuilder<AnyTable>) => {
-      if (builderFn) {
-        builderFn(b);
-      } else {
-        b.whereIndex("primary");
-      }
-      if (select && select !== originalSelect) {
-        b.select(select as unknown as true | string[]);
-      }
-      if (overlayPageSize !== undefined) {
-        b.pageSize(overlayPageSize);
-      }
-    };
-
-    const overlayRows = (await overlayFind(tableName, overlayBuilder)) as Record<string, unknown>[];
+    const overlayRows = (await runFind(
+      overlayQuery,
+      tableName,
+      buildRootBuilder(plan, select),
+    )) as Record<string, unknown>[];
 
     const baseRows: Record<string, unknown>[] = [];
     let mergedRows: Record<string, unknown>[] = [];
     let hasNextBase = false;
     let cursor: Cursor | undefined;
 
-    const pageSize = built.options.pageSize;
+    const pageSize = plan.queryTree.pageSize;
     if (pageSize === undefined) {
-      const baseBuilder = (b: FindBuilder<AnyTable>) => {
-        if (builderFn) {
-          builderFn(b);
-        } else {
-          b.whereIndex("primary");
-        }
-        if (select && select !== originalSelect) {
-          b.select(select as unknown as true | string[]);
-        }
-      };
-
-      baseRows.push(...((await baseFind(tableName, baseBuilder)) as Record<string, unknown>[]));
+      baseRows.push(
+        ...((await runFind(baseQuery, tableName, buildRootBuilder(plan, select))) as Record<
+          string,
+          unknown
+        >[]),
+      );
     } else {
-      let nextAfter: Cursor | string | undefined = built.options.after;
-      let nextBefore: Cursor | string | undefined = built.options.before;
+      let nextAfter: Cursor | string | undefined = plan.queryTree.after;
+      let nextBefore: Cursor | string | undefined = plan.queryTree.before;
       let firstPage = true;
-      let keepFetching = true;
 
-      while (keepFetching) {
-        const baseBuilder = (b: FindBuilder<AnyTable>) => {
-          if (builderFn) {
-            builderFn(b);
-          } else {
-            b.whereIndex("primary");
-          }
-          if (select && select !== originalSelect) {
-            b.select(select as unknown as true | string[]);
-          }
-          b.pageSize(pageSize);
+      while (true) {
+        const pageBuilder: StackedFindBuilderFn = (builder) => {
+          buildRootBuilder(plan, select)(builder);
+          builder.pageSize(pageSize);
           if (firstPage) {
             if (nextAfter) {
-              b.after(nextAfter);
+              builder.after(nextAfter);
             }
             if (nextBefore) {
-              b.before(nextBefore);
+              builder.before(nextBefore);
             }
           } else if (cursor) {
-            b.after(cursor);
+            builder.after(cursor);
           }
+          return builder;
         };
 
-        const page = (await baseFindWithCursor(tableName, baseBuilder)) as CursorResult<
-          Record<string, unknown>
-        >;
-
+        const page = await runFindWithCursor(baseQuery, tableName, pageBuilder);
         baseRows.push(...page.items);
         hasNextBase = page.hasNextPage;
         cursor = page.cursor;
@@ -1177,8 +1343,8 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
           rows: mergedRows,
           orderColumns,
           direction,
-          after: built.options.after,
-          before: built.options.before,
+          after: plan.queryTree.after,
+          before: plan.queryTree.before,
         });
 
         if (!pageSize || mergedRows.length > pageSize || !hasNextBase) {
@@ -1205,15 +1371,15 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
       rows: mergedRows,
       orderColumns,
       direction,
-      after: built.options.after,
-      before: built.options.before,
+      after: plan.queryTree.after,
+      before: plan.queryTree.before,
     });
 
     const baseRowsCache = new Map<string, Record<string, unknown>[]>();
     for (const row of mergedRows) {
       await patchJoinRows({
         row,
-        joins: built.options.joins,
+        joins,
         overlay: options.overlay,
         baseQuery,
         schemaName,
@@ -1221,22 +1387,30 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
       });
     }
 
-    if (!withCursor) {
-      const limited =
-        pageSize !== undefined ? mergedRows.slice(0, Math.max(0, pageSize)) : mergedRows;
-      return limited.map((row) =>
+    const strip = (rows: Record<string, unknown>[]) =>
+      rows.map((row) =>
         stripSelection({
           row,
           table,
           select: originalSelect,
-          joins: built.options.joins,
+          joins,
         }),
       );
+
+    if (plan.resultMode === "find") {
+      const limited =
+        pageSize !== undefined ? mergedRows.slice(0, Math.max(0, pageSize)) : mergedRows;
+      return strip(limited);
+    }
+
+    if (plan.resultMode === "findFirst") {
+      const limited =
+        pageSize !== undefined ? mergedRows.slice(0, Math.max(0, pageSize)) : mergedRows;
+      return strip(limited)[0] ?? null;
     }
 
     let hasNextPage = false;
     let items = mergedRows;
-
     if (pageSize && mergedRows.length > pageSize) {
       hasNextPage = true;
       items = mergedRows.slice(0, pageSize);
@@ -1253,56 +1427,45 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
     }
 
     return {
-      items: items.map((row) =>
-        stripSelection({
-          row,
-          table,
-          select: originalSelect,
-          joins: built.options.joins,
-        }),
-      ),
+      items: strip(items),
       cursor: nextCursor,
       hasNextPage,
     };
   };
 
-  return {
+  const queryEngine = {
+    [lofiExecuteReadPlan]: runPlan,
+
     async find(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn as unknown as (builder: FindBuilder<AnyTable>) => unknown,
-        false,
-      );
-      return result as Record<string, unknown>[] | number;
+        builderFn,
+        resultMode: "find",
+      });
+      return (await runPlan(plan)) as Record<string, unknown>[] | number;
     },
 
     async findWithCursor(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn as unknown as (builder: FindBuilder<AnyTable>) => unknown,
-        true,
-      );
-      return result as CursorResult<Record<string, unknown>>;
+        builderFn,
+        resultMode: "findWithCursor",
+      });
+      return (await runPlan(plan)) as CursorResult<Record<string, unknown>>;
     },
 
     async findFirst(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn
-          ? (builder: FindBuilder<AnyTable>) => {
-              (builderFn as unknown as (b: FindBuilder<AnyTable>) => unknown)(builder);
-              builder.pageSize(1);
-              return builder;
-            }
-          : (builder: FindBuilder<AnyTable>) => builder.whereIndex("primary").pageSize(1),
-        false,
-      );
-
-      if (typeof result === "number") {
-        return null;
-      }
-
-      return (result as Record<string, unknown>[])[0] ?? null;
+        builderFn,
+        resultMode: "findFirst",
+      });
+      return (await runPlan(plan)) as Record<string, unknown> | number | null;
     },
-  } as LofiQueryInterface<T>;
+  } as LofiExecutableQueryInterface<T>;
+
+  return queryEngine;
 };

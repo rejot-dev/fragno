@@ -79,7 +79,11 @@ describe("local handler tx", () => {
 
     const query = adapter.createQueryEngine(appSchema);
     const posts = await query.find("posts", (b) =>
-      b.whereIndex("idx_author").join((j) => j.author()),
+      b
+        .whereIndex("idx_author")
+        .joinOne("author", "users", (author) =>
+          author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+        ),
     );
 
     expect(posts).toHaveLength(1);

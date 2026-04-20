@@ -2,13 +2,24 @@ import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
-import { FindBuilder } from "@fragno-dev/db/unit-of-work";
+import {
+  getQueryTreeSelectedColumnNames,
+  isParentColumnRef,
+  type CompiledQueryTreeChildNode,
+  type CompiledQueryTreeRootNode,
+} from "@fragno-dev/db/unit-of-work";
 import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
 
 import type { ReferenceTarget } from "../indexeddb/types";
 import type { LofiQueryInterface } from "../types";
 import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";
 import { normalizeValue } from "./normalize";
+import {
+  buildReadPlan,
+  lofiExecuteReadPlan,
+  type LofiExecutableQueryInterface,
+  type LofiReadPlan,
+} from "./read-plan";
 
 const ROWS_STORE = "lofi_rows";
 const INDEX_SCHEMA_TABLE = "idx_schema_table";
@@ -1002,9 +1013,6 @@ const applyJoins = async <TxStores extends ArrayLike<string>, StoreName extends 
   return outputs;
 };
 
-const buildFindBuilder = <TTable extends AnyTable>(tableName: string, table: TTable) =>
-  new FindBuilder<TTable>(tableName, table);
-
 type IndexedDbFindOptions<TTable extends AnyTable = AnyTable> = {
   useIndex: string;
   select?: unknown;
@@ -1017,6 +1025,7 @@ type IndexedDbFindOptions<TTable extends AnyTable = AnyTable> = {
   before?: Cursor | string;
   pageSize?: number;
   joins?: CompiledJoin[];
+  queryTree?: CompiledQueryTreeRootNode<TTable>;
 };
 
 type IndexedDbRetrievalOperation =
@@ -1059,6 +1068,21 @@ export const executeIndexedDbRetrievalOperation = async (options: {
   const db = await context.getDb();
   const tx = db.transaction(ROWS_STORE, "readonly");
   const rowsStore = tx.objectStore(ROWS_STORE);
+
+  if (operation.type === "find" && operation.options.queryTree) {
+    const result = await executeIndexedDbReadPlan({
+      plan: {
+        kind: "find",
+        resultMode: operation.withCursor ? "findWithCursor" : "find",
+        table: operation.table,
+        queryTree: operation.options.queryTree,
+      },
+      context,
+      rowsStore,
+    });
+    await tx.done;
+    return result as Record<string, unknown>[] | CursorResult<Record<string, unknown>>;
+  }
 
   const rows = await collectRows({
     rowsStore,
@@ -1237,6 +1261,524 @@ const applyCursorFilters = (options: {
   });
 };
 
+const resolveComparableColumn = (column: AnyColumn, table: AnyTable): AnyColumn =>
+  column.role === "external-id" ? table.getInternalIdColumn() : column;
+
+const getNormalizedRowValue = (row: LofiRow, _table: AnyTable, column: AnyColumn): unknown => {
+  if (column.role === "external-id") {
+    return row.id;
+  }
+  if (column.role === "internal-id") {
+    return row._lofi.internalId;
+  }
+  if (column.role === "version") {
+    return row._lofi.version;
+  }
+  return row._lofi.norm[column.name];
+};
+
+const resolveQueryTreeComparisonValue = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  value: unknown;
+  column: AnyColumn;
+  currentTable: AnyTable;
+  currentRow: LofiRow;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+  parentTable?: AnyTable;
+  parentRow?: LofiRow;
+}): Promise<{ value: unknown; column: AnyColumn }> => {
+  const { value, column, currentTable, currentRow, context, rowsStore, parentTable, parentRow } =
+    options;
+
+  if (isParentColumnRef(value)) {
+    if (!parentTable || !parentRow) {
+      throw new Error("Parent column references can only be evaluated for child query-tree nodes.");
+    }
+
+    let leftColumn = column;
+    let parentColumn = value.column;
+
+    if (leftColumn.role === "external-id" && parentColumn.role !== "external-id") {
+      leftColumn = resolveComparableColumn(leftColumn, currentTable);
+    }
+    if (parentColumn.role === "external-id" && leftColumn.role !== "external-id") {
+      parentColumn = resolveComparableColumn(parentColumn, parentTable);
+    }
+
+    return {
+      value: getNormalizedRowValue(parentRow, parentTable, parentColumn),
+      column: parentColumn,
+    };
+  }
+
+  if (value instanceof Column) {
+    return { value: currentRow._lofi.norm[value.name], column: value };
+  }
+
+  if (isDbNow(value)) {
+    return { value: new Date(), column };
+  }
+
+  if (column.role === "reference") {
+    return {
+      value: await resolveReferenceValue({
+        value,
+        column,
+        table: currentTable,
+        schemaName: context.schemaName,
+        endpointName: context.endpointName,
+        rowsStore,
+        referenceTargets: context.referenceTargets,
+      }),
+      column,
+    };
+  }
+
+  return { value: resolveFragnoIdValue(value, column), column };
+};
+
+const evaluateQueryTreeCondition = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  condition: Condition | undefined;
+  currentTable: AnyTable;
+  currentRow: LofiRow;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+  parentTable?: AnyTable;
+  parentRow?: LofiRow;
+}): Promise<boolean> => {
+  const { condition, currentTable, currentRow, context, rowsStore, parentTable, parentRow } =
+    options;
+  if (!condition) {
+    return true;
+  }
+
+  switch (condition.type) {
+    case "and": {
+      for (const item of condition.items) {
+        if (
+          !(await evaluateQueryTreeCondition({
+            condition: item,
+            currentTable,
+            currentRow,
+            context,
+            rowsStore,
+            parentTable,
+            parentRow,
+          }))
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case "or": {
+      for (const item of condition.items) {
+        if (
+          await evaluateQueryTreeCondition({
+            condition: item,
+            currentTable,
+            currentRow,
+            context,
+            rowsStore,
+            parentTable,
+            parentRow,
+          })
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case "not":
+      return !(await evaluateQueryTreeCondition({
+        condition: condition.item,
+        currentTable,
+        currentRow,
+        context,
+        rowsStore,
+        parentTable,
+        parentRow,
+      }));
+    case "compare":
+      break;
+    default: {
+      const exhaustiveCheck: never = condition;
+      throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+
+  let leftColumn = condition.a;
+  let rightColumn = condition.a;
+  const right = await resolveQueryTreeComparisonValue({
+    value: condition.b,
+    column: leftColumn,
+    currentTable,
+    currentRow,
+    context,
+    rowsStore,
+    parentTable,
+    parentRow,
+  });
+
+  if (isParentColumnRef(condition.b)) {
+    if (leftColumn.role === "external-id" && right.column.role !== "external-id") {
+      leftColumn = resolveComparableColumn(leftColumn, currentTable);
+    }
+    if (right.column.role === "external-id" && leftColumn.role !== "external-id" && parentTable) {
+      rightColumn = resolveComparableColumn(right.column, parentTable);
+    } else {
+      rightColumn = right.column;
+    }
+  }
+
+  const leftValue = getNormalizedRowValue(currentRow, currentTable, leftColumn);
+  const rightValue = right.value;
+  const op = condition.operator;
+
+  if (op === "is" || op === "is not") {
+    if (isNullish(rightValue)) {
+      const matches = isNullish(leftValue);
+      return op === "is" ? matches : !matches;
+    }
+
+    if (isNullish(leftValue)) {
+      return op === "is not";
+    }
+
+    const rightNormalized =
+      rightColumn.role === "reference" || rightColumn.role === "internal-id"
+        ? coerceLocalInternalId(rightValue)
+        : normalizeValue(rightValue, rightColumn);
+    const matches = compareNormalizedValues(leftValue, rightNormalized) === 0;
+    return op === "is" ? matches : !matches;
+  }
+
+  if (isNullish(leftValue) || isNullish(rightValue)) {
+    return false;
+  }
+
+  if (op === "in" || op === "not in") {
+    if (!Array.isArray(rightValue)) {
+      throw new Error(`Operator "${op}" expects an array value.`);
+    }
+
+    const leftNormalized = leftValue;
+    let hasNull = false;
+    let hasMatch = false;
+
+    for (const item of rightValue) {
+      const resolved = await resolveQueryTreeComparisonValue({
+        value: item,
+        column: leftColumn,
+        currentTable,
+        currentRow,
+        context,
+        rowsStore,
+        parentTable,
+        parentRow,
+      });
+      if (isNullish(resolved.value)) {
+        hasNull = true;
+        continue;
+      }
+
+      const normalized =
+        resolved.column.role === "reference" || resolved.column.role === "internal-id"
+          ? coerceLocalInternalId(resolved.value)
+          : normalizeValue(resolved.value, resolved.column);
+      if (compareNormalizedValues(leftNormalized, normalized) === 0) {
+        hasMatch = true;
+        break;
+      }
+    }
+
+    if (hasMatch) {
+      return op === "in";
+    }
+
+    if (hasNull) {
+      return false;
+    }
+
+    return op === "not in";
+  }
+
+  if (
+    op === "contains" ||
+    op === "starts with" ||
+    op === "ends with" ||
+    op === "not contains" ||
+    op === "not starts with" ||
+    op === "not ends with"
+  ) {
+    const leftLike = normalizeLikeValue(leftValue, leftColumn);
+    const rightLike = normalizeLikeValue(rightValue, right.column);
+
+    if (leftLike === null || rightLike === null) {
+      return false;
+    }
+
+    const leftText = leftLike.toLowerCase();
+    const rightText = rightLike.toLowerCase();
+    let matches = false;
+
+    if (op.includes("contains")) {
+      matches = leftText.includes(rightText);
+    } else if (op.includes("starts with")) {
+      matches = leftText.startsWith(rightText);
+    } else {
+      matches = leftText.endsWith(rightText);
+    }
+
+    return op.startsWith("not ") ? !matches : matches;
+  }
+
+  const rightNormalized =
+    rightColumn.role === "reference" || rightColumn.role === "internal-id"
+      ? coerceLocalInternalId(rightValue)
+      : normalizeValue(rightValue, rightColumn);
+  const comparison = compareNormalizedValues(leftValue, rightNormalized);
+
+  switch (op) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${op}".`);
+  }
+};
+
+const buildQueryTreeOutput = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  node: CompiledQueryTreeRootNode | CompiledQueryTreeChildNode;
+  row: LofiRow;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+  rowsByTable: Map<string, LofiRow[]>;
+}): Promise<Record<string, unknown>> => {
+  const { node, row, context, rowsStore, rowsByTable } = options;
+  const output: Record<string, unknown> = {};
+
+  for (const columnName of getQueryTreeSelectedColumnNames(node.table, node.select)) {
+    const column = node.table.columns[columnName];
+    if (!column || column.isHidden) {
+      continue;
+    }
+    output[columnName] = buildOutputValueForColumn(row, column);
+  }
+
+  for (const child of node.children) {
+    const cacheKey = `${context.schemaName}::${child.table.name}`;
+    let childRows = rowsByTable.get(cacheKey);
+    if (!childRows) {
+      childRows = await collectRows({
+        rowsStore,
+        endpointName: context.endpointName,
+        schemaName: context.schemaName,
+        tableName: child.table.name,
+        indexName: child.onIndexName,
+      });
+      rowsByTable.set(cacheKey, childRows);
+    }
+
+    const matches: LofiRow[] = [];
+    for (const childRow of childRows) {
+      if (
+        !(await evaluateQueryTreeCondition({
+          condition: child.onIndex,
+          currentTable: child.table,
+          currentRow: childRow,
+          context,
+          rowsStore,
+          parentTable: node.table,
+          parentRow: row,
+        }))
+      ) {
+        continue;
+      }
+      if (
+        !(await evaluateQueryTreeCondition({
+          condition: child.where,
+          currentTable: child.table,
+          currentRow: childRow,
+          context,
+          rowsStore,
+        }))
+      ) {
+        continue;
+      }
+      matches.push(childRow);
+    }
+
+    const ordered = child.orderByIndex
+      ? orderRows(
+          matches,
+          buildOrderColumns(child.table, child.orderByIndex.indexName).map(
+            (column) => [column, child.orderByIndex!.direction] as [AnyColumn, "asc" | "desc"],
+          ),
+        )
+      : matches;
+    const limited = child.pageSize !== undefined ? ordered.slice(0, child.pageSize) : ordered;
+    const items = await Promise.all(
+      limited.map((childRow) =>
+        buildQueryTreeOutput({
+          node: child,
+          row: childRow,
+          context,
+          rowsStore,
+          rowsByTable,
+        }),
+      ),
+    );
+
+    output[child.alias] = child.cardinality === "one" ? (items[0] ?? null) : items;
+  }
+
+  return output;
+};
+
+const executeIndexedDbReadPlan = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  plan: LofiReadPlan;
+  context: QueryContext;
+  rowsStore: ReadStore<TxStores, StoreName>;
+}): Promise<
+  | Record<string, unknown>
+  | Record<string, unknown>[]
+  | CursorResult<Record<string, unknown>>
+  | number
+  | null
+> => {
+  const { plan, context, rowsStore } = options;
+
+  const rootRows = await collectRows({
+    rowsStore,
+    endpointName: context.endpointName,
+    schemaName: context.schemaName,
+    tableName: plan.table.name,
+    indexName: plan.kind === "find" ? plan.queryTree.useIndex : plan.queryTree.useIndex,
+  });
+
+  const matchingRows: LofiRow[] = [];
+  for (const row of rootRows) {
+    if (
+      !(await evaluateQueryTreeCondition({
+        condition: plan.queryTree.where,
+        currentTable: plan.table,
+        currentRow: row,
+        context,
+        rowsStore,
+      }))
+    ) {
+      continue;
+    }
+    matchingRows.push(row);
+  }
+
+  if (plan.kind === "count") {
+    return matchingRows.length;
+  }
+
+  const effectiveOrderBy = plan.queryTree.orderByIndex ?? {
+    indexName: plan.queryTree.useIndex,
+    direction: "asc" as const,
+  };
+  const orderColumns = buildOrderColumns(plan.table, effectiveOrderBy.indexName);
+  const ordered = orderRows(
+    matchingRows,
+    orderColumns.map(
+      (column) => [column, effectiveOrderBy.direction] as [AnyColumn, "asc" | "desc"],
+    ),
+  );
+  const filtered = applyCursorFilters({
+    rows: ordered,
+    orderColumns,
+    direction: effectiveOrderBy.direction,
+    after: plan.queryTree.after,
+    before: plan.queryTree.before,
+  });
+
+  const pageSize = plan.queryTree.pageSize;
+  const windowed =
+    pageSize !== undefined && plan.resultMode === "findWithCursor"
+      ? filtered.slice(0, pageSize + 1)
+      : pageSize !== undefined
+        ? filtered.slice(0, pageSize)
+        : filtered;
+
+  const rowsByTable = new Map<string, LofiRow[]>();
+  const decoded = await Promise.all(
+    windowed.map((row) =>
+      buildQueryTreeOutput({
+        node: plan.queryTree,
+        row,
+        context,
+        rowsStore,
+        rowsByTable,
+      }),
+    ),
+  );
+
+  if (plan.resultMode === "find") {
+    return decoded;
+  }
+
+  if (plan.resultMode === "findFirst") {
+    return decoded[0] ?? null;
+  }
+
+  let items = decoded;
+  let sourceRows = windowed;
+  let hasNextPage = false;
+
+  if (pageSize !== undefined && decoded.length > pageSize) {
+    hasNextPage = true;
+    items = decoded.slice(0, pageSize);
+    sourceRows = windowed.slice(0, pageSize);
+  }
+
+  let cursor: Cursor | undefined;
+  const lastRow = items[items.length - 1];
+  if (lastRow && pageSize) {
+    const cursorRecord: Record<string, unknown> = { ...lastRow };
+    const sourceRow = sourceRows[sourceRows.length - 1];
+    if (sourceRow) {
+      for (const column of orderColumns) {
+        if (cursorRecord[column.name] === undefined) {
+          cursorRecord[column.name] = buildOutputValueForColumn(sourceRow, column);
+        }
+      }
+    }
+
+    cursor = createCursorFromRecord(cursorRecord, orderColumns, {
+      indexName: effectiveOrderBy.indexName,
+      orderDirection: effectiveOrderBy.direction,
+      pageSize,
+    });
+  }
+
+  return { items, cursor, hasNextPage };
+};
+
 export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
   schema: T;
   endpointName: string;
@@ -1252,88 +1794,62 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
     referenceTargets: options.referenceTargets,
   };
 
-  const runFind = async (
-    tableName: string,
-    builderFn: ((builder: FindBuilder<AnyTable>) => unknown) | undefined,
-    withCursor: boolean,
-  ): Promise<Record<string, unknown>[] | CursorResult<Record<string, unknown>> | number> => {
-    const tableMap = options.schema.tables as Record<string, AnyTable>;
-    const table = tableMap[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
+  const executePlan = async (plan: LofiReadPlan): Promise<unknown> => {
+    const db = await context.getDb();
+    const tx = db.transaction(ROWS_STORE, "readonly");
+    const rowsStore = tx.objectStore(ROWS_STORE);
 
-    const builder = buildFindBuilder(tableName, table);
-    if (builderFn) {
-      builderFn(builder);
-    } else {
-      builder.whereIndex("primary");
-    }
-
-    const built = builder.build();
-    if (built.type === "count") {
-      return executeIndexedDbRetrievalOperation({
-        operation: {
-          type: "count",
-          table,
-          indexName: built.indexName,
-          options: { where: built.options.where },
-        },
+    try {
+      const result = await executeIndexedDbReadPlan({
+        plan,
         context,
+        rowsStore,
       });
+      await tx.done;
+      return result;
+    } catch (error) {
+      try {
+        await tx.done;
+      } catch {
+        // Ignore transaction completion errors; return the original failure.
+      }
+      throw error;
     }
-
-    return executeIndexedDbRetrievalOperation({
-      operation: {
-        type: "find",
-        table,
-        indexName: built.indexName,
-        options: built.options,
-        withCursor,
-      },
-      context,
-    });
   };
 
   const queryEngine = {
+    [lofiExecuteReadPlan]: executePlan,
+
     async find(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn as unknown as (builder: FindBuilder<AnyTable>) => unknown,
-        false,
-      );
-      return result as Record<string, unknown>[] | number;
+        builderFn,
+        resultMode: "find",
+      });
+      return (await executePlan(plan)) as Record<string, unknown>[] | number;
     },
 
     async findWithCursor(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn as unknown as (builder: FindBuilder<AnyTable>) => unknown,
-        true,
-      );
-      return result as CursorResult<Record<string, unknown>>;
+        builderFn,
+        resultMode: "findWithCursor",
+      });
+      return (await executePlan(plan)) as CursorResult<Record<string, unknown>>;
     },
 
     async findFirst(tableName, builderFn) {
-      const result = await runFind(
+      const plan = buildReadPlan({
+        schema: options.schema,
         tableName,
-        builderFn
-          ? (builder: FindBuilder<AnyTable>) => {
-              (builderFn as unknown as (b: FindBuilder<AnyTable>) => unknown)(builder);
-              builder.pageSize(1);
-              return builder;
-            }
-          : (builder: FindBuilder<AnyTable>) => builder.whereIndex("primary").pageSize(1),
-        false,
-      );
-
-      if (typeof result === "number") {
-        return null;
-      }
-
-      return (result as Record<string, unknown>[])[0] ?? null;
+        builderFn,
+        resultMode: "findFirst",
+      });
+      return (await executePlan(plan)) as Record<string, unknown> | number | null;
     },
-  } as LofiQueryInterface<T>;
+  } as LofiExecutableQueryInterface<T>;
 
   return queryEngine;
 };

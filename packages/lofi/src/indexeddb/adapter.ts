@@ -197,6 +197,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
         receivedAt: Date.now(),
       };
       await inboxStore.put(inboxRow);
+      await registerCursorKey(metaStore, this.endpointName, options.sourceKey);
 
       await tx.done;
       return { applied: true };
@@ -364,6 +365,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
 }
 const schemaFingerprintKey = (endpointName: string) => `${endpointName}::schema_fingerprint`;
 const cursorKeyDefault = (endpointName: string) => `${endpointName}::outbox`;
+const cursorKeysRegistryKey = (endpointName: string) => `${endpointName}::cursor_keys`;
 const seqKey = (endpointName: string, schema: string, table: string) =>
   `${endpointName}::seq::${schema}::${table}`;
 
@@ -460,10 +462,6 @@ const ensureIndexes = <TxStores extends ArrayLike<string>>(
 
   for (const index of indexes) {
     const name = `idx__${index.schema}__${index.table}__${index.name}`;
-    if (store.indexNames.contains(name)) {
-      continue;
-    }
-
     const keyPath = [
       "endpoint",
       "schema",
@@ -471,6 +469,14 @@ const ensureIndexes = <TxStores extends ArrayLike<string>>(
       ...index.columns.map((column) => `_lofi.norm.${column}`),
       "id",
     ];
+
+    if (store.indexNames.contains(name)) {
+      const existing = store.index(name);
+      if (isSameIndexDefinition(existing.keyPath, keyPath) && existing.unique === index.unique) {
+        continue;
+      }
+      store.deleteIndex(name);
+    }
 
     store.createIndex(name, keyPath, { unique: index.unique });
   }
@@ -483,16 +489,78 @@ const clearEndpointData = async <TxStores extends ArrayLike<string>>(
   const rowsStore = tx.objectStore(ROWS_STORE);
   const inboxStore = tx.objectStore(INBOX_STORE);
   const metaStore = tx.objectStore(META_STORE);
+  const registeredCursorKeys = await readRegisteredCursorKeys(metaStore, endpointName);
+  const cursorKeys = new Set([cursorKeyDefault(endpointName), ...registeredCursorKeys]);
 
   await deleteRowsForEndpoint(rowsStore, endpointName);
   await deleteWhere(
     inboxStore,
-    (row) => isInboxRow(row) && row.sourceKey.startsWith(`${endpointName}::`),
+    (row) =>
+      isInboxRow(row) &&
+      (row.sourceKey.startsWith(`${endpointName}::`) || cursorKeys.has(row.sourceKey)),
   );
   await deleteWhere(
     metaStore,
-    (row) => isMetaRow(row) && row.key === cursorKeyDefault(endpointName),
+    (row) =>
+      isMetaRow(row) &&
+      (row.key === cursorKeysRegistryKey(endpointName) || cursorKeys.has(row.key)),
   );
+};
+
+const isSameIndexDefinition = (current: string | string[] | null, expected: string[]): boolean => {
+  if (!Array.isArray(current)) {
+    return false;
+  }
+  if (current.length !== expected.length) {
+    return false;
+  }
+  return current.every((value, index) => value === expected[index]);
+};
+
+const readRegisteredCursorKeys = async <TxStores extends ArrayLike<string>>(
+  metaStore: UpgradeStore<TxStores, typeof META_STORE>,
+  endpointName: string,
+): Promise<string[]> => {
+  const row = (await metaStore.get(cursorKeysRegistryKey(endpointName))) as MetaRow | undefined;
+  if (!row?.value) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.value);
+  } catch (error) {
+    throw new Error(`Failed to parse registered cursor keys for endpoint ${endpointName}`, {
+      cause: error,
+    });
+  }
+
+  if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
+    throw new Error(`Registered cursor keys for endpoint ${endpointName} must be a string array`);
+  }
+
+  return parsed;
+};
+
+const registerCursorKey = async <TxStores extends ArrayLike<string>>(
+  metaStore: WriteStore<TxStores, typeof META_STORE>,
+  endpointName: string,
+  cursorKey: string,
+): Promise<void> => {
+  const existing = await metaStore.get(cursorKeysRegistryKey(endpointName));
+  const keys = existing && isMetaRow(existing) ? JSON.parse(existing.value) : [];
+
+  if (!Array.isArray(keys) || !keys.every((value) => typeof value === "string")) {
+    throw new Error(`Registered cursor keys for endpoint ${endpointName} must be a string array`);
+  }
+  if (keys.includes(cursorKey)) {
+    return;
+  }
+
+  await metaStore.put({
+    key: cursorKeysRegistryKey(endpointName),
+    value: JSON.stringify([...keys, cursorKey].sort()),
+  });
 };
 
 const deleteRowsForEndpoint = async <TxStores extends ArrayLike<string>, StoreName extends string>(

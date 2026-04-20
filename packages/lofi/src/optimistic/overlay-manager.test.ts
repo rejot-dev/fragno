@@ -76,7 +76,7 @@ describe("optimistic overlay manager", () => {
     await manager.rebuild();
 
     const query = manager.createQueryEngine(appSchema);
-    const users = await query.find("users");
+    const users = await query.find("users", (b) => b.whereIndex("primary"));
     expect(users).toHaveLength(1);
     expect(users[0].name).toBe("Ada Lovelace");
     const userId = users[0].id as FragnoId;

@@ -9,7 +9,15 @@ import type {
   LofiQueryableAdapter,
 } from "../types";
 import { createLocalHandlerTx } from "./local-handler-tx";
-import { buildCommandKey, defaultQueueKey, loadSubmitQueue, storeSubmitQueue } from "./queue";
+import {
+  buildCommandKey,
+  defaultQueueKey,
+  loadPendingSubmit,
+  loadSubmitQueue,
+  pendingSubmitKey,
+  storePendingSubmit,
+  storeSubmitQueue,
+} from "./queue";
 import { rebaseSubmitQueue } from "./rebase";
 
 type InternalDescribeResponse = {
@@ -44,6 +52,7 @@ export class LofiSubmitClient<TContext = unknown> {
   private readonly fetcher: typeof fetch;
   private readonly cursorKey: string;
   private readonly queueKey: string;
+  private readonly pendingKey: string;
   private readonly conflictResolutionStrategy: "server" | "disabled";
   private readonly commands: Map<string, LofiSubmitCommandDefinition<unknown, TContext>>;
   private readonly createCommandContext?: SubmitClientOptions<TContext>["createCommandContext"];
@@ -61,6 +70,7 @@ export class LofiSubmitClient<TContext = unknown> {
     this.fetcher = options.fetch ?? defaultFetch;
     this.cursorKey = options.cursorKey ?? `${options.endpointName}::outbox`;
     this.queueKey = options.queueKey ?? defaultQueueKey(options.endpointName);
+    this.pendingKey = pendingSubmitKey(options.endpointName);
     this.conflictResolutionStrategy = options.conflictResolutionStrategy ?? "server";
     this.createCommandContext = options.createCommandContext;
     this.commands = new Map(options.commands.map((command) => [buildCommandKey(command), command]));
@@ -116,34 +126,47 @@ export class LofiSubmitClient<TContext = unknown> {
     });
 
     try {
-      const queue = await loadSubmitQueue(this.adapter, this.queueKey);
-      const adapterIdentity = await this.getAdapterIdentity(options?.signal);
-      const baseVersionstamp = await this.adapter.getMeta(this.cursorKey);
+      let pending = await loadPendingSubmit(this.adapter, this.pendingKey);
 
-      const requestId = crypto.randomUUID();
-      const request: LofiSubmitRequest = {
-        baseVersionstamp: baseVersionstamp ?? undefined,
-        requestId,
-        conflictResolutionStrategy: this.conflictResolutionStrategy,
-        adapterIdentity,
-        commands: queue,
-      };
+      if (!pending) {
+        const queue = await loadSubmitQueue(this.adapter, this.queueKey);
+        const adapterIdentity = await this.getAdapterIdentity(options?.signal);
+        const baseVersionstamp = await this.adapter.getMeta(this.cursorKey);
 
-      const response = await this.fetcher(this.submitUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(request),
-        signal: options?.signal,
-      });
+        const requestId = crypto.randomUUID();
+        const request: LofiSubmitRequest = {
+          baseVersionstamp: baseVersionstamp ?? undefined,
+          requestId,
+          conflictResolutionStrategy: this.conflictResolutionStrategy,
+          adapterIdentity,
+          commands: queue,
+        };
 
-      if (!response.ok) {
-        throw new Error(`Submit request failed: ${response.status} ${response.statusText}`);
+        pending = { request };
+        await storePendingSubmit(this.adapter, this.pendingKey, pending);
       }
 
-      const payload = (await response.json()) as LofiSubmitResponse;
+      let payload = pending.response;
+      if (!payload) {
+        const response = await this.fetcher(this.submitUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(pending.request),
+          signal: options?.signal,
+        });
 
+        if (!response.ok) {
+          throw new Error(`Submit request failed: ${response.status} ${response.statusText}`);
+        }
+
+        payload = (await response.json()) as LofiSubmitResponse;
+        pending = { ...pending, response: payload };
+        await storePendingSubmit(this.adapter, this.pendingKey, pending);
+      }
+
+      const queue = await loadSubmitQueue(this.adapter, this.queueKey);
       const rebased = await rebaseSubmitQueue({
         adapter: this.adapter,
         entries: payload.entries,
@@ -154,6 +177,7 @@ export class LofiSubmitClient<TContext = unknown> {
       });
 
       await storeSubmitQueue(this.adapter, this.queueKey, rebased.queue);
+      await storePendingSubmit(this.adapter, this.pendingKey, undefined);
       return payload;
     } finally {
       resolveSubmitting();

@@ -189,7 +189,11 @@ const retitlePostHandler = async ({ input, tx }: CommandArgs) => {
       ctx
         .forSchema(appSchema)
         .findFirst("posts", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", payload.postId)).join((j) => j["author"]()),
+          b
+            .whereIndex("primary", (eb) => eb("id", "=", payload.postId))
+            .joinOne("author", "users", (author) =>
+              author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+            ),
         ),
     )
     .transformRetrieve(([post]) => post ?? null)
@@ -218,7 +222,11 @@ const secureRetitlePostHandler = async ({ input, tx, ctx }: CommandArgs) => {
       ctx
         .forSchema(appSchema)
         .findFirst("posts", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", payload.postId)).join((j) => j["author"]()),
+          b
+            .whereIndex("primary", (eb) => eb("id", "=", payload.postId))
+            .joinOne("author", "users", (author) =>
+              author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+            ),
         ),
     )
     .transformRetrieve(([post]) => post ?? null)
@@ -559,7 +567,13 @@ describe("Lofi scenario DSL", () => {
         steps.read(
           "b",
           (_ctx, client) =>
-            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+            client.query.find("posts", (b) =>
+              b
+                .whereIndex("primary")
+                .joinOne("author", "users", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+                ),
+            ),
           "posts",
         ),
         steps.assert((ctx) => {
@@ -662,7 +676,13 @@ describe("Lofi scenario DSL", () => {
         authSteps.read(
           "b",
           (_ctx, client) =>
-            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+            client.query.find("posts", (b) =>
+              b
+                .whereIndex("primary")
+                .joinOne("author", "users", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+                ),
+            ),
           "posts",
         ),
         authSteps.assert((ctx) => {
@@ -723,7 +743,13 @@ describe("Lofi scenario DSL", () => {
         authSteps.read(
           "b",
           (_ctx, client) =>
-            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+            client.query.find("posts", (b) =>
+              b
+                .whereIndex("primary")
+                .joinOne("author", "users", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+                ),
+            ),
           "postsBeforeSubmit",
         ),
         authSteps.read(
@@ -738,7 +764,13 @@ describe("Lofi scenario DSL", () => {
         authSteps.read(
           "b",
           (_ctx, client) =>
-            client.query.find("posts", (b) => b.whereIndex("primary").join((j) => j["author"]())),
+            client.query.find("posts", (b) =>
+              b
+                .whereIndex("primary")
+                .joinOne("author", "users", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId"))),
+                ),
+            ),
           "postsAfterSubmit",
         ),
         authSteps.read(

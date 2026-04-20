@@ -7,7 +7,14 @@ import { openDB, type IDBPDatabase } from "idb";
 
 import { IndexedDbAdapter, LofiClient, LofiSubmitClient } from "../mod.js";
 import type { LofiSchemaRegistration, LofiSubmitCommandDefinition } from "../types.js";
-import { buildOutboxUrl, coerceNumber, deriveEndpointName, formatError, sleep } from "./utils.js";
+import {
+  buildOutboxUrl,
+  coerceNumber,
+  deriveEndpointName,
+  deriveInternalUrls,
+  formatError,
+  sleep,
+} from "./utils.js";
 import { installIndexedDbGlobals } from "./utils.js";
 
 type ClientModule = {
@@ -186,10 +193,11 @@ export const clientCommand = define({
     let submitClient: LofiSubmitClient<unknown> | undefined;
     const commands = moduleConfig?.commands ?? [];
     if (commands.length > 0) {
+      const { submitUrl, internalUrl } = deriveInternalUrls(outboxUrl);
       submitClient = new LofiSubmitClient({
         endpointName,
-        submitUrl: outboxUrl.replace(/\/_internal\/outbox$/, "/_internal/sync"),
-        internalUrl: outboxUrl.replace(/\/_internal\/outbox$/, "/_internal"),
+        submitUrl,
+        internalUrl,
         adapter,
         schemas: schemas.map((entry) => entry.schema) as AnySchema[],
         commands,
