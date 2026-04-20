@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost } from "./bash-host";
+import { MasterFileSystem } from "@/files/master-file-system";
+import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
+
+import { createBashHost, createInteractiveBashHost } from "./bash-host";
 import type { OtpBashRuntime } from "./otp-bash-runtime";
 import type { PiBashRuntime } from "./pi-bash-runtime";
 import type { ResendBashRuntime } from "./resend-bash-runtime";
@@ -240,6 +243,126 @@ const createTelegramRuntime = () => ({
   editMessage: async () => ({ ok: true, queued: true }),
 });
 
+const createInteractiveContext = () => ({
+  automation: null,
+  automations: {
+    runtime: createAutomationsRuntime(),
+  },
+  otp: {
+    runtime: createOtpRuntime(),
+  },
+  pi: {
+    runtime: createPiRuntime(),
+  },
+  reson8: {
+    runtime: createReson8Runtime(),
+  },
+  resend: {
+    runtime: createResendRuntime(),
+  },
+  telegram: {
+    runtime: createTelegramRuntime(),
+  },
+});
+
+const TEST_TEXT_ENCODER = new TextEncoder();
+const TEST_TEXT_DECODER = new TextDecoder();
+
+const createWritableWorkspaceMount = () => {
+  const files = new Map<string, Uint8Array>();
+  const directories = new Set(["/workspace", "/workspace/automations", "/workspace/events"]);
+  const now = new Date("2026-01-01T00:00:00.000Z");
+
+  const ensureDirectory = (path: string) => {
+    const parts = path.split("/").filter(Boolean);
+    let current = "";
+    for (const part of parts) {
+      current += `/${part}`;
+      directories.add(current);
+    }
+  };
+
+  const ensureParentDirectory = (path: string) => {
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length <= 1) {
+      directories.add("/");
+      return;
+    }
+
+    ensureDirectory(`/${segments.slice(0, -1).join("/")}`);
+  };
+
+  const listEntries = (path: string) => {
+    const names = new Set<string>();
+    const prefix = path === "/" ? "/" : `${path}/`;
+
+    for (const directory of directories) {
+      if (!directory.startsWith(prefix) || directory === path) {
+        continue;
+      }
+
+      const remainder = directory.slice(prefix.length).split("/")[0]?.trim();
+      if (remainder) {
+        names.add(remainder);
+      }
+    }
+
+    for (const filePath of files.keys()) {
+      if (!filePath.startsWith(prefix)) {
+        continue;
+      }
+
+      const remainder = filePath.slice(prefix.length).split("/")[0]?.trim();
+      if (remainder) {
+        names.add(remainder);
+      }
+    }
+
+    return Array.from(names).sort();
+  };
+
+  return normalizeMountedFileSystem(
+    {
+      readFile: async (path: string) =>
+        TEST_TEXT_DECODER.decode(files.get(path) ?? new Uint8Array()),
+      readFileBuffer: async (path: string) => files.get(path) ?? new Uint8Array(),
+      writeFile: async (path: string, content: string | Uint8Array) => {
+        ensureParentDirectory(path);
+        files.set(path, typeof content === "string" ? TEST_TEXT_ENCODER.encode(content) : content);
+      },
+      mkdir: async (path: string) => {
+        ensureDirectory(path);
+      },
+      stat: async (path: string) => ({
+        isFile: files.has(path),
+        isDirectory: directories.has(path),
+        isSymbolicLink: false,
+        mode: files.has(path) ? 0o644 : 0o755,
+        size: files.get(path)?.byteLength ?? 0,
+        mtime: now,
+      }),
+      readdir: async (path: string) => listEntries(path),
+      getAllPaths: () => [...directories, ...files.keys()],
+    },
+    { readOnly: false },
+  );
+};
+
+const createInteractiveMasterFs = async () => {
+  const masterFs = new MasterFileSystem({ mounts: [] });
+  masterFs.mount({
+    id: "workspace",
+    kind: "custom",
+    mountPoint: "/workspace",
+    title: "Workspace",
+    readOnly: false,
+    persistence: "session",
+    fs: createWritableWorkspaceMount(),
+  });
+
+  return masterFs;
+};
+
 const createAutomationContext = () => ({
   event: {
     id: "event-1",
@@ -406,6 +529,140 @@ describe("bash host command assembly", () => {
         command: "telegram.file.get",
         output: expect.stringContaining("telegram.file.get"),
         exitCode: 0,
+      },
+    ]);
+  });
+
+  it("exposes scripts.run in interactive bash hosts", async () => {
+    const fs = await createInteractiveMasterFs();
+    const { bash, commandCallsResult } = createInteractiveBashHost({
+      fs,
+      env: {} as CloudflareEnv,
+      orgId: "org-1",
+      context: createInteractiveContext(),
+    });
+
+    const result = await bash.exec("scripts.run --help");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("scripts.run");
+    expect(commandCallsResult).toEqual([
+      {
+        command: "scripts.run",
+        output: expect.stringContaining("scripts.run"),
+        exitCode: 0,
+      },
+    ]);
+  });
+
+  it("inherits the parent orgId when the scripts.run fixture omits orgId", async () => {
+    const fs = await createInteractiveMasterFs();
+    await fs.writeFile("/workspace/automations/scripts/show-event.sh", "cat /context/event.json\n");
+    await fs.writeFile(
+      "/workspace/events/fixture-no-org.json",
+      JSON.stringify({
+        id: "evt-no-org",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: { text: "hello" },
+      }),
+    );
+
+    const { bash } = createInteractiveBashHost({
+      fs,
+      env: {} as CloudflareEnv,
+      orgId: "org-1",
+      context: createInteractiveContext(),
+    });
+
+    const result = await bash.exec(
+      "scripts.run --script scripts/show-event.sh --event /workspace/events/fixture-no-org.json --format json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout.trim());
+    expect(JSON.parse(payload.stdout)).toMatchObject({
+      id: "evt-no-org",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+    });
+  });
+
+  it("allows matching fixture orgId and preserves parent interactive capabilities during scripts.run", async () => {
+    const fs = await createInteractiveMasterFs();
+    await fs.writeFile(
+      "/workspace/automations/scripts/check-capabilities.sh",
+      [
+        'printf "%s|%s\\n" "$(pi.session.get --session-id session-1 --print id)" "$(telegram.file.get --file-id file-1 --print filePath)"',
+        "resend.threads.list --help >/dev/null",
+        "reson8.prerecorded.transcribe --help >/dev/null",
+      ].join("\n"),
+    );
+    await fs.writeFile(
+      "/workspace/events/fixture-matching-org.json",
+      JSON.stringify({
+        id: "evt-matching-org",
+        orgId: "org-1",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: { text: "hello" },
+      }),
+    );
+
+    const { bash } = createInteractiveBashHost({
+      fs,
+      env: {} as CloudflareEnv,
+      orgId: "org-1",
+      context: createInteractiveContext(),
+    });
+
+    const result = await bash.exec(
+      "scripts.run --script scripts/check-capabilities.sh --event /workspace/events/fixture-matching-org.json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("session-1|voice/file-1.ogg");
+  });
+
+  it("fails clearly when a scripts.run fixture claims a different orgId", async () => {
+    const fs = await createInteractiveMasterFs();
+    await fs.writeFile("/workspace/automations/scripts/noop.sh", "echo should-not-run\n");
+    await fs.writeFile(
+      "/workspace/events/fixture-mismatched-org.json",
+      JSON.stringify({
+        id: "evt-mismatched-org",
+        orgId: "org-2",
+        source: "telegram",
+        eventType: "message.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+      }),
+    );
+
+    const { bash, commandCallsResult } = createInteractiveBashHost({
+      fs,
+      env: {} as CloudflareEnv,
+      orgId: "org-1",
+      context: createInteractiveContext(),
+    });
+
+    const result = await bash.exec(
+      "scripts.run --script scripts/noop.sh --event /workspace/events/fixture-mismatched-org.json",
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("fixture-mismatched-org.json");
+    expect(result.stderr).toContain("orgId 'org-2'");
+    expect(result.stderr).toContain("interactive org 'org-1'");
+    expect(commandCallsResult).toEqual([
+      {
+        command: "scripts.run",
+        output: "",
+        exitCode: 1,
       },
     ]);
   });

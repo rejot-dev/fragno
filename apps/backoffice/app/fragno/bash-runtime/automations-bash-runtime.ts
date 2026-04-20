@@ -63,9 +63,9 @@ const automationsCommandHandlers: AutomationsCommandHandlers<RegisteredAutomatio
         data: await context.runtime.bindActor(command.args),
       };
     },
-    "automations.script.run": async (command, context) => {
+    "scripts.run": async (command, context) => {
       if (!context.scriptRunner) {
-        throw new Error("automations.script.run is not available in this execution context");
+        throw new Error("scripts.run is not available in this execution context");
       }
 
       const result = await context.scriptRunner.runScript(command.args);

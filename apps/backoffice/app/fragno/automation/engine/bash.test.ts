@@ -82,6 +82,43 @@ const runtime: AutomationBashRuntime = {
   }),
 };
 
+const createAutomationRuntime = (
+  overrides: Partial<AutomationBashRuntime> = {},
+): AutomationBashRuntime => ({
+  ...runtime,
+  ...overrides,
+});
+
+const createDeferred = <T = void>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return { promise, resolve, reject };
+};
+
+const createAutomationExecutionContext = ({
+  event,
+  runtime: automationRuntime,
+}: {
+  event: AutomationEvent;
+  runtime: AutomationBashRuntime;
+}) =>
+  createAutomationBashCommandContext({
+    event,
+    binding: {
+      source: event.source,
+      eventType: event.eventType,
+      scriptId: `script-${event.id}`,
+    },
+    idempotencyKey: `idempotency-${event.id}`,
+    runtime: automationRuntime,
+    pi: null,
+  });
+
 describe("bash command runner", () => {
   it("runs cli-style automation commands through just-bash", async () => {
     const commandCallsResult: BashAutomationCommandResult[] = [];
@@ -127,7 +164,7 @@ describe("bash command runner", () => {
           },
         };
       },
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -221,7 +258,7 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -280,7 +317,7 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -368,7 +405,7 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -431,7 +468,7 @@ describe("bash command runner", () => {
           eventType: "help-event",
         },
       }),
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -495,6 +532,55 @@ describe("bash command runner", () => {
     expect(result.exitCode).toBe(127);
     expect(result.stderr).toContain("bash: pi.session.get: command not found");
     expect(commandCallsResult).toEqual([]);
+  });
+
+  it("does not expose scripts.run inside automation execution hosts", async () => {
+    const event: AutomationEvent = {
+      id: "event-no-scripts-run",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    };
+
+    const automationRuntime = createAutomationBashRuntime({
+      hookContext: {
+        handlerTx: (() => {
+          throw new Error("handlerTx should not be used in this test");
+        }) as never,
+      },
+      event,
+    });
+
+    const { bash, commandCallsResult } = createBashHost({
+      fs: new InMemoryFs(),
+      context: createAutomationBashCommandContext({
+        event,
+        binding: {
+          source: "telegram",
+          eventType: "message.received",
+          scriptId: "script-no-scripts-run",
+        },
+        idempotencyKey: "idem-no-scripts-run",
+        runtime: automationRuntime,
+        pi: null,
+      }),
+    });
+
+    const result = await bash.exec(
+      "scripts.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json",
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("scripts.run is not available in this execution context");
+    expect(commandCallsResult).toEqual([
+      {
+        command: "scripts.run",
+        output: "",
+        exitCode: 1,
+      },
+    ]);
   });
 
   it("passes shared automation command context through handler execution", async () => {
@@ -568,7 +654,7 @@ describe("bash command runner", () => {
           eventType: "message.received",
         },
       }),
-      "automations.script.run": async () => {
+      "scripts.run": async () => {
         throw new Error("not available in test");
       },
     };
@@ -603,7 +689,7 @@ describe("bash command runner", () => {
     ]);
   });
 
-  it("forwards sub-script stdout through automations.script.run", async () => {
+  it("forwards sub-script stdout through scripts.run", async () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
@@ -639,21 +725,21 @@ describe("bash command runner", () => {
     });
 
     const result = await bash.exec(
-      "automations.script.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json",
+      "scripts.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json",
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("hello from sub-script");
     expect(commandCallsResult).toEqual([
       {
-        command: "automations.script.run",
+        command: "scripts.run",
         output: "hello from sub-script",
         exitCode: 0,
       },
     ]);
   });
 
-  it("returns structured data with --format json for automations.script.run", async () => {
+  it("returns structured data with --format json for scripts.run", async () => {
     const { bash } = createBashHost({
       fs: new InMemoryFs(),
       context: {
@@ -683,7 +769,7 @@ describe("bash command runner", () => {
     });
 
     const result = await bash.exec(
-      "automations.script.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json --format json",
+      "scripts.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json --format json",
     );
 
     expect(result.exitCode).toBe(0);
@@ -726,7 +812,7 @@ describe("bash command runner", () => {
     });
 
     const result = await bash.exec(
-      "automations.script.run --script /automations/fail.sh --event /events/2026-03-26/evt-1.json",
+      "scripts.run --script /automations/fail.sh --event /events/2026-03-26/evt-1.json",
     );
 
     expect(result.exitCode).toBe(1);
@@ -824,7 +910,7 @@ describe("bash command runner", () => {
     expect(result.stdout.trim()).toBe("kept");
   });
 
-  it("unmounts /context and /dev after execution", async () => {
+  it("keeps the shared master filesystem mount list unchanged after execution", async () => {
     const masterFs = new MasterFileSystem({ mounts: [] });
 
     const automationRuntime = createAutomationBashRuntime({
@@ -861,6 +947,163 @@ describe("bash command runner", () => {
     });
 
     expect(masterFs.mounts).toHaveLength(0);
+  });
+
+  it("isolates /context/event.json across overlapping executions", async () => {
+    const masterFs = new MasterFileSystem({ mounts: [] });
+    const releaseFirstRun = createDeferred();
+    const firstRunBlocked = createDeferred();
+
+    const firstEvent: AutomationEvent = {
+      id: "event-overlap-a",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { run: "a" },
+    };
+    const secondEvent: AutomationEvent = {
+      id: "event-overlap-b",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { run: "b" },
+    };
+
+    const firstRun = executeBashAutomation({
+      script:
+        'event.emit --event-type overlap.wait --source test >/dev/null\nprintf "run-a=%s\\n" "$(cat /context/event.json)"',
+      masterFs,
+      context: createAutomationExecutionContext({
+        event: firstEvent,
+        runtime: createAutomationRuntime({
+          emitEvent: async (input) => {
+            firstRunBlocked.resolve();
+            await releaseFirstRun.promise;
+            return {
+              accepted: true,
+              eventId: `emitted:${input.eventType}`,
+              orgId: "org-1",
+              source: input.source ?? "test",
+              eventType: input.eventType,
+            };
+          },
+        }),
+      }),
+    });
+
+    await firstRunBlocked.promise;
+
+    const secondRun = await executeBashAutomation({
+      script:
+        'printf "before=%s\\n" "$(cat /context/event.json)"\n' +
+        "event.emit --event-type overlap.read --source test >/dev/null\n" +
+        'printf "after=%s\\n" "$(cat /context/event.json)"',
+      masterFs,
+      context: createAutomationExecutionContext({
+        event: secondEvent,
+        runtime: createAutomationRuntime(),
+      }),
+    });
+
+    releaseFirstRun.resolve();
+    const completedFirstRun = await firstRun;
+
+    expect(completedFirstRun.exitCode).toBe(0);
+    expect(secondRun.exitCode).toBe(0);
+    expect(secondRun.stdout).toContain('before={"id":"event-overlap-b"');
+    expect(secondRun.stdout).toContain('after={"id":"event-overlap-b"');
+    expect(secondRun.stdout).not.toContain('"id":"event-overlap-a"');
+  });
+
+  it("keeps /context and /dev available when another overlapping execution finishes", async () => {
+    const masterFs = new MasterFileSystem({ mounts: [] });
+    const releaseFirstRun = createDeferred();
+    const firstRunBlocked = createDeferred();
+    const releaseSecondRun = createDeferred();
+    const secondRunBlocked = createDeferred();
+
+    const firstEvent: AutomationEvent = {
+      id: "event-cleanup-a",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { run: "a" },
+    };
+    const secondEvent: AutomationEvent = {
+      id: "event-cleanup-b",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { run: "b" },
+    };
+
+    const firstRun = executeBashAutomation({
+      script:
+        "event.emit --event-type cleanup.wait-a --source test >/dev/null\necho first-run-complete",
+      masterFs,
+      context: createAutomationExecutionContext({
+        event: firstEvent,
+        runtime: createAutomationRuntime({
+          emitEvent: async (input) => {
+            firstRunBlocked.resolve();
+            await releaseFirstRun.promise;
+            return {
+              accepted: true,
+              eventId: `emitted:${input.eventType}`,
+              orgId: "org-1",
+              source: input.source ?? "test",
+              eventType: input.eventType,
+            };
+          },
+        }),
+      }),
+    });
+
+    await firstRunBlocked.promise;
+
+    const secondRunPromise = executeBashAutomation({
+      script:
+        'printf "before=%s\\n" "$(cat /context/event.json)"\n' +
+        "event.emit --event-type cleanup.wait-b --source test >/dev/null\n" +
+        "cat /context/event.json >/dev/null\n" +
+        "echo kept >/dev/null\n" +
+        'printf "after=%s\\n" "$(cat /context/event.json)"',
+      masterFs,
+      context: createAutomationExecutionContext({
+        event: secondEvent,
+        runtime: createAutomationRuntime({
+          emitEvent: async (input) => {
+            secondRunBlocked.resolve();
+            await releaseSecondRun.promise;
+            return {
+              accepted: true,
+              eventId: `emitted:${input.eventType}`,
+              orgId: "org-1",
+              source: input.source ?? "test",
+              eventType: input.eventType,
+            };
+          },
+        }),
+      }),
+    });
+
+    await secondRunBlocked.promise;
+
+    releaseFirstRun.resolve();
+    const completedFirstRun = await firstRun;
+    expect(completedFirstRun.exitCode).toBe(0);
+
+    releaseSecondRun.resolve();
+    const secondRun = await secondRunPromise;
+
+    expect(secondRun.exitCode).toBe(0);
+    expect(secondRun.stderr).toBe("");
+    expect(secondRun.stdout).toContain('before={"id":"event-cleanup-b"');
+    expect(secondRun.stdout).toContain('after={"id":"event-cleanup-b"');
   });
 
   it("skips /dev mount when one already exists on the master filesystem", async () => {

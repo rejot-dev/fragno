@@ -18,7 +18,7 @@ export type AutomationCommandExecutionResult<TData = unknown> = {
 export const AUTOMATIONS_COMMANDS = [
   "automations.identity.lookup-binding",
   "automations.identity.bind-actor",
-  "automations.script.run",
+  "scripts.run",
 ] as const;
 
 export const OTP_COMMANDS = ["otp.identity.create-claim"] as const;
@@ -93,7 +93,7 @@ export type ParsedCommandByName = {
     IdentityBindActorArgs
   >;
   "otp.identity.create-claim": ParsedCommand<"otp.identity.create-claim", IdentityCreateClaimArgs>;
-  "automations.script.run": ParsedCommand<"automations.script.run", ScriptRunArgs>;
+  "scripts.run": ParsedCommand<"scripts.run", ScriptRunArgs>;
   "event.emit": ParsedCommand<"event.emit", EventEmitArgs>;
 };
 

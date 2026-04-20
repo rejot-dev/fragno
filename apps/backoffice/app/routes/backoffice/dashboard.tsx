@@ -5,7 +5,6 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createInteractiveBashHost } from "@/fragno/bash-runtime/bash-host";
-import { createPiBashCommandContext } from "@/fragno/pi/pi";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import type { Route } from "./+types/dashboard";
@@ -106,12 +105,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     const env = context.get(CloudflareContext).env;
     const fileSystem = await createOrgFileSystem({ orgId: activeOrg.id, env });
-    const piContext = createPiBashCommandContext({ env, orgId: activeOrg.id });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,
       env,
       orgId: activeOrg.id,
-      context: piContext,
     });
 
     const startedAt = performance.now();

@@ -26,6 +26,12 @@ import type {
   ParsedCommand,
 } from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
+import {
+  NotConfiguredError,
+  createOrganisationNotConfiguredMessage,
+  isSuccessStatus,
+  throwOnRouteRuntimeError,
+} from "./runtime-errors";
 
 const RESEND_COMMAND_NAMES = [
   "resend.threads.get",
@@ -352,51 +358,6 @@ const createResendRouteCaller = (
   });
 };
 
-const isSuccessStatus = (status: number) => status >= 200 && status < 300;
-
-const getJsonErrorField = (value: unknown, field: "message" | "code") => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const resolved = (value as Record<string, unknown>)[field];
-  return typeof resolved === "string" && resolved.trim() ? resolved : null;
-};
-
-const throwOnRouteError = (
-  response:
-    | ({ type: string; status: number } & {
-        type: "error";
-        error: { message: string; code: string };
-      })
-    | ({ type: string; status: number } & { type: "json"; data: unknown })
-    | { type: string; status: number },
-  label: string,
-): never => {
-  const code =
-    "error" in response
-      ? getJsonErrorField(response.error, "code")
-      : "data" in response
-        ? getJsonErrorField(response.data, "code")
-        : null;
-  const message =
-    "error" in response
-      ? getJsonErrorField(response.error, "message")
-      : "data" in response
-        ? getJsonErrorField(response.data, "message")
-        : null;
-
-  if (response.status === 400 && code === "NOT_CONFIGURED") {
-    throw new NotConfiguredError(message ?? "Resend is not configured.");
-  }
-
-  if (message) {
-    throw new Error(`Resend fragment returned ${response.status}: ${message}`);
-  }
-
-  throw new Error(`Resend fragment returned ${response.status} (${label})`);
-};
-
 const toQuery = (args: ResendThreadListArgs | undefined): Record<string, string> => {
   const query: Record<string, string> = {};
 
@@ -434,7 +395,11 @@ export const createRouteBackedResendRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "resend.threads.list");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Resend fragment",
+        label: "resend.threads.list",
+        notConfiguredMessage: RESEND_NOT_CONFIGURED,
+      });
     },
     getThread: async ({ threadId }) => {
       const normalizedThreadId = threadId.trim();
@@ -448,7 +413,11 @@ export const createRouteBackedResendRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "resend.threads.get detail");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Resend fragment",
+        label: "resend.threads.get detail",
+        notConfiguredMessage: RESEND_NOT_CONFIGURED,
+      });
     },
     listThreadMessages: async ({ threadId, ...args }) => {
       const normalizedThreadId = threadId.trim();
@@ -463,7 +432,11 @@ export const createRouteBackedResendRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "resend.threads.get messages");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Resend fragment",
+        label: "resend.threads.get messages",
+        notConfiguredMessage: RESEND_NOT_CONFIGURED,
+      });
     },
     getThreadSnapshot: async ({ threadId, order, pageSize, cursor }) => {
       const normalizedThreadId = threadId.trim();
@@ -482,10 +455,18 @@ export const createRouteBackedResendRuntime = (
       ]);
 
       if (thread.type !== "json" || !isSuccessStatus(thread.status)) {
-        return throwOnRouteError(thread, "resend.threads.get detail");
+        return throwOnRouteRuntimeError(thread, {
+          runtimeLabel: "Resend fragment",
+          label: "resend.threads.get detail",
+          notConfiguredMessage: RESEND_NOT_CONFIGURED,
+        });
       }
       if (messagePage.type !== "json" || !isSuccessStatus(messagePage.status)) {
-        return throwOnRouteError(messagePage, "resend.threads.get messages");
+        return throwOnRouteRuntimeError(messagePage, {
+          runtimeLabel: "Resend fragment",
+          label: "resend.threads.get messages",
+          notConfiguredMessage: RESEND_NOT_CONFIGURED,
+        });
       }
 
       const messages = messagePage.data.messages ?? [];
@@ -519,10 +500,18 @@ export const createRouteBackedResendRuntime = (
       ]);
 
       if (thread.type !== "json" || !isSuccessStatus(thread.status)) {
-        return throwOnRouteError(thread, "resend.threads.reply detail");
+        return throwOnRouteRuntimeError(thread, {
+          runtimeLabel: "Resend fragment",
+          label: "resend.threads.reply detail",
+          notConfiguredMessage: RESEND_NOT_CONFIGURED,
+        });
       }
       if (messagePage.type !== "json" || !isSuccessStatus(messagePage.status)) {
-        return throwOnRouteError(messagePage, "resend.threads.reply messages");
+        return throwOnRouteRuntimeError(messagePage, {
+          runtimeLabel: "Resend fragment",
+          label: "resend.threads.reply messages",
+          notConfiguredMessage: RESEND_NOT_CONFIGURED,
+        });
       }
 
       const recipients = inferReplyRecipients(messagePage.data.messages ?? []);
@@ -544,7 +533,11 @@ export const createRouteBackedResendRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "resend.threads.reply");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Resend fragment",
+        label: "resend.threads.reply",
+        notConfiguredMessage: RESEND_NOT_CONFIGURED,
+      });
     },
   };
 };
@@ -563,7 +556,7 @@ export const createResendRouteBashRuntime = ({
   });
 };
 
-const RESEND_NOT_CONFIGURED = "Resend is not configured for this organisation.";
+const RESEND_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Resend");
 
 export const createUnavailableResendBashRuntime = (
   message = RESEND_NOT_CONFIGURED,
@@ -722,9 +715,4 @@ export const buildResendThreadMarkdown = (
   return lines.join("\n");
 };
 
-export class NotConfiguredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotConfiguredError";
-  }
-}
+export { NotConfiguredError };

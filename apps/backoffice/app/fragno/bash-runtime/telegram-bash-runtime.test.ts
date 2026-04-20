@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "./bash-host";
-import type { TelegramBashRuntime } from "./telegram-bash-runtime";
+import {
+  createRouteBackedTelegramBashRuntime,
+  type TelegramBashRuntime,
+} from "./telegram-bash-runtime";
 
 const createTelegramRuntime = (
   overrides: Partial<TelegramBashRuntime> = {},
@@ -202,6 +205,84 @@ describe("telegram bash command registration", () => {
 
     await expect(fs.readFileBuffer("/workspace/attachment.bin")).resolves.toEqual(
       new Uint8Array([0, 255, 1, 2]),
+    );
+  });
+
+  it("fails downloads cleanly when Telegram returns a non-success response", async () => {
+    const fs = new InMemoryFs();
+    const { bash, commandCallsResult } = createBashHost({
+      fs,
+      context: {
+        automation: null,
+        automations: null,
+        otp: null,
+        pi: null,
+        reson8: null,
+        resend: null,
+        telegram: {
+          runtime: createTelegramRuntime({
+            downloadFile: async () =>
+              new Response(JSON.stringify({ message: "Telegram file not found" }), {
+                status: 404,
+                headers: {
+                  "content-type": "application/json",
+                },
+              }),
+          }),
+        },
+      },
+    });
+
+    const result = await bash.exec(
+      "mkdir -p /workspace\ntelegram.file.download --file-id missing -o /workspace/photo.bin",
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Telegram fragment returned 404: Telegram file not found");
+    await expect(fs.readFileBuffer("/workspace/photo.bin")).rejects.toThrow();
+    expect(commandCallsResult).toEqual([
+      {
+        command: "telegram.file.download",
+        output: "",
+        exitCode: 1,
+      },
+    ]);
+  });
+
+  it("uses the shared not-configured message for telegram.file.download", async () => {
+    const fs = new InMemoryFs();
+    const { bash } = createBashHost({
+      fs,
+      context: {
+        automation: null,
+        automations: null,
+        otp: null,
+        pi: null,
+        reson8: null,
+        resend: null,
+        telegram: {
+          runtime: createTelegramRuntime({
+            downloadFile: async () => Response.json({ code: "NOT_CONFIGURED" }, { status: 400 }),
+          }),
+        },
+      },
+    });
+
+    const result = await bash.exec("telegram.file.download --file-id missing");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Telegram is not configured for this organisation.");
+  });
+
+  it("uses the shared route error formatting for telegram route-backed commands", async () => {
+    const runtime = createRouteBackedTelegramBashRuntime({
+      baseUrl: "https://telegram.do",
+      fetch: async () => Response.json({ message: "Chat not found" }, { status: 404 }),
+    });
+
+    await expect(runtime.sendMessage({ chatId: "chat-1", text: "hello" })).rejects.toThrow(
+      "Telegram fragment returned 404: Chat not found",
     );
   });
 
