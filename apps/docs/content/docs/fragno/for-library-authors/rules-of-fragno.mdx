@@ -18,15 +18,19 @@ Keep this rare and explicit.
 `handlerTx()` is two-phase: **schedule all reads in one `.retrieve(...)`**, then **schedule all
 writes in one `.mutate(...)`**, then `.execute()`.
 
-If you need related data, use `.join(...)` and multiple `.find...` calls inside the same
-`.retrieve(...)` instead of starting extra `handlerTx()` calls.
+If you need related data, use explicit joins such as `.joinOne(...)` / `.joinMany(...)` and multiple
+`.find...` calls inside the same `.retrieve(...)` instead of starting extra `handlerTx()` calls.
 
 ```ts
 const result = await this.handlerTx()
   .retrieve(({ forSchema }) =>
     forSchema(mySchema)
       .findFirst("order", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", orderId)).join((j) => j.customer()),
+        b
+          .whereIndex("primary", (eb) => eb("id", "=", orderId))
+          .joinOne("customer", "customer", (customer) =>
+            customer.onIndex("primary", (eb) => eb("id", "=", eb.parent("customerId"))),
+          ),
       )
       .find("order_item", (b) =>
         b.whereIndex("idx_order_item_orderId", (eb) => eb("orderId", "=", orderId)),

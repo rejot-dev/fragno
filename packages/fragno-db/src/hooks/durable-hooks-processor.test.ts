@@ -31,7 +31,7 @@ const testFragmentDefinition = defineFragment("test")
     defineService({
       getItemCount() {
         return this.serviceTx(testSchema)
-          .retrieve((uow) => uow.findNew("items", (b) => b.whereIndex("primary")))
+          .retrieve((uow) => uow.find("items", (b) => b.whereIndex("primary")))
           .transformRetrieve(([items]) => items.length)
           .build();
       },

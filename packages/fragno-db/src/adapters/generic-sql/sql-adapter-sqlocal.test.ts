@@ -81,7 +81,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Verify initial balances
     const initialAccount1 = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findFirstNew("accounts", (b) => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
       });
       await uow.executeRetrieve();
@@ -89,7 +89,7 @@ describe("SqlAdapter SQLite", () => {
     })();
 
     const initialAccount2 = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findFirstNew("accounts", (b) => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
       });
       await uow.executeRetrieve();
@@ -105,10 +105,10 @@ describe("SqlAdapter SQLite", () => {
     // Read current balances - chain the calls to properly set generics
     const uow = queryEngine
       .createUnitOfWork("balance-transfer")
-      .findNew("accounts", (b) => {
+      .find("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
       })
-      .findNew("accounts", (b) => {
+      .find("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
       });
 
@@ -139,7 +139,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Verify final balances
     const finalAccount1 = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findFirstNew("accounts", (b) => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account1Id));
       });
       await uow.executeRetrieve();
@@ -147,7 +147,7 @@ describe("SqlAdapter SQLite", () => {
     })();
 
     const finalAccount2 = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findFirstNew("accounts", (b) => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("accounts", (b) => {
         return b.whereIndex("primary", (eb) => eb("id", "=", account2Id));
       });
       await uow.executeRetrieve();
@@ -163,7 +163,7 @@ describe("SqlAdapter SQLite", () => {
 
     // Verify transaction was recorded
     const transaction = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findFirstNew("transactions", (b) => {
+      const uow = queryEngine.createUnitOfWork("read").findFirst("transactions", (b) => {
         return b.whereIndex("primary");
       });
       await uow.executeRetrieve();
@@ -199,7 +199,7 @@ describe("SqlAdapter SQLite", () => {
     const uow = queryEngine
       .createUnitOfWork("update-account-balance")
       // Retrieval phase: find the account
-      .findNew("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)));
+      .find("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)));
 
     // Execute retrieval and transition to mutation phase
     const [accounts] = await uow.executeRetrieve();
@@ -218,7 +218,7 @@ describe("SqlAdapter SQLite", () => {
     const updatedAccount = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("accounts", (b) =>
+        .findFirst("accounts", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)),
         );
       await uow.executeRetrieve();
@@ -248,7 +248,7 @@ describe("SqlAdapter SQLite", () => {
     // Verify the account was NOT updated
     const [[unchangedAccount]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .findNew("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)))
+      .find("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialAccountId)))
       .executeRetrieve();
 
     expect(unchangedAccount).toMatchObject({

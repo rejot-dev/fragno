@@ -16,14 +16,7 @@ import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
 import type { CompiledJoin } from "../find-options";
-import type {
-  SelectClause,
-  TableToInsertValues,
-  TableToUpdateValues,
-  SelectResult,
-  ExtractSelect,
-  ExtractJoinOut,
-} from "../mod";
+import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "../mod";
 import {
   QueryTreeFindBuilder,
   type CompiledQueryTreeRootNode,
@@ -164,7 +157,7 @@ type FindOptions<
    */
   joins?: CompiledJoin[];
   /**
-   * New query-tree based join representation used by findNew().
+   * New query-tree based join representation used by find().
    */
   queryTree?: CompiledQueryTreeRootNode<TTable>;
 };
@@ -2031,82 +2024,6 @@ export class TypedUnitOfWork<
   find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): TypedUnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput,
-    THooks
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string>(
-    tableName: TTableName,
-  ): TypedUnitOfWork<
-    TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
-    TRawInput,
-    THooks
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): TypedUnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput,
-    THooks
-  > {
-    const table = this.#schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    if (builderFn) {
-      builderFn(builder);
-    } else {
-      builder.whereIndex("primary");
-    }
-    const { indexName, options, type } = builder.build();
-
-    const operationIndex = this.#uow.addRetrievalOperation({
-      type,
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: table as TSchema["tables"][TTableName],
-      indexName,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: options as any,
-      readTracking: this.#uow.readTrackingEnabled,
-    });
-
-    // Track which operation index belongs to this view
-    this.#operationIndices.push(operationIndex);
-
-    // Safe: return type is correctly specified in the method signature
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this as any;
-  }
-
-  findNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
       builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
     ) => TBuilderResult,
   ): TypedUnitOfWork<
@@ -2115,7 +2032,7 @@ export class TypedUnitOfWork<
     TRawInput,
     THooks
   >;
-  findNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
       builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
@@ -2176,7 +2093,7 @@ export class TypedUnitOfWork<
     return this as any;
   }
 
-  findFirstNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+  findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
       builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
@@ -2239,7 +2156,7 @@ export class TypedUnitOfWork<
     return this as any;
   }
 
-  findWithCursorNew<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
       builder: Omit<QueryTreeFindBuilder<TSchema, TSchema["tables"][TTableName]>, "build">,
@@ -2276,8 +2193,8 @@ export class TypedUnitOfWork<
     const queryTree = builder.build();
     if (queryTree.kind === "count") {
       throw new Error(
-        `findWithCursorNew() does not support selectCount() on table "${tableName}". ` +
-          `Use findNew() or findFirstNew() instead.`,
+        `findWithCursor() does not support selectCount() on table "${tableName}". ` +
+          `Use find() or findFirst() instead.`,
       );
     }
 
@@ -2302,134 +2219,6 @@ export class TypedUnitOfWork<
 
     this.#operationIndices.push(operationIndex);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this as any;
-  }
-
-  findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): TypedUnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      > | null,
-    ],
-    TRawInput,
-    THooks
-  >;
-  findFirst<TTableName extends keyof TSchema["tables"] & string>(
-    tableName: TTableName,
-  ): TypedUnitOfWork<
-    TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true> | null],
-    TRawInput,
-    THooks
-  >;
-  findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): TypedUnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      > | null,
-    ],
-    TRawInput,
-    THooks
-  > {
-    const table = this.#schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    if (builderFn) {
-      builderFn(builder);
-    } else {
-      builder.whereIndex("primary");
-    }
-    // Automatically set pageSize to 1 for findFirst
-    builder.pageSize(1);
-    const { indexName, options, type } = builder.build();
-
-    const operationIndex = this.#uow.addRetrievalOperation({
-      type,
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: table as TSchema["tables"][TTableName],
-      indexName,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: options as any,
-      withSingleResult: true,
-      readTracking: this.#uow.readTrackingEnabled,
-    });
-
-    // Track which operation index belongs to this view
-    this.#operationIndices.push(operationIndex);
-
-    // Safe: return type is correctly specified in the method signature
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this as any;
-  }
-
-  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): TypedUnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      CursorResult<
-        SelectResult<
-          TSchema["tables"][TTableName],
-          ExtractJoinOut<TBuilderResult>,
-          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-        >
-      >,
-    ],
-    TRawInput,
-    THooks
-  > {
-    const table = this.#schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    builderFn(builder);
-    const { indexName, options, type } = builder.build();
-
-    const operationIndex = this.#uow.addRetrievalOperation({
-      type,
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: table as TSchema["tables"][TTableName],
-      indexName,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: options as any,
-      withCursor: true,
-      readTracking: this.#uow.readTrackingEnabled,
-    });
-
-    // Track which operation index belongs to this view
-    this.#operationIndices.push(operationIndex);
-
-    // Safe: return type is correctly specified in the method signature
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this as any;
   }
@@ -2607,3 +2396,22 @@ export class TypedUnitOfWork<
     return this.#uow.getTriggeredHooks();
   }
 }
+
+export {
+  ParentColumnRef,
+  QueryTreeFindBuilder,
+  QueryTreeJoinBuilder,
+  getQueryTreeSelectedColumnNames,
+  isParentColumnRef,
+} from "./query-tree";
+export type {
+  CompiledQueryTreeChildNode,
+  CompiledQueryTreeCountNode,
+  CompiledQueryTreeRootNode,
+  ExtractQueryTreeBuilderCount,
+  ExtractQueryTreeBuilderOut,
+  ExtractQueryTreeBuilderSelect,
+  QueryTreeCountBuilderMarker,
+  QueryTreeOrderBy,
+  QueryTreeValidIndexName,
+} from "./query-tree";

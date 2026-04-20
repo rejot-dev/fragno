@@ -72,7 +72,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // Simulate service method 1: adds retrieval operation via child UOW
     const serviceMethod1 = () => {
       const childUow = parentUow.restrict();
-      childUow.forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary"));
+      childUow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
     };
 
     // Simulate service method 2: adds mutation operation via child UOW
@@ -126,7 +126,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
 
       // Await retrieval phase - should not deadlock!
       const [users] = await typedUow.retrievalPhase;
@@ -138,7 +138,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+        .find("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
 
       // Await retrieval phase - should not deadlock!
       const [posts] = await typedUow.retrievalPhase;
@@ -211,7 +211,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
 
       const [users] = await typedUow.retrievalPhase;
       const user = users?.[0];
@@ -228,7 +228,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("orders", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+        .find("orders", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
 
       const [orders] = await typedUow.retrievalPhase;
       return orders;
@@ -339,7 +339,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
           const childUow2 = childUow1.restrict();
           const typedUow = childUow2
             .forSchema(testSchema)
-            .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+            .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
 
           const [users] = await typedUow.retrievalPhase;
           return users?.[0];
@@ -350,7 +350,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
           const childUow2 = childUow1.restrict();
           const typedUow = childUow2
             .forSchema(testSchema)
-            .findNew("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+            .find("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
 
           const [posts] = await typedUow.retrievalPhase;
           return posts;
@@ -448,7 +448,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
         const childUow = parentUow.restrict();
         const typedUow = childUow
           .forSchema(testSchema)
-          .findNew("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email)));
+          .find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email)));
 
         return typedUow.retrievalPhase.then(([users]) => users?.[0] ?? null);
       };
@@ -458,7 +458,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
         const childUow = parentUow.restrict();
         const typedUow = childUow
           .forSchema(testSchema)
-          .findNew("products", (b) => b.whereIndex("primary"));
+          .find("products", (b) => b.whereIndex("primary"));
 
         return typedUow.retrievalPhase.then(([products]) => products?.[0] ?? null);
       };
@@ -569,7 +569,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+        .find("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
 
       const [accounts] = await typedUow.retrievalPhase;
       return accounts?.[0] ?? null;
@@ -660,7 +660,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
 
       const [users] = await typedUow.retrievalPhase;
       const user = users?.[0];
@@ -682,7 +682,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+        .find("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
 
       const [posts] = await typedUow.retrievalPhase;
       return posts;
@@ -796,7 +796,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findNew("settings", (b) => b.whereIndex("unique_key", (eb) => eb("key", "=", key)));
+        .find("settings", (b) => b.whereIndex("unique_key", (eb) => eb("key", "=", key)));
 
       // This is the critical line - accessing retrievalPhase creates a new promise
       // If not cached properly, this new promise won't have a catch handler attached
@@ -950,7 +950,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findFirstNew("totp_secret", (b) =>
+        .findFirst("totp_secret", (b) =>
           b.whereIndex("idx_totp_user", (eb) => eb("userId", "=", userId)),
         );
 
@@ -1029,7 +1029,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       const childUow = parentUow.restrict();
       const typedUow = childUow
         .forSchema(testSchema)
-        .findFirstNew("totp_secret", (b) =>
+        .findFirst("totp_secret", (b) =>
           b.whereIndex("idx_totp_user", (eb) => eb("userId", "=", userId)),
         );
 

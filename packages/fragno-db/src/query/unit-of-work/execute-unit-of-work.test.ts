@@ -182,7 +182,7 @@ describe("Unified Tx API", () => {
       const baseUow = createUnitOfWork(compiler, executor, decoder);
 
       const txResult = createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .build();
 
       expect(isTxResult(txResult)).toBe(true);
@@ -217,7 +217,7 @@ describe("Unified Tx API", () => {
       const baseUow = createUnitOfWork(compiler, executor, decoder);
 
       const txResult = createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .build();
 
       expect(isTxResult(txResult)).toBe(true);
@@ -244,7 +244,7 @@ describe("Unified Tx API", () => {
       const baseUow = createUnitOfWork(compiler, executor, decoder);
 
       const txResult = createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .transformRetrieve(([users]) => users[0] ?? null)
         .build();
 
@@ -272,7 +272,7 @@ describe("Unified Tx API", () => {
 
       // Create a dependency TxResult
       const depTxResult = createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .transformRetrieve(([users]) => users[0] ?? null)
         .build();
 
@@ -335,7 +335,7 @@ describe("Unified Tx API", () => {
 
       // When success is provided but mutate is NOT, mutateResult should be undefined
       createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .transformRetrieve(([users]) => users[0] ?? null)
         // NO mutate callback
         .transform(({ mutateResult, retrieveResult }) => {
@@ -371,7 +371,7 @@ describe("Unified Tx API", () => {
       // When retrieve IS provided but retrieveSuccess is NOT, retrieveResult should be TRetrieveResults
       // (the raw array from the retrieve callback), NOT unknown
       createServiceTxBuilder(testSchema, baseUow)
-        .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+        .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         // NO transformRetrieve callback - this is the key scenario
         .mutate(({ uow, retrieveResult }) => {
           // Key type assertion: retrieveResult should be the raw array type, NOT unknown
@@ -423,7 +423,7 @@ describe("Unified Tx API", () => {
         createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
       })
         .retrieve(({ forSchema }) =>
-          forSchema(testSchema).findNew("users", (b) => b.whereIndex("idx_email")),
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
         )
         .execute();
 
@@ -454,7 +454,7 @@ describe("Unified Tx API", () => {
         onAfterRetrieve,
       })
         .retrieve(({ forSchema }) =>
-          forSchema(testSchema).findNew("users", (b) => b.whereIndex("idx_email")),
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
         )
         .execute();
 
@@ -525,7 +525,7 @@ describe("Unified Tx API", () => {
       // Service that retrieves
       const getUserById = () => {
         return createServiceTxBuilder(testSchema, currentUow!)
-          .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
       };
@@ -562,7 +562,7 @@ describe("Unified Tx API", () => {
       // Service that retrieves
       const getUserById = () => {
         return createServiceTxBuilder(testSchema, currentUow!)
-          .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
       };
@@ -612,7 +612,7 @@ describe("Unified Tx API", () => {
       // Service that retrieves
       const getUserById = () => {
         return createServiceTxBuilder(testSchema, currentUow!)
-          .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
       };
@@ -669,7 +669,7 @@ describe("Unified Tx API", () => {
       const getUserById = (userId: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
@@ -931,7 +931,7 @@ describe("Unified Tx API", () => {
         retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5, initialDelayMs: 1 }),
       })
         .retrieve(({ forSchema }) =>
-          forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary")),
+          forSchema(testSchema).find("users", (b) => b.whereIndex("primary")),
         )
         .mutate(({ forSchema }) => {
           forSchema(testSchema).create("users", {
@@ -963,7 +963,7 @@ describe("Unified Tx API", () => {
           retryPolicy: new NoRetryPolicy(),
         })
           .retrieve(({ forSchema }) =>
-            forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary")),
+            forSchema(testSchema).find("users", (b) => b.whereIndex("primary")),
           )
           .mutate(() => ({ done: true }))
           .execute(),
@@ -1015,7 +1015,7 @@ describe("Unified Tx API", () => {
         retryPolicy: new LinearBackoffRetryPolicy({ maxRetries: 3, delayMs: 1 }),
       })
         .retrieve(({ forSchema }) =>
-          forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary")),
+          forSchema(testSchema).find("users", (b) => b.whereIndex("primary")),
         )
         .mutate(({ forSchema }) => {
           forSchema(testSchema).create("users", {
@@ -1050,7 +1050,7 @@ describe("Unified Tx API", () => {
           signal: controller.signal,
         })
           .retrieve(({ forSchema }) =>
-            forSchema(testSchema).findNew("users", (b) => b.whereIndex("primary")),
+            forSchema(testSchema).find("users", (b) => b.whereIndex("primary")),
           )
           .mutate(() => ({ done: true }))
           .execute(),
@@ -1076,7 +1076,7 @@ describe("Unified Tx API", () => {
       const createIfNotExists = (email: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
+            uow.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
           )
           .mutate(({ uow, retrieveResult: [users] }) => {
             if (users.length > 0) {
@@ -1114,7 +1114,7 @@ describe("Unified Tx API", () => {
       const createIfNotExists = (email: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
+            uow.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
           )
           .mutate(({ uow, retrieveResult: [users] }) => {
             if (users.length > 0) {
@@ -1159,7 +1159,7 @@ describe("Unified Tx API", () => {
       const getUserAndUpdateBalance = (userId: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .mutate(({ uow, retrieveResult: user }) => {
@@ -1298,7 +1298,7 @@ describe("Unified Tx API", () => {
       // Service that just retrieves
       const getUser = () => {
         return createServiceTxBuilder(testSchema, currentUow!)
-          .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
       };
@@ -1338,7 +1338,7 @@ describe("Unified Tx API", () => {
       const getUserById = () => {
         return (
           createServiceTxBuilder(testSchema, currentUow!)
-            .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+            .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
             // This transformRetrieve transforms the result
             .transformRetrieve(([users]) => ({ transformed: true, user: users[0] }))
             .build()
@@ -1382,7 +1382,7 @@ describe("Unified Tx API", () => {
       const getUserById = () => {
         return (
           createServiceTxBuilder(testSchema, currentUow!)
-            .retrieve((uow) => uow.findNew("users", (b) => b.whereIndex("idx_email")))
+            .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
             .transformRetrieve(([users]) => users[0])
             // This mutate returns a different result
             .mutate(({ retrieveResult: user }) => ({ mutated: true, userId: user?.id }))
@@ -1524,7 +1524,7 @@ describe("Unified Tx API", () => {
         }
         return createServiceTxBuilder(testSchema, currentUow)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
@@ -1599,7 +1599,7 @@ describe("Unified Tx API", () => {
       const getUserById = (userId: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
@@ -1669,7 +1669,7 @@ describe("Unified Tx API", () => {
       const getUserById = (userId: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .build();
@@ -1757,7 +1757,7 @@ describe("Unified Tx API", () => {
       const subscribeUser = (email: string) => {
         return createServiceTxBuilder(testSchema, currentUow!, hooks)
           .retrieve((uow) =>
-            uow.findNew("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
+            uow.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", email))),
           )
           .transformRetrieve(([users]) => users[0] ?? null)
           .mutate(({ uow, retrieveResult: existingUser }) => {
@@ -1827,7 +1827,7 @@ describe("Unified Tx API", () => {
         return (
           createServiceTxBuilder(testSchema, currentUow!, hooks)
             .retrieve((uow) =>
-              uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+              uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
             )
             // NO transformRetrieve - mutate receives raw [users[]] array
             .mutate(({ uow, retrieveResult: [users] }) => {
@@ -1913,7 +1913,7 @@ describe("Unified Tx API", () => {
       const hooks = await (async () => {
         const uow = internalQuery
           .createUnitOfWork("read")
-          .findNew("fragno_hooks", (b) => b.whereIndex("primary"));
+          .find("fragno_hooks", (b) => b.whereIndex("primary"));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();
@@ -1977,7 +1977,7 @@ describe("Unified Tx API", () => {
       const hooks = await (async () => {
         const uow = internalQuery
           .createUnitOfWork("read")
-          .findNew("fragno_hooks", (b) => b.whereIndex("primary"));
+          .find("fragno_hooks", (b) => b.whereIndex("primary"));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();

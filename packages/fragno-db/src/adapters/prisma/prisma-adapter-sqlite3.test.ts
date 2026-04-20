@@ -264,7 +264,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [createdUsers] = await queryEngine
       .createUnitOfWork("get-created-users")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) =>
           eb("name", "in", ["Prisma SQLite Alice", "Prisma SQLite Bob"]),
         ),
@@ -277,7 +277,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const uow = queryEngine
       .createUnitOfWork("update-user-age")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
 
     const [users] = await uow.executeRetrieve();
 
@@ -290,7 +290,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[updatedUser]] = await queryEngine
       .createUnitOfWork("get-updated-user")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(updatedUser).toMatchObject({
@@ -309,7 +309,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[unchangedUser]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(unchangedUser).toMatchObject({
@@ -331,7 +331,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [totalCount] = await queryEngine
       .createUnitOfWork("count-all")
-      .findNew("users", (b) => b.whereIndex("primary").selectCount())
+      .find("users", (b) => b.whereIndex("primary").selectCount())
       .executeRetrieve();
 
     expect(totalCount).toBeGreaterThanOrEqual(3);
@@ -353,7 +353,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [firstPage] = await queryEngine
       .createUnitOfWork("first-page")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -374,7 +374,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [secondPage] = await queryEngine
       .createUnitOfWork("second-page")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -400,7 +400,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const all = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findNew("users", (b) =>
+        .find("users", (b) =>
           b
             .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
             .orderByIndex("name_id_idx", "asc"),
@@ -410,7 +410,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     })();
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .orderByIndex("name_id_idx", "asc")
@@ -421,7 +421,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     })();
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_id_idx", (eb) => eb("name", "=", nameValue))
           .after(firstPage.cursor!)
@@ -462,7 +462,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     }
 
     const firstPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .orderByIndex("name_idx", "asc")
@@ -477,7 +477,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
     const secondPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
           .after(firstPage.cursor!)
@@ -493,7 +493,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     expect(secondPage.cursor).toBeUndefined();
 
     const emptyPage = await (async () => {
-      const uow = queryEngine.createUnitOfWork("read").findWithCursorNew("users", (b) =>
+      const uow = queryEngine.createUnitOfWork("read").findWithCursor("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "NoMatchPrefix"))
           .orderByIndex("name_idx", "asc")
@@ -527,7 +527,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       })();
     }
 
-    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursorNew("users", (b) =>
+    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursor("users", (b) =>
       b
         .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
         .orderByIndex("name_idx", "asc")
@@ -561,12 +561,12 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const view1 = uow
       .forSchema(testSchema)
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "Prisma Multi Schema User"))
           .select(["id", "name"]),
       )
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b
           .whereIndex("name_idx", (eb) => eb("name", "starts with", "Prisma Multi Schema User"))
           .select(["name", "age"]),
@@ -574,7 +574,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const view2 = uow
       .forSchema(schema2)
-      .findNew("products", (b) => b.whereIndex("primary").select(["name", "price"]));
+      .find("products", (b) => b.whereIndex("primary").select(["name", "price"]));
 
     await uow.executeRetrieve();
 
@@ -631,7 +631,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [usersResult] = await queryEngine
       .createUnitOfWork("get-created-user")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma SQLite Email User")),
       )
       .executeRetrieve();
@@ -650,7 +650,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const uow = queryEngine
       .createUnitOfWork("test-joins")
-      .findNew("emails", (b) =>
+      .find("emails", (b) =>
         b
           .whereIndex("user_emails", (eb) => eb("user_id", "=", createdUser.id))
           .joinOne("user", "users", (builder) =>
@@ -692,7 +692,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-external-id")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma SQLite External ID User")),
       )
       .executeRetrieve();
@@ -709,7 +709,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[email]] = await queryEngine
       .createUnitOfWork("get-email-by-external-id")
-      .findNew("emails", (b) =>
+      .find("emails", (b) =>
         b
           .whereIndex("unique_email", (eb) =>
             eb("email", "=", "prisma-sqlite-external-id@example.com"),
@@ -760,12 +760,12 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("verify-user")
-      .findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
       .executeRetrieve();
 
     const [[post]] = await queryEngine
       .createUnitOfWork("verify-post")
-      .findNew("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
+      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
       .executeRetrieve();
 
     expect(user.name).toBe("Prisma SQLite UOW User");
@@ -784,7 +784,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[author]] = await queryEngine
       .createUnitOfWork("get-author")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma SQLite Author")),
       )
       .executeRetrieve();
@@ -799,9 +799,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[post]] = await queryEngine
       .createUnitOfWork("get-post")
-      .findNew("posts", (b) =>
-        b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)),
-      )
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)))
       .executeRetrieve();
 
     const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
@@ -810,7 +808,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[commenter]] = await queryEngine
       .createUnitOfWork("get-commenter")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma SQLite Commenter")),
       )
       .executeRetrieve();
@@ -824,7 +822,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     await createCommentUow.executeMutations();
     const createdCommentId = createCommentUow.getCreatedIds()[0]!;
 
-    const uow = queryEngine.createUnitOfWork("test-complex-joins").findNew("comments", (b) =>
+    const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
       b
         .whereIndex("primary", (eb) => eb("id", "=", createdCommentId))
         .joinOne("post", "posts", (postBuilder) =>
@@ -911,7 +909,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const user1 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
         );
       await uow.executeRetrieve();
@@ -920,7 +918,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const user2 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
         );
       await uow.executeRetrieve();
@@ -929,7 +927,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const user3 = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) =>
+        .findFirst("users", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
         );
       await uow.executeRetrieve();
@@ -989,7 +987,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const customIdUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", customId)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -1017,7 +1015,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event-for-timestamp")
-      .findNew("events", (b) =>
+      .find("events", (b) =>
         b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Timestamp Event SQLite")),
       )
       .executeRetrieve();
@@ -1067,7 +1065,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-execute-uow")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma Execute UOW User")),
       )
       .executeRetrieve();
@@ -1077,7 +1075,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const getUserById = (userId: typeof user.id) => {
       return createServiceTxBuilder(testSchema, currentUow!)
         .retrieve((uow) =>
-          uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
         .transformRetrieve(([users]) => users[0] ?? null)
         .build();
@@ -1113,7 +1111,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     const updatedUser = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id)));
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id)));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
@@ -1140,7 +1138,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-version-conflict")
-      .findNew("users", (b) =>
+      .find("users", (b) =>
         b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma Version Conflict User")),
       )
       .executeRetrieve();
@@ -1162,7 +1160,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [posts] = await queryEngine
       .createUnitOfWork("get-posts-for-version-conflict")
-      .findNew("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
     const conflictPosts = posts.filter((p) => p.title === "Prisma Should Not Be Created");
@@ -1187,7 +1185,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-event")
-      .findNew("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
+      .find("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
       .executeRetrieve();
 
     expect(event).toBeDefined();
@@ -1223,7 +1221,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [[event]] = await queryEngine
       .createUnitOfWork("get-utc-event")
-      .findNew("events", (b) =>
+      .find("events", (b) =>
         b.whereIndex("events_name_idx", (eb) => eb("name", "=", "UTC Timestamp")),
       )
       .executeRetrieve();
@@ -1250,7 +1248,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
       const [[event]] = await queryEngine
         .createUnitOfWork("get-safe-bigint-event")
-        .findNew("events", (b) =>
+        .find("events", (b) =>
           b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Safe BigInt")),
         )
         .executeRetrieve();
@@ -1279,7 +1277,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       await expect(
         queryEngine
           .createUnitOfWork("get-unsafe-event")
-          .findNew("events", (b) =>
+          .find("events", (b) =>
             b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Unsafe BigInt")),
           )
           .executeRetrieve(),

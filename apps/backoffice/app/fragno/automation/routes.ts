@@ -175,7 +175,9 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         handler: async function (_, { json }) {
           const rows = await this.handlerTx()
             .retrieve(({ forSchema }) =>
-              forSchema(automationFragmentSchema).find("identity_binding"),
+              forSchema(automationFragmentSchema).find("identity_binding", (b) =>
+                b.whereIndex("primary"),
+              ),
             )
             .transformRetrieve(([identityBindings]) => identityBindings)
             .execute();

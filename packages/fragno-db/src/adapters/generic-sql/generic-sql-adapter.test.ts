@@ -50,7 +50,7 @@ describe("SqlAdapter", () => {
     const product = await (async () => {
       const uow = queryEngine
         .createUnitOfWork("read")
-        .findFirstNew("products", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "test")));
+        .findFirst("products", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "test")));
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();

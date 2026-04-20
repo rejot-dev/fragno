@@ -36,7 +36,8 @@ export const commentSchema = schema("comment", (s) => {
             .defaultTo((b) => b.now())
         )
         .createIndex("idx_user", ["userId"])
-        .createIndex("idx_post", ["postId"]);
+        .createIndex("idx_post", ["postId"])
+        .createIndex("idx_created", ["createdAt"]);
     })
     .addTable("user", (t) => {
       return t
@@ -72,10 +73,12 @@ const uow = orm.createUnitOfWork("read-comments").find(
         eb("postId", "=", postId)
       )
       .orderByIndex("idx_created", "desc")
-      .join((j) =>
-        j.author((authorBuilder) =>
-          authorBuilder.select(["name"])
-        )
+      .joinOne("author", "user", (authorBuilder) =>
+        authorBuilder
+          .onIndex("primary", (eb) =>
+            eb("id", "=", eb.parent("userId"))
+          )
+          .select(["name"])
       )
       .pageSize(20)
 );

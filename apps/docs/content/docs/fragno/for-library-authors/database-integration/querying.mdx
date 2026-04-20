@@ -169,17 +169,24 @@ const [users] = await this.handlerTx()
 
 ### Joins
 
-Load related data using joins:
+Load related data using explicit joins:
 
 ```typescript
 const [postsWithAuthor] = await this.handlerTx()
   .retrieve(({ forSchema }) =>
-    forSchema(mySchema).find("posts", (b) => b.whereIndex("primary").join((j) => j.author())),
+    forSchema(mySchema).find("posts", (b) =>
+      b
+        .whereIndex("primary")
+        .joinOne("author", "users", (author) =>
+          author.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))).select(["name"]),
+        ),
+    ),
   )
   .execute();
 ```
 
-Note: We currently only support simple left joins.
+Use `joinOne(...)` for nullable child objects and `joinMany(...)` for child arrays. Missing children
+resolve to `null` / `[]`.
 
 ## Creating Records
 

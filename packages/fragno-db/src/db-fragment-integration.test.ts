@@ -66,7 +66,7 @@ describe.sequential("Database Fragment Integration", () => {
         getUserById(userId: FragnoId | string) {
           return this.serviceTx(usersSchema)
             .retrieve((uow) =>
-              uow.findNew("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+              uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
             )
             .transformRetrieve(
               ([users]): { id: FragnoId; name: string; email: string } | null => users[0] ?? null,
@@ -155,7 +155,7 @@ describe.sequential("Database Fragment Integration", () => {
         getOrdersByUser(userExternalId: string) {
           return this.serviceTx(ordersSchema)
             .retrieve((uow) =>
-              uow.findNew("orders", (b) =>
+              uow.find("orders", (b) =>
                 b.whereIndex("orders_user_idx", (eb) =>
                   eb("user_external_id", "=", userExternalId),
                 ),
@@ -419,7 +419,7 @@ describe.sequential("Database Fragment Integration", () => {
       return await this.handlerTx()
         // Add a retrieve op so retry is allowed for the forced conflict below.
         .retrieve(({ forSchema }) =>
-          forSchema(usersSchema).findNew("users", (b) => b.whereIndex("primary")),
+          forSchema(usersSchema).find("users", (b) => b.whereIndex("primary")),
         )
         .mutate(({ forSchema, idempotencyKey, currentAttempt }) => {
           if (currentAttempt === 0) {
@@ -482,7 +482,7 @@ describe.sequential("Database Fragment Integration", () => {
       const result = await usersFragment.inContext(async function () {
         return await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(usersSchema).findNew("users", (b) =>
+            forSchema(usersSchema).find("users", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", userId)),
             ),
           )
@@ -528,7 +528,7 @@ describe.sequential("Database Fragment Integration", () => {
       const result = await ordersFragment.inContext(async function () {
         return await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(ordersSchema).findNew("orders", (b) =>
+            forSchema(ordersSchema).find("orders", (b) =>
               b.whereIndex("orders_user_idx", (eb) => eb("user_external_id", "=", userId)),
             ),
           )
