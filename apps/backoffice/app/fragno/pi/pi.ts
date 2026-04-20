@@ -19,25 +19,17 @@ import { getModel } from "@mariozechner/pi-ai";
 
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
+import type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
 import {
-  createRouteBackedAutomationsBashRuntime,
-  type AutomationsBashRuntime,
-} from "../bash-runtime/automations-bash-runtime";
-import { createInteractiveBashHost } from "../bash-runtime/bash-host";
-import { createOtpBashRuntime, type OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
-import { createPiRouteBashRuntime, type PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
-import {
-  createResendRouteBashRuntime,
-  type ResendBashRuntime,
-} from "../bash-runtime/resend-bash-runtime";
-import {
-  createReson8RouteBashRuntime,
-  type Reson8BashRuntime,
-} from "../bash-runtime/reson8-bash-runtime";
-import {
-  createTelegramBashRuntime,
-  type TelegramBashRuntime,
-} from "../bash-runtime/telegram-bash-runtime";
+  createInteractiveBashHost,
+  createRouteBackedInteractiveBashContext,
+  type InteractiveBashCommandContext,
+} from "../bash-runtime/bash-host";
+import type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
+import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
+import type { ResendBashRuntime } from "../bash-runtime/resend-bash-runtime";
+import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
+import type { TelegramBashRuntime } from "../bash-runtime/telegram-bash-runtime";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
@@ -55,8 +47,7 @@ export type PiRuntimeFragments = {
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
-export type PiBashCommandContext = {
-  automation: null;
+export type PiBashCommandContext = InteractiveBashCommandContext & {
   automations: {
     runtime: AutomationsBashRuntime;
   };
@@ -284,27 +275,7 @@ export const createPiBashCommandContext = ({
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): PiBashCommandContext => ({
-  automation: null,
-  automations: {
-    runtime: createRouteBackedAutomationsBashRuntime({ env, orgId }),
-  },
-  otp: {
-    runtime: createOtpBashRuntime({ env, orgId }),
-  },
-  pi: {
-    runtime: createPiRouteBashRuntime({ env, orgId }),
-  },
-  reson8: {
-    runtime: createReson8RouteBashRuntime({ env, orgId }),
-  },
-  resend: {
-    runtime: createResendRouteBashRuntime({ env, orgId }),
-  },
-  telegram: {
-    runtime: createTelegramBashRuntime({ env, orgId }),
-  },
-});
+}): PiBashCommandContext => createRouteBackedInteractiveBashContext({ env, orgId });
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;

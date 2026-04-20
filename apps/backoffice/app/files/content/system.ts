@@ -22,8 +22,8 @@ written to text files in the same directory.
 
 When the user asks you to create an automation, you should create a new script and update
 bindings.json. You can search past events for guidance and read pre-existing scripts for examples.
-Automations can be ran manually (by you or the user) with the \`automations.script.run\` command (
-see below).
+Automation scripts can be tested manually (by you or the user) with the \`scripts.run\` command
+(see below).
 
 Some connections also provide file-oriented views of their data:
 
@@ -34,7 +34,7 @@ Some connections also provide file-oriented views of their data:
 Automation scripts run with a tiny Bash runtime built from the files in app/fragno/bash-runtime/*.
 The host exposes command families only when the matching runtime context is configured.
 
-### automations.* (Automation identity and script tools)
+### automations.* and scripts.run (Automation identity tools and interactive script testing)
 
 - automations.identity.lookup-binding --source <source> --key <key>
   - Resolves the saved identity binding for a source/key.
@@ -46,11 +46,13 @@ The host exposes command families only when the matching runtime context is conf
   - Creates or updates a binding record.
   - Normalizes and retries on duplicate insert conflicts to handle concurrent linking.
 
-- automations.script.run --script <path> --event <path>
-  - Runs an automation script against an event loaded from the filesystem.
+- scripts.run --script <path> --event <path>
+  - Runs an automation script against an event fixture from an interactive shell context.
+  - Interactive-only: it is intended for manual testing, not nested automation execution or simulation.
   - --script: path to the script (relative to /workspace/automations/ or absolute).
   - --event: path to an event JSON file (e.g. /events/2026-03-25/...json).
   - The sub-execution gets its own context and /context/event.json populated from the event file.
+  - The event inherits the current interactive orgId when omitted; mismatched fixture orgIds are rejected.
   - Returns the execution result including exit code, stdout, stderr, and command calls.
 
 ### otp.* (Identity claim tool)

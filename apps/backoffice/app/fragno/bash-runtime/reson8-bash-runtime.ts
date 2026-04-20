@@ -29,6 +29,12 @@ import type {
   ParsedCommand,
 } from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
+import {
+  NotConfiguredError,
+  createOrganisationNotConfiguredMessage,
+  isSuccessStatus,
+  throwOnRouteRuntimeError,
+} from "./runtime-errors";
 
 const RESON8_COMMAND_NAMES = ["reson8.prerecorded.transcribe"] as const;
 
@@ -345,51 +351,6 @@ export const createReson8BashCommands = (input: BashCommandFactoryInput) => {
   ];
 };
 
-const isSuccessStatus = (status: number) => status >= 200 && status < 300;
-
-const getJsonErrorField = (value: unknown, field: "message" | "code") => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const resolved = (value as Record<string, unknown>)[field];
-  return typeof resolved === "string" && resolved.trim() ? resolved : null;
-};
-
-const throwOnRouteError = (
-  response:
-    | ({ type: string; status: number } & {
-        type: "error";
-        error: { message: string; code?: string };
-      })
-    | ({ type: string; status: number } & { type: "json"; data: unknown })
-    | { type: string; status: number },
-  label: string,
-): never => {
-  const code =
-    "error" in response
-      ? getJsonErrorField(response.error, "code")
-      : "data" in response
-        ? getJsonErrorField(response.data, "code")
-        : null;
-  const message =
-    "error" in response
-      ? getJsonErrorField(response.error, "message")
-      : "data" in response
-        ? getJsonErrorField(response.data, "message")
-        : null;
-
-  if (response.status === 400 && code === "NOT_CONFIGURED") {
-    throw new NotConfiguredError(message ?? "Reson8 is not configured.");
-  }
-
-  if (message) {
-    throw new Error(`Reson8 fragment returned ${response.status}: ${message}`);
-  }
-
-  throw new Error(`Reson8 fragment returned ${response.status} (${label})`);
-};
-
 const createReson8RouteCaller = (options: CreateRouteBackedReson8RuntimeOptions) => {
   return createRouteCaller<Reson8Fragment>({
     baseUrl: options.baseUrl,
@@ -426,7 +387,11 @@ export const createRouteBackedReson8Runtime = (
         return response.data as Reson8PrerecordedTranscription;
       }
 
-      return throwOnRouteError(response, "reson8.prerecorded.transcribe");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Reson8 fragment",
+        label: "reson8.prerecorded.transcribe",
+        notConfiguredMessage: RESON8_NOT_CONFIGURED,
+      });
     },
   };
 };
@@ -445,7 +410,7 @@ export const createReson8RouteBashRuntime = ({
   });
 };
 
-const RESON8_NOT_CONFIGURED = "Reson8 is not configured for this organisation.";
+const RESON8_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Reson8");
 
 export const createUnavailableReson8BashRuntime = (
   message = RESON8_NOT_CONFIGURED,
@@ -455,9 +420,4 @@ export const createUnavailableReson8BashRuntime = (
   },
 });
 
-export class NotConfiguredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotConfiguredError";
-  }
-}
+export { NotConfiguredError };

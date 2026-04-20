@@ -427,7 +427,7 @@ const scenarioCommandMocksSchema = z
   .object({
     "automations.identity.lookup-binding": commandMockSchema.optional(),
     "automations.identity.bind-actor": commandMockSchema.optional(),
-    "automations.script.run": commandMockSchema.optional(),
+    "scripts.run": commandMockSchema.optional(),
     "otp.identity.create-claim": commandMockSchema.optional(),
     "event.emit": commandMockSchema.optional(),
     "pi.session.create": commandMockSchema.optional(),
@@ -1156,9 +1156,9 @@ const executeBuiltinCommand = async (
         data: clone(result),
       };
     }
-    case "automations.script.run": {
+    case "scripts.run": {
       throw new Error(
-        "automations.script.run is not supported in simulation. Use commandMocks to mock its result.",
+        "scripts.run is interactive-only and is not supported in simulation. Use commandMocks to mock its result.",
       );
     }
   }

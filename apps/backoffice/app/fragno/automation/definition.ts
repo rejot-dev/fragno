@@ -3,7 +3,7 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { InstanceStatus, WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { createScriptRunnerRuntime, executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
+import { executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
 
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
 import {
@@ -102,18 +102,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           event: payload,
           idempotencyKey: this.idempotencyKey,
         });
-        const scriptRunner = createScriptRunnerRuntime({
-          fileSystemConfig: { automationFileSystem: masterFs },
-          env: config.env,
-          createBashRuntime: (event) =>
-            createAutomationBashRuntime({
-              hookContext: this,
-              env: config.env,
-              event,
-            }),
-          createPiAutomationContext: config.createPiAutomationContext,
-        });
-
         for (const binding of matchingBindings) {
           if (binding.scriptLoadError) {
             throw new Error(binding.scriptLoadError);
@@ -140,7 +128,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               runtime,
               env: config.env,
               pi: pi ?? null,
-              scriptRunner,
             }),
           });
 

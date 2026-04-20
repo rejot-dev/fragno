@@ -74,7 +74,7 @@ const HELP: {
   },
   scriptRun: {
     summary:
-      "automations.script.run executes an automation script against an event loaded from the filesystem.",
+      "scripts.run executes a script against an event fixture from an interactive shell context for manual testing.",
     options: [
       {
         name: "script",
@@ -89,12 +89,13 @@ const HELP: {
         required: true,
         valueRequired: true,
         valueName: "path",
-        description: "Path to an event JSON file (e.g. /events/2026-03-25/...json)",
+        description:
+          "Path to an event JSON file (e.g. /events/2026-03-25/...json). The current interactive orgId is injected when the fixture omits orgId; mismatches are rejected",
       },
     ],
     examples: [
-      "automations.script.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
-      "automations.script.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
+      "scripts.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
+      "scripts.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
     ],
   },
 };
@@ -135,14 +136,12 @@ const parseAutomationsIdentityBindActor = (
   };
 };
 
-const parseAutomationsScriptRun = (
-  args: string[],
-): ParsedCommandByName["automations.script.run"] => {
+const parseAutomationsScriptRun = (args: string[]): ParsedCommandByName["scripts.run"] => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.script.run");
+  assertNoPositionals(parsed, "scripts.run");
 
   return {
-    name: "automations.script.run",
+    name: "scripts.run",
     args: {
       script: readStringOption(parsed, "script", true)!,
       event: readStringOption(parsed, "event", true)!,
@@ -163,8 +162,8 @@ export const automationsCommandSpecs = {
     help: HELP.bindActor,
     parse: parseAutomationsIdentityBindActor,
   },
-  "automations.script.run": {
-    name: "automations.script.run",
+  "scripts.run": {
+    name: "scripts.run",
     help: HELP.scriptRun,
     parse: parseAutomationsScriptRun,
   },
@@ -177,5 +176,5 @@ export const automationsCommandSpecs = {
     "automations.identity.bind-actor",
     IdentityBindActorArgs
   >;
-  "automations.script.run": AutomationCommandSpec<"automations.script.run", ScriptRunArgs>;
+  "scripts.run": AutomationCommandSpec<"scripts.run", ScriptRunArgs>;
 };

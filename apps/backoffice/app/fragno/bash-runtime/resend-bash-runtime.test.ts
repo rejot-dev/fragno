@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "./bash-host";
-import { createRouteBackedResendRuntime, type ResendBashRuntime } from "./resend-bash-runtime";
+import {
+  NotConfiguredError,
+  createRouteBackedResendRuntime,
+  type ResendBashRuntime,
+} from "./resend-bash-runtime";
 
 const now = new Date("2026-01-02T12:00:00.000Z");
 
@@ -518,5 +522,20 @@ describe("resend bash runtime", () => {
         },
       },
     ]);
+  });
+
+  it("turns NOT_CONFIGURED route errors into a shared typed error", async () => {
+    const runtime = createRouteBackedResendRuntime({
+      baseUrl: "https://resend.do",
+      fetch: async () => Response.json({ code: "NOT_CONFIGURED" }, { status: 400 }),
+    });
+
+    await expect(runtime.listThreads()).rejects.toEqual(
+      expect.objectContaining({
+        name: "NotConfiguredError",
+        message: "Resend is not configured for this organisation.",
+      }),
+    );
+    await expect(runtime.listThreads()).rejects.toBeInstanceOf(NotConfiguredError);
   });
 });

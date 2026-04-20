@@ -11,13 +11,7 @@ import {
 } from "@/fragno/automation/catalog";
 import type { ScriptRunArgs } from "@/fragno/automation/commands/types";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
-import {
-  createAutomationBashCommandContext,
-  type AutomationBashHostContext,
-  type AutomationBashRuntime,
-  type AutomationPiBashContext,
-  type BashAutomationRunResult,
-} from "@/fragno/automation/engine/bash";
+import type { BashAutomationRunResult } from "@/fragno/automation/engine/bash";
 
 import type { BashAutomationCommandResult } from "../automation/commands/types";
 import {
@@ -36,17 +30,24 @@ import {
   createOtpBashRuntime,
   type RegisteredOtpBashCommandContext,
 } from "./otp-bash-runtime";
-import { createPiBashCommands, type RegisteredPiBashCommandContext } from "./pi-bash-runtime";
+import {
+  createPiBashCommands,
+  createPiRouteBashRuntime,
+  type RegisteredPiBashCommandContext,
+} from "./pi-bash-runtime";
 import {
   createResendBashCommands,
+  createResendRouteBashRuntime,
   type RegisteredResendBashCommandContext,
 } from "./resend-bash-runtime";
 import {
   createReson8BashCommands,
+  createReson8RouteBashRuntime,
   type RegisteredReson8BashCommandContext,
 } from "./reson8-bash-runtime";
 import {
   createTelegramBashCommands,
+  createTelegramBashRuntime,
   type RegisteredTelegramBashCommandContext,
 } from "./telegram-bash-runtime";
 
@@ -74,6 +75,16 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   telegram: null,
 };
 
+export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> & {
+  automation: null;
+  automations: NonNullable<BashHostContext["automations"]>;
+  otp: NonNullable<BashHostContext["otp"]>;
+  pi: NonNullable<BashHostContext["pi"]>;
+  reson8: NonNullable<BashHostContext["reson8"]>;
+  resend: NonNullable<BashHostContext["resend"]>;
+  telegram: NonNullable<BashHostContext["telegram"]>;
+};
+
 type BashOptions = NonNullable<ConstructorParameters<typeof Bash>[0]>;
 
 type CreateBashHostInput = {
@@ -97,6 +108,90 @@ export type BashCommandFactoryInput = {
   context: BashHostContext;
 };
 
+type BashHostModuleId = keyof BashHostContext;
+type BashHostCustomCommand = ReturnType<typeof createAutomationsBashCommands>[number];
+type BashHostModule = {
+  id: BashHostModuleId;
+  selectContext: (context: BashHostContext) => BashHostContext[BashHostModuleId];
+  createCommands: (input: BashCommandFactoryInput) => BashHostCustomCommand[];
+};
+
+const BASH_HOST_MODULES: BashHostModule[] = [
+  {
+    id: "automations",
+    selectContext: (context) => context.automations,
+    createCommands: createAutomationsBashCommands,
+  },
+  {
+    id: "otp",
+    selectContext: (context) => context.otp,
+    createCommands: createOtpBashCommands,
+  },
+  {
+    id: "automation",
+    selectContext: (context) => context.automation,
+    createCommands: createEventBashCommands,
+  },
+  {
+    id: "pi",
+    selectContext: (context) => context.pi,
+    createCommands: createPiBashCommands,
+  },
+  {
+    id: "reson8",
+    selectContext: (context) => context.reson8,
+    createCommands: createReson8BashCommands,
+  },
+  {
+    id: "resend",
+    selectContext: (context) => context.resend,
+    createCommands: createResendBashCommands,
+  },
+  {
+    id: "telegram",
+    selectContext: (context) => context.telegram,
+    createCommands: createTelegramBashCommands,
+  },
+];
+
+const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
+  return BASH_HOST_MODULES.flatMap((module) => {
+    if (!module.selectContext(input.context)) {
+      return [];
+    }
+
+    return module.createCommands(input);
+  });
+};
+
+export const createRouteBackedInteractiveBashContext = ({
+  env,
+  orgId,
+}: {
+  env: CloudflareEnv;
+  orgId: string;
+}): InteractiveBashCommandContext => ({
+  automation: null,
+  automations: {
+    runtime: createRouteBackedAutomationsBashRuntime({ env, orgId }),
+  },
+  otp: {
+    runtime: createOtpBashRuntime({ env, orgId }),
+  },
+  pi: {
+    runtime: createPiRouteBashRuntime({ env, orgId }),
+  },
+  reson8: {
+    runtime: createReson8RouteBashRuntime({ env, orgId }),
+  },
+  resend: {
+    runtime: createResendRouteBashRuntime({ env, orgId }),
+  },
+  telegram: {
+    runtime: createTelegramBashRuntime({ env, orgId }),
+  },
+});
+
 export const createBashHost = (input: CreateBashHostInput): BashHost => {
   const commandCallsResult = input.commandCallsResult ?? [];
   const commandInput: BashCommandFactoryInput = {
@@ -109,15 +204,7 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
     bash: new Bash({
       fs: input.fs,
       env: input.env,
-      customCommands: [
-        ...createAutomationsBashCommands(commandInput),
-        ...createOtpBashCommands(commandInput),
-        ...createEventBashCommands(commandInput),
-        ...createPiBashCommands(commandInput),
-        ...createReson8BashCommands(commandInput),
-        ...createResendBashCommands(commandInput),
-        ...createTelegramBashCommands(commandInput),
-      ],
+      customCommands: createRegisteredBashCommands(commandInput),
     }),
     sessionId: input.sessionId,
     context: input.context,
@@ -126,7 +213,7 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
 };
 
 // ---------------------------------------------------------------------------
-// Automation bash execution (mounts /context temporarily on the master FS)
+// Automation bash execution (isolates per-run /context and /dev mounts)
 // ---------------------------------------------------------------------------
 
 const TEXT_ENCODER = new TextEncoder();
@@ -220,53 +307,60 @@ const createDevMount = (): ResolvedFileMount => {
   };
 };
 
+type ExecutableAutomationBashHostContext = BashHostContext & {
+  automation: NonNullable<BashHostContext["automation"]>;
+};
+
+const createExecutionFileSystem = ({
+  masterFs,
+  eventJson,
+}: {
+  masterFs: MasterFileSystem;
+  eventJson: string;
+}): MasterFileSystem => {
+  const baseMounts = masterFs.mounts.filter((mount) => mount.mountPoint !== "/context");
+  const executionFs = new MasterFileSystem({ mounts: [...baseMounts] });
+
+  executionFs.mount(createContextMount(eventJson));
+
+  if (!baseMounts.some((mount) => mount.mountPoint === "/dev")) {
+    executionFs.mount(createDevMount());
+  }
+
+  return executionFs;
+};
+
 export const executeBashAutomation = async ({
   script,
   context,
   masterFs,
 }: {
   script: string;
-  context: AutomationBashHostContext;
+  context: ExecutableAutomationBashHostContext;
   masterFs: MasterFileSystem;
 }): Promise<BashAutomationRunResult> => {
   const eventJson = JSON.stringify(context.automation.event);
-  const tempMounts: string[] = [];
+  const executionFs = createExecutionFileSystem({ masterFs, eventJson });
 
-  const mountIfMissing = (mount: ResolvedFileMount) => {
-    if (!masterFs.mounts.some((m) => m.mountPoint === mount.mountPoint)) {
-      masterFs.mount(mount);
-      tempMounts.push(mount.mountPoint);
-    }
+  const { bash, commandCallsResult } = createBashHost({
+    fs: executionFs,
+    env: Object.fromEntries(
+      Object.entries(context.automation.bashEnv).filter((entry): entry is [string, string] => {
+        return typeof entry[1] === "string";
+      }),
+    ),
+    context,
+  });
+  const result = await bash.exec(script);
+
+  return {
+    eventId: context.automation.event.id,
+    scriptId: context.automation.binding.scriptId,
+    exitCode: result.exitCode ?? 0,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    commandCalls: commandCallsResult,
   };
-
-  mountIfMissing(createContextMount(eventJson));
-  mountIfMissing(createDevMount());
-
-  try {
-    const { bash, commandCallsResult } = createBashHost({
-      fs: masterFs,
-      env: Object.fromEntries(
-        Object.entries(context.automation.bashEnv).filter((entry): entry is [string, string] => {
-          return typeof entry[1] === "string";
-        }),
-      ),
-      context,
-    });
-    const result = await bash.exec(script);
-
-    return {
-      eventId: context.automation.event.id,
-      scriptId: context.automation.binding.scriptId,
-      exitCode: result.exitCode ?? 0,
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-      commandCalls: commandCallsResult,
-    };
-  } finally {
-    for (const mp of tempMounts) {
-      masterFs.unmount(mp);
-    }
-  }
 };
 
 // ---------------------------------------------------------------------------
@@ -284,14 +378,79 @@ const resolveScriptPath = (scriptArg: string): string => {
 export type CreateScriptRunnerRuntimeOptions = {
   fileSystemConfig: AutomationFileSystemConfig;
   env?: CloudflareEnv;
-  createBashRuntime: (
-    event: AutomationEvent,
-  ) => AutomationBashRuntime | Promise<AutomationBashRuntime>;
-  createPiAutomationContext?: (input: {
-    event: AutomationEvent;
-    idempotencyKey: string;
-  }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+  parentOrgId: string;
+  parentContext: BashHostContext;
 };
+
+const normalizeInteractiveScriptRunEvent = ({
+  event,
+  eventPath,
+  parentOrgId,
+}: {
+  event: AutomationEvent;
+  eventPath: string;
+  parentOrgId: string;
+}): AutomationEvent => {
+  const normalizedParentOrgId = parentOrgId.trim();
+  const fixtureOrgId = event.orgId?.trim() || undefined;
+
+  if (!normalizedParentOrgId) {
+    throw new Error("scripts.run requires an interactive organisation id");
+  }
+
+  if (fixtureOrgId && fixtureOrgId !== normalizedParentOrgId) {
+    throw new Error(
+      `Event file '${eventPath}' has orgId '${fixtureOrgId}', but scripts.run is scoped to interactive org '${normalizedParentOrgId}'.`,
+    );
+  }
+
+  return {
+    ...event,
+    orgId: normalizedParentOrgId,
+  };
+};
+
+const createInteractiveScriptRunContext = ({
+  event,
+  absoluteScriptPath,
+  scriptArg,
+  idempotencyKey,
+  env,
+  parentContext,
+}: {
+  event: AutomationEvent;
+  absoluteScriptPath: string;
+  scriptArg: string;
+  idempotencyKey: string;
+  env?: CloudflareEnv;
+  parentContext: BashHostContext;
+}): ExecutableAutomationBashHostContext => ({
+  automation: {
+    event,
+    orgId: event.orgId?.trim() || undefined,
+    binding: {
+      source: event.source,
+      eventType: event.eventType,
+      scriptId: `manual:${absoluteScriptPath}`,
+      scriptKey: scriptArg,
+      scriptName: scriptArg,
+      scriptPath: absoluteScriptPath,
+    },
+    idempotencyKey,
+    bashEnv: {},
+    runtime: createEventBashRuntime({ env, event }),
+  },
+  automations: parentContext.automations
+    ? {
+        runtime: parentContext.automations.runtime,
+      }
+    : null,
+  otp: parentContext.otp,
+  pi: parentContext.pi,
+  reson8: parentContext.reson8,
+  resend: parentContext.resend,
+  telegram: parentContext.telegram,
+});
 
 export const createScriptRunnerRuntime = (
   options: CreateScriptRunnerRuntimeOptions,
@@ -328,6 +487,12 @@ export const createScriptRunnerRuntime = (
       );
     }
 
+    const normalizedEvent = normalizeInteractiveScriptRunEvent({
+      event: parsedEvent,
+      eventPath,
+      parentOrgId: options.parentOrgId,
+    });
+
     let scriptBody: string;
     try {
       scriptBody = await fileSystem.readFile(absoluteScriptPath, "utf-8");
@@ -337,26 +502,15 @@ export const createScriptRunnerRuntime = (
       );
     }
 
-    const runtime = await options.createBashRuntime(parsedEvent);
+    const idempotencyKey = `script-run:${normalizedEvent.id}:${crypto.randomUUID()}`;
 
-    const idempotencyKey = `script-run:${parsedEvent.id}:${crypto.randomUUID()}`;
-    const pi =
-      (await options.createPiAutomationContext?.({ event: parsedEvent, idempotencyKey })) ?? null;
-
-    const context = createAutomationBashCommandContext({
-      event: parsedEvent,
-      binding: {
-        source: parsedEvent.source,
-        eventType: parsedEvent.eventType,
-        scriptId: `manual:${absoluteScriptPath}`,
-        scriptKey: script,
-        scriptName: script,
-        scriptPath: absoluteScriptPath,
-      },
+    const context = createInteractiveScriptRunContext({
+      event: normalizedEvent,
+      absoluteScriptPath,
+      scriptArg: script,
       idempotencyKey,
-      runtime,
       env: options.env,
-      pi,
+      parentContext: options.parentContext,
     });
 
     if (!(fileSystem instanceof MasterFileSystem)) {
@@ -373,36 +527,45 @@ export const createScriptRunnerRuntime = (
 // Interactive bash host (dashboard / Pi sessions)
 // ---------------------------------------------------------------------------
 
+export type CreateInteractiveBashContextInput = {
+  fs: IFileSystem;
+  env: CloudflareEnv;
+  orgId: string;
+  context?: BashHostContext;
+};
+
+export const createInteractiveBashContext = (
+  input: CreateInteractiveBashContextInput,
+): BashHostContext => {
+  const baseContext =
+    input.context ??
+    createRouteBackedInteractiveBashContext({ env: input.env, orgId: input.orgId });
+
+  const scriptRunner = createScriptRunnerRuntime({
+    fileSystemConfig: { automationFileSystem: input.fs },
+    env: input.env,
+    parentOrgId: input.orgId,
+    parentContext: baseContext,
+  });
+
+  return {
+    ...baseContext,
+    automations: baseContext.automations ? { ...baseContext.automations, scriptRunner } : null,
+  };
+};
+
 export type CreateInteractiveBashHostInput = {
   fs: IFileSystem;
   env: CloudflareEnv;
   orgId: string;
   sessionId?: string;
-  context: BashHostContext;
+  context?: BashHostContext;
 };
 
 export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
-  const scriptRunner = createScriptRunnerRuntime({
-    fileSystemConfig: { automationFileSystem: input.fs },
-    env: input.env,
-    createBashRuntime: (event) => ({
-      ...createRouteBackedAutomationsBashRuntime({ env: input.env, orgId: input.orgId }),
-      ...createOtpBashRuntime({ env: input.env, orgId: input.orgId }),
-      ...createEventBashRuntime({
-        env: input.env,
-        event: { ...event, orgId: input.orgId },
-      }),
-    }),
-  });
-
   return createBashHost({
     fs: input.fs,
     sessionId: input.sessionId,
-    context: {
-      ...input.context,
-      automations: input.context.automations
-        ? { ...input.context.automations, scriptRunner }
-        : null,
-    },
+    context: createInteractiveBashContext(input),
   });
 };

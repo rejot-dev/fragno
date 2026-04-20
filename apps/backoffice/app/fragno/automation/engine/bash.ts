@@ -20,7 +20,6 @@ import {
   type AutomationIdentityBindingRecord,
   type AutomationIdentityStorageContext,
   type AutomationsBashRuntime,
-  type ScriptRunnerRuntime,
 } from "../../bash-runtime/automations-bash-runtime";
 import {
   createEventBashRuntime,
@@ -65,7 +64,6 @@ export type AutomationBashHostContext = {
   automation: AutomationBashCommandContext;
   automations: {
     runtime: AutomationsBashRuntime;
-    scriptRunner?: ScriptRunnerRuntime;
   };
   otp: {
     runtime: OtpBashRuntime;
@@ -134,7 +132,6 @@ export const createAutomationBashCommandContext = ({
   runtime,
   env,
   pi,
-  scriptRunner,
 }: {
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
@@ -142,7 +139,6 @@ export const createAutomationBashCommandContext = ({
   runtime: AutomationBashRuntime;
   env?: CloudflareEnv;
   pi: AutomationPiBashContext | null;
-  scriptRunner?: ScriptRunnerRuntime;
 }): AutomationBashHostContext => {
   const normalizedEvent: AutomationEvent = {
     ...event,
@@ -167,7 +163,6 @@ export const createAutomationBashCommandContext = ({
     },
     automations: {
       runtime,
-      ...(scriptRunner ? { scriptRunner } : {}),
     },
     otp: {
       runtime,

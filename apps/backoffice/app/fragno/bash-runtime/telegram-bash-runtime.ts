@@ -22,6 +22,12 @@ import type {
   ParsedCommand,
 } from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
+import {
+  createOrganisationNotConfiguredMessage,
+  isSuccessStatus,
+  throwOnHttpResponseError,
+  throwOnRouteRuntimeError,
+} from "./runtime-errors";
 
 const TELEGRAM_COMMAND_NAMES = [
   "telegram.file.get",
@@ -473,6 +479,10 @@ const createTelegramDownloadCommand = (
       const outputPath = readStringOption(parsed, "output");
 
       const response = await telegramContext.runtime.downloadFile({ fileId });
+      if (!response.ok) {
+        await throwOnTelegramDownloadError(response);
+      }
+
       const bytes = new Uint8Array(await response.arrayBuffer());
 
       if (outputPath) {
@@ -537,7 +547,7 @@ export const createTelegramBashCommands = (input: BashCommandFactoryInput) => {
   ];
 };
 
-const TELEGRAM_NOT_CONFIGURED = "Telegram is not configured for this organisation.";
+const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram");
 
 type CreateRouteBackedTelegramRuntimeOptions = {
   baseUrl: string;
@@ -561,49 +571,12 @@ const createTelegramRouteCaller = (
   });
 };
 
-const isSuccessStatus = (status: number) => status >= 200 && status < 300;
-
-const getJsonErrorField = (value: unknown, field: "message" | "code") => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const resolved = (value as Record<string, unknown>)[field];
-  return typeof resolved === "string" && resolved.trim() ? resolved : null;
-};
-
-const throwOnRouteError = (
-  response:
-    | ({ type: string; status: number } & {
-        type: "error";
-        error: { message: string; code: string };
-      })
-    | ({ type: string; status: number } & { type: "json"; data: unknown })
-    | { type: string; status: number },
-  label: string,
-): never => {
-  const code =
-    "error" in response
-      ? getJsonErrorField(response.error, "code")
-      : "data" in response
-        ? getJsonErrorField(response.data, "code")
-        : null;
-  const message =
-    "error" in response
-      ? getJsonErrorField(response.error, "message")
-      : "data" in response
-        ? getJsonErrorField(response.data, "message")
-        : null;
-
-  if (response.status === 400 && code === "NOT_CONFIGURED") {
-    throw new Error(message ?? "Telegram is not configured.");
-  }
-
-  if (message) {
-    throw new Error(`Telegram fragment returned ${response.status}: ${message}`);
-  }
-
-  throw new Error(`Telegram fragment returned ${response.status} (${label})`);
+const throwOnTelegramDownloadError = async (response: Response): Promise<never> => {
+  return throwOnHttpResponseError(response, {
+    runtimeLabel: "Telegram fragment",
+    label: "telegram.file.download",
+    notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
+  });
 };
 
 export const createRouteBackedTelegramBashRuntime = (
@@ -643,7 +616,11 @@ export const createRouteBackedTelegramBashRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "telegram.chat.send");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Telegram fragment",
+        label: "telegram.chat.send",
+        notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
+      });
     },
     sendChatAction: async ({ chatId, action }) => {
       const normalizedChatId = chatId.trim();
@@ -661,7 +638,11 @@ export const createRouteBackedTelegramBashRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "telegram.chat.actions");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Telegram fragment",
+        label: "telegram.chat.actions",
+        notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
+      });
     },
     editMessage: async ({ chatId, messageId, text, parseMode, disableWebPagePreview }) => {
       const normalizedChatId = chatId.trim();
@@ -688,7 +669,11 @@ export const createRouteBackedTelegramBashRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "telegram.message.edit");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Telegram fragment",
+        label: "telegram.message.edit",
+        notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
+      });
     },
   };
 };

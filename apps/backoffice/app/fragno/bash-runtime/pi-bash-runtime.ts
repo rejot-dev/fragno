@@ -23,6 +23,7 @@ import type {
   ParsedCommand,
 } from "../automation/commands/types";
 import type { BashCommandFactoryInput } from "./bash-host";
+import { isSuccessStatus, throwOnRouteRuntimeError } from "./runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiFragment>;
 
@@ -448,38 +449,6 @@ const createPiRouteCaller = (env: CloudflareEnv, orgId: string) => {
   });
 };
 
-const isSuccessStatus = (status: number) => status >= 200 && status < 300;
-
-const getJsonErrorMessage = (data: unknown) => {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
-  const message = (data as { message?: unknown }).message;
-  return typeof message === "string" && message.trim() ? message : null;
-};
-
-const throwOnRouteError = (
-  response:
-    | ({ type: string; status: number } & { type: "error"; error: { message: string } })
-    | ({ type: string; status: number } & { type: "json"; data: unknown })
-    | { type: string; status: number },
-  label: string,
-): never => {
-  if (response.type === "error" && "error" in response) {
-    throw new Error(`Pi fragment returned ${response.status}: ${response.error.message}`);
-  }
-
-  if (response.type === "json" && "data" in response) {
-    const message = getJsonErrorMessage(response.data);
-    if (message) {
-      throw new Error(`Pi fragment returned ${response.status}: ${message}`);
-    }
-  }
-
-  throw new Error(`Pi fragment returned ${response.status} (${label})`);
-};
-
 const isTerminalTurnFrame = (
   message: PiActiveSessionProtocolMessage,
 ): message is PiSessionTurnTerminalFrame => {
@@ -559,7 +528,10 @@ export const createPiRouteBashRuntime = ({
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "pi.session.create");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Pi fragment",
+        label: "pi.session.create",
+      });
     },
     getSession: async ({ sessionId, events, trace, summaries }) => {
       const query: Record<string, string> = {};
@@ -580,7 +552,10 @@ export const createPiRouteBashRuntime = ({
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "pi.session.get");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Pi fragment",
+        label: "pi.session.get",
+      });
     },
     listSessions: async ({ limit }) => {
       const query: Record<string, string> = {};
@@ -592,7 +567,10 @@ export const createPiRouteBashRuntime = ({
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnRouteError(response, "pi.session.list");
+      return throwOnRouteRuntimeError(response, {
+        runtimeLabel: "Pi fragment",
+        label: "pi.session.list",
+      });
     },
     runTurn: async ({ sessionId, text, steeringMode }) => {
       const normalizedSessionId = sessionId.trim();
@@ -609,7 +587,10 @@ export const createPiRouteBashRuntime = ({
         pathParams: { sessionId: normalizedSessionId },
       });
       if (!isSuccessStatus(activeRoute.status)) {
-        return throwOnRouteError(activeRoute, "pi.session.turn active");
+        return throwOnRouteRuntimeError(activeRoute, {
+          runtimeLabel: "Pi fragment",
+          label: "pi.session.turn active",
+        });
       }
       if (activeRoute.type !== "jsonStream") {
         throw new Error(
@@ -626,7 +607,10 @@ export const createPiRouteBashRuntime = ({
           },
         });
         if (messageResponse.type !== "json" || !isSuccessStatus(messageResponse.status)) {
-          return throwOnRouteError(messageResponse, "pi.session.turn message");
+          return throwOnRouteRuntimeError(messageResponse, {
+            runtimeLabel: "Pi fragment",
+            label: "pi.session.turn message",
+          });
         }
 
         const { frames, terminalFrame } = await consumeActiveStreamUntilTerminal(
@@ -637,7 +621,10 @@ export const createPiRouteBashRuntime = ({
           pathParams: { sessionId: normalizedSessionId },
         });
         if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
-          return throwOnRouteError(detailResponse, "pi.session.turn detail");
+          return throwOnRouteRuntimeError(detailResponse, {
+            runtimeLabel: "Pi fragment",
+            label: "pi.session.turn detail",
+          });
         }
 
         const detail = detailResponse.data;
