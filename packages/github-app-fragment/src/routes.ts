@@ -296,7 +296,11 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
                     .whereIndex("idx_installation_repo_installation", (eb) =>
                       eb("installationId", "=", installationId),
                     )
-                    .join((jb) => jb.links()),
+                    .joinMany("links", "repo_link", (link) =>
+                      link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                        eb("repoId", "=", eb.parent("id")),
+                      ),
+                    ),
                 );
             })
             .execute();
@@ -356,7 +360,16 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
               return uow.find("installation_repo", (b) =>
                 b
                   .whereIndex("idx_installation_repo_full_name", (eb) => eb("fullName", "!=", ""))
-                  .join((jb) => jb.installation().links()),
+                  .joinOne("installation", "installation", (installation) =>
+                    installation.onIndex("primary", (eb) =>
+                      eb("id", "=", eb.parent("installationId")),
+                    ),
+                  )
+                  .joinMany("links", "repo_link", (link) =>
+                    link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                      eb("repoId", "=", eb.parent("id")),
+                    ),
+                  ),
               );
             })
             .execute();
@@ -435,7 +448,11 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
                     .whereIndex("idx_installation_repo_installation", (eb) =>
                       eb("installationId", "=", values.installationId),
                     )
-                    .join((jb) => jb.links()),
+                    .joinMany("links", "repo_link", (link) =>
+                      link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                        eb("repoId", "=", eb.parent("id")),
+                      ),
+                    ),
                 );
             })
             .execute();
@@ -553,7 +570,16 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
               return uow.find("installation_repo", (b) =>
                 b
                   .whereIndex("idx_installation_repo_full_name", (eb) => eb("fullName", "!=", ""))
-                  .join((jb) => jb.installation().links()),
+                  .joinOne("installation", "installation", (installation) =>
+                    installation.onIndex("primary", (eb) =>
+                      eb("id", "=", eb.parent("installationId")),
+                    ),
+                  )
+                  .joinMany("links", "repo_link", (link) =>
+                    link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                      eb("repoId", "=", eb.parent("id")),
+                    ),
+                  ),
               );
             })
             .execute();
@@ -658,7 +684,16 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
                   .whereIndex("idx_installation_repo_full_name", (eb) =>
                     eb("fullName", "=", fullName),
                   )
-                  .join((jb) => jb.installation().links()),
+                  .joinOne("installation", "installation", (installation) =>
+                    installation.onIndex("primary", (eb) =>
+                      eb("id", "=", eb.parent("installationId")),
+                    ),
+                  )
+                  .joinMany("links", "repo_link", (link) =>
+                    link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                      eb("repoId", "=", eb.parent("id")),
+                    ),
+                  ),
               );
             })
             .execute();
@@ -765,7 +800,16 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
                   .whereIndex("idx_installation_repo_full_name", (eb) =>
                     eb("fullName", "=", fullName),
                   )
-                  .join((jb) => jb.installation().links()),
+                  .joinOne("installation", "installation", (installation) =>
+                    installation.onIndex("primary", (eb) =>
+                      eb("id", "=", eb.parent("installationId")),
+                    ),
+                  )
+                  .joinMany("links", "repo_link", (link) =>
+                    link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                      eb("repoId", "=", eb.parent("id")),
+                    ),
+                  ),
               );
             })
             .execute();
@@ -864,7 +908,11 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
                     .whereIndex("idx_installation_repo_installation", (eb) =>
                       eb("installationId", "=", installationId),
                     )
-                    .join((jb) => jb.links()),
+                    .joinMany("links", "repo_link", (link) =>
+                      link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                        eb("repoId", "=", eb.parent("id")),
+                      ),
+                    ),
                 );
             })
             .execute();

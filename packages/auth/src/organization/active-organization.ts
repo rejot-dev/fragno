@@ -63,7 +63,11 @@ export function createActiveOrganizationServices() {
           uow.findFirst("session", (b) =>
             b
               .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-              .join((j) => j.sessionActiveOrganization()),
+              .joinOne("sessionActiveOrganization", "organization", (organization) =>
+                organization.onIndex("primary", (eb) =>
+                  eb("id", "=", eb.parent("activeOrganizationId")),
+                ),
+              ),
           ),
         )
         .transformRetrieve(([session]) => {

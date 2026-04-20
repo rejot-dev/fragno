@@ -971,7 +971,9 @@ export const createTelegramServices = (config: TelegramFragmentConfig) => {
             .find("chatMember", (b) =>
               b
                 .whereIndex("idx_chat_member_chat", (eb) => eb("chatId", "=", chatId))
-                .join((j) => j.chatMemberUser()),
+                .joinOne("chatMemberUser", "user", (user) =>
+                  user.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
+                ),
             ),
         )
         .transformRetrieve(([chat, members]) => ({
@@ -997,7 +999,9 @@ export const createTelegramServices = (config: TelegramFragmentConfig) => {
               .whereIndex("idx_message_chat_sent", (eb) => eb("chatId", "=", input.chatId))
               .orderByIndex("idx_message_chat_sent", input.order)
               .pageSize(input.pageSize)
-              .join((j) => j.messageAuthor());
+              .joinOne("messageAuthor", "user", (author) =>
+                author.onIndex("primary", (eb) => eb("id", "=", eb.parent("fromUserId"))),
+              );
 
             return input.cursor ? query.after(input.cursor) : query;
           }),

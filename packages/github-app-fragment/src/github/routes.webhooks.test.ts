@@ -358,7 +358,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation")
+          .find("installation", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
@@ -371,7 +371,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
@@ -393,7 +393,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(reposAfter).toHaveLength(1);
@@ -441,7 +441,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation")
+          .find("installation", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
@@ -452,7 +452,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(0);
@@ -526,7 +526,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
@@ -614,7 +614,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
@@ -713,7 +713,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       const byId = new Map(repos.map((repo) => [toExternalId(repo.id), repo]));
@@ -726,7 +726,7 @@ describe("github-app webhooks", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("repo_link")
+          .find("repo_link", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(links).toHaveLength(0);

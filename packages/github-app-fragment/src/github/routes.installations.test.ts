@@ -206,7 +206,7 @@ describe("github-app installation sync", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation_repo")
+          .find("installation_repo", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
 
@@ -232,7 +232,7 @@ describe("github-app installation sync", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("repo_link")
+          .find("repo_link", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(repoLinks).toHaveLength(0);
@@ -287,7 +287,7 @@ describe("github-app installation sync", () => {
         await fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
-          .find("installation")
+          .find("installation", (b) => b.whereIndex("primary"))
           .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);

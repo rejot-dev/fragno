@@ -200,10 +200,12 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
             forSchema(authSchema).findFirst("organizationInvitation", (b) =>
               b
                 .whereIndex("primary", (eb) => eb("id", "=", payload.invitationId))
-                .join((j) =>
-                  j.organizationInvitationOrganization((org) =>
-                    org.join((j) => j.organizationCreator()),
-                  ),
+                .joinOne("organizationInvitationOrganization", "organization", (organization) =>
+                  organization
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                    .joinOne("organizationCreator", "user", (creator) =>
+                      creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+                    ),
                 ),
             ),
           )

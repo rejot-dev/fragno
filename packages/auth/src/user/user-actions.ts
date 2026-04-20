@@ -289,7 +289,11 @@ export function createUserServices(
             .findFirst("session", (b) =>
               b
                 .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-                .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["id", "email", "role", "bannedAt"]),
+                ),
             )
             .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
@@ -344,7 +348,11 @@ export function createUserServices(
           uow.findFirst("session", (b) =>
             b
               .whereIndex("primary", (eb) => eb("id", "=", sessionId))
-              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role", "bannedAt"]))),
+              .joinOne("sessionOwner", "user", (owner) =>
+                owner
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                  .select(["id", "email", "role", "bannedAt"]),
+              ),
           ),
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
@@ -529,16 +537,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               forSchema(authSchema).find("user", (b) =>
                 b
                   .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
-                  .join((j) =>
-                    j["userOrganizationMembers"]((member) =>
-                      member
-                        .select(["createdAt"])
-                        .join((j) =>
-                          j["organizationMemberOrganization"]((organization) =>
-                            organization.select(["id", "deletedAt"]),
-                          ),
-                        ),
-                    ),
+                  .joinMany("userOrganizationMembers", "organizationMember", (member) =>
+                    member
+                      .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
+                      .select(["createdAt"])
+                      .joinOne("organizationMemberOrganization", "organization", (organization) =>
+                        organization
+                          .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                          .select(["id", "deletedAt"]),
+                      ),
                   ),
               ),
             )
