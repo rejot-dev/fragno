@@ -1,6 +1,6 @@
 import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
+import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
 
 import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
@@ -110,7 +110,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       const tables = new Map<string, AnyTable>();
       for (const [tableName, table] of Object.entries(schema.tables)) {
         tables.set(tableName, table);
-        for (const relation of Object.values(table.relations)) {
+        for (const relation of Object.values(getTableRelations(table))) {
           for (const [fromColumn] of relation.on) {
             referenceTargets.set(`${schema.name}::${table.name}::${fromColumn}`, {
               schema: schema.name,

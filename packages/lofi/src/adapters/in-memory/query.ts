@@ -1,7 +1,7 @@
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
+import { Column, FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 import {
   getQueryTreeSelectedColumnNames,
   isParentColumnRef,
@@ -233,7 +233,7 @@ const decodeRow = (row: RowSelection, table: AnyTable): Record<string, unknown> 
 
     const relationName = key.slice(0, colonIndex);
     const remainder = key.slice(colonIndex + 1);
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (!relation) {
       continue;
     }
@@ -243,7 +243,7 @@ const decodeRow = (row: RowSelection, table: AnyTable): Record<string, unknown> 
   }
 
   for (const relationName in relationData) {
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (!relation) {
       continue;
     }
@@ -1064,7 +1064,6 @@ const evaluateQueryTreeCondition = async (options: {
   }
 
   let leftColumn = condition.a;
-  let rightColumn = condition.a;
   const right = resolveQueryTreeComparisonValue({
     value: condition.b,
     column: leftColumn,
@@ -1075,14 +1074,14 @@ const evaluateQueryTreeCondition = async (options: {
     parentRow,
   });
 
+  let rightColumn = right.column;
+
   if (isParentColumnRef(condition.b)) {
     if (leftColumn.role === "external-id" && right.column.role !== "external-id") {
       leftColumn = resolveComparableColumn(leftColumn, currentTable);
     }
     if (right.column.role === "external-id" && leftColumn.role !== "external-id" && parentTable) {
       rightColumn = resolveComparableColumn(right.column, parentTable);
-    } else {
-      rightColumn = right.column;
     }
   }
 

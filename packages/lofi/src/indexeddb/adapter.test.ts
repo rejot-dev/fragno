@@ -207,14 +207,9 @@ describe("IndexedDbAdapter", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string")),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const dbName = createDbName();
@@ -351,14 +346,9 @@ describe("IndexedDbAdapter", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string")),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const dbName = createDbName();

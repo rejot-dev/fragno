@@ -161,15 +161,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -223,15 +218,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -284,15 +274,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({
@@ -337,16 +322,11 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"])
             .createIndex("idx_title", ["title"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({
@@ -389,15 +369,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({
@@ -440,27 +415,17 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
         )
         .addTable("comments", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("postId", referenceColumn())
+            .addColumn("postId", referenceColumn({ table: "posts" }))
             .addColumn("body", column("string"))
             .createIndex("idx_post", ["postId"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        })
-        .addReference("comments", {
-          type: "many",
-          from: { table: "posts", column: "id" },
-          to: { table: "comments", column: "postId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({
@@ -516,15 +481,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -611,15 +571,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -678,15 +633,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -750,28 +700,18 @@ describe("stacked merge", () => {
         .addTable("users", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("orgId", referenceColumn())
+            .addColumn("orgId", column("string"))
             .addColumn("email", column("string"))
             .createIndex("idx_user_org_email", ["orgId", "email"]),
         )
         .addTable("memberships", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("orgId", referenceColumn())
+            .addColumn("orgId", column("string"))
             .addColumn("userEmail", column("string"))
             .createIndex("idx_membership_org_email", ["orgId", "userEmail"]),
-        )
-        .addReference("member", {
-          type: "one",
-          from: { table: "memberships", column: "orgId" },
-          to: { table: "users", column: "orgId" },
-        }),
+        ),
     );
-
-    const relation = appSchema.tables.memberships.relations.member as {
-      on: Array<[string, string]>;
-    };
-    relation.on.push(["userEmail", "email"]);
 
     const base = createStubBaseAdapter({
       users: [
@@ -809,15 +749,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay: _overlay, query } = createStackedQuery(appSchema);
@@ -874,15 +809,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay: _overlay, query } = createStackedQuery(appSchema);
@@ -970,15 +900,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { overlay, query } = createStackedQuery(appSchema);
@@ -1012,15 +937,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1077,15 +997,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1180,27 +1095,17 @@ describe("stacked merge", () => {
         .addTable("users", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("orgId", referenceColumn())
+            .addColumn("orgId", referenceColumn({ table: "orgs" }))
             .addColumn("name", column("string"))
             .createIndex("idx_org", ["orgId"]),
         )
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        })
-        .addReference("org", {
-          type: "one",
-          from: { table: "users", column: "orgId" },
-          to: { table: "orgs", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1323,15 +1228,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1429,15 +1329,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1537,15 +1432,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1641,15 +1531,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1748,15 +1633,10 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1808,27 +1688,17 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"]),
         )
         .addTable("comments", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("postId", referenceColumn())
+            .addColumn("postId", referenceColumn({ table: "posts" }))
             .addColumn("body", column("string"))
             .createIndex("idx_post", ["postId"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        })
-        .addReference("comments", {
-          type: "many",
-          from: { table: "posts", column: "id" },
-          to: { table: "comments", column: "postId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({
@@ -1876,16 +1746,11 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("sortKey", column("integer"))
             .addColumn("title", column("string"))
             .createIndex("idx_sort", ["sortKey"]),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const { base, overlay, query } = createStackedQuery(appSchema);
@@ -1964,28 +1829,18 @@ describe("stacked merge", () => {
         .addTable("users", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("orgId", referenceColumn())
+            .addColumn("orgId", column("string"))
             .addColumn("email", column("string"))
             .createIndex("idx_user_org_email", ["orgId", "email"]),
         )
         .addTable("memberships", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("orgId", referenceColumn())
+            .addColumn("orgId", column("string"))
             .addColumn("userEmail", column("string").nullable())
             .createIndex("idx_membership_org_email", ["orgId", "userEmail"]),
-        )
-        .addReference("member", {
-          type: "one",
-          from: { table: "memberships", column: "orgId" },
-          to: { table: "users", column: "orgId" },
-        }),
+        ),
     );
-
-    const relation = appSchema.tables.memberships.relations.member as {
-      on: Array<[string, string]>;
-    };
-    relation.on.push(["userEmail", "email"]);
 
     const { base, overlay, query } = createStackedQuery(appSchema);
 
@@ -2059,7 +1914,7 @@ describe("stacked merge", () => {
         .addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("authorId", referenceColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }))
             .addColumn("title", column("string"))
             .createIndex("idx_author", ["authorId"])
             .createIndex("idx_title", ["title"]),
@@ -2067,21 +1922,11 @@ describe("stacked merge", () => {
         .addTable("comments", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("postId", referenceColumn())
+            .addColumn("postId", referenceColumn({ table: "posts" }))
             .addColumn("body", column("string"))
             .createIndex("idx_post", ["postId"])
             .createIndex("idx_body", ["body"]),
-        )
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "authorId" },
-        })
-        .addReference("comments", {
-          type: "many",
-          from: { table: "posts", column: "id" },
-          to: { table: "comments", column: "postId" },
-        }),
+        ),
     );
 
     const base = createStubBaseAdapter({

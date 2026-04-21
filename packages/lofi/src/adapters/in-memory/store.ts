@@ -1,5 +1,5 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
+import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 
 import type { ReferenceTarget } from "../../indexeddb/types";
 import { normalizeValue } from "../../query/normalize";
@@ -54,7 +54,7 @@ const createReferenceTargets = (schemas: AnySchema[]): Map<string, ReferenceTarg
   const referenceTargets = new Map<string, ReferenceTarget>();
   for (const schema of schemas) {
     for (const table of Object.values(schema.tables)) {
-      for (const relation of Object.values(table.relations)) {
+      for (const relation of Object.values(getTableRelations(table))) {
         for (const [fromColumn] of relation.on) {
           referenceTargets.set(`${schema.name}::${table.name}::${fromColumn}`, {
             schema: schema.name,
