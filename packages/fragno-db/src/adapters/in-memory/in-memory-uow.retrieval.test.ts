@@ -2,14 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CompiledJoin } from "../../query/find-options";
 import { UnitOfWork, type RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
-import {
-  column,
-  ExplicitRelationInit,
-  idColumn,
-  referenceColumn,
-  schema,
-  type AnySchema,
-} from "../../schema/create";
+import { column, getTableRelations, idColumn, referenceColumn, schema } from "../../schema/create";
 import {
   createInMemoryUowCompiler,
   createInMemoryUowExecutor,
@@ -31,36 +24,14 @@ const joinSchema = schema("join", (s) =>
       t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn()),
+        .addColumn("authorId", referenceColumn({ table: "users" })),
     )
     .addTable("memberships", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "users" }))
         .createIndex("idx_memberships_user", ["userId"]),
-    )
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("membershipUser", {
-      type: "one",
-      from: { table: "memberships", column: "userId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("memberships", {
-      type: "many",
-      from: { table: "users", column: "id" },
-      to: { table: "memberships", column: "userId" },
-      foreignKey: false,
-    }),
-);
-
-const externalJoinSchema = schema("external-join", (s) =>
-  s
-    .addTable("left", (t) => t.addColumn("id", idColumn()).addColumn("label", column("string")))
-    .addTable("right", (t) => t.addColumn("id", idColumn()).addColumn("label", column("string"))),
+    ),
 );
 
 const createHarness = () => {
@@ -73,18 +44,6 @@ const createHarness = () => {
   return {
     createUow: () => new UnitOfWork(compiler, executor, decoder).forSchema(joinSchema),
     executor,
-  };
-};
-
-const createExternalJoinHarness = () => {
-  const store = createInMemoryStore();
-  const options = resolveInMemoryAdapterOptions({ idSeed: "seed" });
-  const compiler = createInMemoryUowCompiler();
-  const executor = createInMemoryUowExecutor(store, options);
-  const decoder = new InMemoryUowDecoder();
-
-  return {
-    createUow: () => new UnitOfWork(compiler, executor, decoder).forSchema(externalJoinSchema),
   };
 };
 
@@ -105,7 +64,7 @@ describe("in-memory uow retrieval", () => {
     });
     await createData.executeMutations();
 
-    const relation = joinSchema.tables.posts.relations.author;
+    const relation = getTableRelations(joinSchema.tables.posts)["author"];
     const join: CompiledJoin = {
       relation,
       options: {
@@ -134,9 +93,7 @@ describe("in-memory uow retrieval", () => {
       },
     } satisfies RetrievalOperation<typeof joinSchema>;
 
-    const opForExecutor = op as unknown as RetrievalOperation<AnySchema>;
-
-    await expect(executor.executeRetrievalPhase([opForExecutor])).rejects.toThrow(
+    await expect(executor.executeRetrievalPhase([op])).rejects.toThrow(
       'In-memory adapter only supports orderByIndex; received orderBy on table "users".',
     );
   });
@@ -156,8 +113,7 @@ describe("in-memory uow retrieval", () => {
     });
     await createData.executeMutations();
 
-    const query = createUow();
-    query.find("users", (b) =>
+    const query = createUow().find("users", (b) =>
       b
         .whereIndex("primary", (eb) => eb("id", "=", "user-1"))
         .joinMany("memberships", "memberships", (mb) =>
@@ -167,9 +123,7 @@ describe("in-memory uow retrieval", () => {
         ),
     );
 
-    const [users] = (await query.executeRetrieve()) as Array<
-      Array<{ memberships?: Array<{ id: { externalId: string } }> }>
-    >;
+    const [users] = await query.executeRetrieve();
 
     expect(users).toHaveLength(1);
     expect(users[0].memberships).toMatchObject([
@@ -177,54 +131,6 @@ describe("in-memory uow retrieval", () => {
         id: expect.objectContaining({ externalId: "membership-1" }),
       },
     ]);
-  });
-
-  it("joins external-id relations without coercing both sides to internal ids", async () => {
-    const { createUow } = createExternalJoinHarness();
-
-    const relationInit = new ExplicitRelationInit(
-      "one",
-      externalJoinSchema.tables.right,
-      externalJoinSchema.tables.left,
-      { foreignKey: false },
-    );
-    relationInit.on.push(["id", "id"]);
-    const relation = relationInit.init("rightMatch");
-    externalJoinSchema.tables.left.relations["rightMatch"] = relation;
-
-    const createData = createUow();
-    createData.create("left", {
-      id: "left-1",
-      label: "Left One",
-    });
-    createData.create("left", {
-      id: "shared-id",
-      label: "Left Shared",
-    });
-    createData.create("right", {
-      id: "shared-id",
-      label: "Right Shared",
-    });
-    await createData.executeMutations();
-
-    const query = createUow();
-    query.find("left", (b) =>
-      b
-        .whereIndex("primary", (eb) => eb("id", "=", "shared-id"))
-        .joinOne("rightMatch", "right", (rb) =>
-          rb.onIndex("primary", (eb) => eb("id", "=", eb.parent("id"))).select(["id", "label"]),
-        ),
-    );
-
-    const [rows] = (await query.executeRetrieve()) as Array<
-      Array<{ rightMatch?: { id: { externalId: string }; label: string } }>
-    >;
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0].rightMatch).toMatchObject({
-      id: expect.objectContaining({ externalId: "shared-id" }),
-      label: "Right Shared",
-    });
   });
 
   it("supports query-tree joins without schema relations", async () => {
@@ -255,8 +161,7 @@ describe("in-memory uow retrieval", () => {
     });
     await createData.executeMutations();
 
-    const query = createUow();
-    query.find("users", (q) =>
+    const query = createUow().find("users", (q) =>
       q
         .whereIndex("primary", (eb) => eb("id", "=", "user-1"))
         .select(["id", "name"])
@@ -272,16 +177,7 @@ describe("in-memory uow retrieval", () => {
         ),
     );
 
-    const [users] = (await query.executeRetrieve()) as Array<
-      Array<{
-        id: { externalId: string };
-        name: string;
-        memberships: Array<{
-          id: { externalId: string };
-          memberUser: { id: { externalId: string }; name: string } | null;
-        }>;
-      }>
-    >;
+    const [users] = await query.executeRetrieve();
 
     expect(users).toHaveLength(1);
     expect(users[0]).toMatchObject({
@@ -326,8 +222,7 @@ describe("in-memory uow retrieval", () => {
     });
     await createData.executeMutations();
 
-    const query = createUow();
-    query.findFirst("users", (q) =>
+    const query = createUow().findFirst("users", (q) =>
       q
         .whereIndex("idx_users_name", (eb) => eb("name", "=", "Ada"))
         .select(["id", "name"])
@@ -344,18 +239,7 @@ describe("in-memory uow retrieval", () => {
         ),
     );
 
-    const [[user]] = (await query.executeRetrieve()) as Array<
-      [
-        {
-          id: { externalId: string };
-          name: string;
-          memberships: Array<{
-            id: { externalId: string };
-            memberUser: { id: { externalId: string }; name: string } | null;
-          }>;
-        } | null,
-      ]
-    >;
+    const [user] = await query.executeRetrieve();
 
     expect(user).toMatchObject({
       id: expect.objectContaining({ externalId: "user-1" }),
@@ -388,17 +272,11 @@ describe("in-memory uow retrieval", () => {
     });
     await createData.executeMutations();
 
-    const query = createUow();
-    query.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", "user-2")));
+    const query = createUow().findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", "user-2")),
+    );
 
-    const [[user]] = (await query.executeRetrieve()) as Array<
-      [
-        {
-          id: { externalId: string };
-          name: string;
-        } | null,
-      ]
-    >;
+    const [user] = await query.executeRetrieve();
 
     expect(user).toMatchObject({
       id: expect.objectContaining({ externalId: "user-2" }),

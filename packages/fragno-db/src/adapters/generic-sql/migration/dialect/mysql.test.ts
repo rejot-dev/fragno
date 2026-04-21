@@ -798,10 +798,10 @@ describe("MySQLSQLGenerator", () => {
         `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null, \`content\` text not null)"`,
       );
       expect(statements[4].sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add constraint \`posts_user_id_fk\` foreign key (\`user_id\`) references \`users\` (\`id\`) on delete restrict on update restrict"`,
+        `"alter table \`posts\` add column \`published\` boolean default false not null"`,
       );
       expect(statements[5].sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add column \`published\` boolean default false not null"`,
+        `"alter table \`posts\` add constraint \`posts_user_id_fk\` foreign key (\`user_id\`) references \`users\` (\`id\`) on delete restrict on update restrict"`,
       );
       expect(statements[6].sql).toBe("SET FOREIGN_KEY_CHECKS = 1");
     });
@@ -979,6 +979,39 @@ describe("MySQLSQLGenerator", () => {
       expect(preprocessed[0]).toEqual({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
       expect(preprocessed[1]).toEqual(operations[0]);
       expect(preprocessed[2]).toEqual({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });
+    });
+
+    it("hoists foreign keys inside the wrapped batch for forward references", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "sessions",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+        {
+          type: "add-foreign-key",
+          table: "sessions",
+          value: {
+            name: "sessions_org_fk",
+            columns: ["organizationId"],
+            referencedTable: "organizations",
+            referencedColumns: ["_internalId"],
+          },
+        },
+        {
+          type: "create-table",
+          name: "organizations",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+      ];
+
+      expect(generator.preprocess(operations)).toEqual([
+        { type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" },
+        operations[0],
+        operations[2],
+        operations[1],
+        { type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" },
+      ]);
     });
 
     it("should return empty array for empty operations", () => {

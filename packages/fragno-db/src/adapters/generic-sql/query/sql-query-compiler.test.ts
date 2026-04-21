@@ -29,7 +29,7 @@ const testSchema = schema("test", (s) => {
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
         .addColumn("content", column("string"))
-        .addColumn("userId", referenceColumn());
+        .addColumn("userId", referenceColumn({ table: "users" }));
     });
 });
 

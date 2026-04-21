@@ -40,7 +40,7 @@ describe("generateSchema and migrate", () => {
           .addColumn("slug", column("varchar(255)"))
           .addColumn("content", column("string"))
           .addColumn("excerpt", column("string").nullable())
-          .addColumn("userId", referenceColumn())
+          .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("likeCount", column("bigint").defaultTo(9999999999999999n))
           .addColumn("isPublished", column("bool").defaultTo(false))
@@ -61,9 +61,9 @@ describe("generateSchema and migrate", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("content", column("string"))
-          .addColumn("postId", referenceColumn())
-          .addColumn("userId", referenceColumn())
-          .addColumn("parentId", referenceColumn().nullable())
+          .addColumn("postId", referenceColumn({ table: "posts" }))
+          .addColumn("userId", referenceColumn({ table: "users" }))
+          .addColumn("parentId", referenceColumn({ table: "comments" }).nullable())
           .addColumn(
             "createdAt",
             column("timestamp").defaultTo((b) => b.now()),
@@ -88,8 +88,8 @@ describe("generateSchema and migrate", () => {
       .addTable("postTags", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("postId", referenceColumn())
-          .addColumn("tagId", referenceColumn())
+          .addColumn("postId", referenceColumn({ table: "posts" }))
+          .addColumn("tagId", referenceColumn({ table: "tags" }))
           .addColumn("order", column("integer").defaultTo(0))
           .addColumn(
             "createdAt",
@@ -97,36 +97,6 @@ describe("generateSchema and migrate", () => {
           )
           .createIndex("idx_postTags_post_tag", ["postId", "tagId"], { unique: true })
           .createIndex("idx_postTags_tag", ["tagId"]);
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "userId" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "comments", column: "postId" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "comments", column: "userId" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("parent", {
-        type: "one",
-        from: { table: "comments", column: "parentId" },
-        to: { table: "comments", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "postTags", column: "postId" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("tag", {
-        type: "one",
-        from: { table: "postTags", column: "tagId" },
-        to: { table: "tags", column: "id" },
       });
   });
 
@@ -291,12 +261,12 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "postTags_id_unique" UNIQUE("id")
       );
 
-      ALTER TABLE "test"."posts" ADD CONSTRAINT "fk_posts_users_author" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_posts_post" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_users_author" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_comments_parent" FOREIGN KEY ("parentId") REFERENCES "test"."comments"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_posts_post" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_tags_tag" FOREIGN KEY ("tagId") REFERENCES "test"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."posts" ADD CONSTRAINT "fk_posts_users_posts_userId_fk" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_posts_comments_postId_fk" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_users_comments_userId_fk" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_comments_comments_parentId_fk" FOREIGN KEY ("parentId") REFERENCES "test"."comments"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_posts_postTags_postId_fk" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_tags_postTags_tagId_fk" FOREIGN KEY ("tagId") REFERENCES "test"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");

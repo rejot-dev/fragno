@@ -19,19 +19,9 @@ describe("SqlAdapter SQLite", () => {
       .addTable("transactions", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("fromAccountId", referenceColumn())
-          .addColumn("toAccountId", referenceColumn())
+          .addColumn("fromAccountId", referenceColumn({ table: "accounts" }))
+          .addColumn("toAccountId", referenceColumn({ table: "accounts" }))
           .addColumn("amount", column("integer"));
-      })
-      .addReference("fromAccount", {
-        type: "one",
-        from: { table: "transactions", column: "fromAccountId" },
-        to: { table: "accounts", column: "id" },
-      })
-      .addReference("toAccount", {
-        type: "one",
-        from: { table: "transactions", column: "toAccountId" },
-        to: { table: "accounts", column: "id" },
       });
   });
 

@@ -4,16 +4,18 @@ import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { buildIndexKey } from "./store";
 
 const testSchema = schema("test", (s) =>
-  s.addTable("events", (t) =>
-    t
-      .addColumn("id", idColumn())
-      .addColumn("createdAt", column("timestamp"))
-      .addColumn("isActive", column("bool"))
-      .addColumn("payload", column("json"))
-      .addColumn("size", column("bigint"))
-      .addColumn("userId", referenceColumn())
-      .createIndex("compound_idx", ["createdAt", "isActive", "payload", "size", "userId"]),
-  ),
+  s
+    .addTable("users", (t) => t.addColumn("id", idColumn()))
+    .addTable("events", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("createdAt", column("timestamp"))
+        .addColumn("isActive", column("bool"))
+        .addColumn("payload", column("json"))
+        .addColumn("size", column("bigint"))
+        .addColumn("userId", referenceColumn({ table: "users" }))
+        .createIndex("compound_idx", ["createdAt", "isActive", "payload", "size", "userId"]),
+    ),
 );
 
 describe("in-memory index normalization", () => {

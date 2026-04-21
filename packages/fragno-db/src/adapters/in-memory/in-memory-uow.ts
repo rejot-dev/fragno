@@ -39,7 +39,7 @@ import {
   ReferenceSubquery,
 } from "../../query/value-encoding";
 import type { AnySchema, AnyTable } from "../../schema/create";
-import { FragnoId, FragnoReference } from "../../schema/create";
+import { FragnoId, FragnoReference, getTableRelations } from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { evaluateCondition } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
@@ -463,7 +463,7 @@ const enforceOutgoingForeignKeys = (
   columnsToCheck?: Set<string>,
   resolver?: NamingResolver,
 ): void => {
-  for (const relation of Object.values(table.relations)) {
+  for (const relation of Object.values(getTableRelations(table))) {
     if (relation.type !== "one" || relation.foreignKey === false) {
       continue;
     }
@@ -530,7 +530,7 @@ const enforceNoIncomingForeignKeys = (
   resolver?: NamingResolver,
 ): void => {
   for (const sourceTable of Object.values(schema.tables)) {
-    for (const relation of Object.values(sourceTable.relations)) {
+    for (const relation of Object.values(getTableRelations(sourceTable))) {
       if (relation.type !== "one" || relation.foreignKey === false) {
         continue;
       }
@@ -1638,7 +1638,7 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
 
       const relationName = key.slice(0, colonIndex);
       const remainder = key.slice(colonIndex + 1);
-      const relation = table.relations[relationName];
+      const relation = getTableRelations(table)[relationName];
       if (!relation) {
         continue;
       }
@@ -1648,7 +1648,7 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
     }
 
     for (const relationName in relationData) {
-      const relation = table.relations[relationName];
+      const relation = getTableRelations(table)[relationName];
       if (!relation) {
         continue;
       }

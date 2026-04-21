@@ -30,7 +30,7 @@ describe("SqlAdapter SQLite", () => {
       .addTable("emails", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("email", column("string"))
           .addColumn("is_primary", column("bool").defaultTo(false))
           .createIndex("unique_email", ["email"], { unique: true })
@@ -39,7 +39,7 @@ describe("SqlAdapter SQLite", () => {
       .addTable("posts", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
@@ -47,43 +47,18 @@ describe("SqlAdapter SQLite", () => {
       .addTable("optional_emails", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn().nullable())
+          .addColumn("user_id", referenceColumn({ table: "users" }).nullable())
           .addColumn("email", column("string"))
           .createIndex("optional_emails_user_idx", ["user_id"]);
       })
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("post_id", referenceColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("post_id", referenceColumn({ table: "posts" }))
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("text", column("string"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "emails", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "optional_emails", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "comments", column: "post_id" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("commenter", {
-        type: "one",
-        from: { table: "comments", column: "user_id" },
-        to: { table: "users", column: "id" },
       });
   });
 
@@ -100,14 +75,9 @@ describe("SqlAdapter SQLite", () => {
       .addTable("orders", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("product_id", referenceColumn())
+          .addColumn("product_id", referenceColumn({ table: "products" }))
           .addColumn("quantity", column("integer"))
           .createIndex("product_orders_idx", ["product_id"]);
-      })
-      .addReference("product", {
-        type: "one",
-        from: { table: "orders", column: "product_id" },
-        to: { table: "products", column: "id" },
       });
   });
 

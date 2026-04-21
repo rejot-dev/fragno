@@ -3,7 +3,7 @@ import type { Condition } from "../../query/condition-builder";
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
-import { Column, FragnoId, FragnoReference } from "../../schema/create";
+import { Column, FragnoId, FragnoReference, getTableForeignKey } from "../../schema/create";
 import { resolveReferenceSubquery } from "./reference-resolution";
 import type { InMemoryNamespaceStore, InMemoryRow } from "./store";
 import { normalizeIndexValue } from "./store";
@@ -42,16 +42,14 @@ const resolveReferenceValue = (
       throw new Error("In-memory condition evaluation requires a namespace store.");
     }
 
-    const relation = Object.values(table.relations).find((rel) =>
-      rel.on.some(([localCol]) => localCol === column.name),
-    );
-    if (!relation) {
-      throw new Error(`Missing relation for reference column "${column.name}".`);
+    const foreignKey = getTableForeignKey(table, column.name);
+    if (!foreignKey) {
+      throw new Error(`Missing foreign key for reference column "${column.name}".`);
     }
 
     return resolveReferenceSubquery(
       namespaceStore,
-      new ReferenceSubquery(relation.table, value),
+      new ReferenceSubquery(foreignKey.referencedTable, value),
       resolver,
     );
   }

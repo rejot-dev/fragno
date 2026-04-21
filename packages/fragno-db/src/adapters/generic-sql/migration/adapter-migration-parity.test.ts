@@ -37,15 +37,10 @@ const paritySchema = schema("parity", (s) => {
     .addTable("posts", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("title", column("string"))
         .addColumn("isPublished", column("bool").defaultTo(false))
         .createIndex("posts_author_idx", ["authorId"]);
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
     });
 });
 

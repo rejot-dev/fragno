@@ -34,34 +34,19 @@ const testSchema = schema("test", (s) =>
     .addTable("posts", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("author_id", referenceColumn())
+        .addColumn("author_id", referenceColumn({ table: "users" }))
         .addColumn("title", column("string"))
         .createIndex("posts_author_idx", ["author_id"]),
     )
     .addTable("comments", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("post_id", referenceColumn())
-        .addColumn("commenter_id", referenceColumn())
+        .addColumn("post_id", referenceColumn({ table: "posts" }))
+        .addColumn("commenter_id", referenceColumn({ table: "users" }))
         .addColumn("text", column("string"))
         .createIndex("comments_post_idx", ["post_id"])
         .createIndex("comments_commenter_idx", ["commenter_id"]),
-    )
-    .addReference("post", {
-      type: "one",
-      from: { table: "comments", column: "post_id" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "author_id" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("commenter", {
-      type: "one",
-      from: { table: "comments", column: "commenter_id" },
-      to: { table: "users", column: "id" },
-    }),
+    ),
 );
 
 const createMockCompiler = (): UOWCompiler<unknown> => ({

@@ -31,7 +31,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .addTable("emails", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("email", column("string"))
           .addColumn("is_primary", column("bool").defaultTo(false))
           .createIndex("unique_email", ["email"], { unique: true })
@@ -40,7 +40,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .addTable("posts", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
@@ -48,8 +48,8 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("post_id", referenceColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("post_id", referenceColumn({ table: "posts" }))
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("text", column("string"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
@@ -66,26 +66,6 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
           .addColumn("payload", column("json").nullable())
           .addColumn("big_score", column("bigint"))
           .createIndex("events_name_idx", ["name"]);
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "emails", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "comments", column: "post_id" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("commenter", {
-        type: "one",
-        from: { table: "comments", column: "user_id" },
-        to: { table: "users", column: "id" },
       });
   });
 
@@ -101,14 +81,9 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .addTable("orders", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("product_id", referenceColumn())
+          .addColumn("product_id", referenceColumn({ table: "products" }))
           .addColumn("quantity", column("integer"))
           .createIndex("product_orders_idx", ["product_id"]);
-      })
-      .addReference("product", {
-        type: "one",
-        from: { table: "orders", column: "product_id" },
-        to: { table: "products", column: "id" },
       });
   });
 

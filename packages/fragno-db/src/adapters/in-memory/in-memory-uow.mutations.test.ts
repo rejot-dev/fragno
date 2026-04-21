@@ -22,13 +22,8 @@ const fkSchema = schema("fk", (s) =>
       t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn()),
-    )
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    }),
+        .addColumn("authorId", referenceColumn({ table: "users" })),
+    ),
 );
 
 const joinOnlySchema = schema("join-only", (s) =>
@@ -44,13 +39,7 @@ const joinOnlySchema = schema("join-only", (s) =>
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
         .createIndex("invitations_email_idx", ["email"]),
-    )
-    .addReference("invitedUser", {
-      type: "one",
-      from: { table: "invitations", column: "email" },
-      to: { table: "users", column: "email" },
-      foreignKey: false,
-    }),
+    ),
 );
 
 const createTestUowFactory = () => {

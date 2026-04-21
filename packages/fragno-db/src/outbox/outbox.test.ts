@@ -29,13 +29,8 @@ const outboxSchema = schema("outbox", (s) => {
     .addTable("posts", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("title", column("string"));
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
     });
 });
 

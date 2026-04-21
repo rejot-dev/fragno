@@ -19,37 +19,17 @@ const blogSchema = schema("blog", (s) => {
         .addColumn("profile", column("json").nullable())
         .addColumn("bigScore", column("bigint"))
         .addColumn("reputation", column("decimal"))
-        .addColumn("invitedBy", referenceColumn().nullable())
+        .addColumn("invitedBy", referenceColumn({ table: "users" }).nullable())
         .createIndex("idx_email", ["email"], { unique: true });
     })
     .addTable("posts", (t) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn())
-        .addColumn("editorId", referenceColumn().nullable())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
+        .addColumn("editorId", referenceColumn({ table: "users" }).nullable())
         .addColumn("publishedAt", column("timestamp").nullable())
         .createIndex("idx_title", ["title"]);
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("editor", {
-      type: "one",
-      from: { table: "posts", column: "editorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("inviter", {
-      type: "one",
-      from: { table: "users", column: "invitedBy" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("posts", {
-      type: "many",
-      from: { table: "users", column: "id" },
-      to: { table: "posts", column: "authorId" },
     });
 });
 
@@ -71,60 +51,20 @@ const relationNamingSchema = schema("relationnaming", (s) => {
     .addTable("posts", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("author_id", referenceColumn())
-        .addColumn("editor_id", referenceColumn().nullable());
+        .addColumn("author_id", referenceColumn({ table: "users" }))
+        .addColumn("editor_id", referenceColumn({ table: "users" }).nullable());
     })
     .addTable("comments", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("post_id", referenceColumn())
-        .addColumn("parent_id", referenceColumn().nullable());
+        .addColumn("post_id", referenceColumn({ table: "posts" }))
+        .addColumn("parent_id", referenceColumn({ table: "comments" }).nullable());
     })
     .addTable("follows", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("follower_id", referenceColumn())
-        .addColumn("followee_id", referenceColumn());
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "author_id" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("editor", {
-      type: "one",
-      from: { table: "posts", column: "editor_id" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("post", {
-      type: "one",
-      from: { table: "comments", column: "post_id" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("parent", {
-      type: "one",
-      from: { table: "comments", column: "parent_id" },
-      to: { table: "comments", column: "id" },
-    })
-    .addReference("follower", {
-      type: "one",
-      from: { table: "follows", column: "follower_id" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("followee", {
-      type: "one",
-      from: { table: "follows", column: "followee_id" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("posts", {
-      type: "many",
-      from: { table: "users", column: "id" },
-      to: { table: "posts", column: "author_id" },
-    })
-    .addReference("editedPosts", {
-      type: "many",
-      from: { table: "users", column: "id" },
-      to: { table: "posts", column: "editor_id" },
+        .addColumn("follower_id", referenceColumn({ table: "users" }))
+        .addColumn("followee_id", referenceColumn({ table: "users" }));
     });
 });
 
@@ -272,8 +212,8 @@ describe("generatePrismaSchema", () => {
         publishedAt DateTime?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author_blog_d01fe02e")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor_blog_d7abc235")
+        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
         @@index([title], map: "idx_posts_idx_title_blog_f90cbb7e")
         @@map("posts_blog")
       }
@@ -289,10 +229,10 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter_blog_631afc1c")
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
-        users Users_blog[] @relation("blog_users_inviter_users")
+        users Users_blog[] @relation("blog_users_invitedBy_users")
         @@unique([email], map: "uidx_users_idx_email_blog_4468050e")
         @@map("users_blog")
       }"
@@ -421,8 +361,8 @@ describe("generatePrismaSchema", () => {
         publishedAt Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author_blog_d01fe02e")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor_blog_d7abc235")
+        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
         @@index([title], map: "idx_posts_idx_title_blog_f90cbb7e")
         @@map("posts_blog")
       }
@@ -438,10 +378,10 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter_blog_631afc1c")
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
-        users Users_blog[] @relation("blog_users_inviter_users")
+        users Users_blog[] @relation("blog_users_invitedBy_users")
         @@unique([email], map: "uidx_users_idx_email_blog_4468050e")
         @@map("users_blog")
       }"
@@ -462,12 +402,6 @@ describe("generatePrismaSchema", () => {
             .addColumn("id", idColumn())
             .addColumn("email", column("string"))
             .createIndex("idx_inv_email", ["email"]);
-        })
-        .addReference("invitedUser", {
-          type: "one",
-          from: { table: "invitations", column: "email" },
-          to: { table: "users", column: "email" },
-          foreignKey: false,
         });
     });
 
@@ -581,8 +515,8 @@ describe("generatePrismaSchema", () => {
         publishedAt DateTime?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_author")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_editor")
+        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk")
         @@index([title], map: "idx_title")
         @@map("posts")
       }
@@ -598,10 +532,10 @@ describe("generatePrismaSchema", () => {
         invitedBy BigInt?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        inviter Users_blog? @relation("blog_users_inviter_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_inviter")
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
-        users Users_blog[] @relation("blog_users_inviter_users")
+        users Users_blog[] @relation("blog_users_invitedBy_users")
         @@unique([email], map: "idx_email")
         @@map("users")
       }"
@@ -663,7 +597,7 @@ describe("generatePrismaSchema", () => {
     );
 
     expect(generated).toContain('posts Posts_test[] @relation("test_posts_author_users")');
-    expect(generated).toContain('editedPosts Posts_test[] @relation("test_posts_editor_users")');
+    expect(generated).toContain('posts_editor Posts_test[] @relation("test_posts_editor_users")');
     expect(generated).toContain('comments Comments_test[] @relation("test_comments_post_posts")');
     expect(generated).toContain(
       'comments Comments_test[] @relation("test_comments_parent_comments")',
@@ -681,7 +615,7 @@ describe("generatePrismaSchema", () => {
     );
 
     expect(generated).toContain('posts Posts_test[] @relation("test_posts_author_users")');
-    expect(generated).toContain('editedPosts Posts_test[] @relation("test_posts_editor_users")');
+    expect(generated).toContain('posts_editor Posts_test[] @relation("test_posts_editor_users")');
     expect(generated).toContain('comments Comments_test[] @relation("test_comments_post_posts")');
     expect(generated).toContain(
       'comments Comments_test[] @relation("test_comments_parent_comments")',
