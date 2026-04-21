@@ -18,7 +18,7 @@ export const authSchema = schema("auth", (s) => {
     .addTable("session", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("expiresAt", column("timestamp"))
         .addColumn(
           "createdAt",
@@ -32,7 +32,10 @@ export const authSchema = schema("auth", (s) => {
         .createIndex("idx_user_createdAt", ["createdAt"]);
     })
     .alterTable("session", (t) => {
-      return t.addColumn("activeOrganizationId", referenceColumn().nullable());
+      return t.addColumn(
+        "activeOrganizationId",
+        referenceColumn({ table: "organization" }).nullable(),
+      );
     })
     .addTable("organization", (t) => {
       return t
@@ -41,7 +44,7 @@ export const authSchema = schema("auth", (s) => {
         .addColumn("slug", column("string"))
         .addColumn("logoUrl", column("string").nullable())
         .addColumn("metadata", column("json").nullable())
-        .addColumn("createdBy", referenceColumn())
+        .addColumn("createdBy", referenceColumn({ table: "user" }))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -57,8 +60,8 @@ export const authSchema = schema("auth", (s) => {
     .addTable("organizationMember", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("organizationId", referenceColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("organizationId", referenceColumn({ table: "organization" }))
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -76,7 +79,7 @@ export const authSchema = schema("auth", (s) => {
     .addTable("organizationMemberRole", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("memberId", referenceColumn())
+        .addColumn("memberId", referenceColumn({ table: "organizationMember" }))
         .addColumn("role", column("string"))
         .addColumn(
           "createdAt",
@@ -91,12 +94,12 @@ export const authSchema = schema("auth", (s) => {
     .addTable("organizationInvitation", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("organizationId", referenceColumn())
+        .addColumn("organizationId", referenceColumn({ table: "organization" }))
         .addColumn("email", column("string"))
         .addColumn("roles", column("json"))
         .addColumn("status", column("string"))
         .addColumn("token", column("string"))
-        .addColumn("inviterId", referenceColumn())
+        .addColumn("inviterId", referenceColumn({ table: "user" }))
         .addColumn("expiresAt", column("timestamp"))
         .addColumn(
           "createdAt",
@@ -108,110 +111,19 @@ export const authSchema = schema("auth", (s) => {
         .createIndex("idx_org_invitation_email", ["email"])
         .createIndex("idx_org_invitation_email_status", ["email", "status"]);
     })
-    .addReference("sessionOwner", {
-      from: {
-        table: "session",
-        column: "userId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("sessionActiveOrganization", {
-      from: {
-        table: "session",
-        column: "activeOrganizationId",
-      },
-      to: {
-        table: "organization",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationCreator", {
-      from: {
-        table: "organization",
-        column: "createdBy",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationMemberOrganization", {
-      from: {
-        table: "organizationMember",
-        column: "organizationId",
-      },
-      to: {
-        table: "organization",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationMembers", {
-      from: {
-        table: "organization",
-        column: "id",
-      },
-      to: {
-        table: "organizationMember",
-        column: "organizationId",
-      },
-      type: "many",
-      foreignKey: false,
-    })
-    .addReference("organizationMemberUser", {
-      from: {
-        table: "organizationMember",
-        column: "userId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationMemberRoleMember", {
-      from: {
-        table: "organizationMemberRole",
-        column: "memberId",
-      },
-      to: {
-        table: "organizationMember",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationInvitationOrganization", {
-      from: {
-        table: "organizationInvitation",
-        column: "organizationId",
-      },
-      to: {
-        table: "organization",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("organizationInvitationInviter", {
-      from: {
-        table: "organizationInvitation",
-        column: "inviterId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
+    .noOp("removed obsolete sessionOwner addReference history")
+    .noOp("removed obsolete sessionActiveOrganization addReference history")
+    .noOp("removed obsolete organizationCreator addReference history")
+    .noOp("removed obsolete organizationMemberOrganization addReference history")
+    .noOp("removed obsolete organizationMembers join-only relation history")
+    .noOp("removed obsolete organizationMemberUser addReference history")
+    .noOp("removed obsolete organizationMemberRoleMember addReference history")
+    .noOp("removed obsolete organizationInvitationOrganization addReference history")
+    .noOp("removed obsolete organizationInvitationInviter addReference history")
     .addTable("oauthAccount", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("provider", column("string"))
         .addColumn("providerAccountId", column("string"))
         .addColumn("email", column("string").nullable())
@@ -246,7 +158,7 @@ export const authSchema = schema("auth", (s) => {
         .addColumn("codeVerifier", column("string").nullable())
         .addColumn("redirectUri", column("string").nullable())
         .addColumn("returnTo", column("string").nullable())
-        .addColumn("linkUserId", referenceColumn().nullable())
+        .addColumn("linkUserId", referenceColumn({ table: "user" }).nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -256,144 +168,23 @@ export const authSchema = schema("auth", (s) => {
         .createIndex("idx_oauth_state_provider", ["provider"])
         .createIndex("idx_oauth_state_expiresAt", ["expiresAt"]);
     })
-    .addReference("oauthAccountUser", {
-      from: {
-        table: "oauthAccount",
-        column: "userId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
-    .addReference("oauthStateLinkUser", {
-      from: {
-        table: "oauthState",
-        column: "linkUserId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    })
+    .noOp("removed obsolete oauthAccountUser addReference history")
+    .noOp("removed obsolete oauthStateLinkUser addReference history")
     .alterTable("user", (t) => {
       return t.alterColumn("passwordHash").nullable();
     })
-    .addReference("sessionOrganizationMembers", {
-      type: "many",
-      from: {
-        table: "session",
-        column: "userId",
-      },
-      to: {
-        table: "organizationMember",
-        column: "userId",
-      },
-      foreignKey: false,
-    })
-    .addReference("sessionMembers", {
-      type: "many",
-      from: {
-        table: "session",
-        column: "userId",
-      },
-      to: {
-        table: "organizationMember",
-        column: "userId",
-      },
-      foreignKey: false,
-    })
-    .addReference("organizationMemberRoles", {
-      type: "many",
-      from: {
-        table: "organizationMember",
-        // Join-only relations coerce `id` to internal ID.
-        column: "id",
-      },
-      to: {
-        table: "organizationMemberRole",
-        column: "memberId",
-      },
-      foreignKey: false,
-    })
-    .addReference("roles", {
-      type: "many",
-      from: {
-        table: "organizationMember",
-        // Join-only relations coerce `id` to internal ID.
-        column: "id",
-      },
-      to: {
-        table: "organizationMemberRole",
-        column: "memberId",
-      },
-      foreignKey: false,
-    })
-    .addReference("organization", {
-      type: "one",
-      from: {
-        table: "organizationMember",
-        column: "organizationId",
-      },
-      to: {
-        table: "organization",
-        column: "id",
-      },
-      foreignKey: false,
-    })
-    .addReference("userOrganizationInvitations", {
-      type: "many",
-      from: {
-        table: "user",
-        column: "email",
-      },
-      to: {
-        table: "organizationInvitation",
-        column: "email",
-      },
-      foreignKey: false,
-    })
-    .addReference("invitations", {
-      type: "many",
-      from: {
-        table: "user",
-        column: "email",
-      },
-      to: {
-        table: "organizationInvitation",
-        column: "email",
-      },
-      foreignKey: false,
-    })
-    .addReference("organization", {
-      type: "one",
-      from: {
-        table: "organizationInvitation",
-        column: "organizationId",
-      },
-      to: {
-        table: "organization",
-        column: "id",
-      },
-      foreignKey: false,
-    })
+    .noOp("removed obsolete sessionOrganizationMembers join-only relation history")
+    .noOp("removed obsolete sessionMembers join-only relation history")
+    .noOp("removed obsolete organizationMemberRoles join-only relation history")
+    .noOp("removed obsolete roles join-only relation history")
+    .noOp("removed obsolete organizationMember.organization join-only relation history")
+    .noOp("removed obsolete userOrganizationInvitations join-only relation history")
+    .noOp("removed obsolete invitations join-only relation history")
+    .noOp("removed obsolete organizationInvitation.organization join-only relation history")
     .alterTable("session", (t) => {
       return t.createIndex("idx_session_id_expiresAt", ["id", "expiresAt"]);
     })
-    .addReference("userOrganizationMembers", {
-      type: "many",
-      from: {
-        table: "user",
-        column: "id",
-      },
-      to: {
-        table: "organizationMember",
-        column: "userId",
-      },
-      foreignKey: false,
-    })
+    .noOp("removed obsolete userOrganizationMembers join-only relation history")
     .alterTable("oauthState", (t) => {
       return t.addColumn("sessionSeed", column("json").nullable());
     });

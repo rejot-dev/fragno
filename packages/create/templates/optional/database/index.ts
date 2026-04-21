@@ -73,7 +73,13 @@ const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragmen
       getNotes: function () {
         return this.serviceTx(noteSchema)
           .retrieve((uow) =>
-            uow.find("note", (b) => b.whereIndex("primary").join((j) => j.author())),
+            uow.find("note", (b) =>
+              b
+                .whereIndex("primary")
+                .joinOne("author", "user", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
+                ),
+            ),
           )
           .transformRetrieve(([notes]) => {
             return notes;
@@ -87,7 +93,13 @@ const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragmen
               .findFirst("user", (b) =>
                 b.whereIndex("idx_user_email", (eb) => eb("email", "=", userEmail)),
               )
-              .find("note", (b) => b.whereIndex("primary").join((j) => j.author())),
+              .find("note", (b) =>
+                b
+                  .whereIndex("primary")
+                  .joinOne("author", "user", (author) =>
+                    author.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
+                  ),
+              ),
           )
           .transformRetrieve(([user, allNotes]) => {
             if (!user) {
@@ -102,7 +114,11 @@ const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragmen
         return this.serviceTx(noteSchema)
           .retrieve((uow) =>
             uow.findFirst("note", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", noteId)).join((j) => j.author()),
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", noteId))
+                .joinOne("author", "user", (author) =>
+                  author.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
+                ),
             ),
           )
           .mutate(({ uow, retrieveResult: [note] }) => {

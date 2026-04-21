@@ -13,14 +13,10 @@ export const commentSchema = schema("comment", (s) => {
         )
         .addColumn("postReference", column("string")) // FIXME: Support external references
         .addColumn("userReference", column("string"))
-        .addColumn("parentId", referenceColumn().nullable())
+        .addColumn("parentId", referenceColumn({ table: "comment" }).nullable())
         .createIndex("idx_comment_post", ["postReference"]);
     })
-    .addReference("parent", {
-      type: "one",
-      from: { table: "comment", column: "parentId" },
-      to: { table: "comment", column: "id" },
-    })
+    .noOp("removed obsolete comment.parent addReference history")
     .alterTable("comment", (t) => {
       return t.addColumn("rating", column("integer").defaultTo(0));
     });

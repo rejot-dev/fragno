@@ -41,8 +41,8 @@ export const telegramSchema = schema("telegram-fragment", (s) => {
     .addTable("chatMember", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("chatId", referenceColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("chatId", referenceColumn({ table: "chat" }))
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("status", column("string"))
         .addColumn("joinedAt", column("timestamp").nullable())
         .addColumn("leftAt", column("timestamp").nullable())
@@ -63,10 +63,10 @@ export const telegramSchema = schema("telegram-fragment", (s) => {
     .addTable("message", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("chatId", referenceColumn())
-        .addColumn("fromUserId", referenceColumn().nullable())
-        .addColumn("senderChatId", referenceColumn().nullable())
-        .addColumn("replyToMessageId", referenceColumn().nullable())
+        .addColumn("chatId", referenceColumn({ table: "chat" }))
+        .addColumn("fromUserId", referenceColumn({ table: "user" }).nullable())
+        .addColumn("senderChatId", referenceColumn({ table: "chat" }).nullable())
+        .addColumn("replyToMessageId", referenceColumn({ table: "message" }).nullable())
         .addColumn("messageType", column("string"))
         .addColumn("text", column("string").nullable())
         .addColumn("payload", column("json").nullable())
@@ -82,34 +82,10 @@ export const telegramSchema = schema("telegram-fragment", (s) => {
         .createIndex("idx_message_from", ["fromUserId"])
         .createIndex("idx_message_sent", ["sentAt"]);
     })
-    .addReference("chatMemberChat", {
-      type: "one",
-      from: { table: "chatMember", column: "chatId" },
-      to: { table: "chat", column: "id" },
-    })
-    .addReference("chatMemberUser", {
-      type: "one",
-      from: { table: "chatMember", column: "userId" },
-      to: { table: "user", column: "id" },
-    })
-    .addReference("messageChat", {
-      type: "one",
-      from: { table: "message", column: "chatId" },
-      to: { table: "chat", column: "id" },
-    })
-    .addReference("messageAuthor", {
-      type: "one",
-      from: { table: "message", column: "fromUserId" },
-      to: { table: "user", column: "id" },
-    })
-    .addReference("messageSenderChat", {
-      type: "one",
-      from: { table: "message", column: "senderChatId" },
-      to: { table: "chat", column: "id" },
-    })
-    .addReference("messageReplyTo", {
-      type: "one",
-      from: { table: "message", column: "replyToMessageId" },
-      to: { table: "message", column: "id" },
-    });
+    .noOp("removed obsolete chatMemberChat addReference history")
+    .noOp("removed obsolete chatMemberUser addReference history")
+    .noOp("removed obsolete messageChat addReference history")
+    .noOp("removed obsolete messageAuthor addReference history")
+    .noOp("removed obsolete messageSenderChat addReference history")
+    .noOp("removed obsolete messageReplyTo addReference history");
 });

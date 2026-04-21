@@ -142,21 +142,11 @@ export const noteSchema = schema("example-fragment", (s) => {
       return t
         .addColumn("id", idColumn()) // Auto-generated ID
         .addColumn("content", column("string"))
-        .addColumn("userId", referenceColumn())
-        .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+        .addColumn("userId", referenceColumn({ table: "user" }))
+        .addColumn("createdAt", column("timestamp").defaultTo((b) => b.now())
         .createIndex("idx_note_user", ["userId"]);
     })
-    .addReference("author", {
-      from: {
-        table: "note",
-        column: "userId",
-      },
-      to: {
-        table: "user",
-        column: "id",
-      },
-      type: "one",
-    });
+    .noOp("removed obsolete note -> user addReference history");
 });
 ```
 

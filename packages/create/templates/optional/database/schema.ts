@@ -13,16 +13,12 @@ export const noteSchema = schema("example-fragment", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("content", column("string"))
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_note_user", ["userId"]);
     })
-    .addReference("author", {
-      type: "one",
-      from: { table: "note", column: "userId" },
-      to: { table: "user", column: "id" },
-    });
+    .noOp("removed obsolete note -> user addReference history");
 });

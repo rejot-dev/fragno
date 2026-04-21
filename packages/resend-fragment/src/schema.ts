@@ -23,7 +23,7 @@ export const resendSchema = schema("resend", (s) => {
       return (
         t
           .addColumn("id", idColumn())
-          .addColumn("threadId", referenceColumn().nullable())
+          .addColumn("threadId", referenceColumn({ table: "emailThread" }).nullable())
           .addColumn("direction", column("string"))
           // status: queued | scheduled | sending | failed | sent | delivered | bounced |
           // complained | opened | clicked | received
@@ -67,9 +67,5 @@ export const resendSchema = schema("resend", (s) => {
           ])
       );
     })
-    .addReference("emailMessageThread", {
-      type: "one",
-      from: { table: "emailMessage", column: "threadId" },
-      to: { table: "emailThread", column: "id" },
-    });
+    .noOp("removed obsolete emailMessageThread addReference history");
 });

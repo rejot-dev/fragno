@@ -20,16 +20,30 @@ import { userActionsRoutesFactory } from "./user/user-actions";
 import { userOverviewRoutesFactory } from "./user/user-overview";
 
 const preOrganizationSchemaVersion = (() => {
-  const index = authSchema.operations.findIndex(
+  const sessionActiveOrganizationIndex = authSchema.operations.findIndex(
+    (operation) =>
+      operation.type === "alter-table" &&
+      operation.tableName === "session" &&
+      operation.operations.some(
+        (tableOperation) =>
+          tableOperation.type === "add-column" &&
+          tableOperation.columnName === "activeOrganizationId",
+      ),
+  );
+  const organizationTableIndex = authSchema.operations.findIndex(
     (operation) => operation.type === "add-table" && operation.tableName === "organization",
   );
-  if (index === -1) {
-    throw new Error("Expected auth schema to include organization table operations.");
+
+  if (sessionActiveOrganizationIndex === -1 || organizationTableIndex === -1) {
+    throw new Error(
+      "Expected auth schema to include session and organization bootstrap operations.",
+    );
   }
-  if (index < 2) {
-    throw new Error("Expected organization table to be added after user and session tables.");
+  if (organizationTableIndex <= sessionActiveOrganizationIndex) {
+    throw new Error("Expected organization table to be added after session.activeOrganizationId.");
   }
-  return index;
+
+  return organizationTableIndex + 1;
 })();
 
 class MemoryStorage implements Pick<Storage, "getItem" | "setItem" | "removeItem"> {

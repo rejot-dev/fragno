@@ -4,11 +4,20 @@ import { exec } from "node:child_process";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { create } from ".";
 
 const execAsync = promisify(exec);
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const linkedFragnoPackages: Record<string, string> = {
+  "@fragno-dev/core": path.join(repoRoot, "packages/fragno"),
+  "@fragno-dev/db": path.join(repoRoot, "packages/fragno-db"),
+  "@fragno-dev/cli": path.join(repoRoot, "apps/fragno-cli"),
+  "@fragno-dev/unplugin-fragno": path.join(repoRoot, "packages/unplugin-fragno"),
+};
 
 async function createTempDir(name: string): Promise<string> {
   const dir = path.join(tmpdir(), `${name}-${Date.now()}`);
@@ -22,6 +31,29 @@ async function createTempDir(name: string): Promise<string> {
 }
 
 type BuildTool = "tsdown" | "esbuild" | "vite" | "rollup" | "webpack" | "rspack";
+
+async function linkLocalFragnoPackages(targetPath: string) {
+  const packageJsonPath = path.join(targetPath, "package.json");
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8")) as Record<
+    string,
+    unknown
+  >;
+
+  for (const sectionName of ["dependencies", "devDependencies"] as const) {
+    const section = packageJson[sectionName];
+    if (!section || typeof section !== "object") {
+      continue;
+    }
+
+    for (const [packageName, localPath] of Object.entries(linkedFragnoPackages)) {
+      if (packageName in (section as Record<string, string>)) {
+        (section as Record<string, string>)[packageName] = `link:${localPath}`;
+      }
+    }
+  }
+
+  await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+}
 
 function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
   return () => {
@@ -38,6 +70,7 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
       tempDir = await createTempDir(`fragment-test-${buildTool}-${suffix}`);
       console.log("temp", tempDir);
       create({ ...testConfig, path: tempDir, withDatabase });
+      await linkLocalFragnoPackages(tempDir);
     });
 
     afterAll(async () => {

@@ -122,12 +122,12 @@ export const session_auth = sqliteTable("session_auth", {
   foreignKey({
     columns: [table.userId],
     foreignColumns: [user_auth._internalId],
-    name: "fk_session_user_sessionOwner_auth_7854da47"
+    name: "fk_session_user_session_userId_fk_auth_481a47e0"
   }),
   foreignKey({
     columns: [table.activeOrganizationId],
     foreignColumns: [organization_auth._internalId],
-    name: "fk_session_organization_sessionActiveOrganization_auth_c1d88689"
+    name: "fk_session_organization_session_activeOrganizationId_fkaa5effd7"
   }),
   index("idx_session_idx_session_user_auth_0748231c").on(table.userId),
   index("idx_session_idx_session_id_expiresAt_auth_2345cc9f").on(table.id, table.expiresAt),
@@ -150,7 +150,7 @@ export const organization_auth = sqliteTable("organization_auth", {
   foreignKey({
     columns: [table.createdBy],
     foreignColumns: [user_auth._internalId],
-    name: "fk_organization_user_organizationCreator_auth_c99fc140"
+    name: "fk_organization_user_organization_createdBy_fk_auth_3a721c70"
   }),
   uniqueIndex("uidx_organization_idx_organization_slug_auth_9b82968a").on(table.slug),
   index("idx_organization_idx_organization_createdBy_auth_e893279c").on(table.createdBy),
@@ -169,12 +169,12 @@ export const organizationMember_auth = sqliteTable("organizationMember_auth", {
   foreignKey({
     columns: [table.organizationId],
     foreignColumns: [organization_auth._internalId],
-    name: "fk_organizationMember_organization_organizationMemberOr038a36fb"
+    name: "fk_organizationMember_organization_organizationMember_ofdd1098e"
   }),
   foreignKey({
     columns: [table.userId],
     foreignColumns: [user_auth._internalId],
-    name: "fk_organizationMember_user_organizationMemberUser_auth_a00a7460"
+    name: "fk_organizationMember_user_organizationMember_userId_fkb413bdc4"
   }),
   uniqueIndex("uidx_organizationMember_idx_org_member_org_user_auth_abbf915f").on(table.organizationId, table.userId),
   index("idx_organizationMember_idx_org_member_user_auth_1cd12c0f").on(table.userId),
@@ -193,7 +193,7 @@ export const organizationMemberRole_auth = sqliteTable("organizationMemberRole_a
   foreignKey({
     columns: [table.memberId],
     foreignColumns: [organizationMember_auth._internalId],
-    name: "fk_organizationMemberRole_organizationMember_organizati5029ddce"
+    name: "fk_organizationMemberRole_organizationMember_organizatib4490866"
   }),
   uniqueIndex("uidx_organizationMemberRole_idx_org_member_role_member_e45d22f1").on(table.memberId, table.role),
   index("idx_organizationMemberRole_idx_org_member_role_member_a2a65acd6").on(table.memberId),
@@ -218,12 +218,12 @@ export const organizationInvitation_auth = sqliteTable("organizationInvitation_a
   foreignKey({
     columns: [table.organizationId],
     foreignColumns: [organization_auth._internalId],
-    name: "fk_organizationInvitation_organization_organizationInvida3865a6"
+    name: "fk_organizationInvitation_organization_organizationInvi963a4ee6"
   }),
   foreignKey({
     columns: [table.inviterId],
     foreignColumns: [user_auth._internalId],
-    name: "fk_organizationInvitation_user_organizationInvitationIn47cda46d"
+    name: "fk_organizationInvitation_user_organizationInvitation_icbf271d9"
   }),
   uniqueIndex("uidx_organizationInvitation_idx_org_invitation_token_au93b35818").on(table.token),
   index("idx_organizationInvitation_idx_org_invitation_org_statu68f8a9be").on(table.organizationId, table.status),
@@ -255,7 +255,7 @@ export const oauthAccount_auth = sqliteTable("oauthAccount_auth", {
   foreignKey({
     columns: [table.userId],
     foreignColumns: [user_auth._internalId],
-    name: "fk_oauthAccount_user_oauthAccountUser_auth_94d5cb9b"
+    name: "fk_oauthAccount_user_oauthAccount_userId_fk_auth_0ecc8c86"
   }),
   uniqueIndex("uidx_oauthAccount_idx_oauth_account_provider_account_au229618a4").on(table.provider, table.providerAccountId),
   index("idx_oauthAccount_idx_oauth_account_user_auth_98049852").on(table.userId),
@@ -280,7 +280,7 @@ export const oauthState_auth = sqliteTable("oauthState_auth", {
   foreignKey({
     columns: [table.linkUserId],
     foreignColumns: [user_auth._internalId],
-    name: "fk_oauthState_user_oauthStateLinkUser_auth_2659bef7"
+    name: "fk_oauthState_user_oauthState_linkUserId_fk_auth_8d42d847"
   }),
   uniqueIndex("uidx_oauthState_idx_oauth_state_state_auth_f65e8ad2").on(table.state),
   index("idx_oauthState_idx_oauth_state_provider_auth_2c66010f").on(table.provider),
@@ -290,103 +290,103 @@ export const oauthState_auth = sqliteTable("oauthState_auth", {
 
 export const user_authRelations = relations(user_auth, ({ many }) => ({
   sessionList: many(session_auth, {
-    relationName: "session_user"
+    relationName: "session_userId"
   }),
   organizationList: many(organization_auth, {
-    relationName: "organization_user"
+    relationName: "organization_createdBy"
   }),
   organizationMemberList: many(organizationMember_auth, {
-    relationName: "organizationMember_user"
+    relationName: "organizationMember_userId"
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
-    relationName: "organizationInvitation_user"
+    relationName: "organizationInvitation_inviterId"
   }),
   oauthAccountList: many(oauthAccount_auth, {
-    relationName: "oauthAccount_user"
+    relationName: "oauthAccount_userId"
   }),
   oauthStateList: many(oauthState_auth, {
-    relationName: "oauthState_user"
+    relationName: "oauthState_linkUserId"
   })
 }));
 
 export const session_authRelations = relations(session_auth, ({ one }) => ({
-  sessionOwner: one(user_auth, {
-    relationName: "session_user",
+  user: one(user_auth, {
+    relationName: "session_userId",
     fields: [session_auth.userId],
     references: [user_auth._internalId]
   }),
-  sessionActiveOrganization: one(organization_auth, {
-    relationName: "session_organization",
+  activeOrganization: one(organization_auth, {
+    relationName: "session_activeOrganizationId",
     fields: [session_auth.activeOrganizationId],
     references: [organization_auth._internalId]
   })
 }));
 
 export const organization_authRelations = relations(organization_auth, ({ one, many }) => ({
-  organizationCreator: one(user_auth, {
-    relationName: "organization_user",
+  createdBy: one(user_auth, {
+    relationName: "organization_createdBy",
     fields: [organization_auth.createdBy],
     references: [user_auth._internalId]
   }),
   sessionList: many(session_auth, {
-    relationName: "session_organization"
+    relationName: "session_activeOrganizationId"
   }),
   organizationMemberList: many(organizationMember_auth, {
-    relationName: "organizationMember_organization"
+    relationName: "organizationMember_organizationId"
   }),
   organizationInvitationList: many(organizationInvitation_auth, {
-    relationName: "organizationInvitation_organization"
+    relationName: "organizationInvitation_organizationId"
   })
 }));
 
 export const organizationMember_authRelations = relations(organizationMember_auth, ({ one, many }) => ({
-  organizationMemberOrganization: one(organization_auth, {
-    relationName: "organizationMember_organization",
+  organization: one(organization_auth, {
+    relationName: "organizationMember_organizationId",
     fields: [organizationMember_auth.organizationId],
     references: [organization_auth._internalId]
   }),
-  organizationMemberUser: one(user_auth, {
-    relationName: "organizationMember_user",
+  user: one(user_auth, {
+    relationName: "organizationMember_userId",
     fields: [organizationMember_auth.userId],
     references: [user_auth._internalId]
   }),
   organizationMemberRoleList: many(organizationMemberRole_auth, {
-    relationName: "organizationMemberRole_organizationMember"
+    relationName: "organizationMemberRole_memberId"
   })
 }));
 
 export const organizationMemberRole_authRelations = relations(organizationMemberRole_auth, ({ one }) => ({
-  organizationMemberRoleMember: one(organizationMember_auth, {
-    relationName: "organizationMemberRole_organizationMember",
+  member: one(organizationMember_auth, {
+    relationName: "organizationMemberRole_memberId",
     fields: [organizationMemberRole_auth.memberId],
     references: [organizationMember_auth._internalId]
   })
 }));
 
 export const organizationInvitation_authRelations = relations(organizationInvitation_auth, ({ one }) => ({
-  organizationInvitationOrganization: one(organization_auth, {
-    relationName: "organizationInvitation_organization",
+  organization: one(organization_auth, {
+    relationName: "organizationInvitation_organizationId",
     fields: [organizationInvitation_auth.organizationId],
     references: [organization_auth._internalId]
   }),
-  organizationInvitationInviter: one(user_auth, {
-    relationName: "organizationInvitation_user",
+  inviter: one(user_auth, {
+    relationName: "organizationInvitation_inviterId",
     fields: [organizationInvitation_auth.inviterId],
     references: [user_auth._internalId]
   })
 }));
 
 export const oauthAccount_authRelations = relations(oauthAccount_auth, ({ one }) => ({
-  oauthAccountUser: one(user_auth, {
-    relationName: "oauthAccount_user",
+  user: one(user_auth, {
+    relationName: "oauthAccount_userId",
     fields: [oauthAccount_auth.userId],
     references: [user_auth._internalId]
   })
 }));
 
 export const oauthState_authRelations = relations(oauthState_auth, ({ one }) => ({
-  oauthStateLinkUser: one(user_auth, {
-    relationName: "oauthState_user",
+  linkUser: one(user_auth, {
+    relationName: "oauthState_linkUserId",
     fields: [oauthState_auth.linkUserId],
     references: [user_auth._internalId]
   })
@@ -447,7 +447,7 @@ export const comment_comment = sqliteTable("comment_comment", {
   foreignKey({
     columns: [table.parentId],
     foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent_comment_e6560345"
+    name: "fk_comment_comment_comment_parentId_fk_comment_d0862848"
   }),
   index("idx_comment_idx_comment_post_comment_c75acad5").on(table.postReference),
   uniqueIndex("uidx_comment_idx_comment_external_id_comment_1579b6d0").on(table.id)
@@ -455,12 +455,12 @@ export const comment_comment = sqliteTable("comment_comment", {
 
 export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
   parent: one(comment_comment, {
-    relationName: "comment_comment",
+    relationName: "comment_parentId",
     fields: [comment_comment.parentId],
     references: [comment_comment._internalId]
   }),
   commentList: many(comment_comment, {
-    relationName: "comment_comment"
+    relationName: "comment_parentId"
   })
 }));
 
@@ -559,7 +559,7 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_step_workflow_instance_stepInstance_workflo01bdff32"
+    name: "fk_workflow_step_workflow_instance_workflow_step_instanf10e6a91"
   }),
   uniqueIndex("uidx_workflow_step_idx_workflow_step_instanceRef_runNum2a6b0b25").on(table.instanceRef, table.runNumber, table.stepKey),
   index("idx_workflow_step_idx_workflow_step_instanceRef_runNumbe91f4dec").on(table.instanceRef, table.runNumber, table.createdAt),
@@ -583,7 +583,7 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_event_workflow_instance_eventInstance_workf9b5621c6"
+    name: "fk_workflow_event_workflow_instance_workflow_event_inst3029c2ed"
   }),
   index("idx_workflow_event_idx_workflow_event_instanceRef_runNu9d715b8f").on(table.instanceRef, table.runNumber, table.createdAt),
   uniqueIndex("uidx_workflow_event_idx_workflow_event_external_id_workd61ca377").on(table.id)
@@ -591,24 +591,24 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
   workflow_stepList: many(workflow_step_workflows, {
-    relationName: "workflow_step_workflow_instance"
+    relationName: "workflow_step_instanceRef"
   }),
   workflow_eventList: many(workflow_event_workflows, {
-    relationName: "workflow_event_workflow_instance"
+    relationName: "workflow_event_instanceRef"
   })
 }));
 
 export const workflow_step_workflowsRelations = relations(workflow_step_workflows, ({ one }) => ({
-  stepInstance: one(workflow_instance_workflows, {
-    relationName: "workflow_step_workflow_instance",
+  instanceRef: one(workflow_instance_workflows, {
+    relationName: "workflow_step_instanceRef",
     fields: [workflow_step_workflows.instanceRef],
     references: [workflow_instance_workflows._internalId]
   })
 }));
 
 export const workflow_event_workflowsRelations = relations(workflow_event_workflows, ({ one }) => ({
-  eventInstance: one(workflow_instance_workflows, {
-    relationName: "workflow_event_workflow_instance",
+  instanceRef: one(workflow_instance_workflows, {
+    relationName: "workflow_event_instanceRef",
     fields: [workflow_event_workflows.instanceRef],
     references: [workflow_instance_workflows._internalId]
   })
