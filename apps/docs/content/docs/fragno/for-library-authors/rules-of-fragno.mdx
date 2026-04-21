@@ -103,8 +103,8 @@ execution model and retry behavior.
 doesn't have to — you can also let it auto-generate (CUID) values. Fragno automatically adds
 `_internalId` and `_version` under the hood, so you do not need extra columns to mirror either.
 
-References can point at `idColumn()` values. `referenceColumn()` accepts ID strings (or `FragnoId`
-objects) and the query layer resolves them for you.
+References can point at `idColumn()` values. `referenceColumn({ table: "..." })` accepts ID strings
+(or `FragnoId` objects) and the query layer resolves them for you.
 
 ```ts
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
@@ -115,14 +115,9 @@ export const mySchema = schema("example", (s) =>
     .addTable("note", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("content", column("string")),
-    )
-    .addReference("author", {
-      type: "one",
-      from: { table: "note", column: "userId" },
-      to: { table: "user", column: "id" },
-    }),
+    ),
 );
 
 await this.handlerTx()
@@ -140,4 +135,4 @@ await this.handlerTx()
 ```
 
 See [Defining Schemas](/docs/fragno/for-library-authors/database-integration/defining-schemas) for
-more on `idColumn()` and `referenceColumn()`.
+more on `idColumn()` and `referenceColumn({ table: "..." })`.

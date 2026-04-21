@@ -387,7 +387,7 @@ export const commentSchema = schema("comment", (s) => {
         .addColumn("content", column("string"))
         .addColumn("createdAt", column("timestamp").defaultTo((b) => b.now()))
         .addColumn("postReference", column("string"))
-        .addColumn("parentId", referenceColumn().nullable())
+        .addColumn("parentId", referenceColumn({ table: "comment" }).nullable())
         .createIndex("idx_comment_post", ["postReference"]);
     })
     .addTable("upvote_total", (t) => {
@@ -396,11 +396,6 @@ export const commentSchema = schema("comment", (s) => {
         .addColumn("reference", column("string"))
         .addColumn("total", column("integer").defaultTo(0))
         .createIndex("idx_upvote_total_reference", ["reference"], { unique: true });
-    })
-    .addReference("parent", {
-      type: "one",
-      from: { table: "comment", column: "parentId" },
-      to: { table: "comment", column: "id" },
     });
 });`,
       },

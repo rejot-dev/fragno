@@ -50,7 +50,7 @@ column("binary");
 
 // Special types
 idColumn(); // Auto-generated CUID primary key
-referenceColumn(); // Foreign key reference (bigint)
+referenceColumn({ table: "otherTable" }); // Foreign key reference (bigint)
 ```
 
 ### Modifiers
@@ -132,44 +132,27 @@ In Fragno, indexes are required for most operations such as `where` and `orderBy
 
 ## Relations
 
-Define relationships between tables using `addReference()`:
+Define foreign-key relationships directly on `referenceColumn({ table })`:
 
 ```typescript
 export const commentSchema = schema((s) => {
-  return (
-    s
-      .addTable("comment", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("content", column("string"))
-          .addColumn("parentId", referenceColumn().nullable());
-      })
-      // Self-referencing: comment -> parent comment
-      .addReference("parent", {
-        type: "one",
-        from: { table: "comment", column: "parentId" },
-        to: { table: "comment", column: "id" },
-      })
-  );
+  return s.addTable("comment", (t) => {
+    return t
+      .addColumn("id", idColumn())
+      .addColumn("content", column("string"))
+      .addColumn("parentId", referenceColumn({ table: "comment" }).nullable())
+      .createIndex("idx_comment_parent", ["parentId"]);
+  });
 });
 ```
 
 ### Relation Types
 
 ```typescript
-// Many-to-one: post -> author
-.addReference("author", {
-  type: "one",
-  from: { table: "posts", column: "userId" },
-  to: { table: "users", column: "id" },
-})
+// Many-to-one / foreign key: post -> author
+.addColumn("userId", referenceColumn({ table: "users" }))
 
-// One-to-many: user -> posts
-.addReference("posts", {
-  type: "many",
-  from: { table: "users", column: "id" },
-  to: { table: "posts", column: "userId" },
-})
+// One-to-many is derived automatically by code generators from FK-bearing columns.
 ```
 
 ### External References
@@ -181,56 +164,17 @@ For references to user data outside your Fragment, use regular string columns:
   return t
     .addColumn("id", idColumn())
     .addColumn("content", column("string"))
-    // External references - NOT referenceColumn()
+    // External references - NOT referenceColumn({ table: "..." })
     .addColumn("userId", column("string"))
     .addColumn("postId", column("string"));
 })
 ```
 
-Use `referenceColumn()` only for internal relations between your Fragment's tables. User data lives
-in separate tables outside your control, so no foreign key constraint is needed.
+Use `referenceColumn({ table: "..." })` only for internal relations between your Fragment's tables.
+User data lives in separate tables outside your control, so no foreign key constraint is needed.
 
 You may also chose not to have any external references in your schema. The user can define their own
 association table in their application's schema.
-
-### Join-Only Relations (No Foreign Keys)
-
-If you want to define joins on non-FK columns (like external IDs or emails), use `foreignKey: false`
-and index both join columns:
-
-```typescript
-.addTable("users", (t) => {
-  return t
-    .addColumn("id", idColumn())
-    .addColumn("email", column("string"))
-    .createIndex("idx_users_email", ["email"]);
-})
-.addTable("invitations", (t) => {
-  return t
-    .addColumn("id", idColumn())
-    .addColumn("email", column("string"))
-    .createIndex("idx_inv_email", ["email"]);
-})
-.addReference("invitedUser", {
-  type: "one",
-  from: { table: "invitations", column: "email" },
-  to: { table: "users", column: "email" },
-  foreignKey: false,
-})
-```
-
-Join-only relations do not generate foreign key migrations or schema relations for Prisma/Drizzle.
-When a join-only relation uses a table's `id` column, Fragno coerces it to `_internalId` so you can
-define inverse relations without `_internalId` casts:
-
-```typescript
-.addReference("memberships", {
-  type: "many",
-  from: { table: "users", column: "id" }, // coerced to _internalId
-  to: { table: "memberships", column: "userId" },
-  foreignKey: false,
-})
-```
 
 ## Schema Evolution
 
@@ -250,8 +194,8 @@ const mySchema = schema((s) => {
 // mySchema.version === 3        // Three operations = version 3
 ```
 
-Each operation (`.addTable()`, `.alterTable()`, `.addReference()`) increments the version by 1. The
-CLI uses this to generate migrations for users upgrading from older versions.
+Each operation (`.addTable()`, `.alterTable()`, `.noOp()`) increments the version by 1. The CLI uses
+this to generate migrations for users upgrading from older versions.
 
 ### Using alterTable()
 
