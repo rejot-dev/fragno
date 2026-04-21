@@ -38,15 +38,10 @@ const appSchema = schema("app", (s) =>
     .addTable("posts", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("title", column("string"))
         .createIndex("idx_author", ["authorId"]),
-    )
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    }),
+    ),
 );
 
 type CommandArgs = { input: unknown; tx: LofiSyncCommandTxFactory; ctx: unknown };

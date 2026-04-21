@@ -25,32 +25,17 @@ const conformanceSchema = schema("conformance", (s) =>
       t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .createIndex("posts_by_author", ["authorId"]),
     )
     .addTable("comments", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("postId", referenceColumn())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("postId", referenceColumn({ table: "posts" }))
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("body", column("string"))
         .createIndex("comments_by_post", ["postId"]),
-    )
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("post", {
-      type: "one",
-      from: { table: "comments", column: "postId" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("commenter", {
-      type: "one",
-      from: { table: "comments", column: "authorId" },
-      to: { table: "users", column: "id" },
-    }),
+    ),
 );
 
 const namespace = "conformance";

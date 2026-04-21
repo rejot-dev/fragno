@@ -1,7 +1,7 @@
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
-import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
+import { Column, FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 import {
   getQueryTreeSelectedColumnNames,
   isParentColumnRef,
@@ -320,7 +320,7 @@ const decodeRow = (row: RowSelection, table: AnyTable): Record<string, unknown> 
 
     const relationName = key.slice(0, colonIndex);
     const remainder = key.slice(colonIndex + 1);
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (!relation) {
       continue;
     }
@@ -330,7 +330,7 @@ const decodeRow = (row: RowSelection, table: AnyTable): Record<string, unknown> 
   }
 
   for (const relationName in relationData) {
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (!relation) {
       continue;
     }
