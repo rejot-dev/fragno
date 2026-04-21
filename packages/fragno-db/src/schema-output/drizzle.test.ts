@@ -21,15 +21,10 @@ describe("generateDrizzleSchema", () => {
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
-          .addColumn("userId", referenceColumn())
+          .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .createIndex("idx_user", ["userId"])
           .createIndex("idx_title", ["title"]);
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "userId" },
-        to: { table: "users", column: "id" },
       });
   });
 
@@ -94,7 +89,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author"
+            name: "fk_posts_users_posts_userId_fk"
           }),
           index("idx_user").on(table.userId),
           index("idx_title").on(table.title)
@@ -102,13 +97,13 @@ describe("generateDrizzleSchema", () => {
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -123,7 +118,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 3
+          schemaVersion: 2
         }"
       `);
     });
@@ -165,7 +160,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test_8d48035c"
+            name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
           index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
           index("idx_posts_idx_title_test_00e97ff4").on(table.title)
@@ -173,13 +168,13 @@ describe("generateDrizzleSchema", () => {
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -194,7 +189,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 3
+          schemaVersion: 2
         }"
       `);
     });
@@ -240,7 +235,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test_8d48035c"
+            name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
           index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
           index("idx_posts_idx_title_test_00e97ff4").on(table.title),
@@ -249,13 +244,13 @@ describe("generateDrizzleSchema", () => {
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -270,7 +265,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 3
+          schemaVersion: 2
         }"
       `);
     });
@@ -420,18 +415,8 @@ describe("generateDrizzleSchema", () => {
           return t
             .addColumn("id", idColumn())
             .addColumn("title", column("string"))
-            .addColumn("userId", referenceColumn())
+            .addColumn("userId", referenceColumn({ table: "users" }))
             .createIndex("idx_user", ["userId"]);
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        })
-        .addReference("posts", {
-          type: "many",
-          from: { table: "users", column: "id" },
-          to: { table: "posts", column: "userId" },
         });
     });
 
@@ -468,23 +453,20 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author"
+            name: "fk_posts_users_posts_userId_fk"
           }),
           index("idx_user").on(table.userId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          }),
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -499,7 +481,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 4
+          schemaVersion: 2
         }"
       `);
     });
@@ -535,23 +517,20 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test_8d48035c"
+            name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
           index("idx_posts_idx_user_test_4a5c5c19").on(table.userId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          }),
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -566,7 +545,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 4
+          schemaVersion: 2
         }"
       `);
     });
@@ -604,24 +583,21 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test_8d48035c"
+            name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
           index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
           uniqueIndex("uidx_posts_idx_posts_external_id_test_80487638").on(table.id)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          }),
           postsList: many(posts_test, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
-          author: one(users_test, {
-            relationName: "posts_users",
+          user: one(users_test, {
+            relationName: "posts_userId",
             fields: [posts_test.userId],
             references: [users_test._internalId]
           })
@@ -636,7 +612,7 @@ describe("generateDrizzleSchema", () => {
           posts_testRelations: posts_testRelations,
           posts: posts_test,
           postsRelations: posts_testRelations,
-          schemaVersion: 4
+          schemaVersion: 2
         }"
       `);
     });
@@ -651,12 +627,7 @@ describe("generateDrizzleSchema", () => {
             return t
               .addColumn("id", idColumn())
               .addColumn("name", column("string"))
-              .addColumn("categoryId", referenceColumn());
-          })
-          .addReference("products", {
-            type: "many",
-            from: { table: "categories", column: "id" },
-            to: { table: "products", column: "categoryId" },
+              .addColumn("categoryId", referenceColumn({ table: "categories" }));
           });
       });
 
@@ -675,12 +646,12 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain(
         "export const categories_testRelations = relations(categories_test, ({ many }) => ({",
       );
-      expect(generated).toContain("products: many(products_test");
+      expect(generated).toContain("productsList: many(products_test");
 
       // Should have schema export
       expect(generated).toContain("export const test_schema = {");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, bigserial, integer, bigint } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigserial, integer, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -703,11 +674,25 @@ describe("generateDrizzleSchema", () => {
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
-        })
+        }, (table) => [
+          foreignKey({
+            columns: [table.categoryId],
+            foreignColumns: [categories_test._internalId],
+            name: "fk_products_categories_products_categoryId_fk"
+          })
+        ])
 
         export const categories_testRelations = relations(categories_test, ({ many }) => ({
-          products: many(products_test, {
-            relationName: "categories_products"
+          productsList: many(products_test, {
+            relationName: "products_categoryId"
+          })
+        }));
+
+        export const products_testRelations = relations(products_test, ({ one }) => ({
+          category: one(categories_test, {
+            relationName: "products_categoryId",
+            fields: [products_test.categoryId],
+            references: [categories_test._internalId]
           })
         }));
 
@@ -717,31 +702,22 @@ describe("generateDrizzleSchema", () => {
           categories: categories_test,
           categoriesRelations: categories_testRelations,
           products_test: products_test,
+          products_testRelations: products_testRelations,
           products: products_test,
-          schemaVersion: 3
+          productsRelations: products_testRelations,
+          schemaVersion: 2
         }"
       `);
     });
 
     it("should handle self-referencing many relations", () => {
       const selfManySchema = schema("selfmany", (s) => {
-        return s
-          .addTable("category", (t) => {
-            return t
-              .addColumn("id", idColumn())
-              .addColumn("name", column("string"))
-              .addColumn("parentId", referenceColumn().nullable());
-          })
-          .addReference("parent", {
-            type: "one",
-            from: { table: "category", column: "parentId" },
-            to: { table: "category", column: "id" },
-          })
-          .addReference("children", {
-            type: "many",
-            from: { table: "category", column: "id" },
-            to: { table: "category", column: "parentId" },
-          });
+        return s.addTable("category", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("parentId", referenceColumn({ table: "category" }).nullable());
+        });
       });
 
       const generated = generateDrizzleSchema(
@@ -751,7 +727,7 @@ describe("generateDrizzleSchema", () => {
 
       // Should have both one and many relations
       expect(generated).toContain("parent: one(category_test");
-      expect(generated).toContain("children: many(category_test");
+      expect(generated).toContain("categoryList: many(category_test");
 
       // Should only have one foreign key (from the "one" relation)
       const fkMatches = generated.match(/foreignKey\(/g);
@@ -778,21 +754,18 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_category_category_parent"
+            name: "fk_category_category_category_parentId_fk"
           })
         ])
 
         export const category_testRelations = relations(category_test, ({ one, many }) => ({
           parent: one(category_test, {
-            relationName: "category_category",
+            relationName: "category_parentId",
             fields: [category_test.parentId],
             references: [category_test._internalId]
           }),
-          children: many(category_test, {
-            relationName: "category_category"
-          }),
           categoryList: many(category_test, {
-            relationName: "category_category"
+            relationName: "category_parentId"
           })
         }));
 
@@ -801,7 +774,7 @@ describe("generateDrizzleSchema", () => {
           category_testRelations: category_testRelations,
           category: category_test,
           categoryRelations: category_testRelations,
-          schemaVersion: 3
+          schemaVersion: 1
         }"
       `);
     });
@@ -821,12 +794,6 @@ describe("generateDrizzleSchema", () => {
             .addColumn("id", idColumn())
             .addColumn("email", column("string"))
             .createIndex("idx_inv_email", ["email"]);
-        })
-        .addReference("invitedUser", {
-          type: "one",
-          from: { table: "invitations", column: "email" },
-          to: { table: "users", column: "email" },
-          foreignKey: false,
         });
     });
 
@@ -841,19 +808,13 @@ describe("generateDrizzleSchema", () => {
 
   describe("self-referencing foreign keys", () => {
     const selfRefSchema = schema("selfref", (s) => {
-      return s
-        .addTable("comment", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("content", column("string"))
-            .addColumn("parentId", referenceColumn().nullable())
-            .createIndex("idx_parent", ["parentId"]);
-        })
-        .addReference("parent", {
-          type: "one",
-          from: { table: "comment", column: "parentId" },
-          to: { table: "comment", column: "id" },
-        });
+      return s.addTable("comment", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("content", column("string"))
+          .addColumn("parentId", referenceColumn({ table: "comment" }).nullable())
+          .createIndex("idx_parent", ["parentId"]);
+      });
     });
 
     it("should generate PostgreSQL self-referencing foreign key using table parameter", () => {
@@ -882,19 +843,19 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent"
+            name: "fk_comment_comment_comment_parentId_fk"
           }),
           index("idx_parent").on(table.parentId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
-            relationName: "comment_comment",
+            relationName: "comment_parentId",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
           }),
           commentList: many(comment_test, {
-            relationName: "comment_comment"
+            relationName: "comment_parentId"
           })
         }));
 
@@ -903,7 +864,7 @@ describe("generateDrizzleSchema", () => {
           comment_testRelations: comment_testRelations,
           comment: comment_test,
           commentRelations: comment_testRelations,
-          schemaVersion: 2
+          schemaVersion: 1
         }"
       `);
     });
@@ -932,19 +893,19 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent_test_af0d05a4"
+            name: "fk_comment_comment_comment_parentId_fk_test_ae280411"
           }),
           index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
-            relationName: "comment_comment",
+            relationName: "comment_parentId",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
           }),
           commentList: many(comment_test, {
-            relationName: "comment_comment"
+            relationName: "comment_parentId"
           })
         }));
 
@@ -953,7 +914,7 @@ describe("generateDrizzleSchema", () => {
           comment_testRelations: comment_testRelations,
           comment: comment_test,
           commentRelations: comment_testRelations,
-          schemaVersion: 2
+          schemaVersion: 1
         }"
       `);
     });
@@ -982,7 +943,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent_test_af0d05a4"
+            name: "fk_comment_comment_comment_parentId_fk_test_ae280411"
           }),
           index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId),
           uniqueIndex("uidx_comment_idx_comment_external_id_test_6a1c2b8f").on(table.id)
@@ -990,12 +951,12 @@ describe("generateDrizzleSchema", () => {
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
-            relationName: "comment_comment",
+            relationName: "comment_parentId",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
           }),
           commentList: many(comment_test, {
-            relationName: "comment_comment"
+            relationName: "comment_parentId"
           })
         }));
 
@@ -1004,7 +965,7 @@ describe("generateDrizzleSchema", () => {
           comment_testRelations: comment_testRelations,
           comment: comment_test,
           commentRelations: comment_testRelations,
-          schemaVersion: 2
+          schemaVersion: 1
         }"
       `);
     });
@@ -1027,7 +988,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain('schema_auth_db.table("posts"');
 
       // Foreign key name should use the original namespace with hashed naming
-      expect(generated).toMatch(/name: "fk_posts_users_author"/);
+      expect(generated).toMatch(/name: "fk_posts_users_posts_userId_fk"/);
 
       // Relations should reference sanitized table names
       expect(generated).toContain("foreignColumns: [users_auth_db._internalId]");
@@ -1077,7 +1038,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("foreignColumns: [users_my_fragment_v2._internalId]");
 
       // Relations should also use sanitized names
-      expect(generated).toContain("author: one(users_my_fragment_v2");
+      expect(generated).toContain("user: one(users_my_fragment_v2");
       expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
       expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
 
@@ -1121,7 +1082,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_my_fragment_v2._internalId],
-            name: "fk_posts_users_author"
+            name: "fk_posts_users_posts_userId_fk"
           }),
           index("idx_user").on(table.userId),
           index("idx_title").on(table.title)
@@ -1129,13 +1090,13 @@ describe("generateDrizzleSchema", () => {
 
         export const users_my_fragment_v2Relations = relations(users_my_fragment_v2, ({ many }) => ({
           postsList: many(posts_my_fragment_v2, {
-            relationName: "posts_users"
+            relationName: "posts_userId"
           })
         }));
 
         export const posts_my_fragment_v2Relations = relations(posts_my_fragment_v2, ({ one }) => ({
-          author: one(users_my_fragment_v2, {
-            relationName: "posts_users",
+          user: one(users_my_fragment_v2, {
+            relationName: "posts_userId",
             fields: [posts_my_fragment_v2.userId],
             references: [users_my_fragment_v2._internalId]
           })
@@ -1150,7 +1111,7 @@ describe("generateDrizzleSchema", () => {
           posts_my_fragment_v2Relations: posts_my_fragment_v2Relations,
           posts: posts_my_fragment_v2,
           postsRelations: posts_my_fragment_v2Relations,
-          schemaVersion: 3
+          schemaVersion: 2
         }"
       `);
     });

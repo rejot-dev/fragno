@@ -33,6 +33,23 @@ export interface CompilableQuery {
   compile(): CompiledQuery;
 }
 
+export function reorderAddForeignKeysForExecution(
+  operations: MigrationOperation[],
+): MigrationOperation[] {
+  const addForeignKeys: MigrationOperation[] = [];
+  const otherOperations: MigrationOperation[] = [];
+
+  for (const operation of operations) {
+    if (operation.type === "add-foreign-key") {
+      addForeignKeys.push(operation);
+    } else {
+      otherOperations.push(operation);
+    }
+  }
+
+  return [...otherOperations, ...addForeignKeys];
+}
+
 /**
  * Abstract base class for SQL generation from migration operations.
  * Each database dialect extends this class and implements the abstract methods.

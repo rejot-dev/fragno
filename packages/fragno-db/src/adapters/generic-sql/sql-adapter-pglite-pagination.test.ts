@@ -25,7 +25,7 @@ describe("SqlAdapter PGLite", () => {
       .addTable("emails", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("email", column("string"))
           .addColumn("is_primary", column("bool").defaultTo(false))
           .createIndex("unique_email", ["email"], { unique: true })
@@ -34,7 +34,7 @@ describe("SqlAdapter PGLite", () => {
       .addTable("posts", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
@@ -42,8 +42,8 @@ describe("SqlAdapter PGLite", () => {
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("post_id", referenceColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("post_id", referenceColumn({ table: "posts" }))
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("text", column("string"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
@@ -60,26 +60,6 @@ describe("SqlAdapter PGLite", () => {
           .addColumn("payload", column("json").nullable())
           .addColumn("big_score", column("bigint"))
           .createIndex("events_name_idx", ["name"]);
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "emails", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "comments", column: "post_id" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("commenter", {
-        type: "one",
-        from: { table: "comments", column: "user_id" },
-        to: { table: "users", column: "id" },
       });
   });
 

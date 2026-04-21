@@ -11,6 +11,7 @@ import {
   Column,
   FragnoId,
   FragnoReference,
+  getTableForeignKey,
 } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
@@ -89,11 +90,9 @@ export function buildWhere(
         // Handle reference columns specially
         if (typeof val === "string") {
           // String external ID - create subquery to lookup internal ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
-          );
-          if (relation) {
-            const refTable = relation.table;
+          const foreignKey = getTableForeignKey(table, left.name);
+          if (foreignKey) {
+            const refTable = foreignKey.referencedTable;
             const internalIdCol = refTable.getInternalIdColumn();
             const idCol = refTable.getIdColumn();
             const physicalTableName = resolver
@@ -119,11 +118,9 @@ export function buildWhere(
           val = val.internalId;
         } else if (val instanceof FragnoId && val.internalId === undefined) {
           // FragnoId without internal ID - create subquery using external ID
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.name),
-          );
-          if (relation) {
-            const refTable = relation.table;
+          const foreignKey = getTableForeignKey(table, left.name);
+          if (foreignKey) {
+            const refTable = foreignKey.referencedTable;
             const internalIdCol = refTable.getInternalIdColumn();
             const idCol = refTable.getIdColumn();
             const physicalTableName = resolver

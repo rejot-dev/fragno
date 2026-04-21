@@ -1,9 +1,25 @@
 import { describe, test, expect } from "vitest";
 
 import { Cursor } from "../../../query/cursor";
-import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
+import {
+  schema,
+  column,
+  idColumn,
+  referenceColumn,
+  FragnoId,
+  getTableRelations,
+  type Relation,
+} from "../../../schema/create";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-compiler";
+
+function renameRelation(relation: Relation, name: string): Relation {
+  return {
+    ...relation,
+    id: `${relation.referencer.name}.${name}`,
+    name,
+  };
+}
 
 // Test schema with indexes
 const testSchema = schema("test", (s) => {
@@ -16,7 +32,7 @@ const testSchema = schema("test", (s) => {
         .addColumn("age", column("integer").nullable())
         .addColumn("isActive", column("bool"))
         .addColumn("createdAt", column("timestamp"))
-        .addColumn("invitedBy", referenceColumn().nullable())
+        .addColumn("invitedBy", referenceColumn({ table: "users" }).nullable())
         .createIndex("idx_email", ["email"], { unique: true })
         .createIndex("idx_users_name", ["name"])
         .createIndex("idx_age", ["age"])
@@ -27,7 +43,7 @@ const testSchema = schema("test", (s) => {
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
         .addColumn("content", column("string"))
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "users" }))
         .addColumn("viewCount", column("integer").defaultTo(0))
         .addColumn("publishedAt", column("timestamp").nullable())
         .createIndex("idx_title", ["title"])
@@ -37,8 +53,8 @@ const testSchema = schema("test", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("content", column("string"))
-        .addColumn("postId", referenceColumn())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("postId", referenceColumn({ table: "posts" }))
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .createIndex("idx_comments_post", ["postId"])
         .createIndex("idx_author", ["authorId"]);
     })
@@ -51,42 +67,21 @@ const testSchema = schema("test", (s) => {
     .addTable("post_tags", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("postId", referenceColumn())
-        .addColumn("tagId", referenceColumn())
+        .addColumn("postId", referenceColumn({ table: "posts" }))
+        .addColumn("tagId", referenceColumn({ table: "tags" }))
         .createIndex("idx_post_tags_post", ["postId"])
         .createIndex("idx_tag", ["tagId"]);
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "userId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("inviter", {
-      type: "one",
-      from: { table: "users", column: "invitedBy" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("post", {
-      type: "one",
-      from: { table: "comments", column: "postId" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "comments", column: "authorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("post", {
-      type: "one",
-      from: { table: "post_tags", column: "postId" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("tag", {
-      type: "one",
-      from: { table: "post_tags", column: "tagId" },
-      to: { table: "tags", column: "id" },
     });
 });
+
+const testSchemaRelations = {
+  postsAuthor: renameRelation(getTableRelations(testSchema.tables.posts)["user"], "author"),
+  usersInviter: renameRelation(getTableRelations(testSchema.tables.users)["invitedBy"], "inviter"),
+  commentsPost: getTableRelations(testSchema.tables.comments)["post"],
+  commentsAuthor: getTableRelations(testSchema.tables.comments)["author"],
+  postTagsPost: getTableRelations(testSchema.tables.post_tags)["post"],
+  postTagsTag: getTableRelations(testSchema.tables.post_tags)["tag"],
+};
 
 // Schema with custom-named id columns
 const customIdSchema = schema("customid", (s) => {
@@ -101,7 +96,7 @@ const customIdSchema = schema("customid", (s) => {
     .addTable("orders", (t) => {
       return t
         .addColumn("orderId", idColumn())
-        .addColumn("productRef", referenceColumn())
+        .addColumn("productRef", referenceColumn({ table: "products" }))
         .addColumn("quantity", column("integer"));
     })
     .addTable("categories", (t) => {
@@ -113,27 +108,23 @@ const customIdSchema = schema("customid", (s) => {
     .addTable("product_categories", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("prodRef", referenceColumn())
-        .addColumn("catRef", referenceColumn())
+        .addColumn("prodRef", referenceColumn({ table: "products" }))
+        .addColumn("catRef", referenceColumn({ table: "categories" }))
         .createIndex("idx_prod", ["prodRef"])
         .createIndex("idx_cat", ["catRef"]);
-    })
-    .addReference("product", {
-      type: "one",
-      from: { table: "orders", column: "productRef" },
-      to: { table: "products", column: "productId" },
-    })
-    .addReference("product", {
-      type: "one",
-      from: { table: "product_categories", column: "prodRef" },
-      to: { table: "products", column: "productId" },
-    })
-    .addReference("category", {
-      type: "one",
-      from: { table: "product_categories", column: "catRef" },
-      to: { table: "categories", column: "categoryId" },
     });
 });
+
+const customIdSchemaRelations = {
+  productCategoriesProduct: renameRelation(
+    getTableRelations(customIdSchema.tables.product_categories)["prodRef"],
+    "product",
+  ),
+  productCategoriesCategory: renameRelation(
+    getTableRelations(customIdSchema.tables.product_categories)["catRef"],
+    "category",
+  ),
+};
 
 const joinOnlySchema = schema("joinonly", (s) => {
   return s
@@ -152,27 +143,31 @@ const joinOnlySchema = schema("joinonly", (s) => {
     .addTable("memberships", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "users" }))
         .createIndex("idx_memberships_user", ["userId"]);
-    })
-    .addReference("invitedUser", {
-      type: "one",
-      from: { table: "invitations", column: "email" },
-      to: { table: "users", column: "email" },
-      foreignKey: false,
-    })
-    .addReference("membershipUser", {
-      type: "one",
-      from: { table: "memberships", column: "userId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("memberships", {
-      type: "many",
-      from: { table: "users", column: "id" },
-      to: { table: "memberships", column: "userId" },
-      foreignKey: false,
     });
 });
+
+const joinOnlyRelations = {
+  invitedUser: {
+    id: "invitations.invitedUser",
+    name: "invitedUser",
+    type: "one",
+    foreignKey: false,
+    table: joinOnlySchema.tables.users,
+    referencer: joinOnlySchema.tables.invitations,
+    on: [["email", "email"]],
+  } satisfies Relation,
+  memberships: {
+    id: "users.memberships",
+    name: "memberships",
+    type: "many",
+    foreignKey: false,
+    table: joinOnlySchema.tables.memberships,
+    referencer: joinOnlySchema.tables.users,
+    on: [["id", "userId"]],
+  } satisfies Relation<"many">,
+};
 
 describe("GenericSQLUOWOperationCompiler", () => {
   const driverConfig = new BetterSQLite3DriverConfig();
@@ -1164,7 +1159,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "title"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: ["name", "email"],
               },
@@ -1192,7 +1187,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: joinOnlySchema.tables.invitations.relations.invitedUser,
+              relation: joinOnlyRelations.invitedUser,
               options: {
                 select: ["email"],
               },
@@ -1220,7 +1215,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: joinOnlySchema.tables.users.relations.memberships,
+              relation: joinOnlyRelations.memberships,
               options: {
                 select: ["id"],
               },
@@ -1248,7 +1243,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "userId"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: true,
               },
@@ -1276,13 +1271,13 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "content"],
           joins: [
             {
-              relation: testSchema.tables.comments.relations.post,
+              relation: testSchemaRelations.commentsPost,
               options: {
                 select: ["title"],
               },
             },
             {
-              relation: testSchema.tables.comments.relations.author,
+              relation: testSchemaRelations.commentsAuthor,
               options: {
                 select: ["name"],
               },
@@ -1310,7 +1305,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "name"],
           joins: [
             {
-              relation: testSchema.tables.users.relations.inviter,
+              relation: testSchemaRelations.usersInviter,
               options: {
                 select: ["name", "email"],
               },
@@ -1339,7 +1334,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "title"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: ["name"],
                 where: {
@@ -1375,7 +1370,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "title"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: ["name"],
                 where: {
@@ -1420,7 +1415,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "title"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: ["id", "name"],
               },
@@ -1448,7 +1443,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: true,
               },
@@ -1477,7 +1472,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "title"],
           joins: [
             {
-              relation: testSchema.tables.posts.relations.author,
+              relation: testSchemaRelations.postsAuthor,
               options: {
                 select: ["id", "name"],
                 where: {
@@ -1512,13 +1507,13 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id", "content"],
           joins: [
             {
-              relation: testSchema.tables.comments.relations.post,
+              relation: testSchemaRelations.commentsPost,
               options: {
                 select: ["id", "title"],
               },
             },
             {
-              relation: testSchema.tables.comments.relations.author,
+              relation: testSchemaRelations.commentsAuthor,
               options: {
                 select: ["name"],
               },
@@ -1546,13 +1541,13 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: testSchema.tables.post_tags.relations.post,
+              relation: testSchemaRelations.postTagsPost,
               options: {
                 select: ["title"],
               },
             },
             {
-              relation: testSchema.tables.post_tags.relations.tag,
+              relation: testSchemaRelations.postTagsTag,
               options: {
                 select: ["name"],
               },
@@ -1582,13 +1577,13 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: customIdSchema.tables.product_categories.relations.product,
+              relation: customIdSchemaRelations.productCategoriesProduct,
               options: {
                 select: ["productId", "name"],
               },
             },
             {
-              relation: customIdSchema.tables.product_categories.relations.category,
+              relation: customIdSchemaRelations.productCategoriesCategory,
               options: {
                 select: ["categoryId", "categoryName"],
               },
@@ -1617,7 +1612,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: customIdSchema.tables.product_categories.relations.product,
+              relation: customIdSchemaRelations.productCategoriesProduct,
               options: {
                 select: ["productId", "name"],
                 where: {
@@ -1652,7 +1647,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: customIdSchema.tables.product_categories.relations.product,
+              relation: customIdSchemaRelations.productCategoriesProduct,
               options: {
                 select: true,
               },
@@ -1680,13 +1675,13 @@ describe("GenericSQLUOWOperationCompiler", () => {
           select: ["id"],
           joins: [
             {
-              relation: customIdSchema.tables.product_categories.relations.product,
+              relation: customIdSchemaRelations.productCategoriesProduct,
               options: {
                 select: ["productId"],
               },
             },
             {
-              relation: customIdSchema.tables.product_categories.relations.category,
+              relation: customIdSchemaRelations.productCategoriesCategory,
               options: {
                 select: ["categoryId"],
               },

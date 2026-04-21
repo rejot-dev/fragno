@@ -26,7 +26,7 @@ describe("UnitOfWorkEncoder", () => {
       .addTable("posts", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("userId", referenceColumn())
+          .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"));
       });
   });

@@ -31,7 +31,7 @@ describe("SqlAdapter with better-sqlite3", () => {
       .addTable("emails", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("email", column("string"))
           .addColumn("is_primary", column("bool").defaultTo(false))
           .createIndex("unique_email", ["email"], { unique: true })
@@ -40,7 +40,7 @@ describe("SqlAdapter with better-sqlite3", () => {
       .addTable("posts", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
           .createIndex("posts_user_idx", ["user_id"]);
@@ -48,31 +48,11 @@ describe("SqlAdapter with better-sqlite3", () => {
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("post_id", referenceColumn())
-          .addColumn("user_id", referenceColumn())
+          .addColumn("post_id", referenceColumn({ table: "posts" }))
+          .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("text", column("string"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
-      })
-      .addReference("user", {
-        type: "one",
-        from: { table: "emails", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "user_id" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("post", {
-        type: "one",
-        from: { table: "comments", column: "post_id" },
-        to: { table: "posts", column: "id" },
-      })
-      .addReference("commenter", {
-        type: "one",
-        from: { table: "comments", column: "user_id" },
-        to: { table: "users", column: "id" },
       });
   });
 
@@ -89,14 +69,9 @@ describe("SqlAdapter with better-sqlite3", () => {
       .addTable("orders", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("product_id", referenceColumn())
+          .addColumn("product_id", referenceColumn({ table: "products" }))
           .addColumn("quantity", column("integer"))
           .createIndex("product_orders_idx", ["product_id"]);
-      })
-      .addReference("product", {
-        type: "one",
-        from: { table: "orders", column: "product_id" },
-        to: { table: "products", column: "id" },
       });
   });
 
@@ -1194,12 +1169,9 @@ describe("SQLite recreate-table foreign keys", () => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
         })
         .addTable("sessions", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("userId", referenceColumn());
-        })
-        .addReference("sessionUser", {
-          type: "one",
-          from: { table: "sessions", column: "userId" },
-          to: { table: "users", column: "id" },
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn({ table: "users" }));
         })
         .alterTable("users", (t) => {
           return t.alterColumn("name").nullable();
@@ -1258,15 +1230,10 @@ describe("SQLite migration failure scenarios", () => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
         })
         .addTable("posts", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("title", column("string"))
-            .addColumn("authorId", referenceColumn());
+          return t.addColumn("id", idColumn()).addColumn("title", column("string"));
         })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
+        .alterTable("posts", (t) => {
+          return t.addColumn("authorId", referenceColumn({ table: "users" }));
         });
     });
 

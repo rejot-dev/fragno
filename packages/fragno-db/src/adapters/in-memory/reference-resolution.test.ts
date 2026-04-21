@@ -8,12 +8,9 @@ import { createInMemoryStore, ensureNamespaceStore } from "./store";
 const testSchema = schema("test", (s) =>
   s
     .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
-    .addTable("posts", (t) => t.addColumn("id", idColumn()).addColumn("userId", referenceColumn()))
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "userId" },
-      to: { table: "users", column: "id" },
-    }),
+    .addTable("posts", (t) =>
+      t.addColumn("id", idColumn()).addColumn("userId", referenceColumn({ table: "users" })),
+    ),
 );
 
 describe("in-memory reference resolution", () => {

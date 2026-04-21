@@ -5,7 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { buildFindOptions } from "../query/find-options";
-import { schema, column, idColumn, referenceColumn } from "../schema/create";
+import { getTableRelations, schema, column, idColumn, referenceColumn } from "../schema/create";
 import { sql } from "../sql-driver/sql";
 import { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 import { checkConflicts } from "./conflict-checker";
@@ -19,12 +19,7 @@ const testSchema = schema("test", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("userId", referenceColumn());
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "userId" },
-      to: { table: "users", column: "id" },
+        .addColumn("userId", referenceColumn({ table: "users" }));
     });
 });
 
@@ -158,12 +153,10 @@ describe("checkConflicts", () => {
 
     const options = buildFindOptions(testSchema.tables.posts, {
       where: (eb) => eb("title", "=", "Hello"),
-      join: (jb) => {
-        jb["author"]();
-      },
     });
 
-    if (!options) {
+    const userRelation = getTableRelations(testSchema.tables.posts)["user"];
+    if (!options || !userRelation) {
       throw new Error("Expected join options to compile.");
     }
 
@@ -178,7 +171,7 @@ describe("checkConflicts", () => {
             table: testSchema.tables.posts,
             indexName: "primary",
             condition: options.where,
-            joins: options.join,
+            joins: [{ relation: userRelation, options: buildFindOptions(userRelation.table, {})! }],
           },
         ],
       },

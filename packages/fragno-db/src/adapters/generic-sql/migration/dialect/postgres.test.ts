@@ -801,10 +801,10 @@ describe("PostgresSQLGenerator", () => {
         `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
       );
       expect(statements[3].sql).toMatchInlineSnapshot(
-        `"alter table "posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "users" ("id") on delete restrict on update restrict"`,
+        `"alter table "posts" add column "published" boolean default false not null"`,
       );
       expect(statements[4].sql).toMatchInlineSnapshot(
-        `"alter table "posts" add column "published" boolean default false not null"`,
+        `"alter table "posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "users" ("id") on delete restrict on update restrict"`,
       );
     });
 
@@ -962,7 +962,7 @@ describe("PostgresSQLGenerator", () => {
   });
 
   describe("preprocessing", () => {
-    it("should not modify operations (PostgreSQL doesn't need preprocessing)", () => {
+    it("should leave batches without foreign keys unchanged", () => {
       const operations: MigrationOperation[] = [
         {
           type: "create-table",
@@ -973,6 +973,37 @@ describe("PostgresSQLGenerator", () => {
 
       const preprocessed = generator.preprocess(operations);
       expect(preprocessed).toEqual(operations);
+    });
+
+    it("hoists foreign keys to the end of the batch for forward references", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "sessions",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+        {
+          type: "add-foreign-key",
+          table: "sessions",
+          value: {
+            name: "sessions_org_fk",
+            columns: ["organizationId"],
+            referencedTable: "organizations",
+            referencedColumns: ["_internalId"],
+          },
+        },
+        {
+          type: "create-table",
+          name: "organizations",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+      ];
+
+      expect(generator.preprocess(operations)).toEqual([
+        operations[0],
+        operations[2],
+        operations[1],
+      ]);
     });
   });
 

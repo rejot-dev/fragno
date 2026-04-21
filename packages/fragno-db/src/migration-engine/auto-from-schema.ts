@@ -1,9 +1,4 @@
-import {
-  type AnySchema,
-  type AnyColumn,
-  type TableSubOperation,
-  type SchemaOperation,
-} from "../schema/create";
+import { type AnySchema, type AnyColumn, type TableSubOperation } from "../schema/create";
 import type {
   MigrationOperation,
   ColumnInfo,
@@ -49,6 +44,13 @@ function createTableState(operations: TableSubOperation[]): TableState {
         columns: [...subOp.columns],
         unique: subOp.unique,
       };
+    } else if (subOp.type === "add-foreign-key") {
+      state.foreignKeys.push({
+        name: subOp.name,
+        columns: [...subOp.columns],
+        referencedTable: subOp.referencedTable,
+        referencedColumns: [...subOp.referencedColumns],
+      });
     }
   }
 
@@ -88,6 +90,13 @@ function applyTableSubOperations(state: TableState, operations: TableSubOperatio
         columns: [...subOp.columns],
         unique: subOp.unique,
       };
+    } else if (subOp.type === "add-foreign-key") {
+      state.foreignKeys.push({
+        name: subOp.name,
+        columns: [...subOp.columns],
+        referencedTable: subOp.referencedTable,
+        referencedColumns: [...subOp.referencedColumns],
+      });
     }
   }
 }
@@ -199,21 +208,6 @@ function applyRenameDropToColumnList(
   return next;
 }
 
-function applyReferenceOperation(
-  state: TableState,
-  operation: Extract<SchemaOperation, { type: "add-reference" }>,
-): void {
-  if (operation.config.foreignKey === false) {
-    return;
-  }
-  state.foreignKeys.push({
-    name: operation.referenceName,
-    columns: [operation.config.from.column],
-    referencedTable: operation.config.to.table,
-    referencedColumns: [operation.config.to.column],
-  });
-}
-
 function buildTableStates(schema: AnySchema, version: number): Map<string, TableState> {
   const tableStates = new Map<string, TableState>();
   const operations = schema.operations.slice(0, version);
@@ -227,12 +221,6 @@ function buildTableStates(schema: AnySchema, version: number): Map<string, Table
         continue;
       }
       applyTableSubOperations(state, op.operations);
-    } else if (op.type === "add-reference") {
-      const state = tableStates.get(op.tableName);
-      if (!state) {
-        continue;
-      }
-      applyReferenceOperation(state, op);
     }
   }
 
@@ -447,7 +435,7 @@ export function generateMigrationFromSchema(
         migrationOperations.push(alterTableOperation);
       }
 
-      // Add indexes as separate operations
+      // Add indexes and foreign keys as separate operations
       for (const subOp of op.operations) {
         if (subOp.type === "add-index") {
           migrationOperations.push({
@@ -457,6 +445,17 @@ export function generateMigrationFromSchema(
             columns: subOp.columns,
             unique: subOp.unique,
           });
+        } else if (subOp.type === "add-foreign-key") {
+          migrationOperations.push({
+            type: "add-foreign-key",
+            table: op.tableName,
+            value: {
+              name: subOp.name,
+              columns: subOp.columns,
+              referencedTable: subOp.referencedTable,
+              referencedColumns: subOp.referencedColumns,
+            },
+          });
         }
       }
 
@@ -464,28 +463,6 @@ export function generateMigrationFromSchema(
         const nextState = cloneTableState(tableState);
         applyTableSubOperations(nextState, op.operations);
         tableStates.set(op.tableName, nextState);
-      }
-    } else if (op.type === "add-reference") {
-      if (!op.referenceName || op.referenceName.trim().length === 0) {
-        throw new Error(`referenceName is required for add-reference on ${op.tableName}`);
-      }
-      if (op.config.foreignKey === false) {
-        continue;
-      }
-      migrationOperations.push({
-        type: "add-foreign-key",
-        table: op.tableName,
-        value: {
-          name: op.referenceName,
-          columns: [op.config.from.column],
-          referencedTable: op.config.to.table,
-          referencedColumns: [op.config.to.column],
-        },
-      });
-
-      const tableState = tableStates.get(op.tableName);
-      if (tableState) {
-        applyReferenceOperation(tableState, op);
       }
     }
   }

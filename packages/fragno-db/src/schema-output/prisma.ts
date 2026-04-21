@@ -12,6 +12,7 @@ import {
   type SqlNamingStrategy,
 } from "../naming/sql-naming";
 import type { AnyColumn, AnySchema, AnyTable, Relation } from "../schema/create";
+import { getTableForeignKey, getTableRelations } from "../schema/create";
 import { parseVarchar } from "../util/parse";
 
 export interface GeneratePrismaSchemaOptions {
@@ -91,14 +92,18 @@ function getForeignKeyMapName(
   _namespace: string | null,
   resolver?: NamingResolver,
 ): string {
+  const localColumnName = relation.on[0]?.[0];
+  const foreignKey = localColumnName ? getTableForeignKey(table, localColumnName) : undefined;
+  const referenceName = foreignKey?.name ?? relation.name;
+
   if (resolver) {
     return resolver.getForeignKeyName({
       logicalTable: table.name,
       logicalReferencedTable: relation.table.name,
-      referenceName: relation.name,
+      referenceName,
     });
   }
-  return `${table.name}_${relation.table.name}_${relation.name}_fk`;
+  return `${table.name}_${relation.table.name}_${referenceName}`;
 }
 
 function getIndexMapName(
@@ -282,7 +287,7 @@ function areInverseRelations(one: Relation, many: Relation): boolean {
 }
 
 function findMatchingManyRelation(one: Relation): Relation | undefined {
-  for (const relation of Object.values(one.table.relations)) {
+  for (const relation of Object.values(getTableRelations(one.table))) {
     if (relation.type !== "many") {
       continue;
     }
@@ -297,7 +302,7 @@ function findMatchingManyRelation(one: Relation): Relation | undefined {
 }
 
 function findMatchingOneRelation(many: Relation): Relation | undefined {
-  for (const relation of Object.values(many.table.relations)) {
+  for (const relation of Object.values(getTableRelations(many.table))) {
     if (relation.type !== "one") {
       continue;
     }
@@ -367,7 +372,7 @@ function generateRelationFields(
 ): string[] {
   const lines: string[] = [];
   const usedNames = new Set<string>(fieldNameByColumn.values());
-  const relations = Object.values(table.relations)
+  const relations = Object.values(getTableRelations(table))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -434,7 +439,7 @@ function generateRelationFields(
 
   const inverseCandidates: Relation[] = [];
   for (const sourceTable of fieldNameByTableColumn.keys()) {
-    for (const rel of Object.values(sourceTable.relations)) {
+    for (const rel of Object.values(getTableRelations(sourceTable))) {
       if (rel.type === "one" && rel.table === table && rel.foreignKey !== false) {
         inverseCandidates.push(rel);
       }

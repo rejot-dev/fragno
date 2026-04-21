@@ -15,6 +15,8 @@ import {
   type AnyTable,
   type Relation,
   InternalIdColumn,
+  getTableForeignKey,
+  getTableRelations,
 } from "../schema/create";
 import { createSQLTypeMapper } from "../schema/type-conversion/create-sql-type-mapper";
 import { type DatabaseTypeLiteral } from "../schema/type-conversion/type-mapping";
@@ -366,7 +368,7 @@ function generateForeignKeys(
 ): string[] {
   const keys: string[] = [];
 
-  for (const relation of Object.values(table.relations)) {
+  for (const relation of Object.values(getTableRelations(table))) {
     // Only "one" relations generate foreign keys
     // "many" relations don't have foreign keys (they're on the other side)
     if (relation.type === "many" || relation.foreignKey === false) {
@@ -394,14 +396,17 @@ function generateForeignKeys(
     }
 
     ctx.imports.addImport("foreignKey", ctx.importSource);
+    const localColumnName = relation.on[0]?.[0];
+    const foreignKey = localColumnName ? getTableForeignKey(table, localColumnName) : undefined;
+    const referenceName = foreignKey?.name ?? relation.name;
     // Include namespace in FK name to avoid collisions
     const fkName = resolver
       ? resolver.getForeignKeyName({
           logicalTable: table.name,
           logicalReferencedTable: relation.table.name,
-          referenceName: relation.name,
+          referenceName,
         })
-      : `${table.name}_${relation.table.name}_${relation.name}_fk`;
+      : `${table.name}_${relation.table.name}_${referenceName}`;
 
     keys.push(`foreignKey({
   columns: [${columns.join(", ")}],
@@ -523,7 +528,7 @@ function generateRelation(
   let hasMany = false;
 
   // Generate explicit relations defined on this table
-  for (const relation of Object.values(table.relations)) {
+  for (const relation of Object.values(getTableRelations(table))) {
     if (relation.foreignKey === false) {
       continue;
     }
@@ -741,7 +746,7 @@ export function generateDrizzleSchema(
     // This is needed for Drizzle's relational query API to work correctly
     const inverseRelations = new Map<string, Array<{ fromTable: AnyTable; relation: Relation }>>();
     for (const table of Object.values(schema.tables)) {
-      for (const relation of Object.values(table.relations)) {
+      for (const relation of Object.values(getTableRelations(table))) {
         if (relation.foreignKey === false) {
           continue;
         }

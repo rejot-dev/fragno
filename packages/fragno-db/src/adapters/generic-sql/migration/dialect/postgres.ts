@@ -7,7 +7,7 @@ import type {
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
 import type { NamingResolver } from "../../../../naming/sql-naming";
-import { SQLGenerator } from "../sql-generator";
+import { reorderAddForeignKeysForExecution, SQLGenerator } from "../sql-generator";
 
 const errors = {
   IdColumnUpdate:
@@ -20,10 +20,11 @@ const errors = {
  */
 export class PostgresSQLGenerator extends SQLGenerator {
   /**
-   * PostgreSQL doesn't need preprocessing - it handles FKs normally.
+   * PostgreSQL can add foreign keys after the referenced tables exist,
+   * so we hoist FK operations to the end of the batch for forward references.
    */
   override preprocess(operations: MigrationOperation[]): MigrationOperation[] {
-    return operations;
+    return reorderAddForeignKeysForExecution(operations);
   }
 
   /**

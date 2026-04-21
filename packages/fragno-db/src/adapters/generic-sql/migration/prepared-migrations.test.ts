@@ -28,12 +28,7 @@ const testSchema = schema("test", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn());
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
+        .addColumn("authorId", referenceColumn({ table: "users" }));
     });
 });
 
@@ -55,15 +50,10 @@ const fkLaterSchema = schema("fk_later", (s) => {
       return t.addColumn("id", idColumn()).addColumn("name", column("string"));
     })
     .addTable("posts", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("title", column("string"))
-        .addColumn("authorId", referenceColumn());
+      return t.addColumn("id", idColumn()).addColumn("title", column("string"));
     })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
+    .alterTable("posts", (t) => {
+      return t.addColumn("authorId", referenceColumn({ table: "users" }));
     });
 });
 
@@ -631,7 +621,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     `);
   });
 
-  test("PostgreSQL: migration 0 -> 4 (full schema with posts and FK)", () => {
+  test("PostgreSQL: migration 0 -> 3 (full schema with posts and FK)", () => {
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
@@ -639,7 +629,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       resolver,
     });
 
-    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
       "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
@@ -651,9 +641,9 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      alter table "posts_test" add constraint "fk_posts_users_author_test_8d48035c" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
     `);
   });
 
@@ -689,11 +679,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
+      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+
       update "fragno_db_settings" set "value" = '3' where "key" = 'test.schema_version';"
     `);
   });
 
-  test("SQLite: migration 0 -> 4 with FK merging", () => {
+  test("SQLite: migration 0 -> 3 with FK merging", () => {
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
@@ -701,7 +693,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       resolver,
     });
 
-    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
       "PRAGMA defer_foreign_keys = ON;
 
@@ -715,7 +707,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
 
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
     `);
   });
 
@@ -733,7 +725,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     ).toThrow("SQLite doesn't support modifying foreign keys");
   });
 
-  test("MySQL: migration 0 -> 4 with FK checks disabled", () => {
+  test("MySQL: migration 0 -> 3 with FK checks disabled", () => {
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
@@ -741,7 +733,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       resolver,
     });
 
-    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
@@ -755,11 +747,11 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
-      alter table \`posts_test\` add constraint \`fk_posts_users_author_test_8d48035c\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
+      alter table \`posts_test\` add constraint \`fk_posts_users_posts_authorId_fk_test_96f92407\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
 
       SET FOREIGN_KEY_CHECKS = 1;
 
-      insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+      insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
     `);
   });
 

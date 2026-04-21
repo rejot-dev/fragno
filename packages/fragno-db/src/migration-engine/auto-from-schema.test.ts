@@ -86,66 +86,33 @@ describe("generateMigrationFromSchema", () => {
           return t.addColumn("id", idColumn());
         })
         .addTable("posts", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }));
         });
     });
 
-    // Version 0 -> 1: users table
-    // Version 1 -> 2: posts table
-    // Version 2 -> 3: author foreign key
-    const operations = generateMigrationFromSchema(mySchema, 2, 3);
+    const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
-    expect(operations).toHaveLength(1);
+    expect(operations).toHaveLength(2);
     expect(operations[0]).toMatchObject({
+      type: "create-table",
+      name: "posts",
+    });
+    expect(operations[1]).toMatchObject({
       type: "add-foreign-key",
       table: "posts",
     });
 
-    const fkOp = operations[0];
+    const fkOp = operations[1];
     if (fkOp.type === "add-foreign-key") {
       expect(fkOp.value).toMatchObject({
-        name: "author",
+        name: "posts_authorId_fk",
         referencedTable: "users",
         columns: ["authorId"],
         referencedColumns: ["_internalId"],
       });
     }
-  });
-
-  it("should skip add-foreign-key operation for join-only references", () => {
-    const mySchema = schema("my", (s) => {
-      return s
-        .addTable("users", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("email", column("string"))
-            .createIndex("idx_users_email", ["email"]);
-        })
-        .addTable("invitations", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("email", column("string"))
-            .createIndex("idx_inv_email", ["email"]);
-        })
-        .addReference("invitedUser", {
-          type: "one",
-          from: { table: "invitations", column: "email" },
-          to: { table: "users", column: "email" },
-          foreignKey: false,
-        });
-    });
-
-    // Version 0 -> 1: users table
-    // Version 1 -> 2: invitations table
-    // Version 2 -> 3: join-only relation (no FK)
-    const operations = generateMigrationFromSchema(mySchema, 2, 3);
-
-    expect(operations).toHaveLength(0);
   });
 
   it("should generate add-index operation for indexes added via alterTable", () => {
@@ -240,17 +207,14 @@ describe("generateMigrationFromSchema", () => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
         })
         .addTable("posts", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }));
         });
     });
 
     // Generate all migrations from scratch
-    const operations = generateMigrationFromSchema(mySchema, 0, 3);
+    const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
     expect(operations).toHaveLength(3);
     expect(operations[0].type).toBe("create-table");
@@ -268,17 +232,14 @@ describe("generateMigrationFromSchema", () => {
           return t.createIndex("idx_email", ["email"], { unique: true });
         })
         .addTable("posts", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "authorId" },
-          to: { table: "users", column: "id" },
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("authorId", referenceColumn({ table: "users" }));
         });
     });
 
     // Generate all migrations from scratch
-    const operations = generateMigrationFromSchema(mySchema, 0, 4);
+    const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
     expect(operations).toHaveLength(4);
     expect(operations[0].type).toBe("create-table");
@@ -331,7 +292,7 @@ describe("generateMigrationFromSchema", () => {
     }).toThrow("fromVersion cannot be negative");
   });
 
-  it("should only create constraints for references, not for referenceColumns", () => {
+  it("should create constraints for referenceColumns", () => {
     const mySchema = schema("my", (s) => {
       return s
         .addTable("posts", (t) => {
@@ -339,17 +300,12 @@ describe("generateMigrationFromSchema", () => {
             .addColumn("id", idColumn().defaultTo("auto"))
             .addColumn("title", column("string"))
             .addColumn("content", column("string"))
-            .addColumn("userId", referenceColumn());
+            .addColumn("userId", referenceColumn({ table: "users" }));
         })
         .addTable("users", (t) => {
           return t
             .addColumn("id", idColumn().defaultTo("auto"))
             .addColumn("name", column("string"));
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
         })
         .alterTable("posts", (t) => {
           return t
@@ -361,8 +317,8 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 0, mySchema.version);
     expect(operations.map((o) => o.type)).toEqual([
       "create-table",
-      "create-table",
       "add-foreign-key",
+      "create-table",
       "alter-table",
       "add-index",
     ]);
@@ -373,13 +329,8 @@ describe("generateMigrationFromSchema", () => {
       return s
         .addTable("users", (t) => t.addColumn("id", idColumn()))
         .addTable("posts", (t) =>
-          t.addColumn("id", idColumn()).addColumn("userId", referenceColumn()),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        });
+          t.addColumn("id", idColumn()).addColumn("userId", referenceColumn({ table: "users" })),
+        );
     });
 
     const operations = generateMigrationFromSchema(mySchema, 0, mySchema.version);

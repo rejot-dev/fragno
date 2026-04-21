@@ -7,7 +7,7 @@ import type {
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
 import type { NamingResolver } from "../../../../naming/sql-naming";
-import { SQLGenerator } from "../sql-generator";
+import { reorderAddForeignKeysForExecution, SQLGenerator } from "../sql-generator";
 
 const errors = {
   IdColumnUpdate:
@@ -20,7 +20,8 @@ const errors = {
  */
 export class MySQLSQLGenerator extends SQLGenerator {
   /**
-   * MySQL preprocessing: wrap operations with SET FOREIGN_KEY_CHECKS = 0/1.
+   * MySQL disables FK checks for the batch and still hoists FK creation to the end,
+   * so forward references can be created after the referenced tables exist.
    */
   override preprocess(operations: MigrationOperation[]): MigrationOperation[] {
     if (operations.length === 0) {
@@ -29,7 +30,7 @@ export class MySQLSQLGenerator extends SQLGenerator {
 
     return [
       { type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" },
-      ...operations,
+      ...reorderAddForeignKeysForExecution(operations),
       { type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" },
     ];
   }

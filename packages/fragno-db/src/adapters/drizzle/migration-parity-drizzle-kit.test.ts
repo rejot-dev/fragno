@@ -52,7 +52,7 @@ const paritySchema = schema("parity", (s) => {
         .addColumn("body", column("string"))
         .addColumn("published", column("bool").defaultTo(false))
         .addColumn("publishedAt", column("timestamp").nullable())
-        .addColumn("authorId", referenceColumn())
+        .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("metadata", column("json").nullable())
         .addColumn("rating", column("decimal").nullable())
         .addColumn("contentHash", column("binary").nullable())
@@ -70,8 +70,8 @@ const paritySchema = schema("parity", (s) => {
     .addTable("postTags", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("postId", referenceColumn())
-        .addColumn("tagId", referenceColumn())
+        .addColumn("postId", referenceColumn({ table: "posts" }))
+        .addColumn("tagId", referenceColumn({ table: "tags" }))
         .addColumn(
           "addedAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -84,28 +84,8 @@ const paritySchema = schema("parity", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("name", column("string"))
-        .addColumn("parentId", referenceColumn().nullable())
+        .addColumn("parentId", referenceColumn({ table: "categories" }).nullable())
         .createIndex("categories_parent_idx", ["parentId"]);
-    })
-    .addReference("posts_author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    })
-    .addReference("post_tags_post", {
-      type: "one",
-      from: { table: "postTags", column: "postId" },
-      to: { table: "posts", column: "id" },
-    })
-    .addReference("post_tags_tag", {
-      type: "one",
-      from: { table: "postTags", column: "tagId" },
-      to: { table: "tags", column: "id" },
-    })
-    .addReference("categories_parent", {
-      type: "one",
-      from: { table: "categories", column: "parentId" },
-      to: { table: "categories", column: "id" },
     });
 });
 

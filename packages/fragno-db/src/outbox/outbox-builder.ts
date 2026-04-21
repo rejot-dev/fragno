@@ -1,7 +1,7 @@
 import { internalSchema } from "../fragments/internal-fragment.schema";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
-import { FragnoId, FragnoReference } from "../schema/create";
+import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
 import type { OutboxRefLookup, OutboxPayload, OutboxMutation } from "./outbox";
 import { encodeVersionstamp, versionstampToHex } from "./outbox";
 
@@ -211,10 +211,9 @@ function createReferencePlaceholder(options: {
 }
 
 function resolveReferencedTable(table: AnyTable, columnName: string): AnyTable {
-  for (const relation of Object.values(table.relations)) {
-    if (relation.on.some(([localColumn]) => localColumn === columnName)) {
-      return relation.table;
-    }
+  const foreignKey = getTableForeignKey(table, columnName);
+  if (foreignKey) {
+    return foreignKey.referencedTable;
   }
 
   throw new Error(`Reference column ${columnName} not found in table ${table.name}`);

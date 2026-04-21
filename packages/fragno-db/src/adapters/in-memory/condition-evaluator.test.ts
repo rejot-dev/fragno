@@ -156,13 +156,8 @@ describe("in-memory condition evaluator", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("title", column("string"))
-            .addColumn("userId", referenceColumn()),
-        )
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+            .addColumn("userId", referenceColumn({ table: "users" })),
+        ),
     );
 
     const namespaceStore = createNamespaceStore(refSchema);
