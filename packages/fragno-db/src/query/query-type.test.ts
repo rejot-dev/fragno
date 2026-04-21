@@ -170,28 +170,18 @@ describe("query type tests", () => {
           return t
             .addColumn("id", idColumn())
             .addColumn("title", column("string"))
-            .addColumn("userId", referenceColumn());
+            .addColumn("userId", referenceColumn({ table: "users" }));
         })
         .addTable("tags", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
-        })
-        .addReference("author", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
         });
     });
 
-    it("should handle join correctly", () => {
+    it("removes relation-key join builder typing", () => {
       const _table = userSchema.tables.posts;
-      const _relations = _table.relations;
-
-      type _Relations = typeof _table.relations;
       type Builder1 = JoinBuilder<typeof _table>;
 
-      expectTypeOf<Builder1>().toExtend<{
-        author: () => void;
-      }>();
+      expectTypeOf<Builder1>().toEqualTypeOf<never>();
     });
   });
 

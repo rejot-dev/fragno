@@ -24,7 +24,7 @@ const testSchema = schema("validation", (s) => {
     .addTable("posts", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("userId", referenceColumn())
+        .addColumn("userId", referenceColumn({ table: "users" }))
         .addColumn("title", column("varchar(10)"));
     })
     .addTable("all_types", (t) => {
@@ -40,7 +40,7 @@ const testSchema = schema("validation", (s) => {
         .addColumn("birthday", column("date"))
         .addColumn("data", column("json"))
         .addColumn("bigValue", column("bigint"))
-        .addColumn("ref", referenceColumn())
+        .addColumn("ref", referenceColumn({ table: "users" }))
         .addColumn("optionalWithDefault", column("string").defaultTo("x"))
         .addColumn("optionalNullable", column("string").nullable());
     });
