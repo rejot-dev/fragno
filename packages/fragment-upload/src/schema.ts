@@ -85,7 +85,7 @@ export const uploadSchema = schema("upload", (s) => {
     .addTable("upload_part", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("uploadId", referenceColumn())
+        .addColumn("uploadId", referenceColumn({ table: "upload" }))
         .addColumn("partNumber", column("integer"))
         .addColumn("etag", column("string"))
         .addColumn("sizeBytes", column("bigint"))
@@ -98,9 +98,5 @@ export const uploadSchema = schema("upload", (s) => {
           unique: true,
         });
     })
-    .addReference("upload", {
-      type: "one",
-      from: { table: "upload_part", column: "uploadId" },
-      to: { table: "upload", column: "id" },
-    });
+    .noOp("removed obsolete upload_part -> upload addReference history");
 });

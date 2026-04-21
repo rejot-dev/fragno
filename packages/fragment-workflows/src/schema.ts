@@ -56,7 +56,7 @@ export const workflowsSchema = schema("workflows", (s) => {
             // Internal step row id.
             .addColumn("id", idColumn())
             // Reference to workflow_instance (internal id).
-            .addColumn("instanceRef", referenceColumn())
+            .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
             // Run number (ties steps to the instance run).
             .addColumn("runNumber", column("integer"))
             // Deterministic step key (type:name) for replay/idempotency.
@@ -119,7 +119,7 @@ export const workflowsSchema = schema("workflows", (s) => {
             // Internal event row id.
             .addColumn("id", idColumn())
             // Reference to workflow_instance (internal id).
-            .addColumn("instanceRef", referenceColumn())
+            .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
             // Run number (ties events to the instance run).
             .addColumn("runNumber", column("integer"))
             // Actor describes who emitted the event; typical values are "user" and "system".
@@ -144,15 +144,7 @@ export const workflowsSchema = schema("workflows", (s) => {
             ])
         );
       })
-      .addReference("stepInstance", {
-        type: "one",
-        from: { table: "workflow_step", column: "instanceRef" },
-        to: { table: "workflow_instance", column: "id" },
-      })
-      .addReference("eventInstance", {
-        type: "one",
-        from: { table: "workflow_event", column: "instanceRef" },
-        to: { table: "workflow_instance", column: "id" },
-      })
+      .noOp("removed obsolete workflow_step -> workflow_instance addReference history")
+      .noOp("removed obsolete workflow_event -> workflow_instance addReference history")
   );
 });

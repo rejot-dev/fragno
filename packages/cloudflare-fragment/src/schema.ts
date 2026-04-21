@@ -22,7 +22,7 @@ export const cloudflareSchema = schema("cloudflare-fragment", (s) => {
     .addTable("deployment", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("appId", referenceColumn())
+        .addColumn("appId", referenceColumn({ table: "app" }))
         .addColumn("status", column("string"))
         .addColumn("format", column("string"))
         .addColumn("entrypoint", column("string"))
@@ -50,9 +50,5 @@ export const cloudflareSchema = schema("cloudflare-fragment", (s) => {
         .createIndex("idx_deployment_app_createdAt", ["appId", "createdAt"])
         .createIndex("idx_deployment_status_createdAt", ["status", "createdAt"]);
     })
-    .addReference("app", {
-      type: "one",
-      from: { table: "deployment", column: "appId" },
-      to: { table: "app", column: "id" },
-    });
+    .noOp("removed obsolete deployment -> app addReference history");
 });

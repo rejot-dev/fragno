@@ -230,23 +230,19 @@ describe("Fragno Database Drizzle", () => {
   });
 
   describe("Relations Commands", () => {
-    it("should test auth relations with convenience aliases", async () => {
+    it("should test auth joins with explicit queries", async () => {
       const { relationsCommand, relationsSubCommands } = await import("./commands/relations");
       await cli(["test-auth-relations"], relationsCommand, {
         subCommands: relationsSubCommands,
       });
 
-      expect(logs).toContain("Testing auth relations with convenience aliases...");
+      expect(logs).toContain("Testing auth joins with explicit queries...");
       expect(
-        logs.some((log) =>
-          log.includes("=== Auth Sessions with Owners (using convenience alias) ==="),
-        ),
+        logs.some((log) => log.includes("=== Auth Sessions with Owners (explicit join) ===")),
       ).toBe(true);
       expect(logs.some((log) => log.includes("=== Auth Users with Sessions ==="))).toBe(true);
       expect(
-        logs.some((log) =>
-          log.includes("✓ Auth relations working correctly with convenience aliases!"),
-        ),
+        logs.some((log) => log.includes("✓ Auth joins working correctly with explicit queries!")),
       ).toBe(true);
     });
 
@@ -272,24 +268,24 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(
-        logs.some((log) => log.includes("=== Testing All Fragno Relational Queries ===")),
+        logs.some((log) => log.includes("=== Testing All Fragno Relation-Style Queries ===")),
       ).toBe(true);
-      expect(
-        logs.some((log) => log.includes("✓ Auth sessions with owners (convenience alias):")),
-      ).toBe(true);
+      expect(logs.some((log) => log.includes("✓ Auth sessions with owners (explicit join):"))).toBe(
+        true,
+      );
       expect(logs.some((log) => log.includes("✓ Auth users with sessions:"))).toBe(true);
       expect(logs.some((log) => log.includes("✓ Comments with replies:"))).toBe(true);
       expect(
-        logs.some((log) => log.includes("=== All Fragno Relational Queries Passed! ===")),
+        logs.some((log) => log.includes("=== All Fragno Relation-Style Queries Passed! ===")),
       ).toBe(true);
 
       // Verify the key messages about what was tested
-      expect(
-        logs.some((log) => log.includes("Fragment convenience aliases work with relations")),
-      ).toBe(true);
-      expect(logs.some((log) => log.includes("Self-referential relations work correctly"))).toBe(
+      expect(logs.some((log) => log.includes("Explicit joins still work for auth data"))).toBe(
         true,
       );
+      expect(
+        logs.some((log) => log.includes("Self-referential comment trees still work correctly")),
+      ).toBe(true);
     });
   });
 });

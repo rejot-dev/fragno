@@ -27,7 +27,7 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
     .addTable("installation_repo", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("installationId", referenceColumn())
+        .addColumn("installationId", referenceColumn({ table: "installation" }))
         .addColumn("ownerLogin", column("string"))
         .addColumn("name", column("string"))
         .addColumn("fullName", column("string"))
@@ -46,7 +46,7 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
       return (
         t
           .addColumn("id", idColumn())
-          .addColumn("repoId", referenceColumn())
+          .addColumn("repoId", referenceColumn({ table: "installation_repo" }))
           // Namespaces a repo link so the same repository can be linked for multiple contexts.
           .addColumn("linkKey", column("string"))
           .addColumn(
@@ -58,21 +58,7 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
           })
       );
     })
-    .addReference("installation", {
-      type: "one",
-      from: { table: "installation_repo", column: "installationId" },
-      to: { table: "installation", column: "id" },
-    })
-    .addReference("links", {
-      // A repo is considered authorized for PR routes when at least one link exists.
-      type: "many",
-      from: { table: "installation_repo", column: "id" },
-      to: { table: "repo_link", column: "repoId" },
-      foreignKey: false,
-    })
-    .addReference("repo", {
-      type: "one",
-      from: { table: "repo_link", column: "repoId" },
-      to: { table: "installation_repo", column: "id" },
-    });
+    .noOp("removed obsolete installation_repo -> installation addReference history")
+    .noOp("removed obsolete installation_repo -> repo_link join-only relation history")
+    .noOp("removed obsolete repo_link -> installation_repo addReference history");
 });

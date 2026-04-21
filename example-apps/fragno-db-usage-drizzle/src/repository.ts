@@ -2,14 +2,27 @@ import { eq, like, desc, and, sql, aliasedTable } from "drizzle-orm";
 
 import { getDrizzleDatabase } from "./database";
 import { appUser, blogPost } from "./schema/drizzle-schema";
-import { comment_schema, upvote_schema } from "./schema/fragno-schema";
+import { auth_schema, comment_schema, upvote_schema } from "./schema/fragno-schema";
 
+const { user: authUser, session: authSession } = auth_schema;
 const { comment } = comment_schema;
 const { upvote_total } = upvote_schema;
 
 type User = typeof appUser.$inferSelect;
 type NewUser = typeof appUser.$inferInsert;
 type NewBlogPost = typeof blogPost.$inferInsert;
+type AuthSession = typeof authSession.$inferSelect;
+type AuthUser = typeof authUser.$inferSelect;
+type CommentRow = typeof comment.$inferSelect;
+type SessionWithOwner = AuthSession & {
+  sessionOwner: Pick<AuthUser, "id" | "email" | "createdAt"> | null;
+};
+type UserWithSessions = AuthUser & { sessionList: AuthSession[] };
+type CommentWithReplies = CommentRow & { commentList: CommentWithReplies[] };
+type CommentWithParentAndReplies = CommentRow & {
+  parent: CommentRow | null;
+  commentList: CommentWithReplies[];
+};
 
 // User repository methods
 export async function findUserById(id: number) {
@@ -145,102 +158,170 @@ export async function searchBlogPostsByTitle(searchTerm: string) {
 }
 
 // ============================================================================
-// Complex Relational Queries (demonstrating Fragno relations work properly)
+// Explicit relational-style queries (without generated Drizzle relation metadata)
 // ============================================================================
 
-/**
- * Fetch auth sessions with their owner users using CONVENIENCE ALIASES.
- * This is the KEY TEST that demonstrates the fix for the relations bug.
- * We're using the 'session' convenience alias from simple_auth_db_schema.
- */
-export async function findAuthSessionsWithOwners() {
+function buildCommentReplyTree(comments: CommentRow[]): CommentWithReplies[] {
+  const commentsWithReplies = new Map<string, CommentWithReplies>();
+
+  for (const commentRow of comments) {
+    commentsWithReplies.set(commentRow.id, { ...commentRow, commentList: [] });
+  }
+
+  const rootComments: CommentWithReplies[] = [];
+
+  for (const commentRow of comments) {
+    const commentWithReplies = commentsWithReplies.get(commentRow.id);
+    if (!commentWithReplies) {
+      continue;
+    }
+
+    if (!commentRow.parentId) {
+      rootComments.push(commentWithReplies);
+      continue;
+    }
+
+    const parentComment = comments.find(
+      (candidate) => candidate._internalId === commentRow.parentId,
+    );
+    if (!parentComment) {
+      rootComments.push(commentWithReplies);
+      continue;
+    }
+
+    commentsWithReplies.get(parentComment.id)?.commentList.push(commentWithReplies);
+  }
+
+  const sortReplies = (commentWithReplies: CommentWithReplies) => {
+    commentWithReplies.commentList.sort(
+      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+    );
+    for (const reply of commentWithReplies.commentList) {
+      sortReplies(reply);
+    }
+  };
+
+  rootComments.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  for (const rootComment of rootComments) {
+    sortReplies(rootComment);
+  }
+
+  return rootComments;
+}
+
+export async function findAuthSessionsWithOwners(): Promise<SessionWithOwner[]> {
   const db = await getDrizzleDatabase();
-  return await db.query.session.findMany({
-    with: {
+  const rows = await db
+    .select({
+      session: authSession,
       sessionOwner: {
-        columns: {
-          id: true,
-          email: true,
-          createdAt: true,
+        id: authUser.id,
+        email: authUser.email,
+        createdAt: authUser.createdAt,
+      },
+    })
+    .from(authSession)
+    .leftJoin(authUser, eq(authUser._internalId, authSession.userId))
+    .orderBy(desc(authSession.createdAt));
+
+  return rows.map(({ session, sessionOwner }) => ({
+    ...session,
+    sessionOwner: sessionOwner?.id ? sessionOwner : null,
+  }));
+}
+
+export async function findAuthSessionById(sessionId: string): Promise<SessionWithOwner | null> {
+  const db = await getDrizzleDatabase();
+  const row = (
+    await db
+      .select({
+        session: authSession,
+        sessionOwner: {
+          id: authUser.id,
+          email: authUser.email,
+          createdAt: authUser.createdAt,
         },
-      },
-    },
-    orderBy: (session, { desc }) => [desc(session.createdAt)],
-  });
+      })
+      .from(authSession)
+      .leftJoin(authUser, eq(authUser._internalId, authSession.userId))
+      .where(eq(authSession.id, sessionId))
+      .limit(1)
+  )[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row.session,
+    sessionOwner: row.sessionOwner?.id ? row.sessionOwner : null,
+  };
 }
 
-/**
- * Fetch a specific auth session with its owner using convenience aliases.
- * This demonstrates that joins work with the aliased tables.
- */
-export async function findAuthSessionById(sessionId: string) {
+export async function findAuthUsersWithSessions(): Promise<UserWithSessions[]> {
   const db = await getDrizzleDatabase();
-  return await db.query.session.findFirst({
-    where: (session, { eq }) => eq(session.id, sessionId),
-    with: {
-      sessionOwner: {
-        columns: {
-          id: true,
-          email: true,
-          createdAt: true,
-        },
-      },
-    },
-  });
+  const [users, sessions] = await Promise.all([
+    db.select().from(authUser).orderBy(desc(authUser.createdAt)),
+    db.select().from(authSession).orderBy(desc(authSession.createdAt)),
+  ]);
+
+  const sessionsByUserInternalId = new Map<number, AuthSession[]>();
+  for (const sessionRow of sessions) {
+    const existingSessions = sessionsByUserInternalId.get(sessionRow.userId) ?? [];
+    existingSessions.push(sessionRow);
+    sessionsByUserInternalId.set(sessionRow.userId, existingSessions);
+  }
+
+  return users.map((userRow) => ({
+    ...userRow,
+    sessionList: sessionsByUserInternalId.get(userRow._internalId) ?? [],
+  }));
 }
 
-/**
- * Fetch auth users with all their sessions using the convenience alias.
- */
-export async function findAuthUsersWithSessions() {
+export async function findCommentsWithReplies(
+  postReference: string,
+): Promise<CommentWithReplies[]> {
   const db = await getDrizzleDatabase();
-  return await db.query.user.findMany({
-    with: {
-      sessionList: {
-        orderBy: (session, { desc }) => [desc(session.createdAt)],
-      },
-    },
-  });
+  const comments = await db
+    .select()
+    .from(comment)
+    .where(eq(comment.postReference, postReference))
+    .orderBy(desc(comment.createdAt));
+
+  return buildCommentReplyTree(comments);
 }
 
-/**
- * Fetch comments with their nested replies (self-referential relation).
- * This demonstrates that self-referential relations work correctly.
- */
-export async function findCommentsWithReplies(postReference: string) {
+export async function findCommentWithParentAndReplies(
+  commentId: string,
+): Promise<CommentWithParentAndReplies | null> {
   const db = await getDrizzleDatabase();
-  return await db.query.comment.findMany({
-    where: (comment, { eq, isNull }) =>
-      and(eq(comment.postReference, postReference), isNull(comment.parentId)),
-    with: {
-      commentList: {
-        // Get first level of nested replies
-        orderBy: (comment, { asc }) => [asc(comment.createdAt)],
-        with: {
-          commentList: {
-            // Get second level of nested replies
-            orderBy: (comment, { asc }) => [asc(comment.createdAt)],
-          },
-        },
-      },
-    },
-    orderBy: (comment, { desc }) => [desc(comment.createdAt)],
-  });
-}
+  const currentComment = (
+    await db.select().from(comment).where(eq(comment.id, commentId)).limit(1)
+  )[0];
 
-/**
- * Fetch a single comment with its parent and replies.
- * This demonstrates bidirectional self-referential relations.
- */
-export async function findCommentWithParentAndReplies(commentId: string) {
-  const db = await getDrizzleDatabase();
-  return await db.query.comment.findFirst({
-    where: (comment, { eq }) => eq(comment.id, commentId),
-    with: {
-      parent: true,
-      commentList: {
-        orderBy: (comment, { asc }) => [asc(comment.createdAt)],
-      },
-    },
-  });
+  if (!currentComment) {
+    return null;
+  }
+
+  const [parentComment, commentsForPost] = await Promise.all([
+    currentComment.parentId
+      ? db
+          .select()
+          .from(comment)
+          .where(eq(comment._internalId, currentComment.parentId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+    db.select().from(comment).where(eq(comment.postReference, currentComment.postReference)),
+  ]);
+
+  const directReplies = buildCommentReplyTree(commentsForPost).find(
+    (candidate) => candidate.id === currentComment.id,
+  )?.commentList;
+
+  return {
+    ...currentComment,
+    parent: parentComment,
+    commentList: directReplies ?? [],
+  };
 }
