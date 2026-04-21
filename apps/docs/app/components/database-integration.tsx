@@ -19,7 +19,7 @@ export default function DatabaseIntegration() {
       content: (
         <FragnoCodeBlock
           lang="typescript"
-          code={`import { schema, idColumn, column }
+          code={`import { schema, idColumn, column, referenceColumn }
   from "@fragno-dev/db/schema";
 
 export const commentSchema = schema("comment", (s) => {
@@ -28,7 +28,7 @@ export const commentSchema = schema("comment", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("content", column("string"))
-        .addColumn("userId", column("string"))
+        .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("postId", column("string"))
         .addColumn(
           "createdAt",
@@ -44,12 +44,7 @@ export const commentSchema = schema("comment", (s) => {
         .addColumn("id", idColumn())
         .addColumn("name", column("string"));
     })
-    .addReference("author", {
-      type: "one",
-      from: { table: "comment", column: "userId" },
-      to: { table: "user", column: "id" },
-      foreignKey: false
-    });
+    .noOp("removed obsolete comment -> user addReference history");
 });`}
           codeblock={{
             className: "text-sm",
