@@ -1,0 +1,15 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "dependsOn": [
+        "$TURBO_EXTENDS$",
+        "@fragno-dev/core#build",
+        "@fragno-dev/db#build",
+        "@fragno-dev/cli#build",
+        "@fragno-dev/unplugin-fragno#build"
+      ],
+      "outputs": ["$TURBO_EXTENDS$", "coverage.json"]
+    }
+  }
+}
