@@ -175,6 +175,10 @@ const extractRoles = (value: unknown): string[] => {
   return [];
 };
 
+const isActiveOrganization = <T extends { deletedAt: Date | null | undefined }>(
+  organization: T | null | undefined,
+): organization is T => organization != null && organization.deletedAt == null;
+
 export function createOrganizationServices(options: OrganizationServiceOptions = {}) {
   const organizationConfig = options.organizationConfig;
   const allowUserToCreateOrganization = organizationConfig?.allowUserToCreateOrganization;
@@ -463,7 +467,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
         )
         .mutate(
           ({ uow, retrieveResult: [existing, slugMatch, actorMember, actorRoles, actorUser] }) => {
-            if (!existing) {
+            if (!isActiveOrganization(existing)) {
               return { ok: false as const, code: "organization_not_found" as const };
             }
 
@@ -584,7 +588,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             uow,
             retrieveResult: [organization, actorMember, actorRoles, invitations, actorUser],
           }) => {
-            if (!organization) {
+            if (!isActiveOrganization(organization)) {
               return { ok: false as const, code: "organization_not_found" as const };
             }
 
@@ -1497,7 +1501,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               return { ok: false as const, code: "invalid_slug" as const };
             }
 
-            if (!organization) {
+            if (!isActiveOrganization(organization)) {
               return { ok: false as const, code: "organization_not_found" as const };
             }
 
@@ -1656,7 +1660,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               return { ok: false as const, code: "session_invalid" as const };
             }
 
-            if (!organization) {
+            if (!isActiveOrganization(organization)) {
               return { ok: false as const, code: "organization_not_found" as const };
             }
 

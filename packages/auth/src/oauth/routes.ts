@@ -240,3 +240,5 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
     ];
   },
 );
+
+export type OAuthRoutesFactory = typeof oauthRoutesFactory;

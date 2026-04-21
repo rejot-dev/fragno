@@ -1554,6 +1554,64 @@ describe("organization services", async () => {
     expect(listResult.organizations).toHaveLength(0);
   });
 
+  it("treats soft-deleted organizations as not found for mutations", async () => {
+    const owner = await createUser("deleted-mutation-owner@test.com");
+
+    const [organizationResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Deleted Mutation Org",
+            slug: "deleted-mutation-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organizationResult.ok);
+
+    const [deleteResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.deleteOrganization(organizationResult.organization.id, {
+            userId: owner.id,
+            userRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(deleteResult.ok).toBe(true);
+
+    const [updateResult, deleteAgainResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.updateOrganization(
+            organizationResult.organization.id,
+            { name: "No Longer Mutable" },
+            { userId: owner.id, userRole: owner.role },
+          ),
+          fragment.services.deleteOrganization(organizationResult.organization.id, {
+            userId: owner.id,
+            userRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(updateResult.ok).toBe(false);
+    if (!updateResult.ok) {
+      expect(updateResult.code).toBe("organization_not_found");
+    }
+
+    expect(deleteAgainResult.ok).toBe(false);
+    if (!deleteAgainResult.ok) {
+      expect(deleteAgainResult.code).toBe("organization_not_found");
+    }
+  });
+
   it("allows clearing nullable organization fields", async () => {
     const owner = await createUser("clear-owner@test.com");
 

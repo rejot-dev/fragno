@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineRoute, defineRoutes } from "@fragno-dev/core";
+import { defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { authFragmentDefinition } from "..";
@@ -384,7 +384,7 @@ export function createUserServices(
 }
 
 export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
-  ({ services, config }) => {
+  ({ services, config, defineRoute }) => {
     const emailAndPasswordEnabled = config.emailAndPassword?.enabled !== false;
 
     return [
@@ -659,3 +659,5 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
     ];
   },
 );
+
+export type UserActionsRoutesFactory = typeof userActionsRoutesFactory;

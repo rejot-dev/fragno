@@ -797,3 +797,5 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
     ];
   },
 );
+
+export type SessionRoutesFactory = typeof sessionRoutesFactory;

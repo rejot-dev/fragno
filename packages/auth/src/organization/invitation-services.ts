@@ -1182,10 +1182,19 @@ export function createOrganizationInvitationServices(
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
                 )
+                .joinOne("sessionOwner", "user", (user) =>
+                  user
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(["role"]),
+                )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
-                  member.onIndex("idx_org_member_user", (eb) =>
-                    eb("userId", "=", eb.parent("userId")),
-                  ),
+                  member
+                    .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                    .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                      role.onIndex("idx_org_member_role_member", (eb) =>
+                        eb("memberId", "=", eb.parent("id")),
+                      ),
+                    ),
                 ),
             )
             .findFirst("session", (b) =>
@@ -1207,7 +1216,7 @@ export function createOrganizationInvitationServices(
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session) {
+          if (!session || !session.sessionOwner) {
             return { ok: false as const, code: "session_invalid" as const };
           }
 
@@ -1215,11 +1224,20 @@ export function createOrganizationInvitationServices(
             return { ok: false as const, code: "organization_not_found" as const };
           }
 
-          const sessionMembers = normalizeMany(session.sessionMembers);
-          const hasMembership = sessionMembers.some((member) =>
+          const actorMember = normalizeMany(session.sessionMembers).find((member) =>
             matchesOrganizationId(member.organizationId, organization.id),
           );
-          if (!hasMembership) {
+          if (!actorMember) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const actorRoles = extractRoles(
+            (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+          );
+          if (
+            !isGlobalAdmin(session.sessionOwner.role as Role) &&
+            !canManageOrganization(actorRoles)
+          ) {
             return { ok: false as const, code: "permission_denied" as const };
           }
 
@@ -1300,9 +1318,7 @@ export function createOrganizationInvitationServices(
             return { ok: false as const, code: "permission_denied" as const };
           }
 
-          const actorRoles = extractRoles(
-            (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
-          );
+          const actorRoles = extractRoles(actorMember.organizationMemberRoles);
           if (!isGlobalAdmin(sessionOwner.role as Role) && !canManageOrganization(actorRoles)) {
             return { ok: false as const, code: "permission_denied" as const };
           }
