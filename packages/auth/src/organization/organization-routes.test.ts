@@ -128,6 +128,84 @@ describe("organization routes", async () => {
     expect(missingSession.error.code).toBe("session_invalid");
   });
 
+  it("rejects invalid cursors for organization and member listings", async () => {
+    const { sessionId: ownerSessionId } = await createUserWithSession("cursor-owner@test.com");
+    const { user: memberUser } = await createUserWithSession("cursor-member@test.com");
+
+    const firstOrganization = await createOrganization(
+      ownerSessionId,
+      "Cursor Org One",
+      "cursor-org-one",
+    );
+    await createOrganization(ownerSessionId, "Cursor Org Two", "cursor-org-two");
+
+    const organizationsPage = await fragment.callRoute("GET", "/organizations", {
+      query: { sessionId: ownerSessionId, pageSize: "1" },
+    });
+
+    assert(organizationsPage.type === "json");
+    const organizationsCursor = organizationsPage.data.cursor;
+    expect(organizationsCursor).toBeTruthy();
+    if (!organizationsCursor) {
+      throw new Error("Expected organizations cursor");
+    }
+
+    const malformedOrganizationsCursor = await fragment.callRoute("GET", "/organizations", {
+      query: { sessionId: ownerSessionId, cursor: "not-a-valid-cursor" },
+    });
+
+    assert(malformedOrganizationsCursor.type === "error");
+    expect(malformedOrganizationsCursor.error.code).toBe("invalid_input");
+    expect(malformedOrganizationsCursor.status).toBe(400);
+
+    const addMemberResponse = await addMember(
+      ownerSessionId,
+      firstOrganization.organization.id,
+      memberUser.id,
+      ["member"],
+    );
+    assert(addMemberResponse.type === "json");
+
+    const membersPage = await fragment.callRoute("GET", "/organizations/:organizationId/members", {
+      pathParams: { organizationId: firstOrganization.organization.id },
+      query: { sessionId: ownerSessionId, pageSize: "1" },
+    });
+
+    assert(membersPage.type === "json");
+    const membersCursor = membersPage.data.cursor;
+    expect(membersCursor).toBeTruthy();
+    if (!membersCursor) {
+      throw new Error("Expected members cursor");
+    }
+
+    const invalidMembersCursor = await fragment.callRoute(
+      "GET",
+      "/organizations/:organizationId/members",
+      {
+        pathParams: { organizationId: firstOrganization.organization.id },
+        query: {
+          sessionId: ownerSessionId,
+          cursor: organizationsCursor,
+        },
+      },
+    );
+
+    assert(invalidMembersCursor.type === "error");
+    expect(invalidMembersCursor.error.code).toBe("invalid_input");
+    expect(invalidMembersCursor.status).toBe(400);
+
+    const invalidOrganizationsCursor = await fragment.callRoute("GET", "/organizations", {
+      query: {
+        sessionId: ownerSessionId,
+        cursor: membersCursor,
+      },
+    });
+
+    assert(invalidOrganizationsCursor.type === "error");
+    expect(invalidOrganizationsCursor.error.code).toBe("invalid_input");
+    expect(invalidOrganizationsCursor.status).toBe(400);
+  });
+
   it("invites members and accepts invitations", async () => {
     const { sessionId: ownerSessionId } = await createUserWithSession("invite-owner@test.com");
     const { user: invitedUser, sessionId: invitedSessionId } =
@@ -365,6 +443,25 @@ describe("organization routes", async () => {
 
     assert(deleteResponse.type === "json");
     expect(deleteResponse.data.success).toBe(true);
+
+    const updateDeleted = await fragment.callRoute("PATCH", "/organizations/:organizationId", {
+      pathParams: { organizationId: created.organization.id },
+      query: { sessionId: ownerSessionId },
+      body: { name: "Still Deleted" },
+    });
+
+    assert(updateDeleted.type === "error");
+    expect(updateDeleted.error.code).toBe("organization_not_found");
+    expect(updateDeleted.status).toBe(404);
+
+    const deleteDeleted = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
+      pathParams: { organizationId: created.organization.id },
+      query: { sessionId: ownerSessionId },
+    });
+
+    assert(deleteDeleted.type === "error");
+    expect(deleteDeleted.error.code).toBe("organization_not_found");
+    expect(deleteDeleted.status).toBe(404);
   });
 
   it("manages members with pagination and permissions", async () => {
@@ -635,6 +732,18 @@ describe("organization routes", async () => {
 
     assert(listOrgInvites.type === "json");
     expect(listOrgInvites.data.invitations).toHaveLength(1);
+
+    const forbiddenMemberInvites = await fragment.callRoute(
+      "GET",
+      "/organizations/:organizationId/invitations",
+      {
+        pathParams: { organizationId: created.organization.id },
+        query: { sessionId: memberSessionId },
+      },
+    );
+
+    assert(forbiddenMemberInvites.type === "error");
+    expect(forbiddenMemberInvites.error.code).toBe("permission_denied");
 
     const forbiddenOrgInvites = await fragment.callRoute(
       "GET",

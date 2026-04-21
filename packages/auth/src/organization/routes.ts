@@ -30,14 +30,23 @@ const pageQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const parseCursor = (cursorParam: string | null): Cursor | undefined => {
+const parseCursor = (
+  cursorParam: string | null,
+  allowedIndexNames: readonly string[],
+): { ok: true; cursor: Cursor | undefined } | { ok: false } => {
   if (!cursorParam) {
-    return undefined;
+    return { ok: true, cursor: undefined };
   }
+
   try {
-    return decodeCursor(cursorParam);
+    const cursor = decodeCursor(cursorParam);
+    if (!allowedIndexNames.includes(cursor.indexName)) {
+      return { ok: false };
+    }
+
+    return { ok: true, cursor };
   } catch {
-    return undefined;
+    return { ok: false };
   }
 };
 
@@ -164,17 +173,17 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const rawCursor = parseCursor(query.get("cursor"));
-          const cursor =
-            rawCursor && (rawCursor.indexName === "_primary" || rawCursor.indexName === "primary")
-              ? rawCursor
-              : undefined;
+          const parsedCursor = parseCursor(query.get("cursor"), ["_primary", "primary"]);
+          if (!parsedCursor.ok) {
+            return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
+          }
+
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
               services.getOrganizationsForSession({
                 sessionId,
                 pageSize: parsed.data.pageSize,
-                cursor,
+                cursor: parsedCursor.cursor,
               }),
             ])
             .execute();
@@ -571,14 +580,17 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           if (!sessionId) {
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
-          const cursor = parseCursor(query.get("cursor"));
+          const parsedCursor = parseCursor(query.get("cursor"), ["idx_org_member_org"]);
+          if (!parsedCursor.ok) {
+            return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
+          }
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
               services.listOrganizationMembersWithSession({
                 sessionId,
                 organizationId: pathParams.organizationId,
                 pageSize: parsed.data.pageSize,
-                cursor,
+                cursor: parsedCursor.cursor,
               }),
             ])
             .execute();
@@ -872,3 +884,5 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
     ];
   },
 );
+
+export type OrganizationRoutesFactory = typeof organizationRoutesFactory;

@@ -189,3 +189,5 @@ export const authSchema = schema("auth", (s) => {
       return t.addColumn("sessionSeed", column("json").nullable());
     });
 });
+
+export type AuthSchema = typeof authSchema;

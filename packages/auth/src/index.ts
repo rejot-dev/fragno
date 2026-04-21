@@ -1,6 +1,10 @@
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-import { defineFragment, instantiate } from "@fragno-dev/core";
+import {
+  defineFragment,
+  instantiate,
+  type InstantiatedFragmentFromDefinition,
+} from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import {
@@ -300,12 +304,14 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
   })
   .build();
 
+export type AuthFragmentDefinition = typeof authFragmentDefinition;
+
 export type AuthFragment = typeof authFragmentDefinition;
 
-export function createAuthFragment(
+const buildAuthFragment = (
   config: AuthConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
-) {
+) => {
   const options = {
     ...fragnoConfig,
     // Preserve legacy namespace to avoid changing physical table names.
@@ -326,6 +332,15 @@ export function createAuthFragment(
       oauthRoutesFactory,
     ])
     .build();
+};
+
+export type AuthFragmentInstance = InstantiatedFragmentFromDefinition<AuthFragmentDefinition>;
+
+export function createAuthFragment(
+  config: AuthConfig = {},
+  fragnoConfig: FragnoPublicConfigWithDatabase,
+): AuthFragmentInstance {
+  return buildAuthFragment(config, fragnoConfig);
 }
 
 export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfig) {

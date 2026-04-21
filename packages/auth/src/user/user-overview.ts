@@ -169,3 +169,5 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
     ];
   },
 );
+
+export type UserOverviewRoutesFactory = typeof userOverviewRoutesFactory;
