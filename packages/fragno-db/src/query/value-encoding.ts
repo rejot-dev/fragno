@@ -1,6 +1,6 @@
 import type { NamingResolver } from "../naming/sql-naming";
 import type { AnyTable, AnyColumn } from "../schema/create";
-import { FragnoId, FragnoReference } from "../schema/create";
+import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
 import {
   generateDatabaseDefault,
   generateRuntimeDefault,
@@ -156,12 +156,10 @@ export function encodeValues(
         }
 
         if (needsSubquery) {
-          const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === k),
-          );
-          if (relation) {
+          const foreignKey = getTableForeignKey(table, k);
+          if (foreignKey) {
             result[physicalColumnName] = new ReferenceSubquery(
-              relation.table,
+              foreignKey.referencedTable,
               externalIdForSubquery!,
             );
             continue;

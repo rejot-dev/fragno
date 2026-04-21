@@ -26,19 +26,9 @@ describe("decodeResult", () => {
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
-          .addColumn("userId", referenceColumn())
+          .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer"))
           .addColumn("publishedAt", column("timestamp").nullable());
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "userId" },
-        to: { table: "users", column: "id" },
-      })
-      .addReference("posts", {
-        type: "many",
-        from: { table: "users", column: "id" },
-        to: { table: "posts", column: "userId" },
       });
   });
 
@@ -144,9 +134,9 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user1",
-          "author:name": "Alice",
-          "author:email": "alice@example.com",
+          "user:id": "user1",
+          "user:name": "Alice",
+          "user:email": "alice@example.com",
         },
         postsTable,
         sqliteConfig,
@@ -155,7 +145,7 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "post1",
         title: "My Post",
-        author: {
+        user: {
           id: "user1",
           name: "Alice",
           email: "alice@example.com",
@@ -169,15 +159,15 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user1",
-          "author:isActive": 1,
-          "author:createdAt": timestamp,
+          "user:id": "user1",
+          "user:isActive": 1,
+          "user:createdAt": timestamp,
         },
         postsTable,
         sqliteConfig,
       );
 
-      expect(result["author"]).toEqual({
+      expect(result["user"]).toEqual({
         id: "user1",
         isActive: true,
         createdAt: new Date(timestamp),
@@ -206,8 +196,8 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user1",
-          "author:unknownField": "value",
+          "user:id": "user1",
+          "user:unknownField": "value",
         },
         postsTable,
         sqliteConfig,
@@ -216,7 +206,7 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "post1",
         title: "My Post",
-        author: {
+        user: {
           id: "user1",
         },
       });
@@ -235,18 +225,8 @@ describe("decodeResult", () => {
             return t
               .addColumn("id", idColumn())
               .addColumn("title", column("string"))
-              .addColumn("userId", referenceColumn())
-              .addColumn("categoryId", referenceColumn());
-          })
-          .addReference("author", {
-            type: "one",
-            from: { table: "posts", column: "userId" },
-            to: { table: "users", column: "id" },
-          })
-          .addReference("category", {
-            type: "one",
-            from: { table: "posts", column: "categoryId" },
-            to: { table: "categories", column: "id" },
+              .addColumn("userId", referenceColumn({ table: "users" }))
+              .addColumn("categoryId", referenceColumn({ table: "categories" }));
           });
       });
 
@@ -254,8 +234,8 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user1",
-          "author:name": "Alice",
+          "user:id": "user1",
+          "user:name": "Alice",
           "category:id": "cat1",
           "category:name": "Technology",
         },
@@ -266,7 +246,7 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "post1",
         title: "My Post",
-        author: {
+        user: {
           id: "user1",
           name: "Alice",
         },
@@ -284,10 +264,10 @@ describe("decodeResult", () => {
           _internalId: BigInt(100),
           _version: 0,
           title: "My Post",
-          "author:id": "user1",
-          "author:_internalId": BigInt(200),
-          "author:_version": 0,
-          "author:name": "Alice",
+          "user:id": "user1",
+          "user:_internalId": BigInt(200),
+          "user:_version": 0,
+          "user:name": "Alice",
         },
         postsTable,
         sqliteConfig,
@@ -299,12 +279,12 @@ describe("decodeResult", () => {
       expect(result["id"].internalId).toBe(BigInt(100));
 
       // Relation id should also be FragnoId (THIS IS THE BUG WE'RE FIXING)
-      expect(result["author"]).toBeDefined();
-      const author = result["author"] as Record<string, unknown>;
-      assert(author["id"] instanceof FragnoId);
-      expect(author["id"].externalId).toBe("user1");
-      expect(author["id"].internalId).toBe(BigInt(200));
-      expect(author["name"]).toBe("Alice");
+      expect(result["user"]).toBeDefined();
+      const user = result["user"] as Record<string, unknown>;
+      assert(user["id"] instanceof FragnoId);
+      expect(user["id"].externalId).toBe("user1");
+      expect(user["id"].internalId).toBe(BigInt(200));
+      expect(user["name"]).toBe("Alice");
     });
 
     it("should return null for missing one relations when internal id is null", () => {
@@ -312,10 +292,10 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": null,
-          "author:_internalId": null,
-          "author:_version": null,
-          "author:name": null,
+          "user:id": null,
+          "user:_internalId": null,
+          "user:_version": null,
+          "user:name": null,
         },
         postsTable,
         sqliteConfig,
@@ -324,11 +304,11 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "post1",
         title: "My Post",
-        author: null,
+        user: null,
       });
     });
 
-    it("should return empty array for missing many relations when internal id is null", () => {
+    it("skips relation payloads for unknown aliases", () => {
       const result = decodeResult(
         {
           id: "user1",
@@ -345,7 +325,6 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "user1",
         name: "Alice",
-        posts: [],
       });
     });
   });
@@ -387,15 +366,15 @@ describe("decodeResult", () => {
     it("should handle result with only relation data", () => {
       const result = decodeResult(
         {
-          "author:id": "user1",
-          "author:name": "Alice",
+          "user:id": "user1",
+          "user:name": "Alice",
         },
         postsTable,
         sqliteConfig,
       );
 
       expect(result).toEqual({
-        author: {
+        user: {
           id: "user1",
           name: "Alice",
         },
@@ -410,8 +389,8 @@ describe("decodeResult", () => {
           title: "My Post",
           viewCount: 100,
           publishedAt: timestamp,
-          "author:id": "user1",
-          "author:name": "Alice",
+          "user:id": "user1",
+          "user:name": "Alice",
         },
         postsTable,
         sqliteConfig,
@@ -422,7 +401,7 @@ describe("decodeResult", () => {
         title: "My Post",
         viewCount: 100,
         publishedAt: new Date(timestamp),
-        author: {
+        user: {
           id: "user1",
           name: "Alice",
         },
@@ -512,10 +491,10 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user123",
-          "author:_internalId": 456,
-          "author:_version": 0,
-          "author:name": "Alice",
+          "user:id": "user123",
+          "user:_internalId": 456,
+          "user:_version": 0,
+          "user:name": "Alice",
         },
         postsTable,
         postgresqlConfig,
@@ -524,11 +503,11 @@ describe("decodeResult", () => {
       expect(result["id"]).toBe("post1");
       expect(result["title"]).toBe("My Post");
       // Relations now correctly create FragnoId objects when both IDs are present (thanks to recursive decoding)
-      const author: Record<string, unknown> = result["author"] as Record<string, unknown>;
-      assert(author["id"] instanceof FragnoId);
-      expect(author["id"].externalId).toBe("user123");
-      expect(author["id"].internalId).toBe(456n);
-      expect(author["name"]).toBe("Alice");
+      const user: Record<string, unknown> = result["user"] as Record<string, unknown>;
+      assert(user["id"] instanceof FragnoId);
+      expect(user["id"].externalId).toBe("user123");
+      expect(user["id"].internalId).toBe(456n);
+      expect(user["name"]).toBe("Alice");
     });
 
     it("should return regular string in relation data when internal ID missing", () => {
@@ -536,8 +515,8 @@ describe("decodeResult", () => {
         {
           id: "post1",
           title: "My Post",
-          "author:id": "user123",
-          "author:name": "Alice",
+          "user:id": "user123",
+          "user:name": "Alice",
         },
         postsTable,
         postgresqlConfig,
@@ -546,13 +525,13 @@ describe("decodeResult", () => {
       expect(result).toEqual({
         id: "post1",
         title: "My Post",
-        author: {
+        user: {
           id: "user123",
           name: "Alice",
         },
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((result["author"] as any)["id"]).not.toBeInstanceOf(FragnoId);
+      expect((result["user"] as any)["id"]).not.toBeInstanceOf(FragnoId);
     });
 
     it("should handle complete record with FragnoId creation", () => {

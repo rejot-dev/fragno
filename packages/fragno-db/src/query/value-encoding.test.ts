@@ -31,14 +31,9 @@ describe("encodeValues", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("userId", referenceColumn())
+          .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("publishedAt", column("timestamp").nullable());
-      })
-      .addReference("author", {
-        type: "one",
-        from: { table: "posts", column: "userId" },
-        to: { table: "users", column: "id" },
       });
   });
 
