@@ -1,9 +1,6 @@
 {
   "extends": ["//"],
   "tasks": {
-    "types:check": {
-      "dependsOn": ["test"]
-    },
     "test": {
       "outputs": ["$TURBO_EXTENDS$", "coverage.json"]
     }
