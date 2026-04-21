@@ -1,4 +1,5 @@
 import type { AnyColumn, AnyRelation, AnyTable } from "../schema/create";
+import { getTableRelations } from "../schema/create";
 import { buildCondition, type Condition } from "./condition-builder";
 import type {
   AnySelectClause,
@@ -66,8 +67,10 @@ function buildJoin<TTable extends AnyTable>(
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
 
-  for (const name in table.relations) {
-    const relation = table.relations[name]!;
+  const relations = getTableRelations(table);
+
+  for (const name in relations) {
+    const relation = relations[name]!;
 
     builder[name] = (options: FindFirstOptions | FindManyOptions = {}) => {
       compiled.push({

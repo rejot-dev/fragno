@@ -539,8 +539,8 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
         .addTable("transactions", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("fromAccountId", referenceColumn())
-            .addColumn("toAccountId", referenceColumn())
+            .addColumn("fromAccountId", referenceColumn({ table: "accounts" }))
+            .addColumn("toAccountId", referenceColumn({ table: "accounts" }))
             .addColumn("amount", "integer"),
         ),
     );
