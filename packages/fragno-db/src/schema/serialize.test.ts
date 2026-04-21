@@ -499,7 +499,7 @@ describe("serialize", () => {
 
       it("should skip reference column bigint to Number conversion for SQLite when enabled", () => {
         const bigintValue = 123456789n;
-        const refCol = referenceColumn();
+        const refCol = referenceColumn({ table: "users" });
 
         // Default behavior: converts to Number for reference columns
         const withConversion = serialize(bigintValue, refCol, "sqlite", false);

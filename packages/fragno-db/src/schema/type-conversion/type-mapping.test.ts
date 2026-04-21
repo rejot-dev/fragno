@@ -99,7 +99,7 @@ describe("SQLTypeMapper", () => {
     });
 
     it("should keep reference bigint as integer", () => {
-      const userReferenceColumn = referenceColumn();
+      const userReferenceColumn = referenceColumn({ table: "users" });
       userReferenceColumn.name = "userId";
 
       expect(mapper.getDatabaseType(userReferenceColumn)).toBe("integer");

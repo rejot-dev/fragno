@@ -60,15 +60,8 @@ export type SchemaOperation =
       operations: TableSubOperation[]; // Ordered list of sub-operations
     }
   | {
-      type: "add-reference";
-      tableName: string; // The table that has the foreign key
-      referenceName: string;
-      config: {
-        type: "one" | "many";
-        from: { table: string; column: string };
-        to: { table: string; column: string };
-        foreignKey?: boolean;
-      };
+      type: "no-op";
+      reason?: string;
     };
 
 export interface ForeignKey {
@@ -78,30 +71,6 @@ export interface ForeignKey {
 
   referencedTable: AnyTable;
   referencedColumns: AnyColumn[];
-}
-
-class RelationInit<
-  TRelationType extends RelationType,
-  TTables extends Record<string, AnyTable>,
-  TTableName extends keyof TTables,
-> {
-  type: TRelationType;
-  referencedTable: TTables[TTableName];
-  referencer: AnyTable;
-  on: [string, string][] = [];
-  foreignKey: boolean;
-
-  constructor(
-    type: TRelationType,
-    referencedTable: TTables[TTableName],
-    referencer: AnyTable,
-    options?: { foreignKey?: boolean },
-  ) {
-    this.type = type;
-    this.referencedTable = referencedTable;
-    this.referencer = referencer;
-    this.foreignKey = options?.foreignKey ?? true;
-  }
 }
 
 export interface Index<
@@ -114,39 +83,38 @@ export interface Index<
   unique: boolean;
 }
 
-export class ExplicitRelationInit<
-  TRelationType extends RelationType,
-  TTables extends Record<string, AnyTable>,
-  TTableName extends keyof TTables,
-> extends RelationInit<TRelationType, TTables, TTableName> {
-  init(name: string): Relation<TRelationType, TTables[TTableName]> {
-    const id = `${this.referencer.name}_${this.referencedTable.name}`;
-
-    return {
-      id,
-      on: this.on,
-      name,
-      referencer: this.referencer,
-      table: this.referencedTable,
-      type: this.type,
-      foreignKey: this.foreignKey,
-    };
-  }
-}
-
-export interface Relation<
-  TRelationType extends RelationType = RelationType,
-  TTable extends AnyTable = AnyTable,
-> {
+export interface Relation<TRelationType extends RelationType = RelationType> {
   id: string;
   name: string;
   type: TRelationType;
   foreignKey?: boolean;
 
-  table: TTable;
+  table: AnyTable;
   referencer: AnyTable;
 
   on: [string, string][];
+}
+
+export interface TableForeignKey {
+  name: string;
+  columnName: string;
+  referencedTable: AnyTable;
+  referencedColumnName: string;
+}
+
+export function getTableForeignKeys(table: AnyTable): Record<string, TableForeignKey> {
+  return table.foreignKeys;
+}
+
+export function getTableForeignKey(
+  table: AnyTable,
+  columnName: string,
+): TableForeignKey | undefined {
+  return getTableForeignKeys(table)[columnName];
+}
+
+export function getTableRelations(table: AnyTable): Record<string, AnyRelation> {
+  return table.relations;
 }
 
 type PickNullable<T> = {
@@ -176,7 +144,6 @@ export type TableValidationOptions = {
 
 export interface Table<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
-  TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
   TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
   /**
@@ -189,8 +156,9 @@ export interface Table<
   name: string;
 
   columns: TColumns;
-  relations: TRelations;
   indexes: TIndexes;
+  foreignKeys: Record<string, TableForeignKey>;
+  relations: Record<string, AnyRelation>;
 
   /**
    * Validate insert values at runtime.
@@ -278,6 +246,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
     | { runtime: "cuid" | "now" | (() => TypeMap[TType]) };
 
   tableName: string = "";
+  referenceTableName?: string;
 
   constructor(type: TType) {
     this.type = type;
@@ -323,6 +292,9 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
   defaultTo$(
     value: TypeMap[TType] | ((builder: RuntimeDefaultBuilder) => RuntimeSpecial | TypeMap[TType]),
   ): Column<TType, TIn | null, TOut> {
+    if (this.role === "reference") {
+      throw new Error("referenceColumn({ table }) does not support defaults.");
+    }
     if (typeof value === "function") {
       const fn = value as (builder: RuntimeDefaultBuilder) => RuntimeSpecial | TypeMap[TType];
       const result = fn(runtimeDefaultBuilder);
@@ -369,6 +341,9 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
   defaultTo(
     value: TypeMap[TType] | ((builder: DefaultBuilder) => DBSpecial | TypeMap[TType]),
   ): Column<TType, TIn | null, TOut> {
+    if (this.role === "reference") {
+      throw new Error("referenceColumn({ table }) does not support defaults.");
+    }
     if (typeof value === "function") {
       const fn = value as (builder: DefaultBuilder) => DBSpecial | TypeMap[TType];
       const result = fn(defaultBuilder);
@@ -504,6 +479,7 @@ function cloneColumn<TColumn extends AnyColumn>(col: TColumn): TColumn {
   clonedCol.isHidden = col.isHidden;
   clonedCol.default = col.default;
   clonedCol.tableName = col.tableName;
+  clonedCol.referenceTableName = col.referenceTableName;
 
   return clonedCol as TColumn;
 }
@@ -523,15 +499,18 @@ export function column<TType extends keyof TypeMap>(
  * This is used for foreign key relationships.
  * Always uses bigint to match the internal ID type.
  */
-export function referenceColumn(): Column<
-  "bigint",
-  string | bigint | FragnoId | FragnoReference,
-  FragnoReference
-> {
+export function referenceColumn(options: {
+  table: string;
+}): Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReference> {
+  if (!options.table || options.table.trim().length === 0) {
+    throw new Error("referenceColumn({ table }) requires a non-empty target table name.");
+  }
+
   const col = new Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReference>(
     "bigint",
   );
   col.role = "reference";
+  col.referenceTableName = options.table;
   return col;
 }
 
@@ -674,31 +653,84 @@ const validationClasses = { FragnoId, FragnoReference };
 
 type RelationType = "one" | "many";
 
+function getForeignKeyOperationName(tableName: string, columnName: string): string {
+  return `${tableName}_${columnName}_fk`;
+}
+
+function isReferenceColumn(column: AnyColumn): boolean {
+  return column.role === "reference" && column.referenceTableName !== undefined;
+}
+
+function createForeignKeySubOperation(
+  tableName: string,
+  columnName: string,
+  column: AnyColumn,
+): TableSubOperation {
+  if (!isReferenceColumn(column)) {
+    throw new Error(`Column ${tableName}.${columnName} is not a reference column.`);
+  }
+
+  return {
+    type: "add-foreign-key",
+    name: getForeignKeyOperationName(tableName, columnName),
+    columns: [columnName],
+    referencedTable: column.referenceTableName!,
+    referencedColumns: ["_internalId"],
+  };
+}
+
+function setTableForeignKeys(table: AnyTable, foreignKeys: Record<string, TableForeignKey>): void {
+  table.foreignKeys = foreignKeys;
+}
+
+function setTableRelations(table: AnyTable, relations: Record<string, AnyRelation>): void {
+  table.relations = relations;
+}
+
+function deriveForwardRelationBaseName(columnName: string): string {
+  if (columnName.endsWith("Id") && columnName.length > 2) {
+    return columnName.slice(0, -2);
+  }
+  if (columnName.endsWith("_id") && columnName.length > 3) {
+    return columnName.slice(0, -3);
+  }
+  return columnName;
+}
+
+function ensureUniqueRelationName(baseName: string, usedNames: Set<string>): string {
+  if (!usedNames.has(baseName)) {
+    usedNames.add(baseName);
+    return baseName;
+  }
+
+  let index = 2;
+  let candidate = `${baseName}${index}`;
+  while (usedNames.has(candidate)) {
+    index += 1;
+    candidate = `${baseName}${index}`;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
 export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
-  TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
   TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
   #name: string;
   #columns: TColumns;
-  #relations: TRelations;
   #indexes: TIndexes;
   #columnOrder: string[] = [];
 
   constructor(name: string) {
     this.#name = name;
     this.#columns = {} as TColumns;
-    this.#relations = {} as TRelations;
     this.#indexes = {} as TIndexes;
   }
 
   // For alterTable to set existing state
   setColumns(columns: TColumns): void {
     this.#columns = { ...columns };
-  }
-
-  setRelations(relations: TRelations): void {
-    this.#relations = { ...relations };
   }
 
   setIndexes(indexes: TIndexes): void {
@@ -720,7 +752,7 @@ export class TableBuilder<
   addColumn<TColumnName extends string, TColumn extends AnyColumn>(
     name: TColumnName,
     col: TColumn,
-  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes>;
+  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TIndexes>;
 
   /**
    * Add a column to the table with simplified syntax.
@@ -730,14 +762,13 @@ export class TableBuilder<
     type: TType,
   ): TableBuilder<
     TColumns & Record<TColumnName, Column<TType, ColumnInput<TType>, TypeMap[TType]>>,
-    TRelations,
     TIndexes
   >;
 
   addColumn<TColumnName extends string, TColumn extends AnyColumn, TType extends keyof TypeMap>(
     name: TColumnName,
     colOrType: TColumn | TType,
-  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes> {
+  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TIndexes> {
     // Create the column if a type string was provided
     const col = typeof colOrType === "string" ? column(colOrType) : colOrType;
 
@@ -748,11 +779,7 @@ export class TableBuilder<
     this.#columns[name] = col as unknown as TColumns[TColumnName];
     this.#columnOrder.push(name);
 
-    return this as unknown as TableBuilder<
-      TColumns & Record<TColumnName, TColumn>,
-      TRelations,
-      TIndexes
-    >;
+    return this as unknown as TableBuilder<TColumns & Record<TColumnName, TColumn>, TIndexes>;
   }
 
   /**
@@ -760,7 +787,7 @@ export class TableBuilder<
    */
   alterColumn<TColumnName extends NonIdColumnName<TColumns>>(
     name: TColumnName,
-  ): ColumnAlterer<TColumns, TRelations, TIndexes, TColumnName> {
+  ): ColumnAlterer<TColumns, TIndexes, TColumnName> {
     return {
       nullable: <TNullable extends boolean = true>(nullable?: TNullable) => {
         const column = this.#columns[name];
@@ -774,7 +801,6 @@ export class TableBuilder<
 
         return this as unknown as TableBuilder<
           UpdateColumn<TColumns, TColumnName, NullableColumn<TColumns[TColumnName], TNullable>>,
-          TRelations,
           TIndexes
         >;
       },
@@ -793,7 +819,6 @@ export class TableBuilder<
     options?: { unique?: boolean },
   ): TableBuilder<
     TColumns,
-    TRelations,
     TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
   > {
     const cols = columns.map((colName) => {
@@ -815,7 +840,6 @@ export class TableBuilder<
 
     return this as unknown as TableBuilder<
       TColumns,
-      TRelations,
       TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
     >;
   }
@@ -823,7 +847,7 @@ export class TableBuilder<
   /**
    * Build the final table. This should be called after all columns are added.
    */
-  build(): Table<TColumns, TRelations, TIndexes> {
+  build(): Table<TColumns, TIndexes> {
     let idCol: AnyColumn | undefined;
     let internalIdCol: AnyColumn | undefined;
     let versionCol: AnyColumn | undefined;
@@ -845,11 +869,12 @@ export class TableBuilder<
       (this.#columns as Record<string, AnyColumn>)["_version"] = col;
     }
 
-    const table = {
+    const table: Table<TColumns, TIndexes> = {
       name: this.#name,
       columns: this.#columns,
-      relations: this.#relations,
       indexes: this.#indexes,
+      foreignKeys: {},
+      relations: {},
       getColumnByName: (name) => {
         return Object.values(this.#columns).find((c) => c.name === name);
       },
@@ -862,7 +887,7 @@ export class TableBuilder<
       getVersionColumn: () => {
         return versionCol!;
       },
-    } as Table<TColumns, TRelations, TIndexes>;
+    } as Table<TColumns, TIndexes>;
 
     table["~standard"] = createTableStandardSchemaProps(table, validationClasses);
     table.validate = createTableValidator(table, validationClasses);
@@ -920,27 +945,6 @@ export interface Schema<TTables extends Record<string, AnyTable> = Record<string
 }
 
 /**
- * Utility type for updating a single table's relations in a schema.
- * Used to properly type the return value of addReference.
- */
-type UpdateTableRelations<
-  TTables extends Record<string, AnyTable>,
-  TTableName extends keyof TTables,
-  TReferenceName extends string,
-  TReferencedTableName extends keyof TTables,
-  TRelationType extends RelationType = RelationType,
-> = {
-  [K in keyof TTables]: K extends TTableName
-    ? Table<
-        TTables[TTableName]["columns"],
-        TTables[TTableName]["relations"] &
-          Record<TReferenceName, Relation<TRelationType, TTables[TReferencedTableName]>>,
-        TTables[TTableName]["indexes"]
-      >
-    : TTables[K];
-};
-
-/**
  * Utility type for updating a single table in a schema.
  * Used to properly type the return value of alterTable.
  */
@@ -948,12 +952,9 @@ type UpdateTable<
   TTables extends Record<string, AnyTable>,
   TTableName extends keyof TTables,
   TNewColumns extends Record<string, AnyColumn>,
-  TNewRelations extends Record<string, AnyRelation>,
   TNewIndexes extends Record<string, Index>,
 > = {
-  [K in keyof TTables]: K extends TTableName
-    ? Table<TNewColumns, TNewRelations, TNewIndexes>
-    : TTables[K];
+  [K in keyof TTables]: K extends TTableName ? Table<TNewColumns, TNewIndexes> : TTables[K];
 };
 
 /**
@@ -994,7 +995,6 @@ type NullableColumn<TColumn extends AnyColumn, TNullable extends boolean> =
 
 type ColumnAlterer<
   TColumns extends Record<string, AnyColumn>,
-  TRelations extends Record<string, AnyRelation>,
   TIndexes extends Record<string, Index>,
   TColumnName extends keyof TColumns,
 > = {
@@ -1002,7 +1002,6 @@ type ColumnAlterer<
     nullable?: TNullable,
   ): TableBuilder<
     UpdateColumn<TColumns, TColumnName, NullableColumn<TColumns[TColumnName], TNullable>>,
-    TRelations,
     TIndexes
   >;
 };
@@ -1049,29 +1048,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     this.#indexNames.add(name);
   }
 
-  #rebindRelations(tableName: string, newTable: AnyTable): void {
-    for (const table of Object.values(this.#tables)) {
-      for (const relation of Object.values(table.relations)) {
-        if (relation.table.name === tableName) {
-          relation.table = newTable;
-        }
-        if (relation.referencer.name === tableName) {
-          relation.referencer = newTable;
-        }
-      }
-    }
-  }
-
-  #isJoinColumnIndexed(table: AnyTable, columnName: string): boolean {
-    const idColumnName = table.getIdColumn().name;
-    const internalIdColumnName = table.getInternalIdColumn().name;
-    if (columnName === idColumnName || columnName === internalIdColumnName) {
-      return true;
-    }
-
-    return Object.values(table.indexes).some((index) =>
-      index.columnNames.some((name) => name === columnName),
-    );
+  noOp(reason?: string): this {
+    this.#version++;
+    this.#operations.push({ type: "no-op", reason });
+    return this;
   }
 
   /**
@@ -1124,23 +1104,20 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   addTable<
     TTableName extends string,
     TColumns extends Record<string, AnyColumn>,
-    TRelations extends Record<string, AnyRelation>,
     TIndexes extends Record<string, Index> = Record<string, Index>,
   >(
     name: TTableName,
     callback: (
-      builder: TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>,
-    ) => TableBuilder<TColumns, TRelations, TIndexes>,
-  ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>> {
+      builder: TableBuilder<{}, Record<string, Index>>,
+    ) => TableBuilder<TColumns, TIndexes>,
+  ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TIndexes>>> {
     this.#version++;
 
     if (this.#tableNames.has(name)) {
       throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
     }
 
-    const tableBuilder = new TableBuilder<{}, Record<string, AnyRelation>, Record<string, Index>>(
-      name,
-    );
+    const tableBuilder = new TableBuilder<{}, Record<string, Index>>(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
     const indexNames = result.getIndexes().map((idx) => idx.name);
@@ -1165,6 +1142,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         columnName: colName,
         column: cloneColumn(col),
       });
+      if (isReferenceColumn(col)) {
+        subOperations.push(createForeignKeySubOperation(name, colName, col));
+      }
     }
 
     // Add system columns (_internalId and _version) that were auto-added
@@ -1201,185 +1181,17 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     });
 
     // Update tables map
-    this.#tables = { ...this.#tables, [name]: builtTable } as TTables &
-      Record<TTableName, Table<TColumns, TRelations, TIndexes>>;
+    this.#tables = {
+      ...this.#tables,
+      [name]: builtTable,
+    } as TTables & Record<TTableName, Table<TColumns, TIndexes>>;
     this.#tableNames.add(name);
     for (const indexName of indexNames) {
       this.#indexNames.add(indexName);
     }
 
     return this as unknown as SchemaBuilder<
-      TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>
-    >;
-  }
-
-  /**
-   * Add a relation between two tables.
-   *
-   * @param referenceName - A name for this relation (e.g., "author", "posts")
-   * @param config - Configuration specifying the relation type and foreign key mapping
-   *
-   * @example
-   * ```ts
-   * // One-to-one or many-to-one: post -> user
-   * schema("blog", s => s
-   *   .addTable("users", t => t.addColumn("id", idColumn()))
-   *   .addTable("posts", t => t
-   *     .addColumn("id", idColumn())
-   *     .addColumn("userId", referenceColumn()))
-   *   .addReference("author", {
-   *     type: "one",
-   *     from: { table: "posts", column: "userId" },
-   *     to: { table: "users", column: "id" },
-   *   })
-   * )
-   *
-   * // One-to-many (inverse relation): user -> posts
-   * .addReference("posts", {
-   *   type: "many",
-   *   from: { table: "users", column: "id" },
-   *   to: { table: "posts", column: "userId" },
-   * })
-   *
-   * // Self-referencing foreign key
-   * .addReference("inviter", {
-   *   type: "one",
-   *   from: { table: "users", column: "invitedBy" },
-   *   to: { table: "users", column: "id" },
-   * })
-   *
-   * // Join-only relation (no foreign key)
-   * .addReference("invitedUser", {
-   *   type: "one",
-   *   from: { table: "invitations", column: "email" },
-   *   to: { table: "users", column: "email" },
-   *   foreignKey: false,
-   * })
-   * ```
-   */
-  addReference<
-    TFromTableName extends string & keyof TTables,
-    TToTableName extends string & keyof TTables,
-    TReferenceName extends string,
-    TRelationType extends RelationType,
-  >(
-    referenceName: TReferenceName,
-    config: {
-      type: TRelationType;
-      from: {
-        table: TFromTableName;
-        column: keyof TTables[TFromTableName]["columns"];
-      };
-      to: {
-        table: TToTableName;
-        column: keyof TTables[TToTableName]["columns"];
-      };
-      /**
-       * When false, defines a join-only relation without foreign key migrations.
-       * References to external-id columns still coerce to `_internalId`
-       * (including left-side external IDs for join-only).
-       */
-      foreignKey?: boolean;
-    },
-  ): SchemaBuilder<
-    UpdateTableRelations<TTables, TFromTableName, TReferenceName, TToTableName, TRelationType>
-  > {
-    this.#version++;
-
-    const table = this.#tables[config.from.table];
-    const referencedTable = this.#tables[config.to.table];
-
-    if (!referenceName || referenceName.trim().length === 0) {
-      throw new Error(`referenceName is required for addReference on ${config.from.table}`);
-    }
-
-    if (!table) {
-      throw new Error(`Table ${config.from.table} not found in schema`);
-    }
-    if (!referencedTable) {
-      throw new Error(`Referenced table ${config.to.table} not found in schema`);
-    }
-
-    const columnName = config.from.column as string;
-    const targetColumnName = config.to.column as string;
-    const foreignKey = config.foreignKey !== false;
-
-    const column = table.columns[columnName];
-    const targetColumn = referencedTable.columns[targetColumnName];
-
-    if (!column) {
-      throw new Error(`Column ${columnName} not found in table ${config.from.table}`);
-    }
-    if (!targetColumn) {
-      throw new Error(`Column ${targetColumnName} not found in table ${config.to.table}`);
-    }
-
-    // External-id columns always target the internal ID column.
-    const actualTargetColumnName =
-      targetColumn.role === "external-id"
-        ? referencedTable.getInternalIdColumn().name
-        : targetColumnName;
-
-    const referencedColumn = referencedTable.columns[actualTargetColumnName];
-    if (!referencedColumn) {
-      throw new Error(`Column ${actualTargetColumnName} not found in table ${config.to.table}`);
-    }
-
-    if (table.relations[referenceName]) {
-      throw new Error(`Reference ${referenceName} already exists on table ${config.from.table}`);
-    }
-
-    // Verify that reference columns are bigint (matching internal ID type)
-    if (column.role === "reference" && column.type !== "bigint") {
-      throw new Error(
-        `Reference column ${columnName} must be of type bigint to match internal ID type`,
-      );
-    }
-
-    if (!foreignKey) {
-      const missingIndexes: string[] = [];
-      if (!this.#isJoinColumnIndexed(table, columnName)) {
-        missingIndexes.push(`${table.name}.${columnName}`);
-      }
-      if (!this.#isJoinColumnIndexed(referencedTable, actualTargetColumnName)) {
-        missingIndexes.push(`${referencedTable.name}.${actualTargetColumnName}`);
-      }
-      if (missingIndexes.length > 0) {
-        throw new Error(
-          `Join-only relation "${referenceName}" requires indexed join columns: ${missingIndexes.join(", ")}.`,
-        );
-      }
-    }
-
-    // Join-only relations treat external IDs as internal IDs on the left side.
-    const actualFromColumnName =
-      !foreignKey && column.role === "external-id" ? table.getInternalIdColumn().name : columnName;
-
-    // Create the relation (use user-facing right-side column name)
-    const init = new ExplicitRelationInit(config.type, referencedTable, table, { foreignKey });
-    init.on.push([actualFromColumnName, targetColumnName]);
-    const relation = init.init(referenceName);
-
-    // Add relation to the table
-    table.relations[referenceName] = relation;
-
-    // Record the operation
-    this.#operations.push({
-      type: "add-reference",
-      tableName: config.from.table,
-      referenceName,
-      config: {
-        type: config.type,
-        from: { table: config.from.table, column: actualFromColumnName },
-        to: { table: config.to.table, column: actualTargetColumnName },
-        foreignKey,
-      },
-    });
-
-    // Return this with updated type
-    // Safe: The relation was added to the table in place and now has the updated relations
-    return this as unknown as SchemaBuilder<
-      UpdateTableRelations<TTables, TFromTableName, TReferenceName, TToTableName, TRelationType>
+      TTables & Record<TTableName, Table<TColumns, TIndexes>>
     >;
   }
 
@@ -1408,18 +1220,13 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   alterTable<
     TTableName extends string & keyof TTables,
     TNewColumns extends Record<string, AnyColumn>,
-    TNewRelations extends Record<string, AnyRelation>,
     TNewIndexes extends Record<string, Index> = Record<string, Index>,
   >(
     tableName: TTableName,
     callback: (
-      builder: TableBuilder<
-        TTables[TTableName]["columns"],
-        TTables[TTableName]["relations"],
-        Record<string, Index>
-      >,
-    ) => TableBuilder<TNewColumns, TNewRelations, TNewIndexes>,
-  ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewRelations, TNewIndexes>> {
+      builder: TableBuilder<TTables[TTableName]["columns"], Record<string, Index>>,
+    ) => TableBuilder<TNewColumns, TNewIndexes>,
+  ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewIndexes>> {
     const table = this.#tables[tableName];
 
     if (!table) {
@@ -1429,7 +1236,6 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Create builder with existing table state
     const tableBuilder = new TableBuilder(tableName);
     tableBuilder.setColumns(table.columns);
-    tableBuilder.setRelations(table.relations);
     tableBuilder.setIndexes(table.indexes);
 
     // Track existing columns and indexes
@@ -1442,11 +1248,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     // Apply modifications
     const resultBuilder = callback(
-      tableBuilder as TableBuilder<
-        TTables[TTableName]["columns"],
-        TTables[TTableName]["relations"],
-        Record<string, Index>
-      >,
+      tableBuilder as TableBuilder<TTables[TTableName]["columns"], Record<string, Index>>,
     );
     const newTable = resultBuilder.build();
 
@@ -1457,11 +1259,15 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const columnOrder = resultBuilder.getColumnOrder();
     for (const colName of columnOrder) {
       if (!existingColumns.has(colName)) {
+        const newColumn = newTable.columns[colName];
         subOperations.push({
           type: "add-column",
           columnName: colName,
-          column: cloneColumn(newTable.columns[colName]),
+          column: cloneColumn(newColumn),
         });
+        if (isReferenceColumn(newColumn)) {
+          subOperations.push(createForeignKeySubOperation(tableName, colName, newColumn));
+        }
       }
     }
 
@@ -1511,7 +1317,6 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     // Update table reference in schema
     this.#tables[tableName] = newTable as unknown as TTables[TTableName];
-    this.#rebindRelations(tableName, newTable as unknown as AnyTable);
     for (const idx of resultBuilder.getIndexes()) {
       if (!existingIndexes.has(idx.name)) {
         this.#indexNames.add(idx.name);
@@ -1524,8 +1329,71 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     return this as unknown as SchemaBuilder<
-      UpdateTable<TTables, TTableName, TNewColumns, TNewRelations, TNewIndexes>
+      UpdateTable<TTables, TTableName, TNewColumns, TNewIndexes>
     >;
+  }
+
+  #resolveTableForeignKeys(tables: Record<string, AnyTable>): void {
+    for (const table of Object.values(tables)) {
+      const foreignKeys: Record<string, TableForeignKey> = {};
+      const relations: Record<string, AnyRelation> = {};
+      const usedRelationNames = new Set<string>();
+
+      for (const [columnName, column] of Object.entries(table.columns)) {
+        if (column.role !== "reference") {
+          continue;
+        }
+
+        if (!column.referenceTableName) {
+          throw new Error(
+            `Reference column ${table.name}.${columnName} must declare a target table via referenceColumn({ table }).`,
+          );
+        }
+
+        if (column.default) {
+          throw new Error(`referenceColumn({ table }) does not support defaults.`);
+        }
+
+        const referencedTable = tables[column.referenceTableName];
+        if (!referencedTable) {
+          throw new Error(
+            `Reference column ${table.name}.${columnName} targets unknown table "${column.referenceTableName}".`,
+          );
+        }
+
+        const referencedIdColumn = referencedTable.getIdColumn();
+        const referencedInternalIdColumn = referencedTable.getInternalIdColumn();
+        if (referencedIdColumn.role !== "external-id") {
+          throw new Error(
+            `Referenced table ${referencedTable.name} must define a standard idColumn() to be targeted by ${table.name}.${columnName}.`,
+          );
+        }
+
+        foreignKeys[columnName] = {
+          name: getForeignKeyOperationName(table.name, columnName),
+          columnName,
+          referencedTable,
+          referencedColumnName: referencedInternalIdColumn.name,
+        };
+
+        const relationName = ensureUniqueRelationName(
+          deriveForwardRelationBaseName(columnName),
+          usedRelationNames,
+        );
+        relations[relationName] = {
+          id: `${table.name}_${columnName}`,
+          name: relationName,
+          type: "one",
+          foreignKey: true,
+          table: referencedTable,
+          referencer: table,
+          on: [[columnName, referencedIdColumn.name]],
+        };
+      }
+
+      setTableForeignKeys(table, foreignKeys);
+      setTableRelations(table, relations);
+    }
   }
 
   /**
@@ -1535,6 +1403,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const operations = this.#operations;
     const version = this.#version;
     const tables = this.#tables;
+
+    this.#resolveTableForeignKeys(tables as Record<string, AnyTable>);
 
     const schema: Schema<TTables> = {
       name: this.#name,
@@ -1566,6 +1436,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
             clonedCol.isHidden = col.isHidden;
             clonedCol.default = col.default;
             clonedCol.tableName = col.tableName;
+            clonedCol.referenceTableName = col.referenceTableName;
             clonedColumns[colName] = clonedCol;
           }
 
@@ -1573,6 +1444,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
             ...v,
             columns: clonedColumns,
           } as AnyTable;
+
+          setTableForeignKeys(clonedTable, { ...getTableForeignKeys(v) });
+          setTableRelations(clonedTable, { ...getTableRelations(v) });
 
           clonedTable["~standard"] = createTableStandardSchemaProps(clonedTable, validationClasses);
           clonedTable.validate = createTableValidator(clonedTable, validationClasses);
