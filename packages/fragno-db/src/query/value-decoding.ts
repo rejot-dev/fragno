@@ -2,7 +2,7 @@ import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
 import type { AnyTable } from "../schema/create";
-import { FragnoId, FragnoReference } from "../schema/create";
+import { FragnoId, FragnoReference, getTableRelations } from "../schema/create";
 import { createSQLSerializer } from "./serialize/create-sql-serializer";
 
 const isNullish = (value: unknown): value is null | undefined =>
@@ -70,7 +70,7 @@ export function decodeResult(
     const relationName = k.slice(0, colonIndex);
     const remainder = k.slice(colonIndex + 1);
 
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (relation === undefined) {
       continue;
     }
@@ -82,7 +82,7 @@ export function decodeResult(
 
   // Process each relation's data recursively
   for (const relationName in relationData) {
-    const relation = table.relations[relationName];
+    const relation = getTableRelations(table)[relationName];
     if (!relation) {
       continue;
     }
