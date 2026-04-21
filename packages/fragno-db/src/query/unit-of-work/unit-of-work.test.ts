@@ -289,12 +289,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -327,12 +322,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -371,12 +361,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -415,12 +400,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -458,12 +438,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -495,12 +470,7 @@ describe("FindBuilder", () => {
             .addColumn("userId", column("string"))
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -561,17 +531,7 @@ describe("FindBuilder", () => {
             .addColumn("postId", column("string"))
             .addColumn("text", "string")
             .createIndex("idx_post", ["postId"]),
-        )
-        .addReference("user", {
-          type: "one",
-          from: { table: "posts", column: "userId" },
-          to: { table: "users", column: "id" },
-        })
-        .addReference("post", {
-          type: "one",
-          from: { table: "comments", column: "postId" },
-          to: { table: "posts", column: "id" },
-        }),
+        ),
     );
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
@@ -1752,6 +1712,30 @@ describe("findFirst convenience method", () => {
     // Result should be a single object, not an array
     const [user] = results;
     expect(user).toEqual({ id: "mock-id", name: "Mock User", email: "mock@example.com" });
+    expect(Array.isArray(user)).toBe(false);
+  });
+
+  it("executeRetrieve returns filtered typed results for findFirst", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [
+          [{ id: "user-1", name: "User 1", email: "user1@example.com" }],
+          [{ id: "post-1", userId: "user-1", title: "Post 1" }],
+        ];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const userUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
+    uow.forSchema(testSchema).find("posts", (b) => b.whereIndex("primary"));
+
+    const results = await userUow.executeRetrieve();
+    const [user] = results;
+
+    expect(results).toHaveLength(1);
+    expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
     expect(Array.isArray(user)).toBe(false);
   });
 

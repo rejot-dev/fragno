@@ -1,4 +1,4 @@
-import type { IdColumn, AnyTable, Relation } from "../schema/create";
+import type { IdColumn, AnyTable } from "../schema/create";
 import type { Prettify } from "../util/types";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { FindBuilder } from "./unit-of-work/unit-of-work";
@@ -49,25 +49,7 @@ export type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClaus
   MainSelectResult<Select, T> & JoinOut
 >;
 
-interface MapRelationType<Type> {
-  one: Type | null;
-  many: Type[];
-}
-
-export type JoinBuilder<T extends AnyTable, Out = {}> = {
-  [K in keyof T["relations"]]: T["relations"][K] extends Relation<infer Type, infer Target>
-    ? <Select extends SelectClause<Target> = true, JoinOut = {}>(
-        options?: FindManyOptions<Target, Select, JoinOut, false>,
-      ) => JoinBuilder<
-        T,
-        Prettify<
-          Out & {
-            [$K in K]: MapRelationType<SelectResult<Target, JoinOut, Select>>[Type];
-          }
-        >
-      >
-    : never;
-};
+export type JoinBuilder<_T extends AnyTable, _Out = {}> = never;
 
 export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
 
@@ -117,7 +99,7 @@ export type FindManyOptions<
   where?: (eb: ConditionBuilder<T["columns"]>) => Condition | boolean;
   limit?: number;
   orderBy?: OrderBy<keyof T["columns"]> | OrderBy<keyof T["columns"]>[];
-  join?: (jb: JoinBuilder<T>) => void;
+  join?: never;
 } & (IsRoot extends true
   ? {
       // drizzle doesn't support `offset` in join queries (this may be changed in future, we can add it back)

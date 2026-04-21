@@ -1,13 +1,6 @@
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
-import type {
-  AnySchema,
-  AnyTable,
-  Index,
-  IdColumn,
-  AnyColumn,
-  Relation,
-} from "../../schema/create";
-import { FragnoId } from "../../schema/create";
+import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../schema/create";
+import { FragnoId, getTableRelations } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
 import type { Prettify } from "../../util/types";
 import type { Condition, ConditionBuilder } from "../condition-builder";
@@ -29,14 +22,6 @@ import {
  * Extract column names from a single index
  */
 export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];
-
-type RemoveEmptyObject<T> = T extends object ? (keyof T extends never ? never : T) : never;
-
-type ExtractJoinBuilderSelect<T> =
-  T extends JoinFindBuilder<infer _Table, infer TSelect, infer _JoinOut> ? TSelect : true;
-
-type ExtractJoinBuilderOut<T> =
-  T extends JoinFindBuilder<infer _Table, infer _Select, infer TJoinOut> ? TJoinOut : {};
 
 type QueryTreeSelectedRow<TTable extends AnyTable, TBuilderResult> = SelectResult<
   TTable,
@@ -824,42 +809,11 @@ export class JoinFindBuilder<
   }
 }
 
-interface MapRelationType<T> {
-  // FIXME: Not sure why we need the RemoveEmptyObject, we should somehow fix at the source where it's added to the union
-  one: RemoveEmptyObject<T> | null;
-  many: RemoveEmptyObject<T>[];
-}
-
 /**
- * Join builder with indexed-only where clauses for Unit of Work
- * TJoinOut accumulates the types of all joined relations
+ * Legacy relation-key-driven join builder removed.
+ * Query-tree joins are the only supported public join API.
  */
-export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
-  [K in keyof TTable["relations"]]: TTable["relations"][K] extends Relation<
-    infer TRelationType,
-    infer TTargetTable
-  >
-    ? <
-        TBuilderFn extends (builder: JoinFindBuilder<TTable["relations"][K]["table"]>) => unknown =
-          (
-            builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
-          ) => JoinFindBuilder<TTable["relations"][K]["table"]>,
-      >(
-        builderFn?: TBuilderFn,
-      ) => IndexedJoinBuilder<
-        TTable,
-        TJoinOut & {
-          [P in K]: MapRelationType<
-            SelectResult<
-              TTargetTable,
-              ExtractJoinBuilderOut<ReturnType<TBuilderFn>>,
-              ExtractJoinBuilderSelect<ReturnType<TBuilderFn>>
-            >
-          >[TRelationType];
-        }
-      >
-    : never;
-};
+export type IndexedJoinBuilder<_TTable extends AnyTable, _TJoinOut> = never;
 
 /**
  * Build join operations with indexed-only where clauses for Unit of Work
@@ -872,8 +826,10 @@ export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
 
-  for (const name in table.relations) {
-    const relation = table.relations[name]!;
+  const relations = getTableRelations(table);
+
+  for (const name in relations) {
+    const relation = relations[name]!;
 
     builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => JoinFindBuilder<AnyTable>) => {
       // Create join builder for this relation's table
@@ -1965,7 +1921,8 @@ export class TypedUnitOfWork<
   }
 
   async executeRetrieve(): Promise<TRetrievalResults> {
-    return this.#uow.executeRetrieve() as Promise<TRetrievalResults>;
+    await this.#uow.executeRetrieve();
+    return this.retrievalPhase;
   }
 
   async executeMutations(): Promise<{ success: boolean }> {
