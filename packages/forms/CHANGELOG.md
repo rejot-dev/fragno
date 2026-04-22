@@ -1,5 +1,15 @@
 # @fragno-dev/forms
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+
 ## 0.1.2
 
 ### Patch Changes

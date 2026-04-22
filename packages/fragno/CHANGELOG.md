@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.2.3
+
+### Patch Changes
+
+- 03d5a5c: refactor: remove internal trace-context and model-checker test utilities.
+
 ## 0.2.2
 
 ### Patch Changes

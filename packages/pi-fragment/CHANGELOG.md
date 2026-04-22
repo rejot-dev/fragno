@@ -1,5 +1,22 @@
 # @fragno-dev/pi-fragment
 
+## 1.0.0
+
+### Major Changes
+
+- 81542e7: refactor: remove pi tool replay and side-effect reducer APIs
+
+### Patch Changes
+
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [f856070]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/workflows@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @fragno-dev/otp-fragment
 
+## 0.0.11
+
+### Patch Changes
+
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+
 ## 0.0.10
 
 ### Patch Changes

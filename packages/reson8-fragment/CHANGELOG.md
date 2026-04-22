@@ -1,5 +1,13 @@
 # @fragno-dev/reson8-fragment
 
+## 0.0.4
+
+### Patch Changes
+
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- Updated dependencies [03d5a5c]
+  - @fragno-dev/core@0.2.3
+
 ## 0.0.3
 
 ### Patch Changes
