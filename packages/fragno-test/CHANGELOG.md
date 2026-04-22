@@ -1,5 +1,17 @@
 # @fragno-dev/test
 
+## 2.0.3
+
+### Patch Changes
+
+- 03d5a5c: refactor: remove internal trace-context and model-checker test utilities.
+- 9919fdd: feat: add schema-bound FragnoDatabase APIs and explicit unit-of-work query flows.
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+
 ## 2.0.2
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @fragno-dev/lofi
 
+## 0.0.4
+
+### Patch Changes
+
+- 9919fdd: feat: add schema-bound FragnoDatabase APIs and explicit unit-of-work query flows.
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/node@0.0.9
+
 ## 0.0.3
 
 ### Patch Changes

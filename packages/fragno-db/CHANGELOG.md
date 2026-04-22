@@ -1,5 +1,14 @@
 # @fragno-dev/db
 
+## 0.4.2
+
+### Patch Changes
+
+- a28094e: feat: add query-tree find APIs with nested joins and count support.
+- 9919fdd: feat: add schema-bound FragnoDatabase APIs and explicit unit-of-work query flows.
+- Updated dependencies [03d5a5c]
+  - @fragno-dev/core@0.2.3
+
 ## 0.4.1
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # @fragno-dev/workflow-usage-fragment
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [f856070]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/workflows@0.0.4
+  - @fragno-dev/node@0.0.9
+
 ## 0.0.3
 
 ### Patch Changes

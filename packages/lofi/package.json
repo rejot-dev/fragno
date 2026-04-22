@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/lofi",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Fragno local-first client",
   "homepage": "https://fragno.dev",
   "license": "MIT",
