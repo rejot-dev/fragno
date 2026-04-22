@@ -4,7 +4,7 @@ import { z } from "zod";
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 
 import type { authFragmentDefinition } from "..";
-import { extractSessionId } from "../utils/cookie";
+import { resolveRequestCredential } from "../auth/request-auth";
 import { invitationSchema, memberSchema, organizationSchema } from "./schemas";
 import { serializeInvitation, serializeMember, serializeOrganization } from "./serializers";
 
@@ -84,13 +84,24 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "organization_slug_taken",
           "permission_denied",
           "limit_reached",
-          "session_invalid",
+          "credential_invalid",
         ],
-        handler: async function ({ input, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        handler: async function ({ input, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           let body: z.infer<typeof createOrganizationInputSchema> | null = null;
           let inputError: unknown = null;
@@ -102,8 +113,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganizationWithSession({
-                sessionId,
+              services.createOrganizationForCredential({
+                credentialToken,
                 input: body,
                 inputError,
               }),
@@ -111,8 +122,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "input_invalid") {
@@ -150,7 +161,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations",
-        queryParameters: ["pageSize", "cursor", "sessionId"],
+        queryParameters: ["pageSize", "cursor"],
         outputSchema: z.object({
           organizations: z.array(
             z.object({
@@ -161,17 +172,28 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           cursor: z.string().optional(),
           hasNextPage: z.boolean(),
         }),
-        errorCodes: ["invalid_input", "session_invalid"],
+        errorCodes: ["invalid_input", "credential_invalid"],
         handler: async function ({ query, headers }, { json, error }) {
           const parsed = pageQuerySchema.safeParse(Object.fromEntries(query.entries()));
           if (!parsed.success) {
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
           }
 
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const parsedCursor = parseCursor(query.get("cursor"), ["_primary", "primary"]);
           if (!parsedCursor.ok) {
@@ -180,8 +202,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationsForSession({
-                sessionId,
+              services.getOrganizationsForCredential({
+                credentialToken,
                 pageSize: parsed.data.pageSize,
                 cursor: parsedCursor.cursor,
               }),
@@ -189,7 +211,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({
@@ -206,30 +228,40 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations/active",
-        queryParameters: ["sessionId"],
         outputSchema: z
           .object({
             organization: organizationSchema,
             member: memberSchema,
           })
           .nullable(),
-        errorCodes: ["session_invalid"],
-        handler: async function ({ headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["credential_invalid"],
+        handler: async function ({ headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getActiveOrganizationForSession({
-                sessionId,
+              services.getActiveOrganizationForCredential({
+                credentialToken,
               }),
             ])
             .execute();
 
           if (!result.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           if (!result.data) {
@@ -246,7 +278,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "POST",
         path: "/organizations/active",
-        queryParameters: ["sessionId"],
         inputSchema: z.object({
           organizationId: z.string(),
         }),
@@ -254,19 +285,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           organization: organizationSchema,
           member: memberSchema,
         }),
-        errorCodes: ["organization_not_found", "membership_not_found", "session_invalid"],
-        handler: async function ({ input, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["organization_not_found", "membership_not_found", "credential_invalid"],
+        handler: async function ({ input, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const body = await input.valid();
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.setActiveOrganizationForSession({
-                sessionId,
+              services.setActiveOrganizationForCredential({
+                credentialToken,
                 organizationId: body.organizationId,
               }),
             ])
@@ -284,7 +326,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Membership not found", code: "membership_not_found" }, 404);
             }
 
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({
@@ -297,7 +339,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations/invitations",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           invitations: z.array(
             z.object({
@@ -306,19 +347,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             }),
           ),
         }),
-        errorCodes: ["session_invalid"],
-        handler: async function ({ headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["credential_invalid"],
+        handler: async function ({ headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
 
+          const credentialToken = credential.credential.token;
+
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.listInvitationsForSession({ sessionId })])
+            .withServiceCalls(() => [services.listInvitationsForCredential({ credentialToken })])
             .execute();
 
           if (!result.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({
@@ -333,7 +385,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/invitations/:invitationId",
-        queryParameters: ["sessionId"],
         inputSchema: z.object({
           action: z.enum(["accept", "reject", "cancel"]),
           token: z.string().optional(),
@@ -347,13 +398,24 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "permission_denied",
           "invalid_token",
           "limit_reached",
-          "session_invalid",
+          "credential_invalid",
         ],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const body = await input.valid();
 
@@ -363,8 +425,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.respondToInvitationWithSession({
-                sessionId,
+              services.respondToInvitationForCredential({
+                credentialToken,
                 invitationId: pathParams.invitationId,
                 action: body.action,
                 token: body.token,
@@ -389,8 +451,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Permission denied", code: "permission_denied" }, 403);
             }
 
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             return error({ message: "Invitation not found", code: "invitation_not_found" }, 404);
@@ -405,22 +467,32 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           organization: organizationSchema,
           member: memberSchema,
         }),
-        errorCodes: ["organization_not_found", "permission_denied", "session_invalid"],
-        handler: async function ({ pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
+        handler: async function ({ pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.getOrganizationForSession({
-                sessionId,
+              services.getOrganizationForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
               }),
             ])
@@ -438,7 +510,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               return error({ message: "Permission denied", code: "permission_denied" }, 403);
             }
 
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({
@@ -451,7 +523,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/:organizationId",
-        queryParameters: ["sessionId"],
         inputSchema: updateOrganizationInputSchema,
         outputSchema: z.object({
           organization: organizationSchema,
@@ -461,20 +532,31 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "organization_not_found",
           "organization_slug_taken",
           "permission_denied",
-          "session_invalid",
+          "credential_invalid",
         ],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const body = await input.valid();
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.updateOrganizationWithSession({
-                sessionId,
+              services.updateOrganizationForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 patch: body,
               }),
@@ -482,8 +564,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {
@@ -516,29 +598,39 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "DELETE",
         path: "/organizations/:organizationId",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["organization_not_found", "permission_denied", "session_invalid"],
-        handler: async function ({ pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
+        handler: async function ({ pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.deleteOrganizationWithSession({
-                sessionId,
+              services.deleteOrganizationForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
               }),
             ])
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {
@@ -558,7 +650,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId/members",
-        queryParameters: ["pageSize", "cursor", "sessionId"],
+        queryParameters: ["pageSize", "cursor"],
         outputSchema: z.object({
           members: z.array(memberSchema),
           cursor: z.string().optional(),
@@ -568,7 +660,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "invalid_input",
           "organization_not_found",
           "permission_denied",
-          "session_invalid",
+          "credential_invalid",
         ],
         handler: async function ({ pathParams, query, headers }, { json, error }) {
           const parsed = pageQuerySchema.safeParse(Object.fromEntries(query.entries()));
@@ -576,18 +668,29 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
           }
 
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
           const parsedCursor = parseCursor(query.get("cursor"), ["idx_org_member_org"]);
           if (!parsedCursor.ok) {
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
           }
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.listOrganizationMembersWithSession({
-                sessionId,
+              services.listOrganizationMembersForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 pageSize: parsed.data.pageSize,
                 cursor: parsedCursor.cursor,
@@ -596,8 +699,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {
@@ -621,7 +724,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "POST",
         path: "/organizations/:organizationId/members",
-        queryParameters: ["sessionId"],
         inputSchema: z.object({
           userId: z.string(),
           roles: z.array(z.string()).optional(),
@@ -634,18 +736,29 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "permission_denied",
           "member_already_exists",
           "limit_reached",
-          "session_invalid",
+          "credential_invalid",
         ],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganizationMemberWithSession({
-                sessionId,
+              services.createOrganizationMemberForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 userId: body.userId,
                 roles: body.roles,
@@ -654,8 +767,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {
@@ -688,24 +801,34 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "PATCH",
         path: "/organizations/:organizationId/members/:memberId",
-        queryParameters: ["sessionId"],
         inputSchema: z.object({
           roles: z.array(z.string()).min(1),
         }),
         outputSchema: z.object({
           member: memberSchema,
         }),
-        errorCodes: ["member_not_found", "permission_denied", "last_owner", "session_invalid"],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["member_not_found", "permission_denied", "last_owner", "credential_invalid"],
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.updateOrganizationMemberRolesWithSession({
-                sessionId,
+              services.updateOrganizationMemberRolesForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 memberId: pathParams.memberId,
                 roles: body.roles,
@@ -714,8 +837,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "member_not_found") {
@@ -738,20 +861,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "DELETE",
         path: "/organizations/:organizationId/members/:memberId",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["member_not_found", "permission_denied", "last_owner", "session_invalid"],
-        handler: async function ({ pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["member_not_found", "permission_denied", "last_owner", "credential_invalid"],
+        handler: async function ({ pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.deleteOrganizationMemberWithSession({
-                sessionId,
+              services.deleteOrganizationMemberForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 memberId: pathParams.memberId,
               }),
@@ -759,8 +892,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "member_not_found") {
@@ -781,29 +914,39 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "GET",
         path: "/organizations/:organizationId/invitations",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           invitations: z.array(invitationSchema),
         }),
-        errorCodes: ["organization_not_found", "permission_denied", "session_invalid"],
-        handler: async function ({ pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
+        handler: async function ({ pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.listOrganizationInvitationsWithSession({
-                sessionId,
+              services.listOrganizationInvitationsForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
               }),
             ])
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {
@@ -825,7 +968,6 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
       defineOrganizationRoute({
         method: "POST",
         path: "/organizations/:organizationId/invitations",
-        queryParameters: ["sessionId"],
         inputSchema: z.object({
           email: z.email(),
           roles: z.array(z.string()).optional(),
@@ -837,19 +979,30 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "organization_not_found",
           "permission_denied",
           "limit_reached",
-          "session_invalid",
+          "credential_invalid",
         ],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
+
+          const credentialToken = credential.credential.token;
 
           const body = await input.valid();
           const [result] = await this.handlerTx()
             .withServiceCalls(() => [
-              services.createOrganizationInvitationWithSession({
-                sessionId,
+              services.createOrganizationInvitationForCredential({
+                credentialToken,
                 organizationId: pathParams.organizationId,
                 email: body.email,
                 roles: body.roles,
@@ -858,8 +1011,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             .execute();
 
           if (!result.ok) {
-            if (result.code === "session_invalid") {
-              return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            if (result.code === "credential_invalid") {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
             }
 
             if (result.code === "organization_not_found") {

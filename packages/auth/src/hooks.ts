@@ -12,15 +12,15 @@ export interface UserHookPayload {
   actor: UserSummary | null;
 }
 
-export interface SessionSummary {
+export interface CredentialSummary {
   id: string;
   user: UserSummary;
   expiresAt: Date | DbNow;
   activeOrganizationId: string | null;
 }
 
-export interface SessionHookPayload {
-  session: SessionSummary;
+export interface CredentialHookPayload {
+  credential: CredentialSummary;
   actor: UserSummary | null;
 }
 
@@ -40,16 +40,16 @@ export interface AuthHooks {
   onUserCreated?: (payload: UserHookPayload) => Promise<void> | void;
   onUserRoleUpdated?: (payload: UserHookPayload) => Promise<void> | void;
   onUserPasswordChanged?: (payload: UserHookPayload) => Promise<void> | void;
-  onSessionCreated?: (payload: SessionHookPayload) => Promise<void> | void;
-  onSessionInvalidated?: (payload: SessionHookPayload) => Promise<void> | void;
+  onCredentialIssued?: (payload: CredentialHookPayload) => Promise<void> | void;
+  onCredentialInvalidated?: (payload: CredentialHookPayload) => Promise<void> | void;
 }
 
 export type AuthHooksMap = {
   onUserCreated: HookFn<UserHookPayload>;
   onUserRoleUpdated: HookFn<UserHookPayload>;
   onUserPasswordChanged: HookFn<UserHookPayload>;
-  onSessionCreated: HookFn<SessionHookPayload>;
-  onSessionInvalidated: HookFn<SessionHookPayload>;
+  onCredentialIssued: HookFn<CredentialHookPayload>;
+  onCredentialInvalidated: HookFn<CredentialHookPayload>;
   onOrganizationCreated: HookFn<OrganizationHookPayload>;
   onOrganizationUpdated: HookFn<OrganizationHookPayload>;
   onOrganizationDeleted: HookFn<OrganizationHookPayload>;

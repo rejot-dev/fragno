@@ -2,6 +2,7 @@ import type { Cursor } from "@fragno-dev/db/cursor";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type { Role } from "../types";
@@ -24,29 +25,29 @@ type CreateMemberInput = {
   actor: { userId: string; userRole: Role };
 };
 
-type ListOrganizationMembersWithSessionParams = {
-  sessionId: string;
+type ListOrganizationMembersForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
   pageSize: number;
   cursor?: Cursor;
 };
 
-type CreateOrganizationMemberWithSessionParams = {
-  sessionId: string;
+type CreateOrganizationMemberForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
   userId: string;
   roles?: readonly string[];
 };
 
-type UpdateOrganizationMemberWithSessionParams = {
-  sessionId: string;
+type UpdateOrganizationMemberForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
   memberId: string;
   roles: readonly string[];
 };
 
-type DeleteOrganizationMemberWithSessionParams = {
-  sessionId: string;
+type DeleteOrganizationMemberForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
   memberId: string;
 };
@@ -229,7 +230,7 @@ const matchesOrganizationId = (left: unknown, right: unknown): boolean => {
 export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
   const limits = options.organizationConfig?.limits;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
-  return {
+  const services = {
     /**
      * Fetch a member record for a user within an organization.
      */
@@ -991,6 +992,101 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     },
 
     /**
+     * List organization members for an authenticated actor.
+     */
+    listOrganizationMembersForActor: function (
+      this: AuthServiceContext,
+      params: { actor: AuthActor; organizationId: string; pageSize: number; cursor?: Cursor },
+    ) {
+      const { organizationId, cursor } = params;
+      const effectivePageSize = cursor ? cursor.pageSize : params.pageSize;
+      const effectiveSortOrder = cursor ? cursor.orderDirection : "asc";
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("organization", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", organizationId)),
+            )
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org_user", (eb) =>
+                eb.and(
+                  eb("organizationId", "=", organizationId),
+                  eb("userId", "=", params.actor.userId),
+                ),
+              ),
+            )
+            .findWithCursor("organizationMember", (b) => {
+              let query = b
+                .whereIndex("idx_org_member_org", (eb) => eb("organizationId", "=", organizationId))
+                .orderByIndex("idx_org_member_org", effectiveSortOrder)
+                .pageSize(effectivePageSize)
+                .joinOne("organizationMemberOrganization", "organization", (organization) =>
+                  organization.onIndex("primary", (eb) =>
+                    eb("id", "=", eb.parent("organizationId")),
+                  ),
+                )
+                .joinOne("organizationMemberUser", "user", (user) =>
+                  user.onIndex("primary", (eb) => eb("id", "=", eb.parent("userId"))),
+                );
+
+              return cursor ? query.after(cursor) : query;
+            })
+            .find("organizationMemberRole", (b) =>
+              b
+                .whereIndex("idx_org_member_role_member")
+                .joinOne("organizationMemberRoleMember", "organizationMember", (member) =>
+                  member
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("memberId")))
+                    .whereIndex("idx_org_member_org", (eb) =>
+                      eb("organizationId", "=", organizationId),
+                    ),
+                ),
+            ),
+        )
+        .transformRetrieve(([organization, actorMember, members, roles]) => {
+          if (!organization || organization.deletedAt != null) {
+            return { ok: false as const, code: "organization_not_found" as const };
+          }
+
+          if (!actorMember) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const memberIds = new Set(members.items.map((member) => toExternalId(member.id)));
+          const rolesByMemberId = collectRolesByMemberId(roles, memberIds);
+
+          return {
+            ok: true as const,
+            members: members.items.map((member) => {
+              const memberId = toExternalId(member.id);
+              return mapMember(
+                {
+                  id: member.id,
+                  organizationId: member.organizationId,
+                  userId: member.userId,
+                  createdAt: member.createdAt,
+                  updatedAt: member.updatedAt,
+                },
+                rolesByMemberId[memberId] ?? [],
+                {
+                  organizationId: member.organizationMemberOrganization
+                    ? toExternalId(member.organizationMemberOrganization.id)
+                    : toExternalId(member.organizationId),
+                  userId: member.organizationMemberUser
+                    ? toExternalId(member.organizationMemberUser.id)
+                    : toExternalId(member.userId),
+                },
+              );
+            }),
+            cursor: members.cursor?.encode(),
+            hasNextPage: members.hasNextPage,
+          };
+        })
+        .build();
+    },
+
+    /**
      * List roles for a single organization member.
      */
     listOrganizationMemberRoles: function (this: AuthServiceContext, memberId: string) {
@@ -1051,13 +1147,13 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     },
 
     /**
-     * List organization members for a session.
+     * List organization members for the current credential.
      */
-    listOrganizationMembersWithSession: function (
+    listOrganizationMembersForCredential: function (
       this: AuthServiceContext,
-      params: ListOrganizationMembersWithSessionParams,
+      params: ListOrganizationMembersForCredentialParams,
     ) {
-      const { sessionId, organizationId, cursor } = params;
+      const { credentialToken, organizationId, cursor } = params;
       const effectivePageSize = cursor ? cursor.pageSize : params.pageSize;
       const effectiveSortOrder = cursor ? cursor.orderDirection : "asc";
 
@@ -1067,7 +1163,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             .find("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member.onIndex("idx_org_member_user", (eb) =>
@@ -1077,7 +1173,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organization", (b) =>
@@ -1119,7 +1215,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
 
             const session = sessions[0] ?? null;
             if (!session) {
-              return { ok: false as const, code: "session_invalid" as const };
+              return { ok: false as const, code: "credential_invalid" as const };
             }
 
             if (!organization || organization.deletedAt != null) {
@@ -1183,9 +1279,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     /**
      * Create a member using session permissions.
      */
-    createOrganizationMemberWithSession: function (
+    createOrganizationMemberForCredential: function (
       this: AuthServiceContext,
-      params: CreateOrganizationMemberWithSessionParams,
+      params: CreateOrganizationMemberForCredentialParams,
     ) {
       const roles = normalizeRoleNames(params.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
 
@@ -1195,7 +1291,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
@@ -1214,7 +1310,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organization", (b) =>
@@ -1244,7 +1340,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             }
 
             if (!session || !session.sessionOwner) {
-              return { ok: false as const, code: "session_invalid" as const };
+              return { ok: false as const, code: "credential_invalid" as const };
             }
 
             if (!organization || organization.deletedAt != null) {
@@ -1346,9 +1442,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     /**
      * Update member roles using session permissions.
      */
-    updateOrganizationMemberRolesWithSession: function (
+    updateOrganizationMemberRolesForCredential: function (
       this: AuthServiceContext,
-      params: UpdateOrganizationMemberWithSessionParams,
+      params: UpdateOrganizationMemberForCredentialParams,
     ) {
       const nextRoles = normalizeRoleNames(params.roles, DEFAULT_MEMBER_ROLES);
 
@@ -1358,7 +1454,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
@@ -1382,7 +1478,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organizationMember", (b) =>
@@ -1411,7 +1507,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             }
 
             if (!session || !session.sessionOwner) {
-              return { ok: false as const, code: "session_invalid" as const };
+              return { ok: false as const, code: "credential_invalid" as const };
             }
 
             if (!member) {
@@ -1555,9 +1651,9 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
     /**
      * Remove a member using session permissions.
      */
-    deleteOrganizationMemberWithSession: function (
+    deleteOrganizationMemberForCredential: function (
       this: AuthServiceContext,
-      params: DeleteOrganizationMemberWithSessionParams,
+      params: DeleteOrganizationMemberForCredentialParams,
     ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -1565,7 +1661,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
@@ -1589,7 +1685,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organizationMember", (b) =>
@@ -1614,7 +1710,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
           }
 
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           if (!member) {
@@ -1744,4 +1840,6 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
         .build();
     },
   };
+
+  return services;
 }

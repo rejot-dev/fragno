@@ -78,6 +78,10 @@ class MemoryWindow {
   }
 }
 
+const authHeaders = (token: string) => ({
+  Cookie: `fragno_auth=${token}`,
+});
+
 describe("auth client", () => {
   it("uses the synced me wrapper to initialize default organization preference", async () => {
     const storage = new MemoryStorage();
@@ -120,6 +124,45 @@ describe("auth client", () => {
   });
 });
 
+describe("auth-fragment with a custom auth cookie name", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({ cookieOptions: { name: "custom_auth" } })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory, userOverviewRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("accepts the configured auth cookie on authenticated routes", async () => {
+    const response = await fragment.callRoute("POST", "/sign-up", {
+      body: {
+        email: "custom-cookie@test.com",
+        password: "password123",
+      },
+    });
+
+    assert(response.type === "json");
+    expect(response.headers.get("Set-Cookie")).toContain("custom_auth=");
+
+    const meResponse = await fragment.callRoute("GET", "/me", {
+      headers: {
+        Cookie: `custom_auth=${response.data.auth.token}`,
+      },
+    });
+
+    assert(meResponse.type === "json");
+    expect(meResponse.data.user.email).toBe("custom-cookie@test.com");
+  });
+});
+
 describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
@@ -134,7 +177,7 @@ describe("auth-fragment", async () => {
     .build();
 
   const fragment = fragments.auth;
-  let adminSessionId: string;
+  let adminCredentialToken: string;
 
   afterAll(async () => {
     await test.cleanup();
@@ -150,20 +193,20 @@ describe("auth-fragment", async () => {
         .execute();
     });
 
-    const [adminSession] = await test.inContext(function () {
+    const [adminCredential] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createSession(adminUser.id)])
+        .withServiceCalls(() => [fragment.services.issueCredential(adminUser.id)])
         .execute();
     });
 
-    if (!adminSession.ok) {
-      throw new Error(`Failed to create admin session: ${adminSession.code}`);
+    if (!adminCredential.ok) {
+      throw new Error(`Failed to issue admin credential: ${adminCredential.code}`);
     }
-    adminSessionId = adminSession.session.id;
+    adminCredentialToken = adminCredential.credential.id;
   });
 
-  describe("Full session flow", async () => {
-    let sessionId: string;
+  describe("Full auth flow", async () => {
+    let credentialToken: string;
     let userId: string;
     let ownedOrganizationId: string;
 
@@ -176,12 +219,15 @@ describe("auth-fragment", async () => {
       });
       assert(response.type === "json");
       expect(response.data).toMatchObject({
-        sessionId: expect.any(String),
+        auth: {
+          token: expect.any(String),
+          kind: "session",
+        },
         userId: expect.any(String),
         email: "test@test.com",
       });
       const data = response.data;
-      sessionId = data.sessionId;
+      credentialToken = data.auth.token;
       userId = data.userId;
     });
 
@@ -199,7 +245,7 @@ describe("auth-fragment", async () => {
 
     it("/me - get active session", async () => {
       const response = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(response.type === "json");
@@ -224,7 +270,7 @@ describe("auth-fragment", async () => {
               slug: "my-org",
               creatorUserId: userId,
               creatorUserRole: "user",
-              sessionId,
+              credentialToken: credentialToken,
             }),
           ])
           .execute();
@@ -236,7 +282,10 @@ describe("auth-fragment", async () => {
       await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.setActiveOrganization(sessionId, ownedOrg.organization.id),
+            fragment.services.setActiveOrganizationForCredential({
+              credentialToken: credentialToken,
+              organizationId: ownedOrg.organization.id,
+            }),
           ])
           .execute();
       });
@@ -283,7 +332,7 @@ describe("auth-fragment", async () => {
       assert(invitation.ok);
 
       const meResponse = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(meResponse.type === "json");
@@ -296,21 +345,54 @@ describe("auth-fragment", async () => {
       expect("token" in meResponse.data.invitations[0]!.invitation).toBe(false);
     });
 
-    it("/sign-out - invalidate session", async () => {
+    it("/sign-out - invalidate session and emit onCredentialInvalidated", async () => {
+      const invalidatedCredentialToken = credentialToken;
       const response = await fragment.callRoute("POST", "/sign-out", {
-        body: { sessionId },
+        headers: authHeaders(invalidatedCredentialToken),
       });
       assert(response.type === "json");
       expect(response.data).toMatchObject({ success: true });
+
+      const internalFragment = getInternalFragment(test.adapter);
+      const hooks = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(
+        hooks.some(
+          (hook) =>
+            hook.hookName === "onCredentialInvalidated" &&
+            (hook.payload as { credential?: { id?: string } }).credential?.id ===
+              invalidatedCredentialToken,
+        ),
+      ).toBe(true);
+    });
+
+    it("/sign-out - clears the auth cookie when the credential is already invalid", async () => {
+      const response = await fragment.callRoute("POST", "/sign-out", {
+        headers: authHeaders(credentialToken),
+        body: {},
+      });
+
+      assert(response.type === "error");
+      expect(response.status).toBe(401);
+      expect(response.error.code).toBe("credential_invalid");
+      expect(response.headers.get("Set-Cookie")).toContain("fragno_auth=");
+      expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0");
     });
 
     it("/me - get inactive session", async () => {
       const response = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(response.type === "error");
-      expect(response.error.code).toBe("session_invalid");
+      expect(response.error.code).toBe("credential_invalid");
     });
 
     it("/sign-in - invalid credentials", async () => {
@@ -327,23 +409,30 @@ describe("auth-fragment", async () => {
       });
       assert(response.type === "json");
       expect(response.data).toMatchObject({
-        sessionId: expect.any(String),
+        auth: {
+          token: expect.any(String),
+          kind: "session",
+        },
         userId: expect.any(String),
         email: "test@test.com",
       });
 
-      const data = response.data as { sessionId: string; userId: string; email: string };
-      sessionId = data.sessionId;
+      const data = response.data as {
+        auth: { token: string };
+        userId: string;
+        email: string;
+      };
+      credentialToken = data.auth.token;
       userId = data.userId;
     });
 
-    it("/sign-in - emits db expiry metadata in onSessionCreated", async () => {
+    it("/sign-in - emits db expiry metadata in onCredentialIssued", async () => {
       const response = await fragment.callRoute("POST", "/sign-in", {
         body: { email: "test@test.com", password: "password" },
       });
       assert(response.type === "json");
 
-      const createdSessionId = response.data.sessionId;
+      const createdCredentialToken = response.data.auth.token;
 
       const internalFragment = getInternalFragment(test.adapter);
       const hooks = await internalFragment.inContext(async function () {
@@ -357,23 +446,28 @@ describe("auth-fragment", async () => {
 
       const sessionHook = hooks.find((hook) => {
         const payload = hook.payload as {
-          session?: {
+          credential?: {
             id?: string;
             expiresAt?: { tag?: string; offsetMs?: number } | Date | string;
           };
         } | null;
-        return hook.hookName === "onSessionCreated" && payload?.session?.id === createdSessionId;
+        return (
+          hook.hookName === "onCredentialIssued" &&
+          payload?.credential?.id === createdCredentialToken
+        );
       });
 
       if (!sessionHook) {
-        throw new Error(`Expected onSessionCreated hook for session ${createdSessionId}.`);
+        throw new Error(
+          `Expected onCredentialIssued hook for credential ${createdCredentialToken}.`,
+        );
       }
 
       const hookExpiresAt = (
         sessionHook.payload as {
-          session?: { expiresAt?: { tag?: string; offsetMs?: number } | Date | string };
+          credential?: { expiresAt?: { tag?: string; offsetMs?: number } | Date | string };
         } | null
-      )?.session?.expiresAt;
+      )?.credential?.expiresAt;
 
       expect(hookExpiresAt).toMatchObject({
         tag: "db-now",
@@ -390,7 +484,7 @@ describe("auth-fragment", async () => {
               slug: "second-org",
               creatorUserId: userId,
               creatorUserRole: "user",
-              sessionId,
+              credentialToken: credentialToken,
             }),
           ])
           .execute();
@@ -402,48 +496,48 @@ describe("auth-fragment", async () => {
         body: {
           email: "test@test.com",
           password: "password",
-          session: {
+          auth: {
             activeOrganizationId: secondOrg.organization.id,
           },
         },
       });
 
       assert(response.type === "json");
-      sessionId = response.data.sessionId;
+      credentialToken = response.data.auth.token;
       userId = response.data.userId;
 
       const meResponse = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(meResponse.type === "json");
       expect(meResponse.data.activeOrganization?.organization.id).toBe(secondOrg.organization.id);
     });
 
-    it("/sign-in - repairs stale active organization session seeds", async () => {
+    it("/sign-in - repairs stale active organization credential seeds", async () => {
       const response = await fragment.callRoute("POST", "/sign-in", {
         body: {
           email: "test@test.com",
           password: "password",
-          session: {
+          auth: {
             activeOrganizationId: "organization-missing",
           },
         },
       });
 
       assert(response.type === "json");
-      sessionId = response.data.sessionId;
+      credentialToken = response.data.auth.token;
       userId = response.data.userId;
 
       const meResponse = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(meResponse.type === "json");
       expect(meResponse.data.activeOrganization?.organization.id).toBe(ownedOrganizationId);
     });
 
-    it("/sign-in - repairs session seeds that target an organization the user cannot access", async () => {
+    it("/sign-in - repairs credential seeds that target an organization the user cannot access", async () => {
       const outsiderPasswordHash = await hashPassword("outsider-password");
       const [outsider] = await test.inContext(function () {
         return this.handlerTx()
@@ -472,18 +566,18 @@ describe("auth-fragment", async () => {
         body: {
           email: "test@test.com",
           password: "password",
-          session: {
+          auth: {
             activeOrganizationId: outsiderOrg.organization.id,
           },
         },
       });
 
       assert(response.type === "json");
-      sessionId = response.data.sessionId;
+      credentialToken = response.data.auth.token;
       userId = response.data.userId;
 
       const meResponse = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(meResponse.type === "json");
@@ -522,7 +616,7 @@ describe("auth-fragment", async () => {
 
     it("/change-password - update password", async () => {
       const response = await fragment.callRoute("POST", "/change-password", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
         body: { newPassword: "newpassword123" },
       });
 
@@ -540,18 +634,18 @@ describe("auth-fragment", async () => {
       });
       assert(newPasswordResponse.type === "json");
       const data = newPasswordResponse.data as {
-        sessionId: string;
+        auth: { token: string };
         userId: string;
         email: string;
       };
-      sessionId = data.sessionId;
+      credentialToken = data.auth.token;
       userId = data.userId;
     });
 
     it("/users/:userId/role - non-admin denied", async () => {
       const response = await fragment.callRoute("PATCH", "/users/:userId/role", {
         pathParams: { userId },
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
         body: { role: "admin" },
       });
 
@@ -562,7 +656,7 @@ describe("auth-fragment", async () => {
     it("/users/:userId/role - admin update", async () => {
       const response = await fragment.callRoute("PATCH", "/users/:userId/role", {
         pathParams: { userId },
-        query: { sessionId: adminSessionId },
+        headers: authHeaders(adminCredentialToken),
         body: { role: "admin" },
       });
 
@@ -570,7 +664,7 @@ describe("auth-fragment", async () => {
       expect(response.data).toMatchObject({ success: true });
 
       const meResponse = await fragment.callRoute("GET", "/me", {
-        query: { sessionId },
+        headers: authHeaders(credentialToken),
       });
 
       assert(meResponse.type === "json");
@@ -596,57 +690,10 @@ describe("auth-fragment", async () => {
   });
 
   describe("Service helpers", () => {
-    it("buildSessionCookie - sets cookie name and value", () => {
-      const cookie = fragment.services.buildSessionCookie("session-123");
-      expect(cookie).toContain("sessionid=session-123");
+    it("buildAuthCookie - sets cookie name and value", () => {
+      const cookie = fragment.services.buildAuthCookie("session-123");
+      expect(cookie).toContain("fragno_auth=session-123");
       expect(cookie).toContain("Path=/");
-    });
-
-    it("getSession - returns undefined without cookie", async () => {
-      const result = await test.inContext(function () {
-        return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.getSession(new Headers())])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-      });
-
-      expect(result).toBeUndefined();
-    });
-
-    it("getSession - returns user from cookie", async () => {
-      const email = "cookie-user@test.com";
-      const passwordHash = await hashPassword("cookiepassword123");
-      const [user] = await test.inContext(function () {
-        return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createUserUnvalidated(email, passwordHash)])
-          .execute();
-      });
-
-      const [session] = await test.inContext(function () {
-        return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createSession(user.id)])
-          .execute();
-      });
-      if (!session.ok) {
-        throw new Error(`Failed to create session: ${session.code}`);
-      }
-      const createdSessionId = session.session?.id;
-      if (!createdSessionId) {
-        throw new Error("Expected session id for getSession test");
-      }
-
-      const headers = new Headers({ Cookie: `sessionid=${createdSessionId}` });
-      const result = await test.inContext(function () {
-        return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.getSession(headers)])
-          .transform(({ serviceResult: [sessionResult] }) => sessionResult)
-          .execute();
-      });
-
-      expect(result).toMatchObject({
-        userId: user.id,
-        email,
-      });
     });
 
     it("updateUserRole - updates role", async () => {
@@ -660,7 +707,7 @@ describe("auth-fragment", async () => {
 
       await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.updateUserRole(user.id, "admin")])
+          .withServiceCalls(() => [fragment.services.setUserRole(user.id, "admin")])
           .execute();
       });
 
@@ -736,20 +783,20 @@ describe("auth-fragment", async () => {
 
       const [outsiderSession] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createSession(outsider.id)])
+          .withServiceCalls(() => [fragment.services.issueCredential(outsider.id)])
           .execute();
       });
       if (!outsiderSession.ok) {
-        throw new Error(`Failed to create session: ${outsiderSession.code}`);
+        throw new Error(`Failed to issue credential: ${outsiderSession.code}`);
       }
 
       const [setResult] = await test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.setActiveOrganization(
-              outsiderSession.session.id,
-              orgResult.organization.id,
-            ),
+            fragment.services.setActiveOrganizationForCredential({
+              credentialToken: outsiderSession.credential.id,
+              organizationId: orgResult.organization.id,
+            }),
           ])
           .execute();
       });
@@ -774,15 +821,15 @@ describe("auth-fragment", async () => {
 
       const [session] = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.createSession(user.id)])
+          .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
           .execute();
       });
       if (!session.ok) {
-        throw new Error(`Failed to create session: ${session.code}`);
+        throw new Error(`Failed to issue credential: ${session.code}`);
       }
-      const createdSessionId = session.session?.id;
-      if (!createdSessionId) {
-        throw new Error("Expected session id for hook test");
+      const createdCredentialToken = session.credential?.id;
+      if (!createdCredentialToken) {
+        throw new Error("Expected credential id for hook test");
       }
 
       const [organizationResult] = await test.inContext(function () {
@@ -833,8 +880,9 @@ describe("auth-fragment", async () => {
       expect(
         hooks.some(
           (hook) =>
-            hook.hookName === "onSessionCreated" &&
-            (hook.payload as { session?: { id?: string } }).session?.id === createdSessionId,
+            hook.hookName === "onCredentialIssued" &&
+            (hook.payload as { credential?: { id?: string } }).credential?.id ===
+              createdCredentialToken,
         ),
       ).toBe(true);
 
@@ -941,10 +989,10 @@ describe("auth-fragment organization upgrades", async () => {
     });
 
     assert(signUpResponse.type === "json");
-    const sessionId = signUpResponse.data.sessionId as string;
+    const credentialToken = signUpResponse.data.auth.token as string;
 
     const meBeforeUpgrade = await fragment.callRoute("GET", "/me", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
     });
 
     assert(meBeforeUpgrade.type === "json");
@@ -966,7 +1014,7 @@ describe("auth-fragment organization upgrades", async () => {
       .build();
 
     const meAfterUpgrade = await upgradedFragment.callRoute("GET", "/me", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
     });
 
     assert(meAfterUpgrade.type === "json");
@@ -974,7 +1022,7 @@ describe("auth-fragment organization upgrades", async () => {
     expect(meAfterUpgrade.data.activeOrganization).toBeNull();
 
     const createResponse = await upgradedFragment.callRoute("POST", "/organizations", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
       body: { name: "Upgraded Org", slug: "upgraded-org" },
     });
 
@@ -982,7 +1030,7 @@ describe("auth-fragment organization upgrades", async () => {
     const createdOrgId = createResponse.data.organization.id as string;
 
     const meAfterCreate = await upgradedFragment.callRoute("GET", "/me", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
     });
 
     assert(meAfterCreate.type === "json");
@@ -990,14 +1038,14 @@ describe("auth-fragment organization upgrades", async () => {
     expect(meAfterCreate.data.organizations[0]?.organization.id).toBe(createdOrgId);
 
     const setActiveResponse = await upgradedFragment.callRoute("POST", "/organizations/active", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
       body: { organizationId: createdOrgId },
     });
 
     assert(setActiveResponse.type === "json");
 
     const meAfterActive = await upgradedFragment.callRoute("GET", "/me", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
     });
 
     assert(meAfterActive.type === "json");
@@ -1037,10 +1085,10 @@ describe("auth-fragment auto-create organizations", async () => {
     });
 
     assert(signUpResponse.type === "json");
-    const sessionId = signUpResponse.data.sessionId as string;
+    const credentialToken = signUpResponse.data.auth.token as string;
 
     const meResponse = await fragment.callRoute("GET", "/me", {
-      query: { sessionId },
+      headers: authHeaders(credentialToken),
     });
 
     assert(meResponse.type === "json");
@@ -1097,7 +1145,7 @@ describe("auth-fragment beforeCreateUser hook", async () => {
       test.inContext(function () {
         return this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.signUpWithSession(`blocked@${blockedDomain}`, passwordHash),
+            fragment.services.signUp(`blocked@${blockedDomain}`, passwordHash),
           ])
           .execute();
       }),

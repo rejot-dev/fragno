@@ -1,10 +1,11 @@
-import type { FragnoId } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { Role, authFragmentDefinition } from "..";
+import { buildClearedCredentialHeaders } from "../auth/credential-strategy";
+import { resolveRequestCredential } from "../auth/request-auth";
 import type { AuthHooksMap } from "../hooks";
 import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
 import {
@@ -21,13 +22,8 @@ import type {
 import { toExternalId } from "../organization/utils";
 import { authSchema } from "../schema";
 import { mapUserSummary } from "../user/summary";
-import {
-  buildClearCookieHeader,
-  buildSetCookieHeader,
-  extractSessionId,
-  type CookieOptions,
-} from "../utils/cookie";
-import { resolveSessionSeedFromMembers, type SessionSeedInput } from "./session-seed";
+import { buildSetCookieHeader, type CookieOptions } from "../utils/cookie";
+import { resolveCredentialSeedFromMembers, type CredentialSeedInput } from "./session-seed";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
@@ -35,7 +31,6 @@ const requiredOrganizationServiceNames = [
   "getOrganizationsForUser",
   "listOrganizationMemberRolesForMembers",
   "listOrganizationInvitationsForUser",
-  "getActiveOrganization",
 ] as const;
 
 export function assertOrganizationServices(
@@ -64,10 +59,6 @@ type OrganizationRow = {
   deletedAt: Date | null;
 };
 
-type ActiveOrganizationRow = {
-  id: unknown;
-};
-
 type OrganizationMemberRoleRow = {
   role: string;
 };
@@ -94,36 +85,7 @@ type OrganizationInvitationRow = {
   organization?: OrganizationRow | null;
 };
 
-type SessionOwnerRow = {
-  id: unknown;
-  email: string;
-  role: Role;
-};
-
-type SessionMemberRow = {
-  id: FragnoId;
-  expiresAt: Date;
-  sessionOwner?: SessionOwnerRow | null;
-  sessionActiveOrganization?: ActiveOrganizationRow | null;
-  sessionMembers?: OrganizationMemberRow | OrganizationMemberRow[] | null;
-};
-
-type SessionInvitationRow = {
-  id: FragnoId;
-  expiresAt: Date;
-  sessionActiveOrganization?: ActiveOrganizationRow | null;
-  sessionOwner?:
-    | (SessionOwnerRow & {
-        invitations?: OrganizationInvitationRow | OrganizationInvitationRow[] | null;
-      })
-    | null;
-};
-
-type SessionExpiryRow = {
-  id: FragnoId;
-};
-
-type SessionSeedMemberRow = {
+type CredentialSeedMemberRow = {
   createdAt: Date;
   organizationMemberOrganization?: OrganizationRow | null;
 };
@@ -190,7 +152,8 @@ const mapInvitationRow = (
 });
 
 const buildOrganizationsFromRows = (
-  rows: SessionMemberRow[],
+  rows: OrganizationMemberRow[],
+  userId: string,
 ): Array<{
   organization: ReturnType<typeof serializeOrganization>;
   member: ReturnType<typeof serializeMember>;
@@ -204,35 +167,27 @@ const buildOrganizationsFromRows = (
     }
   >();
 
-  for (const row of rows) {
-    const sessionOwner = row.sessionOwner;
-    if (!sessionOwner) {
+  for (const member of rows) {
+    const organizationRow = member.organization;
+    if (!organizationRow || organizationRow.deletedAt) {
       continue;
     }
-    const userId = toExternalId(sessionOwner.id);
-    const members = normalizeMany(row.sessionMembers) as OrganizationMemberRow[];
-    for (const member of members) {
-      const organizationRow = member.organization;
-      if (!organizationRow || organizationRow.deletedAt) {
-        continue;
-      }
-      const memberId = toExternalId(member.id);
-      let entry = organizationsByMemberId.get(memberId);
-      if (!entry) {
-        const organization = mapOrganizationRow(organizationRow);
-        entry = {
-          organization,
-          member: mapMemberRow(member, organization.id, userId, []),
-          roles: new Set(),
-        };
-        organizationsByMemberId.set(memberId, entry);
-      }
+    const memberId = toExternalId(member.id);
+    let entry = organizationsByMemberId.get(memberId);
+    if (!entry) {
+      const organization = mapOrganizationRow(organizationRow);
+      entry = {
+        organization,
+        member: mapMemberRow(member, organization.id, userId, []),
+        roles: new Set(),
+      };
+      organizationsByMemberId.set(memberId, entry);
+    }
 
-      const roles = normalizeMany(member.roles) as OrganizationMemberRoleRow[];
-      for (const role of roles) {
-        if (role?.role) {
-          entry.roles.add(role.role);
-        }
+    const roles = normalizeMany(member.roles) as OrganizationMemberRoleRow[];
+    for (const role of roles) {
+      if (role?.role) {
+        entry.roles.add(role.role);
       }
     }
   }
@@ -247,7 +202,7 @@ const buildOrganizationsFromRows = (
 };
 
 const buildInvitationsFromRows = (
-  rows: SessionInvitationRow[],
+  rows: OrganizationInvitationRow[],
 ): Array<{
   invitation: ReturnType<typeof serializeInvitationSummary>;
   organization: ReturnType<typeof serializeOrganization>;
@@ -258,35 +213,26 @@ const buildInvitationsFromRows = (
   }> = [];
   const seenInvitationIds = new Set<string>();
 
-  for (const row of rows) {
-    const sessionOwner = row.sessionOwner;
-    if (!sessionOwner) {
+  for (const invitation of rows) {
+    if (!invitation || invitation.status !== "pending") {
       continue;
     }
-    const invitationsForUser = normalizeMany(
-      sessionOwner.invitations,
-    ) as OrganizationInvitationRow[];
-    for (const invitation of invitationsForUser) {
-      if (!invitation || invitation.status !== "pending") {
-        continue;
-      }
-      const organizationRow = invitation.organization;
-      if (!organizationRow || organizationRow.deletedAt) {
-        continue;
-      }
-      const invitationId = toExternalId(invitation.id);
-      if (seenInvitationIds.has(invitationId)) {
-        continue;
-      }
-      seenInvitationIds.add(invitationId);
-
-      const organization = mapOrganizationRow(organizationRow);
-      const mappedInvitation = mapInvitationRow(invitation, organization.id);
-      invitations.push({
-        invitation: serializeInvitationSummary(mappedInvitation),
-        organization: serializeOrganization(organization),
-      });
+    const organizationRow = invitation.organization;
+    if (!organizationRow || organizationRow.deletedAt) {
+      continue;
     }
+    const invitationId = toExternalId(invitation.id);
+    if (seenInvitationIds.has(invitationId)) {
+      continue;
+    }
+    seenInvitationIds.add(invitationId);
+
+    const organization = mapOrganizationRow(organizationRow);
+    const mappedInvitation = mapInvitationRow(invitation, organization.id);
+    invitations.push({
+      invitation: serializeInvitationSummary(mappedInvitation),
+      organization: serializeOrganization(organization),
+    });
   }
 
   return invitations;
@@ -294,10 +240,10 @@ const buildInvitationsFromRows = (
 
 export function createSessionServices(cookieOptions?: CookieOptions) {
   const services = {
-    resolveSessionSeedForUser: function (
+    resolveCredentialSeedForUser: function (
       this: AuthServiceContext,
       userId: string,
-      session?: SessionSeedInput | null,
+      session?: CredentialSeedInput | null,
     ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -312,8 +258,8 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           ),
         )
         .transformRetrieve(([members]) => {
-          return resolveSessionSeedFromMembers(
-            (members as SessionSeedMemberRow[]).map((member) => ({
+          return resolveCredentialSeedFromMembers(
+            (members as CredentialSeedMemberRow[]).map((member) => ({
               createdAt: member.createdAt,
               organization: member.organizationMemberOrganization ?? null,
             })),
@@ -324,19 +270,19 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         .build();
     },
     /**
-     * Build a Set-Cookie header value for the session id.
+     * Build a Set-Cookie header value for the current auth credential token.
      */
-    buildSessionCookie: function (sessionId: string): string {
-      return buildSetCookieHeader(sessionId, cookieOptions);
+    buildAuthCookie: function (credentialToken: string): string {
+      return buildSetCookieHeader(credentialToken, cookieOptions);
     },
     /**
-     * Create a session for a user, rejecting banned or missing users.
+     * Issue a session-backed credential for a user, rejecting banned or missing users.
      *
-     * When `options.activeOrganizationId` is provided, it is written into the session as-is.
-     * This function does not verify that the user is a member of that organization; callers
-     * must validate membership before passing the id.
+     * When `options.activeOrganizationId` is provided, it is written into the stored session row
+     * as-is. This function does not verify that the user is a member of that organization;
+     * callers must validate membership before passing the id.
      */
-    createSession: function (
+    issueCredential: function (
       this: AuthServiceContext,
       userId: string,
       options?: { activeOrganizationId?: string | null },
@@ -361,8 +307,8 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           });
           const userSummary = mapUserSummary(user);
 
-          uow.triggerHook("onSessionCreated", {
-            session: {
+          uow.triggerHook("onCredentialIssued", {
+            credential: {
               id: id.valueOf(),
               user: userSummary,
               expiresAt,
@@ -373,7 +319,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
 
           return {
             ok: true as const,
-            session: {
+            credential: {
               id: id.valueOf(),
               userId,
               expiresAt,
@@ -384,16 +330,16 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         .build();
     },
     /**
-     * Validate a session and return user info or null when invalid.
+     * Validate a credential and return user info or null when invalid.
      */
-    validateSession: function (this: AuthServiceContext, sessionId: string) {
+    validateCredential: function (this: AuthServiceContext, credentialToken: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
@@ -403,7 +349,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             ),
         )
@@ -421,6 +367,10 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           return {
             id: session.id.valueOf(),
             userId: session.userId as unknown as string,
+            expiresAt: session.expiresAt,
+            activeOrganizationId: session.activeOrganizationId
+              ? String(session.activeOrganizationId)
+              : null,
             user: {
               id: session.sessionOwner.id.valueOf(),
               email: session.sessionOwner.email,
@@ -431,14 +381,14 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         .build();
     },
     /**
-     * Invalidate a session and emit session invalidation hooks.
+     * Invalidate a session-backed credential and emit credential invalidation hooks.
      */
-    invalidateSession: function (this: AuthServiceContext, sessionId: string) {
+    invalidateCredential: function (this: AuthServiceContext, credentialToken: string) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("session", (b) =>
             b
-              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+              .whereIndex("primary", (eb) => eb("id", "=", credentialToken))
               .joinOne("sessionOwner", "user", (owner) =>
                 owner
                   .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
@@ -459,8 +409,8 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               role: session.sessionOwner.role,
               bannedAt: session.sessionOwner.bannedAt ?? null,
             });
-            uow.triggerHook("onSessionInvalidated", {
-              session: {
+            uow.triggerHook("onCredentialInvalidated", {
+              credential: {
                 id: session.id.valueOf(),
                 user: userSummary,
                 expiresAt: session.expiresAt,
@@ -475,50 +425,6 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         })
         .build();
     },
-    /**
-     * Resolve a session from request headers for sign-in checks.
-     */
-    getSession: function (this: AuthServiceContext, headers: Headers) {
-      const sessionId = extractSessionId(headers);
-
-      return this.serviceTx(authSchema)
-        .retrieve((uow) =>
-          uow
-            .findFirst("session", (b) =>
-              b
-                .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", sessionId ?? ""), eb("expiresAt", ">", eb.now())),
-                )
-                .joinOne("sessionOwner", "user", (owner) =>
-                  owner
-                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role"]),
-                ),
-            )
-            .findFirst("session", (b) =>
-              b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", sessionId ?? ""), eb("expiresAt", "<=", eb.now())),
-              ),
-            ),
-        )
-        .mutate(({ uow, retrieveResult: [session, expiredSession] }) => {
-          if (expiredSession) {
-            uow.delete("session", expiredSession.id, (b) => b.check());
-          }
-          if (!session || !sessionId) {
-            return undefined;
-          }
-          if (!session.sessionOwner) {
-            return undefined;
-          }
-
-          return {
-            userId: session.sessionOwner.id.valueOf(),
-            email: session.sessionOwner.email,
-          };
-        })
-        .build();
-    },
   };
   return services;
 }
@@ -529,50 +435,45 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
       defineRoute({
         method: "POST",
         path: "/sign-out",
-        inputSchema: z
-          .object({
-            sessionId: z.string().optional(),
-          })
-          .optional(),
+        inputSchema: z.object({}).optional(),
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["session_not_found"],
+        errorCodes: ["credential_invalid"],
         handler: async function ({ input, headers }, { json, error }) {
-          const body = await input.valid();
+          await input.valid();
 
-          // Extract session ID from cookies first, then body
-          const sessionId = extractSessionId(headers, null, body?.sessionId);
-
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_not_found" }, 400);
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
 
-          const [success] = await this.handlerTx()
-            .withServiceCalls(() => [services.invalidateSession(sessionId)])
+          const [invalidated] = await this.handlerTx()
+            .withServiceCalls(() => [services.invalidateCredential(credential.credential.token)])
             .execute();
 
-          // Build response with clear cookie header
-          const clearCookieHeader = buildClearCookieHeader(config.cookieOptions ?? {});
+          const clearedCredentialHeaders = buildClearedCredentialHeaders(config.cookieOptions);
 
-          if (!success) {
-            // Still clear the cookie even if session not found in DB
-            return json(
-              { success: false },
-              {
-                headers: {
-                  "Set-Cookie": clearCookieHeader,
-                },
-              },
+          if (!invalidated) {
+            return error(
+              { message: "Invalid credential", code: "credential_invalid" },
+              { status: 401, headers: clearedCredentialHeaders },
             );
           }
 
           return json(
             { success: true },
             {
-              headers: {
-                "Set-Cookie": clearCookieHeader,
-              },
+              headers: clearedCredentialHeaders,
             },
           );
         },
@@ -581,7 +482,6 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
       defineRoute({
         method: "GET",
         path: "/me",
-        queryParameters: ["sessionId"],
         outputSchema: z.object({
           user: z.object({
             id: z.string(),
@@ -607,26 +507,30 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             }),
           ),
         }),
-        errorCodes: ["session_invalid"],
-        handler: async function ({ query, headers }, { json, error }) {
-          // Extract session ID from cookies first, then query params
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        errorCodes: ["credential_invalid"],
+        handler: async function ({ headers }, { json, error }) {
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
 
-          if (config.organizations !== false) {
-            assertOrganizationServices(services);
-          }
-
+          const credentialToken = credential.credential.token;
           const result = await this.handlerTx()
             .retrieve(({ forSchema }) => {
               const uow = forSchema(authSchema);
               const scheduleExpiredLookup = () => {
                 uow.findFirst("session", (b) =>
                   b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", sessionId), eb("expiresAt", "<=", eb.now())),
+                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", "<=", eb.now())),
                   ),
                 );
               };
@@ -635,7 +539,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
                 uow.find("session", (b) =>
                   b
                     .whereIndex("idx_session_id_expiresAt", (eb) =>
-                      eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                      eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                     )
                     .joinOne("sessionOwner", "user", (owner) =>
                       owner
@@ -650,7 +554,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
               uow.find("session", (b) =>
                 b
                   .whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                   )
                   .joinOne("sessionOwner", "user", (owner) =>
                     owner
@@ -685,7 +589,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
               uow.find("session", (b) =>
                 b
                   .whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", sessionId), eb("expiresAt", ">", eb.now())),
+                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                   )
                   .joinOne("sessionOwner", "user", (owner) =>
                     owner
@@ -713,8 +617,11 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             .transformRetrieve((retrieveResult) => {
               if (config.organizations === false) {
                 const [sessions, expiredSession] = retrieveResult as unknown as [
-                  SessionMemberRow[],
-                  SessionExpiryRow | null,
+                  Array<{
+                    id: unknown;
+                    sessionOwner?: { id: unknown; email: string; role: Role } | null;
+                  }>,
+                  { id: unknown } | null,
                 ];
                 return {
                   session: sessions[0] ?? null,
@@ -726,20 +633,48 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
               }
 
               const [memberRows, invitationRows, expiredSession] = retrieveResult as unknown as [
-                SessionMemberRow[],
-                SessionInvitationRow[],
-                SessionExpiryRow | null,
+                Array<{
+                  id: unknown;
+                  sessionOwner?: { id: unknown; email: string; role: Role } | null;
+                  sessionActiveOrganization?: { id: unknown } | null;
+                  sessionMembers?: OrganizationMemberRow | OrganizationMemberRow[] | null;
+                }>,
+                Array<{
+                  id: unknown;
+                  sessionOwner?: {
+                    email?: string;
+                    role?: Role;
+                    invitations?: OrganizationInvitationRow | OrganizationInvitationRow[] | null;
+                  } | null;
+                }>,
+                { id: unknown } | null,
               ];
-              const session = memberRows[0] ?? invitationRows[0] ?? null;
+              const memberSession = memberRows[0] ?? null;
+              const invitationSession = invitationRows[0] ?? null;
+              const session = memberSession ?? invitationSession;
               const activeOrganizationId =
-                session?.sessionActiveOrganization && session.sessionActiveOrganization.id
-                  ? toExternalId(session.sessionActiveOrganization.id)
+                memberSession?.sessionActiveOrganization?.id != null
+                  ? toExternalId(memberSession.sessionActiveOrganization.id)
                   : null;
+
+              const sessionMembers = memberSession?.sessionMembers
+                ? Array.isArray(memberSession.sessionMembers)
+                  ? memberSession.sessionMembers
+                  : [memberSession.sessionMembers]
+                : [];
+              const sessionInvitations = invitationSession?.sessionOwner?.invitations
+                ? Array.isArray(invitationSession.sessionOwner.invitations)
+                  ? invitationSession.sessionOwner.invitations
+                  : [invitationSession.sessionOwner.invitations]
+                : [];
+              const sessionUserId = memberSession?.sessionOwner?.id
+                ? toExternalId(memberSession.sessionOwner.id)
+                : "";
 
               return {
                 session,
-                organizations: buildOrganizationsFromRows(memberRows),
-                invitations: buildInvitationsFromRows(invitationRows),
+                organizations: buildOrganizationsFromRows(sessionMembers, sessionUserId),
+                invitations: buildInvitationsFromRows(sessionInvitations),
                 activeOrganizationId,
                 expiredSession,
               };
@@ -748,7 +683,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
               const { session, expiredSession } = retrieveResult;
               if (expiredSession) {
                 const uow = forSchema(authSchema);
-                uow.delete("session", expiredSession.id, (b) => b.check());
+                uow.delete("session", expiredSession.id as string, (b) => b.check());
               }
               if (!session) {
                 return { invalid: true as const };
@@ -788,7 +723,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
             .execute();
 
           if (!result.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json(result.data);

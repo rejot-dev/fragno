@@ -1,12 +1,13 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import {
-  normalizeSessionSeed,
-  parseSessionSeed,
-  resolveSessionSeedFromMembers,
-  type SessionSeedInput,
+  normalizeCredentialSeed,
+  parseCredentialSeed,
+  resolveCredentialSeedFromMembers,
+  type CredentialSeedInput,
 } from "../session/session-seed";
 import {
   createAutoOrganization,
@@ -26,13 +27,15 @@ export type OAuthStateResult =
     }
   | {
       ok: false;
-      code: "session_invalid";
+      code: "credential_invalid";
     };
 
 export type OAuthCallbackResult =
   | {
       ok: true;
-      sessionId: string;
+      credentialToken: string;
+      expiresAt: Date;
+      activeOrganizationId: string | null;
       userId: string;
       email: string;
       role: "user" | "admin";
@@ -49,7 +52,7 @@ export type OAuthCallbackResult =
     };
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
-type SessionSeedMemberRow = {
+type CredentialSeedMemberRow = {
   createdAt: Date;
   organizationMemberOrganization?: {
     id: unknown;
@@ -62,7 +65,7 @@ type SeedableUserRow = {
   email: string;
   role: string;
   bannedAt?: Date | null;
-  userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+  userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
 };
 
 const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
@@ -72,8 +75,8 @@ const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
   return Array.isArray(value) ? value : [value];
 };
 
-const mapSessionSeedMembers = (
-  value: SessionSeedMemberRow | SessionSeedMemberRow[] | null | undefined,
+const mapCredentialSeedMembers = (
+  value: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null | undefined,
 ) => {
   return normalizeMany(value).map((member) => ({
     createdAt: member.createdAt,
@@ -81,14 +84,14 @@ const mapSessionSeedMembers = (
   }));
 };
 
-const collectSessionSeedMembers = <
+const collectCredentialSeedMembers = <
   TUser extends {
-    userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+    userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
   },
 >(
   rows: Array<TUser | null | undefined>,
 ) => {
-  return rows.flatMap((row) => (row ? mapSessionSeedMembers(row.userOrganizationMembers) : []));
+  return rows.flatMap((row) => (row ? mapCredentialSeedMembers(row.userOrganizationMembers) : []));
 };
 
 const toResolvedUser = <TUser extends SeedableUserRow>(rows: Array<TUser | null | undefined>) => {
@@ -102,7 +105,7 @@ const toResolvedUser = <TUser extends SeedableUserRow>(rows: Array<TUser | null 
     email: first.email,
     role: first.role as "user" | "admin",
     bannedAt: first.bannedAt ?? null,
-    members: collectSessionSeedMembers(rows),
+    members: collectCredentialSeedMembers(rows),
   };
 };
 
@@ -181,9 +184,9 @@ export function createOAuthServices(options: {
         providerId: string;
         redirectUri: string;
         returnTo?: string | null;
-        sessionId?: string | null;
+        actor?: AuthActor | null;
         link?: boolean;
-        session?: SessionSeedInput | null;
+        auth?: CredentialSeedInput | null;
       },
     ) {
       const ttlMs = oauthConfig?.stateTtlMs ?? DEFAULT_STATE_TTL_MS;
@@ -191,29 +194,16 @@ export function createOAuthServices(options: {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + ttlMs);
       const returnTo = sanitizeReturnTo(input.returnTo);
-      const sessionId = input.sessionId ?? "";
       const shouldLink = Boolean(input.link);
-      const sessionSeed = normalizeSessionSeed(input.session);
+      const credentialSeed = normalizeCredentialSeed(input.auth);
 
       return this.serviceTx(authSchema)
-        .retrieve((uow) =>
-          uow.findFirst("session", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
-          ),
-        )
-        .mutate(({ uow, retrieveResult: [session] }): OAuthStateResult => {
-          if (shouldLink) {
-            if (!session) {
-              return { ok: false as const, code: "session_invalid" as const };
-            }
-
-            if (session.expiresAt < now) {
-              uow.delete("session", session.id, (b) => b.check());
-              return { ok: false as const, code: "session_invalid" as const };
-            }
+        .mutate(({ uow }): OAuthStateResult => {
+          if (shouldLink && !input.actor) {
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
-          const linkUserId = shouldLink && session ? session.userId : null;
+          const linkUserId = shouldLink ? (input.actor?.userId ?? null) : null;
 
           uow.create("oauthState", {
             provider: input.providerId,
@@ -221,7 +211,7 @@ export function createOAuthServices(options: {
             codeVerifier: null,
             redirectUri: input.redirectUri,
             returnTo,
-            sessionSeed,
+            sessionSeed: credentialSeed,
             linkUserId,
             createdAt: now,
             expiresAt,
@@ -239,7 +229,7 @@ export function createOAuthServices(options: {
     },
 
     /**
-     * Handle the OAuth callback, linking or creating users and issuing a session.
+     * Handle the OAuth callback, linking or creating users and issuing a credential.
      */
     handleOAuthCallback: function (
       this: AuthServiceContext,
@@ -365,7 +355,7 @@ export function createOAuthServices(options: {
               return { ok: false as const, code: "signup_disabled" as const };
             }
 
-            const sessionSeed = parseSessionSeed(
+            const sessionSeed = parseCredentialSeed(
               (oauthState as { sessionSeed?: unknown }).sessionSeed,
             );
             const linkedUser = toResolvedUser(
@@ -381,7 +371,7 @@ export function createOAuthServices(options: {
               email: string;
               role: "user" | "admin";
               bannedAt?: Date | null;
-              members: ReturnType<typeof mapSessionSeedMembers>;
+              members: ReturnType<typeof mapCredentialSeedMembers>;
             } | null = null;
             let createdUser = false;
 
@@ -490,22 +480,24 @@ export function createOAuthServices(options: {
               });
             }
 
-            const resolvedSessionSeed = resolveSessionSeedFromMembers(
+            const resolvedCredentialSeed = resolveCredentialSeedFromMembers(
               resolvedUser.members,
               sessionSeed,
             );
             const activeOrganizationId =
-              resolvedSessionSeed.activeOrganizationId ?? autoOrganization?.organization.id ?? null;
+              resolvedCredentialSeed.activeOrganizationId ??
+              autoOrganization?.organization.id ??
+              null;
             const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            const sessionId = uow.create("session", {
+            const credentialId = uow.create("session", {
               userId: resolvedUser.id,
               activeOrganizationId,
               expiresAt: uow.now().plus({ days: 30 }),
             });
 
-            uow.triggerHook("onSessionCreated", {
-              session: {
-                id: sessionId.valueOf(),
+            uow.triggerHook("onCredentialIssued", {
+              credential: {
+                id: credentialId.valueOf(),
                 user: userSummary,
                 expiresAt: sessionExpiresAt,
                 activeOrganizationId,
@@ -515,7 +507,9 @@ export function createOAuthServices(options: {
 
             return {
               ok: true as const,
-              sessionId: sessionId.valueOf(),
+              credentialToken: credentialId.valueOf(),
+              expiresAt: sessionExpiresAt,
+              activeOrganizationId,
               userId: resolvedUser.id,
               email: resolvedUser.email,
               role: resolvedUser.role,

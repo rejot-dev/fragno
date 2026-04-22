@@ -2,22 +2,22 @@ import { z } from "zod";
 
 import { toExternalId } from "../organization/utils";
 
-export const sessionSeedSchema = z
+export const credentialSeedSchema = z
   .object({
     activeOrganizationId: z.string().trim().min(1).optional(),
   })
   .strict();
 
-export type SessionSeedInput = z.input<typeof sessionSeedSchema>;
-export type SessionSeed = z.output<typeof sessionSeedSchema>;
-export type ResolvedSessionSeed = {
+export type CredentialSeedInput = z.input<typeof credentialSeedSchema>;
+export type CredentialSeed = z.output<typeof credentialSeedSchema>;
+export type ResolvedCredentialSeed = {
   status: "accepted" | "ignored" | "repaired";
   requestedActiveOrganizationId: string | null;
   activeOrganizationId: string | null;
 };
 
-export function normalizeSessionSeed(session?: SessionSeedInput | null): SessionSeed | null {
-  const parsed = sessionSeedSchema.safeParse(session ?? {});
+export function normalizeCredentialSeed(auth?: CredentialSeedInput | null): CredentialSeed | null {
+  const parsed = credentialSeedSchema.safeParse(auth ?? {});
   if (!parsed.success) {
     return null;
   }
@@ -25,8 +25,8 @@ export function normalizeSessionSeed(session?: SessionSeedInput | null): Session
   return parsed.data.activeOrganizationId ? parsed.data : null;
 }
 
-export function parseSessionSeed(value: unknown): SessionSeed | null {
-  const parsed = sessionSeedSchema.safeParse(value);
+export function parseCredentialSeed(value: unknown): CredentialSeed | null {
+  const parsed = credentialSeedSchema.safeParse(value);
   if (!parsed.success) {
     return null;
   }
@@ -34,7 +34,7 @@ export function parseSessionSeed(value: unknown): SessionSeed | null {
   return parsed.data.activeOrganizationId ? parsed.data : null;
 }
 
-export function resolveSessionSeedFromMembers<
+export function resolveCredentialSeedFromMembers<
   TMember extends {
     createdAt: Date;
     organization: {
@@ -42,9 +42,9 @@ export function resolveSessionSeedFromMembers<
       deletedAt: Date | null;
     } | null;
   },
->(members: TMember[], session?: SessionSeedInput | null): ResolvedSessionSeed {
-  const normalizedSession = normalizeSessionSeed(session);
-  const requestedActiveOrganizationId = normalizedSession?.activeOrganizationId ?? null;
+>(members: TMember[], auth?: CredentialSeedInput | null): ResolvedCredentialSeed {
+  const normalizedCredential = normalizeCredentialSeed(auth);
+  const requestedActiveOrganizationId = normalizedCredential?.activeOrganizationId ?? null;
 
   if (!requestedActiveOrganizationId) {
     return {
@@ -70,7 +70,9 @@ export function resolveSessionSeedFromMembers<
   };
 }
 
-export function parseSessionSeedFromQuery(value: string | null): SessionSeed | null | "invalid" {
+export function parseCredentialSeedFromQuery(
+  value: string | null,
+): CredentialSeed | null | "invalid" {
   if (value === null) {
     return null;
   }
@@ -79,16 +81,16 @@ export function parseSessionSeedFromQuery(value: string | null): SessionSeed | n
   }
 
   try {
-    const parsed = parseSessionSeed(JSON.parse(value));
+    const parsed = parseCredentialSeed(JSON.parse(value));
     return parsed ?? "invalid";
   } catch {
     return "invalid";
   }
 }
 
-export function serializeSessionSeedForQuery(
-  session?: SessionSeedInput | null,
+export function serializeCredentialSeedForQuery(
+  auth?: CredentialSeedInput | null,
 ): string | undefined {
-  const normalized = normalizeSessionSeed(session);
+  const normalized = normalizeCredentialSeed(auth);
   return normalized ? JSON.stringify(normalized) : undefined;
 }

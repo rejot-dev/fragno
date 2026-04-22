@@ -9,6 +9,10 @@ icon: TableOfContents
 The Auth fragment provides built-in routes for sign-up, sign-in, sessions, user management, and
 optional organizations.
 
+Authenticated routes use either the `fragno_auth` cookie or `Authorization: Bearer <token>`.
+Credential-issuing JSON routes (`/sign-up`, `/sign-in`, and OAuth callbacks) return credentials in
+an `auth` envelope with `auth.token` as the canonical token field.
+
 <Cards>
   <Card
     title="Organizations"

@@ -1,17 +1,21 @@
 /**
- * Cookie utilities for session management
+ * Cookie utilities for auth credential management
  */
 
-export const COOKIE_NAME = "sessionid";
+export const AUTH_COOKIE_NAME = "fragno_auth";
 const MAX_AGE = 2592000; // 30 days in seconds
 
 export interface CookieOptions {
+  name?: string;
   httpOnly?: boolean;
   secure?: boolean;
   sameSite?: "Strict" | "Lax" | "None";
   maxAge?: number;
   path?: string;
 }
+
+export const resolveAuthCookieName = (options?: CookieOptions): string =>
+  options?.name ?? AUTH_COOKIE_NAME;
 
 /**
  * Parse cookies from a Cookie header string
@@ -48,13 +52,10 @@ export function buildSetCookieHeader(value: string, options: CookieOptions = {})
     maxAge = MAX_AGE,
     path = "/",
   } = options;
+  const name = resolveAuthCookieName(options);
   const effectiveSecure = sameSite === "None" ? true : secure;
 
-  const parts = [
-    `${COOKIE_NAME}=${encodeURIComponent(value)}`,
-    `Max-Age=${maxAge}`,
-    `Path=${path}`,
-  ];
+  const parts = [`${name}=${encodeURIComponent(value)}`, `Max-Age=${maxAge}`, `Path=${path}`];
 
   if (httpOnly) {
     parts.push("HttpOnly");
@@ -72,38 +73,8 @@ export function buildSetCookieHeader(value: string, options: CookieOptions = {})
 }
 
 /**
- * Build a Set-Cookie header to clear the session cookie
+ * Build a Set-Cookie header to clear the auth cookie
  */
 export function buildClearCookieHeader(options: CookieOptions = {}): string {
   return buildSetCookieHeader("", { ...options, maxAge: 0 });
-}
-
-/**
- * Extract session ID from headers, checking cookies first, then query/body
- */
-export function extractSessionId(
-  headers: Headers,
-  queryParam?: string | null,
-  bodySessionId?: string,
-): string | null {
-  // First, try to get from cookies
-  const cookieHeader = headers.get("Cookie");
-  const cookies = parseCookies(cookieHeader);
-  const sessionIdFromCookie = cookies[COOKIE_NAME];
-
-  if (sessionIdFromCookie) {
-    return sessionIdFromCookie;
-  }
-
-  // Fall back to query parameter
-  if (queryParam) {
-    return queryParam;
-  }
-
-  // Fall back to body
-  if (bodySessionId) {
-    return bodySessionId;
-  }
-
-  return null;
 }

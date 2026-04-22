@@ -86,8 +86,8 @@ bootstrapping. When organizations are disabled, it returns empty organization ar
 
 ## Route Reference
 
-All organization routes require a session. The session ID can be provided via cookies or the
-`sessionId` query parameter.
+All organization routes require authentication. Use the ambient `fragno_auth` cookie or an
+`Authorization: Bearer <token>` header.
 
 ### Organizations
 
@@ -101,10 +101,10 @@ All organization routes require a session. The session ID can be provided via co
 
 ### Active Organization
 
-| Method | Path                    | Notes                                        |
-| ------ | ----------------------- | -------------------------------------------- |
-| `GET`  | `/organizations/active` | Fetch the active organization (or `null`).   |
-| `POST` | `/organizations/active` | Set the active organization for the session. |
+| Method | Path                    | Notes                                                           |
+| ------ | ----------------------- | --------------------------------------------------------------- |
+| `GET`  | `/organizations/active` | Fetch the active organization (or `null`).                      |
+| `POST` | `/organizations/active` | Set the active organization for the current credential context. |
 
 ### Members
 

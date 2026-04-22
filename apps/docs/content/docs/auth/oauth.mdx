@@ -9,7 +9,8 @@ icon: KeyRound
 The Auth fragment supports OAuth providers like GitHub. When enabled, it exposes two routes:
 
 - `GET /oauth/:provider/authorize` to generate the provider authorization URL
-- `GET /oauth/:provider/callback` to exchange the code, create a session, and set the cookie
+- `GET /oauth/:provider/callback` to exchange the code, issue a credential, and set the
+  `fragno_auth` cookie
 
 OAuth is disabled unless you configure providers in the fragment config.
 
@@ -58,7 +59,8 @@ When the user finishes the provider flow, the callback route:
 
 - validates the code
 - creates or links a user
-- sets the session cookie
+- sets the `fragno_auth` cookie
+- returns an `auth` envelope when it responds with JSON
 - redirects to `returnTo` if provided
 
 `returnTo` must be a relative path starting with `/` and is sanitized server-side.
@@ -79,7 +81,7 @@ return new Response(response.body, response);
 
 1. Create a GitHub OAuth App.
 2. Set the callback URL to your fragment callback route.
-3. Start the flow from your UI and let the server callback set the session cookie.
+3. Start the flow from your UI and let the server callback set the `fragno_auth` cookie.
 
 Example button:
 
@@ -105,4 +107,5 @@ const { url } = await authClient.oauth.getAuthorizationUrl({
 window.location.assign(url);
 ```
 
-This requires a valid session cookie on the authorize request.
+This requires a valid `fragno_auth` cookie or `Authorization: Bearer <token>` on the authorize
+request.

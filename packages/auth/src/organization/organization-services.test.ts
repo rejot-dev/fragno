@@ -26,6 +26,52 @@ describe("organization services", async () => {
     return user;
   };
 
+  const issueCredential = async (userId: string) => {
+    const [credentialResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.issueCredential(userId)])
+        .execute();
+    });
+
+    if (!credentialResult.ok || !credentialResult.credential) {
+      throw new Error(
+        `Failed to issue credential: ${credentialResult.ok ? "missing credential" : credentialResult.code}`,
+      );
+    }
+
+    return credentialResult.credential;
+  };
+
+  const toActor = (
+    user: { id: string; email: string; role: "admin" | "user" },
+    activeOrganizationId: string | null = null,
+  ) => ({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    activeOrganizationId,
+  });
+
+  const toPrincipalFromCredential = (
+    user: { id: string; email: string; role: "admin" | "user" },
+    credential: { id: string; activeOrganizationId: string | null },
+    activeOrganizationId = credential.activeOrganizationId,
+  ) => ({
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    },
+    auth: {
+      strategy: "session" as const,
+      credentialKind: "session" as const,
+      credentialSource: "cookie" as const,
+      credentialId: credential.id,
+      expiresAt: new Date(),
+      activeOrganizationId,
+    },
+  });
+
   afterAll(async () => {
     await test.cleanup();
   });
@@ -75,6 +121,380 @@ describe("organization services", async () => {
     });
 
     expect(rolesResult.roles).toEqual(["owner", "admin"]);
+  });
+
+  it("creates organization from actor context", async () => {
+    const user = await createUser("actor-owner@test.com");
+    const session = await issueCredential(user.id);
+
+    const principal = {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      auth: {
+        strategy: "session" as const,
+        credentialKind: "session" as const,
+        credentialSource: "cookie" as const,
+        credentialId: session.id,
+        expiresAt: new Date(),
+        activeOrganizationId: session.activeOrganizationId,
+      },
+    };
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationForActor({
+            actor: {
+              userId: user.id,
+              email: user.email,
+              role: user.role,
+              activeOrganizationId: null,
+            },
+            principal,
+            input: {
+              name: "Actor Org",
+              slug: "actor-org",
+            },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const [organizationsResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationsForUser({
+            userId: user.id,
+            pageSize: 10,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(organizationsResult.organizations).toHaveLength(1);
+    expect(organizationsResult.organizations[0]?.organization.id).toBe(result.organization.id);
+  });
+
+  it("sets active organization from principal context", async () => {
+    const user = await createUser("principal-active@test.com");
+    const session = await issueCredential(user.id);
+
+    const [organization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Principal Active Org",
+            slug: "principal-active-org",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organization.ok);
+
+    const principal = {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      auth: {
+        strategy: "session" as const,
+        credentialKind: "session" as const,
+        credentialSource: "cookie" as const,
+        credentialId: session.id,
+        expiresAt: new Date(),
+        activeOrganizationId: session.activeOrganizationId,
+      },
+    };
+
+    const [setResult] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.setActiveOrganizationForPrincipal({
+            principal,
+            organizationId: organization.organization.id,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(setResult).toEqual({ ok: true });
+
+    const [activeOrganization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getActiveOrganizationForPrincipal({ principal }),
+        ])
+        .execute();
+    });
+
+    expect(activeOrganization.organizationId).toBe(organization.organization.id);
+  });
+
+  it("gets organizations from actor context", async () => {
+    const user = await createUser("actor-list@test.com");
+
+    const [firstOrganization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Actor List One",
+            slug: "actor-list-one",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    const [secondOrganization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Actor List Two",
+            slug: "actor-list-two",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(firstOrganization.ok);
+    assert(secondOrganization.ok);
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationsForActor({
+            actor: toActor(user),
+            pageSize: 10,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.organizations).toHaveLength(2);
+    expect(result.organizations.map((entry) => entry.organization.slug)).toEqual([
+      "actor-list-one",
+      "actor-list-two",
+    ]);
+  });
+
+  it("gets organization details from actor context", async () => {
+    const user = await createUser("actor-detail@test.com");
+
+    const [organization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Actor Detail Org",
+            slug: "actor-detail-org",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organization.ok);
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getOrganizationForActor({
+            actor: toActor(user),
+            organizationId: organization.organization.id,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.organization.id).toBe(organization.organization.id);
+    expect(result.member.userId).toBe(user.id);
+    expect(result.member.roles).toEqual(["owner"]);
+  });
+
+  it("gets active organization details from principal context", async () => {
+    const user = await createUser("principal-detail@test.com");
+    const session = await issueCredential(user.id);
+
+    const [organization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationForActor({
+            actor: toActor(user),
+            principal: toPrincipalFromCredential(user, session),
+            input: {
+              name: "Principal Detail Org",
+              slug: "principal-detail-org",
+            },
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organization.ok);
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.getActiveOrganizationDetailsForPrincipal({
+            principal: toPrincipalFromCredential(user, session, organization.organization.id),
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.data) {
+      return;
+    }
+
+    expect(result.data.organization.id).toBe(organization.organization.id);
+    expect(result.data.member.userId).toBe(user.id);
+    expect(result.data.member.roles).toEqual(["owner"]);
+  });
+
+  it("lists organization members from actor context", async () => {
+    const owner = await createUser("actor-members-owner@test.com");
+    const teammate = await createUser("actor-members-user@test.com");
+
+    const [organization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Actor Members Org",
+            slug: "actor-members-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organization.ok);
+
+    const [member] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationMember({
+            organizationId: organization.organization.id,
+            userId: teammate.id,
+            roles: ["admin"],
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(member.ok).toBe(true);
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationMembersForActor({
+            actor: toActor(owner),
+            organizationId: organization.organization.id,
+            pageSize: 10,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.members).toHaveLength(2);
+    expect(result.members.map((entry) => entry.userId)).toContain(owner.id);
+    expect(result.members.map((entry) => entry.userId)).toContain(teammate.id);
+  });
+
+  it("lists invitations from actor context", async () => {
+    const owner = await createUser("actor-invites-owner@test.com");
+    const invitee = await createUser("actor-invites-user@test.com");
+
+    const [organization] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            name: "Actor Invite Org",
+            slug: "actor-invite-org",
+            creatorUserId: owner.id,
+            creatorUserRole: owner.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(organization.ok);
+
+    const [invitation] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganizationInvitation({
+            organizationId: organization.organization.id,
+            email: invitee.email,
+            roles: ["member"],
+            inviterId: owner.id,
+            actor: { userId: owner.id, userRole: owner.role },
+          }),
+        ])
+        .execute();
+    });
+
+    expect(invitation.ok).toBe(true);
+
+    const [organizationInvitations] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listOrganizationInvitationsForActor({
+            actor: toActor(owner),
+            organizationId: organization.organization.id,
+          }),
+        ])
+        .execute();
+    });
+
+    expect(organizationInvitations.ok).toBe(true);
+    if (!organizationInvitations.ok) {
+      return;
+    }
+
+    expect(organizationInvitations.invitations).toHaveLength(1);
+    expect(organizationInvitations.invitations[0]?.email).toBe(invitee.email);
+
+    const [receivedInvitations] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.listInvitationsForActor({
+            actor: toActor(invitee),
+          }),
+        ])
+        .execute();
+    });
+
+    expect(receivedInvitations.invitations).toHaveLength(1);
+    expect(receivedInvitations.invitations[0]?.invitation.email).toBe(invitee.email);
+    expect(receivedInvitations.invitations[0]?.organization?.id).toBe(organization.organization.id);
   });
 
   it("rejects duplicate organization slug", async () => {
@@ -523,7 +943,7 @@ describe("organization services", async () => {
     const [signUpResult] = await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
-          fragment.services.signUpWithSession("auto-org@test.com", passwordHash, {
+          fragment.services.signUp("auto-org@test.com", passwordHash, {
             autoCreateOrganization: {
               name: ({ email }) => `${email.split("@")[0]}'s Workspace`,
               slug: ({ email }) => `${email.split("@")[0]}-workspace`,
@@ -553,7 +973,15 @@ describe("organization services", async () => {
 
     const [activeOrg] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.getActiveOrganization(signUpResult.sessionId)])
+        .withServiceCalls(() => [
+          fragment.services.getActiveOrganizationForPrincipal({
+            principal: toPrincipalFromCredential(
+              { id: signUpResult.userId, email: signUpResult.email, role: signUpResult.role },
+              { id: signUpResult.credentialToken, activeOrganizationId: null },
+              orgsResult.organizations[0]?.organization.id ?? null,
+            ),
+          }),
+        ])
         .execute();
     });
 
@@ -562,14 +990,14 @@ describe("organization services", async () => {
 
   it("avoids unbounded member scans when resolving active organizations", async () => {
     const txResult = await test.inContext(function () {
-      return fragment.services.getActiveOrganizationForSession({
-        sessionId: "inactive-session",
+      return fragment.services.getActiveOrganizationForCredential({
+        credentialToken: "inactive-session",
       });
     });
 
     const typedUow = txResult._internal.typedUow;
     if (!typedUow) {
-      throw new Error("Expected typed unit of work for getActiveOrganizationForSession");
+      throw new Error("Expected typed unit of work for getActiveOrganizationForCredential");
     }
 
     const operations = typedUow.getRetrievalOperations();
