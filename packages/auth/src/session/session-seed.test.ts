@@ -1,30 +1,32 @@
 import { describe, expect, test } from "vitest";
 
-import { parseSessionSeedFromQuery, serializeSessionSeedForQuery } from "./session-seed";
+import { parseCredentialSeedFromQuery, serializeCredentialSeedForQuery } from "./session-seed";
 
-describe("session seed query parsing", () => {
+describe("credential seed query parsing", () => {
   test("returns null when the query value is absent", () => {
-    expect(parseSessionSeedFromQuery(null)).toBeNull();
+    expect(parseCredentialSeedFromQuery(null)).toBeNull();
   });
 
   test("returns invalid when the query value is present but empty", () => {
-    expect(parseSessionSeedFromQuery("")).toBe("invalid");
+    expect(parseCredentialSeedFromQuery("")).toBe("invalid");
   });
 
-  test("returns the parsed session seed for valid query JSON", () => {
-    const queryValue = serializeSessionSeedForQuery({ activeOrganizationId: "org-1" });
+  test("returns the parsed credential seed for valid query JSON", () => {
+    const queryValue = serializeCredentialSeedForQuery({ activeOrganizationId: "org-1" });
 
-    expect(parseSessionSeedFromQuery(queryValue ?? null)).toEqual({
+    expect(parseCredentialSeedFromQuery(queryValue ?? null)).toEqual({
       activeOrganizationId: "org-1",
     });
   });
 
   test("returns invalid when query JSON cannot be parsed", () => {
-    expect(parseSessionSeedFromQuery("{not-json")).toBe("invalid");
+    expect(parseCredentialSeedFromQuery("{not-json")).toBe("invalid");
   });
 
-  test("returns invalid when query JSON fails parseSessionSeed validation", () => {
-    expect(parseSessionSeedFromQuery(JSON.stringify({}))).toBe("invalid");
-    expect(parseSessionSeedFromQuery(JSON.stringify({ activeOrganizationId: "" }))).toBe("invalid");
+  test("returns invalid when query JSON fails parseCredentialSeed validation", () => {
+    expect(parseCredentialSeedFromQuery(JSON.stringify({}))).toBe("invalid");
+    expect(parseCredentialSeedFromQuery(JSON.stringify({ activeOrganizationId: "" }))).toBe(
+      "invalid",
+    );
   });
 });

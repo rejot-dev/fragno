@@ -4,16 +4,18 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { authFragmentDefinition } from "..";
+import { resolveRequestCredential } from "../auth/request-auth";
+import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
+import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
-import { resolveSessionSeedFromMembers, sessionSeedSchema } from "../session/session-seed";
-import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
+import { resolveCredentialSeedFromMembers, credentialSeedSchema } from "../session/session-seed";
 import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
 import { hashPassword, verifyPassword } from "./password";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
-type SessionSeedMemberRow = {
+type CredentialSeedMemberRow = {
   createdAt: Date;
   organizationMemberOrganization?: {
     id: unknown;
@@ -28,9 +30,9 @@ const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
   return Array.isArray(value) ? value : [value];
 };
 
-const collectSessionSeedMembers = <
+const collectCredentialSeedMembers = <
   TUser extends {
-    userOrganizationMembers?: SessionSeedMemberRow | SessionSeedMemberRow[] | null;
+    userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
   },
 >(
   rows: TUser[],
@@ -107,7 +109,7 @@ export function createUserServices(
       .build();
   };
 
-  return {
+  const services = {
     /**
      * Create a user without email uniqueness checks or session creation.
      */
@@ -135,9 +137,9 @@ export function createUserServices(
         .build();
     },
     /**
-     * Update a user's role without session enforcement.
+     * Set a user's role without actor or credential checks.
      */
-    updateUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
+    setUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
@@ -187,9 +189,9 @@ export function createUserServices(
         .build();
     },
     /**
-     * Create a user and session for email/password sign-up.
+     * Create a user and issue the initial auth credential for email/password sign-up.
      */
-    signUpWithSession: function (
+    signUp: function (
       this: AuthServiceContext,
       email: string,
       passwordHash: string,
@@ -225,7 +227,7 @@ export function createUserServices(
             options: autoCreateOptions ?? options,
           });
 
-          const sessionId = uow.create("session", {
+          const credentialId = uow.create("session", {
             userId,
             activeOrganizationId: autoOrganization?.organization.id ?? null,
             expiresAt,
@@ -241,9 +243,9 @@ export function createUserServices(
             user: userSummary,
             actor: userSummary,
           });
-          uow.triggerHook("onSessionCreated", {
-            session: {
-              id: sessionId.valueOf(),
+          uow.triggerHook("onCredentialIssued", {
+            credential: {
+              id: credentialId.valueOf(),
               user: userSummary,
               expiresAt,
               activeOrganizationId: autoOrganization?.organization.id ?? null,
@@ -265,7 +267,9 @@ export function createUserServices(
 
           return {
             ok: true as const,
-            sessionId: sessionId.valueOf(),
+            credentialToken: credentialId.valueOf(),
+            expiresAt,
+            activeOrganizationId: autoOrganization?.organization.id ?? null,
             userId: userId.valueOf(),
             email,
             role: "user" as const,
@@ -274,11 +278,82 @@ export function createUserServices(
         .build();
     },
     /**
-     * Update a user's role with admin session enforcement.
+     * Update a user's role with actor-based admin enforcement.
      */
-    updateUserRoleWithSession: function (
+    updateUserRole: function (
       this: AuthServiceContext,
-      sessionId: string,
+      actor: AuthActor,
+      userId: string,
+      role: "user" | "admin",
+    ) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
+          if (actor.role !== "admin") {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          uow.update("user", userId, (b) => b.set({ role }));
+
+          if (user) {
+            const actorSummary = mapUserSummary({
+              id: actor.userId,
+              email: actor.email,
+              role: actor.role,
+              bannedAt: null,
+            });
+            uow.triggerHook("onUserRoleUpdated", {
+              user: mapUserSummary({
+                id: userId,
+                email: user.email,
+                role,
+                bannedAt: user.bannedAt ?? null,
+              }),
+              actor: actorSummary,
+            });
+          }
+          return { ok: true as const };
+        })
+        .build();
+    },
+    /**
+     * Change the authenticated actor's password.
+     */
+    changePassword: function (this: AuthServiceContext, actor: AuthActor, passwordHash: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", actor.userId)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
+          if (!user) {
+            return { ok: false as const, code: "credential_invalid" as const };
+          }
+
+          uow.update("user", actor.userId, (b) => b.set({ passwordHash }).check());
+          const actorSummary = mapUserSummary({
+            id: actor.userId,
+            email: actor.email,
+            role: actor.role,
+            bannedAt: user.bannedAt ?? null,
+          });
+          uow.triggerHook("onUserPasswordChanged", {
+            user: actorSummary,
+            actor: actorSummary,
+          });
+          return { ok: true as const };
+        })
+        .build();
+    },
+    /**
+     * Update a user role from the current credential context.
+     */
+    updateUserRoleForCredential: function (
+      this: AuthServiceContext,
+      credentialToken: string,
       userId: string,
       role: "user" | "admin",
     ) {
@@ -288,7 +363,7 @@ export function createUserServices(
           uow
             .findFirst("session", (b) =>
               b
-                .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+                .whereIndex("primary", (eb) => eb("id", "=", credentialToken))
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
@@ -299,12 +374,12 @@ export function createUserServices(
         )
         .mutate(({ uow, retrieveResult: [session, user] }) => {
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           if (session.expiresAt < now) {
             uow.delete("session", session.id, (b) => b.check());
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           if (session.sessionOwner.role !== "admin") {
@@ -335,11 +410,11 @@ export function createUserServices(
         .build();
     },
     /**
-     * Change the current session user's password.
+     * Change the current user's password from the current credential context.
      */
-    changePasswordWithSession: function (
+    changePasswordForCredential: function (
       this: AuthServiceContext,
-      sessionId: string,
+      credentialToken: string,
       passwordHash: string,
     ) {
       const now = new Date();
@@ -347,7 +422,7 @@ export function createUserServices(
         .retrieve((uow) =>
           uow.findFirst("session", (b) =>
             b
-              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+              .whereIndex("primary", (eb) => eb("id", "=", credentialToken))
               .joinOne("sessionOwner", "user", (owner) =>
                 owner
                   .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
@@ -357,12 +432,12 @@ export function createUserServices(
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           if (session.expiresAt < now) {
             uow.delete("session", session.id, (b) => b.check());
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           uow.update("user", session.sessionOwner.id, (b) => b.set({ passwordHash }).check());
@@ -381,6 +456,8 @@ export function createUserServices(
         .build();
     },
   };
+
+  return services;
 }
 
 export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
@@ -397,19 +474,31 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["invalid_input", "session_invalid", "permission_denied"],
-        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
+        errorCodes: ["invalid_input", "credential_invalid", "permission_denied"],
+        handler: async function ({ input, pathParams, headers }, { json, error }) {
           const { role } = await input.valid();
           const { userId } = pathParams;
 
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
 
+          const credentialToken = credential.credential.token;
+
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.updateUserRoleWithSession(sessionId, userId, role)])
+            .withServiceCalls(() => [
+              services.updateUserRoleForCredential(credentialToken, userId, role),
+            ])
             .execute();
 
           if (!result.ok) {
@@ -417,7 +506,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               return error({ message: "Unauthorized", code: "permission_denied" }, 401);
             }
 
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({ success: true });
@@ -432,7 +521,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           password: z.string().min(8).max(100),
         }),
         outputSchema: z.object({
-          sessionId: z.string(),
+          auth: issuedAuthSchema,
           userId: z.string(),
           email: z.string(),
           role: z.enum(["user", "admin"]),
@@ -451,27 +540,32 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           const passwordHash = await hashPassword(password);
 
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.signUpWithSession(email, passwordHash)])
+            .withServiceCalls(() => [services.signUp(email, passwordHash)])
             .execute();
 
           if (!result.ok) {
             return error({ message: "Email already exists", code: "email_already_exists" }, 400);
           }
 
-          // Build response with Set-Cookie header
-          const setCookieHeader = buildSetCookieHeader(result.sessionId, config.cookieOptions);
+          const issuedAuth = buildIssuedAuthResponse(
+            {
+              token: result.credentialToken,
+              kind: "session",
+              expiresAt: result.expiresAt,
+              activeOrganizationId: result.activeOrganizationId,
+            },
+            config.cookieOptions,
+          );
 
           return json(
             {
-              sessionId: result.sessionId,
+              auth: issuedAuth.auth,
               userId: result.userId,
               email: result.email,
               role: result.role,
             },
             {
-              headers: {
-                "Set-Cookie": setCookieHeader,
-              },
+              headers: issuedAuth.headers,
             },
           );
         },
@@ -483,10 +577,10 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         inputSchema: z.object({
           email: z.email(),
           password: z.string().min(8).max(100),
-          session: sessionSeedSchema.optional(),
+          auth: credentialSeedSchema.optional(),
         }),
         outputSchema: z.object({
-          sessionId: z.string(),
+          auth: issuedAuthSchema,
           userId: z.string(),
           email: z.string(),
           role: z.enum(["user", "admin"]),
@@ -500,7 +594,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             );
           }
 
-          const { email, password, session } = await input.valid();
+          const { email, password, auth } = await input.valid();
           let passwordCheck:
             | { ok: true }
             | { ok: false; code: "invalid_credentials" | "user_banned" }
@@ -560,15 +654,17 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               }
 
               const uow = forSchema(authSchema);
-              // TODO: Use services.createSession instead of inline session creation (sign-up and
+              // TODO: Use services.issueCredential instead of inline credential issuance (sign-up and
               // handleOAuthCallback also duplicate this logic)
+              const now = new Date();
               const expiresAt = uow.now().plus({ days: 30 });
-              const resolvedSessionSeed = resolveSessionSeedFromMembers(
-                collectSessionSeedMembers(users),
-                session,
+              const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+              const resolvedCredentialSeed = resolveCredentialSeedFromMembers(
+                collectCredentialSeedMembers(users),
+                auth,
               );
-              const activeOrganizationId = resolvedSessionSeed.activeOrganizationId;
-              const sessionId = uow.create("session", {
+              const activeOrganizationId = resolvedCredentialSeed.activeOrganizationId;
+              const credentialId = uow.create("session", {
                 userId: user.id,
                 activeOrganizationId,
                 expiresAt,
@@ -580,9 +676,9 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 bannedAt: user.bannedAt ?? null,
               });
 
-              uow.triggerHook("onSessionCreated", {
-                session: {
-                  id: sessionId.valueOf(),
+              uow.triggerHook("onCredentialIssued", {
+                credential: {
+                  id: credentialId.valueOf(),
                   user: userSummary,
                   expiresAt,
                   activeOrganizationId,
@@ -592,7 +688,9 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
 
               return {
                 ok: true as const,
-                sessionId: sessionId.valueOf(),
+                credentialToken: credentialId.valueOf(),
+                expiresAt: sessionExpiresAt,
+                activeOrganizationId,
                 user: userSummary,
               };
             })
@@ -605,20 +703,25 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }
 
-          const sessionId = result.sessionId;
-          const setCookieHeader = buildSetCookieHeader(sessionId, config.cookieOptions);
+          const issuedAuth = buildIssuedAuthResponse(
+            {
+              token: result.credentialToken,
+              kind: "session",
+              expiresAt: result.expiresAt,
+              activeOrganizationId: result.activeOrganizationId,
+            },
+            config.cookieOptions,
+          );
 
           return json(
             {
-              sessionId,
+              auth: issuedAuth.auth,
               userId: result.user.id,
               email: result.user.email,
               role: result.user.role,
             },
             {
-              headers: {
-                "Set-Cookie": setCookieHeader,
-              },
+              headers: issuedAuth.headers,
             },
           );
         },
@@ -633,24 +736,36 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         outputSchema: z.object({
           success: z.boolean(),
         }),
-        errorCodes: ["session_invalid"],
-        handler: async function ({ input, headers, query }, { json, error }) {
+        errorCodes: ["credential_invalid"],
+        handler: async function ({ input, headers }, { json, error }) {
           const { newPassword } = await input.valid();
 
-          const sessionId = extractSessionId(headers, query.get("sessionId"));
-
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
+          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          if (!credential.ok) {
+            return error(
+              {
+                message:
+                  credential.reason === "malformed"
+                    ? "Malformed authentication"
+                    : "Authentication required",
+                code: "credential_invalid",
+              },
+              400,
+            );
           }
 
           const passwordHash = await hashPassword(newPassword);
 
+          const credentialToken = credential.credential.token;
+
           const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.changePasswordWithSession(sessionId, passwordHash)])
+            .withServiceCalls(() => [
+              services.changePasswordForCredential(credentialToken, passwordHash),
+            ])
             .execute();
 
           if (!result.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           return json({ success: true });

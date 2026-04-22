@@ -331,7 +331,7 @@ function BackofficeUserCard({
               <Menu.Item
                 onClick={async () => {
                   try {
-                    await signOut({});
+                    await signOut({ body: {} });
                   } finally {
                     navigate("/backoffice/login", { replace: true });
                   }

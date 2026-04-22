@@ -12,6 +12,10 @@ import type { OAuthProvider, ProviderOptions } from "./types";
 
 const redirectURI = "http://localhost:3000/api/auth/oauth/test/callback";
 
+const authHeaders = (token: string) => ({
+  Cookie: `fragno_auth=${token}`,
+});
+
 const createTestProvider = (options: {
   id: string;
   name?: string;
@@ -300,7 +304,7 @@ describe("auth oauth", async () => {
 
     assert(response.type === "json");
     expect(response.data.email).toBe("new@test.com");
-    expect(response.data.sessionId).toBeTruthy();
+    expect(response.data.auth.token).toBeTruthy();
   });
 
   it("links oauth account by email when user exists", async () => {
@@ -405,7 +409,7 @@ describe("auth oauth", async () => {
 
     const [sessionResult] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createSession(user.id)])
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
         .execute();
     });
 
@@ -415,8 +419,8 @@ describe("auth oauth", async () => {
       pathParams: { provider: "test-unverified-email" },
       query: {
         link: "true",
-        sessionId: sessionResult.session.id,
       },
+      headers: authHeaders(sessionResult.credential.id),
     });
 
     assert(authorizeResponse.type === "json");
@@ -520,8 +524,8 @@ describe("auth oauth", async () => {
     });
 
     assert(unauthorizedResponse.type === "error");
-    expect(unauthorizedResponse.error.code).toBe("session_invalid");
-    expect(unauthorizedResponse.status).toBe(401);
+    expect(unauthorizedResponse.error.code).toBe("credential_invalid");
+    expect(unauthorizedResponse.status).toBe(400);
 
     const passwordHash = await hashPassword("password-123");
     const [user] = await test.inContext(function () {
@@ -534,7 +538,7 @@ describe("auth oauth", async () => {
 
     const [sessionResult] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createSession(user.id)])
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
         .execute();
     });
 
@@ -546,7 +550,7 @@ describe("auth oauth", async () => {
         link: "true",
       },
       headers: {
-        Cookie: `sessionid=${sessionResult.session.id}`,
+        Cookie: `fragno_auth=${sessionResult.credential.id}`,
       },
     });
 
@@ -862,7 +866,7 @@ describe("auth oauth", async () => {
     expect(response.status).toBe(403);
   });
 
-  it("links providers using sessionId query param when link=true", async () => {
+  it("links providers using cookie auth when link=true", async () => {
     const passwordHash = await hashPassword("password-123");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
@@ -874,7 +878,7 @@ describe("auth oauth", async () => {
 
     const [sessionResult] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createSession(user.id)])
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
         .execute();
     });
 
@@ -884,8 +888,8 @@ describe("auth oauth", async () => {
       pathParams: { provider: "test-link" },
       query: {
         link: "true",
-        sessionId: sessionResult.session.id,
       },
+      headers: authHeaders(sessionResult.credential.id),
     });
 
     assert(authorizeResponse.type === "json");
@@ -917,7 +921,7 @@ describe("auth oauth", async () => {
 
     const [sessionResult] = await test.inContext(function () {
       return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.createSession(user.id)])
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
         .execute();
     });
 
@@ -926,7 +930,7 @@ describe("auth oauth", async () => {
     await test.inContext(function () {
       return this.handlerTx()
         .mutate(({ forSchema }) => {
-          forSchema(authSchema).update("session", sessionResult.session.id, (b) =>
+          forSchema(authSchema).update("session", sessionResult.credential.id, (b) =>
             b.set({ expiresAt: new Date(0) }),
           );
           return true;
@@ -938,12 +942,12 @@ describe("auth oauth", async () => {
       pathParams: { provider: "test-link" },
       query: {
         link: "true",
-        sessionId: sessionResult.session.id,
       },
+      headers: authHeaders(sessionResult.credential.id),
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("session_invalid");
+    expect(response.error.code).toBe("credential_invalid");
     expect(response.status).toBe(401);
   });
 
@@ -1019,7 +1023,7 @@ describe("auth oauth", async () => {
   });
 });
 
-describe("auth oauth session seeds", async () => {
+describe("auth oauth credential seeds", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
@@ -1043,7 +1047,7 @@ describe("auth oauth session seeds", async () => {
     await test.cleanup();
   });
 
-  it("persists session seed through authorize and applies it on callback", async () => {
+  it("persists credential seed through authorize and applies it on callback", async () => {
     const passwordHash = await hashPassword("password-123");
     const [user] = await test.inContext(function () {
       return this.handlerTx()
@@ -1078,7 +1082,7 @@ describe("auth oauth session seeds", async () => {
     const authorizeResponse = await fragment.callRoute("GET", "/oauth/:provider/authorize", {
       pathParams: { provider: "test" },
       query: {
-        session: JSON.stringify({
+        auth: JSON.stringify({
           activeOrganizationId: secondOrg.organization.id,
         }),
       },
@@ -1115,9 +1119,7 @@ describe("auth oauth session seeds", async () => {
     expect(callbackResponse.data.userId).toBe(user.id);
 
     const meResponse = await fragment.callRoute("GET", "/me", {
-      query: {
-        sessionId: callbackResponse.data.sessionId,
-      },
+      headers: authHeaders(callbackResponse.data.auth.token),
     });
 
     assert(meResponse.type === "json");

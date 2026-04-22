@@ -196,7 +196,7 @@ export default function BackofficeLogin() {
       const result = await authClient.oauth.getAuthorizationUrl({
         provider: "github",
         returnTo: buildBackofficeLoginPath(returnTo),
-        session: preferredOrganizationId
+        auth: preferredOrganizationId
           ? { activeOrganizationId: preferredOrganizationId }
           : undefined,
       });

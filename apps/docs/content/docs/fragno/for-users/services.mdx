@@ -81,15 +81,17 @@ export async function signIn(formData: FormData) {
     },
   });
 
-  // Extract Set-Cookie header and apply it
+  // Extract Set-Cookie header and apply it if your framework requires manual cookie forwarding.
   const setCookie = response.headers.get("Set-Cookie");
   if (setCookie) {
     const cookieStore = await cookies();
-    // Parse and set the cookie (simplified example)
-    cookieStore.set("session", setCookie);
+    // Simplified example: in a real app, parse the Set-Cookie header before re-setting it.
+    cookieStore.set("fragno_auth", setCookie);
   }
 
-  return await response.json();
+  const data = await response.json();
+  // Auth routes now expose the issued credential as data.auth.token.
+  return data;
 }
 ```
 

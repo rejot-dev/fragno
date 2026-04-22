@@ -2,9 +2,12 @@ import { z } from "zod";
 
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 
-import type { authFragmentDefinition } from "..";
-import { parseSessionSeedFromQuery } from "../session/session-seed";
-import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
+import type { Role, authFragmentDefinition } from "..";
+import { toAuthActor } from "../auth/actor";
+import { createSessionCredentialStrategy } from "../auth/credential-strategy";
+import { getRequestAuth } from "../auth/request-auth";
+import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
+import { parseCredentialSeedFromQuery } from "../session/session-seed";
 import type { AnyOAuthProvider } from "./types";
 import { normalizeOAuthConfig } from "./utils";
 
@@ -41,15 +44,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
       defineRoute({
         method: "GET",
         path: "/oauth/:provider/authorize",
-        queryParameters: [
-          "redirectUri",
-          "returnTo",
-          "link",
-          "sessionId",
-          "scope",
-          "loginHint",
-          "session",
-        ],
+        queryParameters: ["redirectUri", "returnTo", "link", "scope", "loginHint", "auth"],
         outputSchema: z.object({
           url: z.string(),
         }),
@@ -59,7 +54,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           "missing_redirect_uri",
           "redirect_uri_mismatch",
           "invalid_input",
-          "session_invalid",
+          "credential_invalid",
         ],
         handler: async function ({ query, headers, pathParams }, { json, error }) {
           if (!oauthConfig) {
@@ -83,10 +78,60 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
 
           const link = query.get("link") === "true";
-          const sessionId = link ? extractSessionId(headers, query.get("sessionId")) : null;
-          const sessionSeed = parseSessionSeedFromQuery(query.get("session"));
-          if (sessionSeed === "invalid") {
-            return error({ message: "Invalid session seed", code: "invalid_input" }, 400);
+          const credentialSeed = parseCredentialSeedFromQuery(query.get("auth"));
+          if (credentialSeed === "invalid") {
+            return error({ message: "Invalid credential seed", code: "invalid_input" }, 400);
+          }
+
+          let actor = null;
+          if (link) {
+            const strategy = createSessionCredentialStrategy({
+              cookieOptions: config.cookieOptions,
+              validateCredential: async (credentialToken) => {
+                const [credential] = await this.handlerTx()
+                  .withServiceCalls(() => [services.validateCredential(credentialToken)])
+                  .execute();
+                if (!credential) {
+                  return null;
+                }
+
+                return {
+                  id: credential.id,
+                  user: {
+                    id: credential.user.id,
+                    email: credential.user.email,
+                    role: credential.user.role as Role,
+                  },
+                  expiresAt: credential.expiresAt,
+                  activeOrganizationId: credential.activeOrganizationId,
+                };
+              },
+              issueCredential: async () => {
+                throw new Error("Credential issuance is not used for OAuth authorize.");
+              },
+              invalidateCredential: async (credentialToken) => {
+                const [result] = await this.handlerTx()
+                  .withServiceCalls(() => [services.invalidateCredential(credentialToken)])
+                  .execute();
+                return result;
+              },
+            });
+
+            const requestAuth = await getRequestAuth({ headers, strategy });
+            if (!requestAuth.ok) {
+              return error(
+                {
+                  message:
+                    requestAuth.reason === "invalid"
+                      ? "Invalid credential"
+                      : "Authentication required",
+                  code: "credential_invalid",
+                },
+                requestAuth.reason === "invalid" ? 401 : 400,
+              );
+            }
+
+            actor = toAuthActor(requestAuth.principal);
           }
 
           const [stateResult] = await this.handlerTx()
@@ -95,15 +140,15 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                 providerId,
                 redirectUri,
                 returnTo: query.get("returnTo"),
-                sessionId,
+                actor,
                 link,
-                session: sessionSeed,
+                auth: credentialSeed,
               }),
             ])
             .execute();
 
           if (!stateResult.ok) {
-            return error({ message: "Invalid session", code: "session_invalid" }, 401);
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
           const scopes = parseScopes(query.get("scope"));
@@ -124,7 +169,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
         path: "/oauth/:provider/callback",
         queryParameters: ["code", "state", "requestSignUp"],
         outputSchema: z.object({
-          sessionId: z.string(),
+          auth: issuedAuthSchema,
           userId: z.string(),
           email: z.string(),
           role: z.enum(["user", "admin"]),
@@ -209,13 +254,21 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
             return error({ message: "OAuth failed", code: result.code }, status);
           }
 
-          const setCookieHeader = buildSetCookieHeader(result.sessionId, config.cookieOptions);
+          const issuedAuth = buildIssuedAuthResponse(
+            {
+              token: result.credentialToken,
+              kind: "session",
+              expiresAt: result.expiresAt,
+              activeOrganizationId: result.activeOrganizationId,
+            },
+            config.cookieOptions,
+          );
 
           if (result.returnTo) {
             return new Response(null, {
               status: 302,
               headers: {
-                "Set-Cookie": setCookieHeader,
+                ...issuedAuth.headers,
                 Location: result.returnTo,
               },
             });
@@ -223,16 +276,14 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
 
           return json(
             {
-              sessionId: result.sessionId,
+              auth: issuedAuth.auth,
               userId: result.userId,
               email: result.email,
               role: result.role,
               returnTo: result.returnTo,
             },
             {
-              headers: {
-                "Set-Cookie": setCookieHeader,
-              },
+              headers: issuedAuth.headers,
             },
           );
         },

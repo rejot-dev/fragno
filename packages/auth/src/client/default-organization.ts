@@ -64,7 +64,7 @@ export type DefaultOrganizationPreferenceStore<TMe extends AuthMeLike> = {
 };
 
 export type DefaultOrganizationPreferenceState<TMe extends AuthMeLike> = {
-  me: (params?: { sessionId?: string }) => Promise<TMe>;
+  me: () => Promise<TMe>;
   defaultOrganization: {
     storageKey: string | null;
     read: () => string | null;
@@ -302,7 +302,7 @@ export function setDefaultOrganizationForMe<TMe extends AuthMeLike>(
 
 export function createDefaultOrganizationPreferenceState<TMe extends AuthMeLike>(options: {
   meStore: DefaultOrganizationMeStore<TMe>;
-  readMe: (params?: { sessionId?: string }) => Promise<TMe>;
+  readMe: () => Promise<TMe>;
   getAccountId?: (me: TMe) => string | null | undefined;
   storage?: StorageLike | null;
   windowObject?: WindowLike | null;
@@ -373,8 +373,8 @@ export function createDefaultOrganizationPreferenceState<TMe extends AuthMeLike>
   const effectiveMe = computed([meStore, resolution], (meState) => meState.data ?? null);
 
   return {
-    me: async (params) => {
-      const me = await readMe(params);
+    me: async () => {
+      const me = await readMe();
       if (getWindow(windowObject)) {
         syncForMe(me);
       }

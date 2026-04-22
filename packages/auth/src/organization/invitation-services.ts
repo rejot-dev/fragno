@@ -1,5 +1,6 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import type { Role } from "../types";
@@ -36,24 +37,24 @@ type RespondInvitationInput = {
   actorMemberId?: string;
 };
 
-type ListInvitationsForSessionParams = {
-  sessionId: string;
+type ListInvitationsForCredentialParams = {
+  credentialToken: string;
 };
 
-type RespondInvitationWithSessionParams = {
-  sessionId: string;
+type RespondInvitationForCredentialParams = {
+  credentialToken: string;
   invitationId: string;
   action: "accept" | "reject" | "cancel";
   token?: string;
 };
 
-type ListOrganizationInvitationsWithSessionParams = {
-  sessionId: string;
+type ListOrganizationInvitationsForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
 };
 
-type CreateOrganizationInvitationWithSessionParams = {
-  sessionId: string;
+type CreateOrganizationInvitationForCredentialParams = {
+  credentialToken: string;
   organizationId: string;
   email: string;
   roles?: readonly string[];
@@ -212,7 +213,7 @@ export function createOrganizationInvitationServices(
   const limits = options.organizationConfig?.limits;
   const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
-  return {
+  const services = {
     /**
      * Fetch an invitation by id and include its organization.
      */
@@ -534,6 +535,127 @@ export function createOrganizationInvitationServices(
     },
 
     /**
+     * List invitations for an authenticated actor.
+     */
+    listInvitationsForActor: function (
+      this: AuthServiceContext,
+      params: { actor: AuthActor; status?: OrganizationInvitationStatus },
+    ) {
+      const email = normalizeEmail(params.actor.email);
+      const status = params.status;
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.find("organizationInvitation", (b) =>
+            (status
+              ? b.whereIndex("idx_org_invitation_email_status", (eb) =>
+                  eb.and(eb("email", "=", email), eb("status", "=", status)),
+                )
+              : b.whereIndex("idx_org_invitation_email", (eb) => eb("email", "=", email))
+            ).joinOne("organizationInvitationOrganization", "organization", (organization) =>
+              organization
+                .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                .joinOne("organizationCreator", "user", (creator) =>
+                  creator.onIndex("primary", (eb) => eb("id", "=", eb.parent("createdBy"))),
+                ),
+            ),
+          ),
+        )
+        .transformRetrieve(([invitations]) => ({
+          invitations: invitations.map((invitation) => ({
+            invitation: mapInvitation({
+              id: invitation.id,
+              organizationId: invitation.organizationId,
+              email: invitation.email,
+              roles: invitation.roles,
+              status: invitation.status,
+              token: invitation.token,
+              inviterId: invitation.inviterId,
+              expiresAt: invitation.expiresAt,
+              createdAt: invitation.createdAt,
+              respondedAt: invitation.respondedAt,
+            }),
+            organization:
+              invitation.organizationInvitationOrganization &&
+              invitation.organizationInvitationOrganization.deletedAt == null
+                ? {
+                    id: toExternalId(invitation.organizationInvitationOrganization.id),
+                    name: invitation.organizationInvitationOrganization.name,
+                    slug: invitation.organizationInvitationOrganization.slug,
+                    logoUrl: invitation.organizationInvitationOrganization.logoUrl ?? null,
+                    metadata: invitation.organizationInvitationOrganization.metadata ?? null,
+                    createdBy: toExternalId(
+                      invitation.organizationInvitationOrganization.organizationCreator?.id ??
+                        invitation.organizationInvitationOrganization.createdBy,
+                    ),
+                    createdAt: invitation.organizationInvitationOrganization.createdAt,
+                    updatedAt: invitation.organizationInvitationOrganization.updatedAt,
+                    deletedAt: invitation.organizationInvitationOrganization.deletedAt ?? null,
+                  }
+                : null,
+          })),
+        }))
+        .build();
+    },
+
+    /**
+     * List invitations for an organization using actor permissions.
+     */
+    listOrganizationInvitationsForActor: function (
+      this: AuthServiceContext,
+      params: { actor: AuthActor; organizationId: string },
+    ) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("organization", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", params.organizationId)),
+            )
+            .findFirst("organizationMember", (b) =>
+              b
+                .whereIndex("idx_org_member_org_user", (eb) =>
+                  eb.and(
+                    eb("organizationId", "=", params.organizationId),
+                    eb("userId", "=", params.actor.userId),
+                  ),
+                )
+                .joinMany("organizationMemberRoles", "organizationMemberRole", (role) =>
+                  role.onIndex("idx_org_member_role_member", (eb) =>
+                    eb("memberId", "=", eb.parent("id")),
+                  ),
+                ),
+            )
+            .find("organizationInvitation", (b) =>
+              b.whereIndex("idx_org_invitation_org_status", (eb) =>
+                eb("organizationId", "=", params.organizationId),
+              ),
+            ),
+        )
+        .transformRetrieve(([organization, actorMember, invitations]) => {
+          if (!organization || organization.deletedAt != null) {
+            return { ok: false as const, code: "organization_not_found" as const };
+          }
+
+          if (!actorMember) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          const actorRoles = extractRoles(
+            (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
+          );
+          if (!isGlobalAdmin(params.actor.role) && !canManageOrganization(actorRoles)) {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          return {
+            ok: true as const,
+            invitations: invitations.map((invitation) => mapInvitationRow(invitation)),
+          };
+        })
+        .build();
+    },
+
+    /**
      * Accept, reject, or cancel an invitation with validation and hooks.
      */
     respondToOrganizationInvitation: function (
@@ -796,11 +918,11 @@ export function createOrganizationInvitationServices(
     },
 
     /**
-     * List invitations for a session.
+     * List invitations for the current credential.
      */
-    listInvitationsForSession: function (
+    listInvitationsForCredential: function (
       this: AuthServiceContext,
-      params: ListInvitationsForSessionParams,
+      params: ListInvitationsForCredentialParams,
     ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -808,7 +930,7 @@ export function createOrganizationInvitationServices(
             .find("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (user) =>
                   user
@@ -829,7 +951,7 @@ export function createOrganizationInvitationServices(
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             ),
         )
@@ -840,7 +962,7 @@ export function createOrganizationInvitationServices(
 
           const session = sessions[0] ?? null;
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           const invitations: Array<{
@@ -891,9 +1013,9 @@ export function createOrganizationInvitationServices(
     /**
      * Respond to an invitation using session permissions.
      */
-    respondToInvitationWithSession: function (
+    respondToInvitationForCredential: function (
       this: AuthServiceContext,
-      params: RespondInvitationWithSessionParams,
+      params: RespondInvitationForCredentialParams,
     ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -901,7 +1023,7 @@ export function createOrganizationInvitationServices(
             .find("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (user) =>
                   user
@@ -920,7 +1042,7 @@ export function createOrganizationInvitationServices(
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .find("organizationInvitation", (b) =>
@@ -944,7 +1066,7 @@ export function createOrganizationInvitationServices(
 
           const session = sessions[0] ?? null;
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
           const sessionOwner = session.sessionOwner;
 
@@ -1170,9 +1292,9 @@ export function createOrganizationInvitationServices(
     /**
      * List invitations for an organization using session permissions.
      */
-    listOrganizationInvitationsWithSession: function (
+    listOrganizationInvitationsForCredential: function (
       this: AuthServiceContext,
-      params: ListOrganizationInvitationsWithSessionParams,
+      params: ListOrganizationInvitationsForCredentialParams,
     ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
@@ -1180,7 +1302,7 @@ export function createOrganizationInvitationServices(
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (user) =>
                   user
@@ -1199,7 +1321,7 @@ export function createOrganizationInvitationServices(
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organization", (b) =>
@@ -1217,7 +1339,7 @@ export function createOrganizationInvitationServices(
           }
 
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
 
           if (!organization || organization.deletedAt != null) {
@@ -1251,9 +1373,9 @@ export function createOrganizationInvitationServices(
     /**
      * Create an invitation using session permissions.
      */
-    createOrganizationInvitationWithSession: function (
+    createOrganizationInvitationForCredential: function (
       this: AuthServiceContext,
-      params: CreateOrganizationInvitationWithSessionParams,
+      params: CreateOrganizationInvitationForCredentialParams,
     ) {
       const roles = normalizeRoleNames(params.roles, defaultMemberRoles ?? DEFAULT_MEMBER_ROLES);
 
@@ -1263,7 +1385,7 @@ export function createOrganizationInvitationServices(
             .findFirst("session", (b) =>
               b
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", params.sessionId), eb("expiresAt", ">", eb.now())),
+                  eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", ">", eb.now())),
                 )
                 .joinOne("sessionOwner", "user", (user) =>
                   user
@@ -1282,7 +1404,7 @@ export function createOrganizationInvitationServices(
             )
             .findFirst("session", (b) =>
               b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", params.sessionId), eb("expiresAt", "<=", eb.now())),
+                eb.and(eb("id", "=", params.credentialToken), eb("expiresAt", "<=", eb.now())),
               ),
             )
             .findFirst("organization", (b) =>
@@ -1303,7 +1425,7 @@ export function createOrganizationInvitationServices(
           }
 
           if (!session || !session.sessionOwner) {
-            return { ok: false as const, code: "session_invalid" as const };
+            return { ok: false as const, code: "credential_invalid" as const };
           }
           const sessionOwner = session.sessionOwner;
 
@@ -1463,4 +1585,6 @@ export function createOrganizationInvitationServices(
         .build();
     },
   };
+
+  return services;
 }

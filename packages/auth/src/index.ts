@@ -31,8 +31,8 @@ import type {
   AuthHooks,
   AuthHooksMap,
   BeforeCreateUserHook,
+  CredentialHookPayload,
   InvitationExpiredHookPayload,
-  SessionHookPayload,
   UserHookPayload,
 } from "./hooks";
 import { createOAuthServices } from "./oauth/oauth-services";
@@ -55,7 +55,7 @@ import type {
 import { toExternalId } from "./organization/utils";
 import { authSchema } from "./schema";
 import { createSessionServices, sessionRoutesFactory } from "./session/session";
-import { serializeSessionSeedForQuery } from "./session/session-seed";
+import { serializeCredentialSeedForQuery } from "./session/session-seed";
 import type { Role } from "./types";
 import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
 import {
@@ -69,6 +69,9 @@ import {
 import type { CookieOptions } from "./utils/cookie";
 
 export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
+  authentication?: {
+    strategy?: "session";
+  };
   cookieOptions?: CookieOptions;
   hooks?: AuthHooks;
   beforeCreateUser?: BeforeCreateUserHook;
@@ -143,11 +146,11 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       onUserPasswordChanged: defineHook<UserHookPayload>(async function (payload) {
         await authHooks?.onUserPasswordChanged?.(payload);
       }),
-      onSessionCreated: defineHook<SessionHookPayload>(async function (payload) {
-        await authHooks?.onSessionCreated?.(payload);
+      onCredentialIssued: defineHook<CredentialHookPayload>(async function (payload) {
+        await authHooks?.onCredentialIssued?.(payload);
       }),
-      onSessionInvalidated: defineHook<SessionHookPayload>(async function (payload) {
-        await authHooks?.onSessionInvalidated?.(payload);
+      onCredentialInvalidated: defineHook<CredentialHookPayload>(async function (payload) {
+        await authHooks?.onCredentialInvalidated?.(payload);
       }),
     };
 
@@ -519,11 +522,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const useUserInvitations = b.createHook("/organizations/invitations");
   const useOAuthAuthorize = b.createHook("/oauth/:provider/authorize");
   const useOAuthCallback = b.createHook("/oauth/:provider/callback");
-  const readRawMe = async (params?: { sessionId?: string }) => {
-    if (params?.sessionId) {
-      return useMe.query({ query: { sessionId: params.sessionId } });
-    }
-
+  const readRawMe = async () => {
     return useMe.query();
   };
   const defaultOrganizationPreference = createDefaultOrganizationPreferenceState({
@@ -565,12 +564,12 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
       email: async ({
         email,
         password,
-        session,
+        auth,
         rememberMe: _rememberMe,
       }: {
         email: string;
         password: string;
-        session?: {
+        auth?: {
           activeOrganizationId?: string;
         };
         rememberMe?: boolean;
@@ -580,7 +579,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
           body: {
             email,
             password,
-            session,
+            auth,
           },
         });
       },
@@ -597,9 +596,9 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
       },
     },
 
-    signOut: (params?: { sessionId?: string }) => {
+    signOut: () => {
       return useSignOut.mutateQuery({
-        body: params?.sessionId ? { sessionId: params.sessionId } : {},
+        body: {},
       });
     },
 
@@ -612,8 +611,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         provider: string;
         returnTo?: string;
         link?: boolean;
-        sessionId?: string;
-        session?: {
+        auth?: {
           activeOrganizationId?: string;
         };
         redirectUri?: string;
@@ -626,8 +624,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
             redirectUri: params.redirectUri,
             returnTo: params.returnTo,
             link: params.link ? "true" : undefined,
-            sessionId: params.sessionId,
-            session: serializeSessionSeedForQuery(params.session),
+            auth: serializeCredentialSeedForQuery(params.auth),
             scope: params.scope,
             loginHint: params.loginHint,
           },
@@ -659,11 +656,25 @@ export type {
   AuthHooks,
   BeforeCreateUserHook,
   BeforeCreateUserPayload,
+  CredentialHookPayload,
+  CredentialSummary,
   InvitationExpiredHookPayload,
-  SessionHookPayload,
   UserHookPayload,
-  SessionSummary,
 } from "./hooks";
+export type {
+  AuthActor,
+  AuthCredentialKind,
+  AuthCredentialSource,
+  AuthPrincipal,
+  AuthStrategyName,
+  IssuedAuthCredential,
+  RequestAuthFailureReason,
+  ResolveRequestAuthResult,
+  ResolveRequestCredentialResult,
+  ResolvedRequestCredential,
+} from "./auth/types";
+export { toAuthActor } from "./auth/actor";
+export { getRequestAuth, parseBearerToken, resolveRequestCredential } from "./auth/request-auth";
 export type { UserSummary } from "./types";
 export type {
   AnyOAuthProvider,

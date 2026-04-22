@@ -5,10 +5,10 @@ schema, and frontend hooks so you can drop authentication into any TypeScript ap
 everything by hand. It ships with typed routes, hooks, and client helpers.
 
 - Email/password sign-up, sign-in, and sign-out
-- Session cookies with configurable security attributes
+- Strategy-neutral auth cookies (`fragno_auth`) with configurable security attributes
 - Organizations, roles, invitations, and active organization context
 - OAuth providers (GitHub built-in)
-- Hooks for user/session/org lifecycle events
+- Hooks for user/credential/org lifecycle events
 
 ## Install
 
@@ -102,12 +102,43 @@ OAuth:
 - `GET /oauth/:provider/authorize`
 - `GET /oauth/:provider/callback`
 
+## Auth Contract
+
+Authenticated routes accept auth from one of two transports:
+
+- the `fragno_auth` cookie
+- `Authorization: Bearer <token>`
+
+The old `sessionId` query/body transport is no longer part of the public contract.
+
+Credential-issuing JSON routes return a normalized auth envelope:
+
+```json
+{
+  "auth": {
+    "token": "...",
+    "kind": "session",
+    "expiresAt": "2026-01-01T00:00:00.000Z",
+    "activeOrganizationId": null
+  }
+}
+```
+
+This applies to:
+
+- `POST /sign-up`
+- `POST /sign-in`
+- `GET /oauth/:provider/callback` when it returns JSON
+
+`POST /sign-out` clears the `fragno_auth` cookie.
+
 ## Configuration
 
 `createAuthFragment(config, options)` supports:
 
 - `cookieOptions`: `httpOnly`, `secure`, `sameSite`, `maxAge`, `path`
-- `hooks`: `onUserCreated`, `onSessionCreated`, `onOrganizationCreated`, and more
+- `hooks`: `onUserCreated`, `onCredentialIssued`, `onCredentialInvalidated`,
+  `onOrganizationCreated`, and more
 - `organizations`: `false` to disable or an organization config object
 - `emailAndPassword`: `{ enabled?: boolean }` to toggle email/password routes
 - `oauth`: providers and OAuth settings
@@ -129,8 +160,8 @@ OAuth config fields:
 ## OAuth
 
 OAuth is disabled unless configured. Use the authorize endpoint to get a provider URL, then redirect
-the browser to complete the flow. The callback route sets the session cookie and can optionally
-redirect to a `returnTo` path.
+the browser to complete the flow. The callback route sets the `fragno_auth` cookie, returns
+`auth.token` when it responds with JSON, and can optionally redirect to a `returnTo` path.
 
 ```ts
 const { url } = await authClient.oauth.getAuthorizationUrl({
@@ -143,9 +174,73 @@ window.location.assign(url);
 Notes:
 
 - `returnTo` must be a relative path starting with `/` (it is sanitized server-side).
-- `link: true` links the provider to the currently signed-in user (session cookie required).
+- `link: true` links the provider to the currently signed-in user (requires the ambient
+  `fragno_auth` cookie or an `Authorization` header).
 - `scope` and `loginHint` are passed through to the provider.
 - You can set `defaultRedirectUri` once or override per provider with `redirectURI`.
+
+## Migration Notes
+
+If you are upgrading from the older session-centric contract:
+
+- replace `response.sessionId` with `response.auth.token`
+- stop sending `sessionId` in route query params or request bodies
+- rely on ambient cookies or `Authorization: Bearer <token>` for authenticated requests
+- rename hooks from `onSessionCreated` / `onSessionInvalidated` to `onCredentialIssued` /
+  `onCredentialInvalidated`
+- update any cookie expectations from `sessionid` to `fragno_auth`
+- replace `fragment.services.buildSessionCookie(...)` with `fragment.services.buildAuthCookie(...)`
+- stop using `fragment.services.getSession(headers)` as the auth entry point; use the shared
+  request-auth helpers instead
+- update direct service calls from `*WithSession` / `*ForSession` to the new `*ForCredential`,
+  actor, or principal variants
+
+### Small migration guide
+
+Use this checklist when moving to the principal/credential contract introduced by the auth refactor
+spec.
+
+1. **Update request auth transport**
+   - Stop forwarding `sessionId` in query params or bodies.
+   - Send auth with the ambient `fragno_auth` cookie or `Authorization: Bearer <token>`.
+   - Treat auth failures as `credential_invalid` instead of `session_invalid` in public route
+     handling.
+
+2. **Update response handling**
+   - Read issued credentials from `response.auth.token`.
+   - If you need metadata, also use `response.auth.kind`, `response.auth.expiresAt`, and
+     `response.auth.activeOrganizationId`.
+   - `POST /sign-out` now clears `fragno_auth`.
+
+3. **Update client calls**
+   - `authClient.signIn.email(...)` now takes `auth?: { activeOrganizationId?: string }` instead of
+     `session`.
+   - `authClient.oauth.getAuthorizationUrl(...)` now takes
+     `auth?: { activeOrganizationId?: string }` instead of `session`.
+   - Authenticated client calls should rely on cookie / bearer auth rather than manually passing
+     `sessionId`.
+
+4. **Update hooks**
+   - Rename `onSessionCreated` → `onCredentialIssued`.
+   - Rename `onSessionInvalidated` → `onCredentialInvalidated`.
+   - Update hook payload reads from `payload.session` to `payload.credential`.
+   - Replace removed compatibility type imports such as `SessionHookPayload` / `SessionSummary` with
+     `CredentialHookPayload` / `CredentialSummary`.
+
+5. **Update service/helper usage**
+   - Replace `buildSessionCookie(...)` with `buildAuthCookie(...)`.
+   - Replace `getSession(headers)` with `resolveRequestCredential(...)` or `getRequestAuth(...)` at
+     the route boundary.
+   - Replace `createSession(...)`, `validateSession(...)`, and `invalidateSession(...)` with
+     `issueCredential(...)`, `validateCredential(...)`, and `invalidateCredential(...)`.
+   - Replace old `*WithSession` / `*ForSession` organization, invitation, and user service
+     entrypoints with the credential-, actor-, or principal-oriented variants.
+
+6. **Update OAuth and sign-in seed inputs**
+   - Sign-in request bodies now use `auth: { activeOrganizationId }`.
+   - OAuth authorize now uses the `auth` query param for the active-organization seed.
+   - OAuth linking requires an authenticated principal from cookie / bearer auth, not a
+     route-specific session id flow.
 
 ## GitHub OAuth
 
@@ -174,7 +269,7 @@ export const authFragment = createAuthFragment(
 
 1. Create a GitHub OAuth App and set its callback URL to your fragment callback route.
 2. Add a "Continue with GitHub" button that starts the flow.
-3. Let GitHub redirect back to `/api/auth/oauth/github/callback` to set the session cookie and
+3. Let GitHub redirect back to `/api/auth/oauth/github/callback` to set the `fragno_auth` cookie and
    redirect the user.
 
 Example button:
@@ -200,4 +295,5 @@ await authClient.oauth.callback({
 });
 ```
 
-This will set the session cookie on the same origin and return the signed-in user info.
+This will set the `fragno_auth` cookie on the same origin and return the signed-in user info plus
+the normalized `auth` envelope.
