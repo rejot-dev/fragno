@@ -5,7 +5,11 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
-import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
+import {
+  getRouteErrorDebugDetails,
+  getRouteErrorMessage,
+  isOrganisationNotFoundError,
+} from "../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
 
@@ -143,6 +147,9 @@ export function PiErrorBoundary({ error, params }: { error: unknown; params: { o
     message = `Organisation '${params.orgId}' could not be found.`;
   }
 
+  const debugDetails =
+    import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
+
   return (
     <div className="space-y-4">
       <PiHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
@@ -151,6 +158,16 @@ export function PiErrorBoundary({ error, params }: { error: unknown; params: { o
           {statusCode} · {statusText}
         </p>
         <p className="mt-2 text-[var(--bo-fg)]">{message}</p>
+        {debugDetails ? (
+          <details className="mt-4" open>
+            <summary className="cursor-pointer text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              Error details
+            </summary>
+            <pre className="mt-3 max-h-[60vh] overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs whitespace-pre-wrap text-[var(--bo-fg)]">
+              {debugDetails}
+            </pre>
+          </details>
+        ) : null}
       </div>
     </div>
   );

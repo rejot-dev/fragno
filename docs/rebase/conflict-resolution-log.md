@@ -17,3 +17,9 @@
 - `packages/pi-fragment/src/pi/workflow/tool-journal.ts` and `.test.ts`
   - Conflict side effect: the chosen command-based runner/workflow depends on the tool journal helpers, but they were not present in the worktree after conflict checkout.
   - Resolution: restored the tool journal implementation and tests from the rebased command-based sessions commit.
+
+## `feat(backoffice): support pi session commands`
+
+- `apps/backoffice/app/fragno/bash-runtime/pi-bash-runtime.ts`
+  - Conflict: one side renamed turn submission from the old `/messages` route to the new `/command` route while the current branch had already switched route errors to the richer `throwOnRouteRuntimeError` helper.
+  - Resolution: kept the new command route and `promptResponse` handling, but preserved the richer runtime error wrapper for failed prompt submissions.

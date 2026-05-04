@@ -49,9 +49,9 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
   ],
   events: [],
   trace: [],
-  summaries: [],
+  turns: [],
   turn: 0,
-  phase: "waiting-for-user" as const,
+  phase: "waiting-for-command" as const,
   waitingFor: null,
   assistantText,
   messageStatus: "active" as const,
@@ -68,14 +68,14 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
       layer: "system" as const,
       type: "settled" as const,
       turn: 0,
-      status: "waiting-for-user" as const,
+      status: "waiting-for-command" as const,
     },
   ],
   terminalFrame: {
     layer: "system" as const,
     type: "settled" as const,
     turn: 0,
-    status: "waiting-for-user" as const,
+    status: "waiting-for-command" as const,
   },
 });
 
@@ -118,9 +118,9 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
       messages: [],
       events: [],
       trace: [],
-      summaries: [],
+      turns: [],
       turn: 0,
-      phase: "waiting-for-user",
+      phase: "waiting-for-command",
       waitingFor: null,
     };
   },
@@ -292,7 +292,7 @@ describe("pi bash command registration", () => {
     expect(getHelp.stdout).toContain("--session-id <session-id>");
     expect(getHelp.stdout).toContain("--events");
     expect(getHelp.stdout).toContain("--trace");
-    expect(getHelp.stdout).toContain("--summaries");
+    expect(getHelp.stdout).toContain("--turns");
     expect(getHelp.stdout).toContain("--help");
     expect(getHelp.stdout).toContain("--print <selector>");
     expect(getHelp.stdout).toContain("--format <format>");
@@ -310,7 +310,6 @@ describe("pi bash command registration", () => {
     expect(turnHelp.stdout).toContain("Usage: pi.session.turn [options]");
     expect(turnHelp.stdout).toContain("--session-id <session-id>");
     expect(turnHelp.stdout).toContain("--text <text>");
-    expect(turnHelp.stdout).toContain("--steering-mode <steering-mode>");
     expect(turnHelp.stdout).toContain("--help");
     expect(turnHelp.stdout).toContain("--print <selector>");
     expect(turnHelp.stdout).toContain("--format <format>");
@@ -378,9 +377,9 @@ describe("pi bash command registration", () => {
             messages: [],
             events: [],
             trace: [],
-            summaries: [],
+            turns: [],
             turn: 0,
-            phase: "waiting-for-user",
+            phase: "waiting-for-command",
             waitingFor: null,
           };
         },
@@ -412,7 +411,7 @@ describe("pi bash command registration", () => {
         `printf "text=%s\\n" "$(pi.session.create --agent assistant --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format text)"`,
         `printf "json=%s\\n" "$(pi.session.create --agent assistant --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format json)"`,
         `printf "print=%s\\n" "$(pi.session.create --agent assistant --steering-mode one-at-a-time --print steering-mode)"`,
-        `printf "workflow=%s\\n" "$(pi.session.get --session-id session-1 --events --trace false --summaries true --print workflow.status)"`,
+        `printf "workflow=%s\\n" "$(pi.session.get --session-id session-1 --events --trace false --turns true --print workflow.status)"`,
         `printf "list_print=%s\\n" "$(pi.session.list --limit 1 --format json --print 0.id)"`,
         `printf "list_text=%s\\n" "$(pi.session.list --limit 1 --format text)"`,
         `printf "list=%s\\n" "$(pi.session.list --limit 1)"`,
@@ -503,7 +502,7 @@ describe("pi bash command registration", () => {
         sessionId: "session-1",
         events: true,
         trace: false,
-        summaries: true,
+        turns: true,
       },
     ]);
     expect(listCalls).toEqual([{ limit: 1 }, { limit: 1 }, { limit: 1 }]);
@@ -587,10 +586,6 @@ describe("pi bash command registration", () => {
       "pi.session.get --session-id session-1 --events false --events true",
     );
     const missingTurnText = await bash.exec("pi.session.turn --session-id session-1");
-    const invalidTurnSteeringMode = await bash.exec(
-      "pi.session.turn --session-id session-1 --text hello --steering-mode invalid",
-    );
-
     expect(missingSession.exitCode).toBe(1);
     expect(missingSession.stderr).toContain("Missing required option --session-id");
     expect(invalidLimit.exitCode).toBe(1);
@@ -599,10 +594,6 @@ describe("pi bash command registration", () => {
     expect(repeatedEvents.stderr).toContain("--events specified multiple times");
     expect(missingTurnText.exitCode).toBe(1);
     expect(missingTurnText.stderr).toContain("Missing required option --text");
-    expect(invalidTurnSteeringMode.exitCode).toBe(1);
-    expect(invalidTurnSteeringMode.stderr).toContain(
-      "--steering-mode must be one of: all, one-at-a-time",
-    );
     expect(commandCallsResult).toEqual([
       {
         command: "pi.session.get",
@@ -616,11 +607,6 @@ describe("pi bash command registration", () => {
       },
       {
         command: "pi.session.get",
-        output: "",
-        exitCode: 1,
-      },
-      {
-        command: "pi.session.turn",
         output: "",
         exitCode: 1,
       },
@@ -732,8 +718,7 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path ===
-                "/api/pi/sessions/session-2?events=true&trace=false&summaries=true&orgId=acme" &&
+              path === "/api/pi/sessions/session-2?events=true&trace=false&turns=true&orgId=acme" &&
               request.method === "GET"
             ) {
               return new Response(
@@ -751,9 +736,9 @@ describe("createPiRouteBashRuntime", () => {
                   messages: [],
                   events: [{ id: "event-1" }],
                   trace: [],
-                  summaries: [{ text: "summary" }],
+                  turns: [{ text: "summary" }],
                   turn: 0,
-                  phase: "waiting-for-user",
+                  phase: "waiting-for-command",
                   waitingFor: null,
                 }),
                 {
@@ -787,13 +772,13 @@ describe("createPiRouteBashRuntime", () => {
                   layer: "system",
                   type: "settled",
                   turn: 0,
-                  status: "waiting-for-user",
+                  status: "waiting-for-command",
                 },
               ]);
             }
 
             if (
-              path === "/api/pi/sessions/session-2/messages?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
@@ -836,9 +821,9 @@ describe("createPiRouteBashRuntime", () => {
                   ],
                   events: [],
                   trace: [],
-                  summaries: [{ turn: 0, assistant: null, summary: "assistant:route-turn" }],
+                  turns: [{ turn: 0, assistant: null, summary: "assistant:route-turn" }],
                   turn: 1,
-                  phase: "waiting-for-user",
+                  phase: "waiting-for-command",
                   waitingFor: null,
                 }),
                 {
@@ -892,7 +877,7 @@ describe("createPiRouteBashRuntime", () => {
       sessionId: "session-2",
       events: true,
       trace: false,
-      summaries: true,
+      turns: true,
     });
     const sessions = await runtime.listSessions({
       limit: 10,
@@ -914,7 +899,7 @@ describe("createPiRouteBashRuntime", () => {
       id: "session-2",
       workflow: { status: "waiting" },
       events: [{ id: "event-1" }],
-      summaries: [{ text: "summary" }],
+      turns: [{ text: "summary" }],
     });
     expect(sessions).toEqual([
       {
@@ -936,7 +921,7 @@ describe("createPiRouteBashRuntime", () => {
       workflow: { status: "waiting" },
       terminalFrame: {
         type: "settled",
-        status: "waiting-for-user",
+        status: "waiting-for-command",
       },
     });
     expect(turned.stream).toEqual([
@@ -957,7 +942,7 @@ describe("createPiRouteBashRuntime", () => {
         },
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2?events=true&trace=false&summaries=true&orgId=acme",
+        url: "https://pi.do/api/pi/sessions/session-2?events=true&trace=false&turns=true&orgId=acme",
         method: "GET",
         body: undefined,
       },
@@ -972,10 +957,11 @@ describe("createPiRouteBashRuntime", () => {
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2/messages?orgId=acme",
+        url: "https://pi.do/api/pi/sessions/session-2/command?orgId=acme",
         method: "POST",
         body: {
-          text: "route turn",
+          kind: "prompt",
+          input: { text: "route turn" },
         },
       },
       {
@@ -1062,7 +1048,7 @@ describe("createPiRouteBashRuntime", () => {
     );
   });
 
-  it("surfaces pi.session.turn message route failures", async () => {
+  it("surfaces pi.session.turn prompt route failures", async () => {
     const env = {
       PI: {
         idFromName: (orgId: string) => `pi:${orgId}`,
@@ -1080,7 +1066,7 @@ describe("createPiRouteBashRuntime", () => {
                   layer: "system",
                   type: "snapshot",
                   turn: 0,
-                  phase: "waiting-for-user",
+                  phase: "waiting-for-command",
                   waitingFor: null,
                   replayCount: 0,
                 },
@@ -1088,7 +1074,7 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/messages?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ message: "Session not ready" }), {
@@ -1139,13 +1125,13 @@ describe("createPiRouteBashRuntime", () => {
                   layer: "system",
                   type: "settled",
                   turn: 0,
-                  status: "waiting-for-user",
+                  status: "waiting-for-command",
                 },
               ]);
             }
 
             if (
-              path === "/api/pi/sessions/session-2/messages?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {

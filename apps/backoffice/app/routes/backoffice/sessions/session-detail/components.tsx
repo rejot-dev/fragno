@@ -103,6 +103,8 @@ export function SessionHeader({
 }
 
 export function SessionDisplayOptions({
+  exportFilename,
+  exportHref,
   showThinking,
   showToolCalls,
   showTrace,
@@ -112,6 +114,8 @@ export function SessionDisplayOptions({
   onShowTraceChange,
   onShowUsageChange,
 }: {
+  exportFilename: string;
+  exportHref: string;
   showThinking: boolean;
   showToolCalls: boolean;
   showTrace: boolean;
@@ -136,19 +140,28 @@ export function SessionDisplayOptions({
       </div>
 
       {expanded ? (
-        <div className="grid gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ToggleSwitch
-            label="Tool calls"
-            checked={showToolCalls}
-            onCheckedChange={onShowToolCallsChange}
-          />
-          <ToggleSwitch
-            label="Thinking"
-            checked={showThinking}
-            onCheckedChange={onShowThinkingChange}
-          />
-          <ToggleSwitch label="Trace" checked={showTrace} onCheckedChange={onShowTraceChange} />
-          <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
+        <div className="grid gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <ToggleSwitch
+              label="Tool calls"
+              checked={showToolCalls}
+              onCheckedChange={onShowToolCallsChange}
+            />
+            <ToggleSwitch
+              label="Thinking"
+              checked={showThinking}
+              onCheckedChange={onShowThinkingChange}
+            />
+            <ToggleSwitch label="Trace" checked={showTrace} onCheckedChange={onShowTraceChange} />
+            <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
+          </div>
+          <a
+            href={exportHref}
+            download={exportFilename}
+            className="inline-flex items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          >
+            Download JSONL
+          </a>
         </div>
       ) : null}
     </div>
@@ -252,62 +265,121 @@ export function SessionConversationPanel({
 
 export function SessionComposer({
   busy,
-  disabled,
   disabledReason,
   error,
   onSend,
+  onStop,
+  readyForInput,
 }: {
   busy: boolean;
-  disabled: boolean;
+  readyForInput: boolean;
   disabledReason?: string | null;
   error: string | null;
-  onSend: (text: string) => boolean;
+  onSend: (command: { kind: "followUp" | "steer"; text: string }) => boolean;
+  onStop: () => boolean;
 }) {
   const [draftMessage, setDraftMessage] = useState("");
+  const [mode, setMode] = useState<"followUp" | "steer">("followUp");
+
+  const submitDraft = () => {
+    const didSend = onSend({ kind: mode, text: draftMessage });
+    if (didSend) {
+      setDraftMessage("");
+    }
+  };
+
+  const modeLabel = mode === "steer" ? "Steer" : "Follow up";
+  const helperText = readyForInput
+    ? "Send a follow-up to start the next turn."
+    : "The model is running — follow up, steer, or stop without waiting.";
 
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        const didSend = onSend(draftMessage);
-        if (didSend) {
-          setDraftMessage("");
-        }
+        submitDraft();
       }}
-      className="space-y-3 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
+      className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          Send message
-        </p>
-        <button
-          type="submit"
-          disabled={disabled || busy || !draftMessage.trim()}
-          className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "Sending…" : "Send"}
-        </button>
-      </div>
-      <textarea
-        name="text"
-        rows={3}
-        value={draftMessage}
-        onChange={(event) => setDraftMessage(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && event.metaKey) {
-            event.preventDefault();
-            const didSend = onSend(draftMessage);
-            if (didSend) {
-              setDraftMessage("");
+      <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] transition-colors duration-150 focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-2">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-accent)]" />
+            <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              {modeLabel}
+            </p>
+          </div>
+
+          <div className="flex min-h-10 items-center gap-2">
+            <div className="grid grid-cols-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setMode("followUp")}
+                aria-pressed={mode === "followUp"}
+                className={`min-h-8 px-3 text-[10px] font-semibold tracking-[0.18em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                  mode === "followUp"
+                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                }`}
+              >
+                Follow up
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("steer")}
+                aria-pressed={mode === "steer"}
+                className={`min-h-8 px-3 text-[10px] font-semibold tracking-[0.18em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                  mode === "steer"
+                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                }`}
+              >
+                Steer
+              </button>
+            </div>
+
+            <button
+              type="button"
+              disabled={busy || readyForInput}
+              onClick={onStop}
+              className="min-h-10 border border-red-400/40 bg-red-500/10 px-3 text-[10px] font-semibold tracking-[0.18em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          name="text"
+          rows={3}
+          value={draftMessage}
+          onChange={(event) => setDraftMessage(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && event.metaKey) {
+              event.preventDefault();
+              submitDraft();
             }
+          }}
+          placeholder={
+            mode === "steer" ? "Steer the running session…" : "Send a follow-up message…"
           }
-        }}
-        placeholder="Type a message for this session…"
-        disabled={disabled || busy}
-        className="w-full resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-      />
-      {disabledReason ? <p className="text-xs text-[var(--bo-muted)]">{disabledReason}</p> : null}
-      {error ? <p className="text-xs text-red-500">{error}</p> : null}
+          disabled={busy}
+          className="block w-full resize-y border-0 bg-transparent px-3 py-3 text-sm leading-6 text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:outline-none disabled:opacity-60"
+        />
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-2">
+          <p className="text-xs text-[var(--bo-muted)]">{disabledReason ?? helperText}</p>
+          <button
+            type="submit"
+            disabled={busy || !draftMessage.trim()}
+            className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+          >
+            {busy ? "Sending…" : mode === "steer" ? "Send steer" : "Send follow-up"}
+          </button>
+        </div>
+      </div>
+
+      {error ? <p className="mt-2 text-xs text-red-500">{error}</p> : null}
     </form>
   );
 }

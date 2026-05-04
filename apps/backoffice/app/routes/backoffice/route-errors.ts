@@ -6,7 +6,15 @@ type RouteErrorData = {
   code?: unknown;
   message?: unknown;
   resource?: unknown;
+  debugDetails?: unknown;
 };
+
+const stringifyRouteErrorValue = (value: unknown) =>
+  JSON.stringify(
+    value,
+    (_key, entry) => (typeof entry === "bigint" ? `${entry.toString()}n` : entry),
+    2,
+  );
 
 const getRouteErrorData = (error: unknown): RouteErrorData | null => {
   if (!isRouteErrorResponse(error) || !error.data || typeof error.data !== "object") {
@@ -52,4 +60,31 @@ export const getRouteErrorMessage = (
 export const isOrganisationNotFoundError = (error: unknown) => {
   const errorData = getRouteErrorData(error);
   return errorData?.code === ORG_NOT_FOUND_CODE || errorData?.resource === "organisation";
+};
+
+export const getRouteErrorDebugDetails = (error: unknown) => {
+  if (error instanceof Error) {
+    return [error.name, error.message, error.stack].filter(Boolean).join("\n\n");
+  }
+
+  if (isRouteErrorResponse(error)) {
+    const lines = [`${error.status} ${error.statusText}`];
+    const errorData = getRouteErrorData(error);
+    if (typeof errorData?.debugDetails === "string" && errorData.debugDetails) {
+      lines.push(errorData.debugDetails);
+    } else if (error.data !== undefined) {
+      lines.push(
+        typeof error.data === "string"
+          ? error.data
+          : (stringifyRouteErrorValue(error.data) ?? String(error.data)),
+      );
+    }
+    return lines.join("\n\n");
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return stringifyRouteErrorValue(error) ?? String(error);
 };

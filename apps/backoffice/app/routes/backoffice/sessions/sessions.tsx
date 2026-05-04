@@ -39,7 +39,7 @@ type PiSessionsLoaderData = {
   configError: string | null;
   sessionsError: string | null;
   sessions: PiSession[];
-  summaries: Record<string, string | null>;
+  turnSummaries: Record<string, string | null>;
 };
 
 type PiCreateSessionActionData = {
@@ -59,7 +59,7 @@ type PiSessionsActionData = PiCreateSessionActionData | PiSendMessageActionData;
 
 export type PiSessionsOutletContext = {
   sessions: PiSession[];
-  summaries: Record<string, string | null>;
+  turnSummaries: Record<string, string | null>;
   harnesses: PiHarnessConfig[];
   selectedSessionId: string | null;
   basePath: string;
@@ -95,7 +95,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const emptySummaries: Record<string, string | null> = {};
+  const emptyTurnSummaries: Record<string, string | null> = {};
 
   const { configState, configError } = await fetchPiConfig(context, params.orgId);
   if (configError) {
@@ -103,7 +103,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       configError,
       sessionsError: null,
       sessions: [],
-      summaries: emptySummaries,
+      turnSummaries: emptyTurnSummaries,
     } satisfies PiSessionsLoaderData;
   }
 
@@ -117,11 +117,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       configError: null,
       sessionsError,
       sessions: [],
-      summaries: emptySummaries,
+      turnSummaries: emptyTurnSummaries,
     } satisfies PiSessionsLoaderData;
   }
 
-  const summaries: Record<string, string | null> = {};
+  const turnSummaries: Record<string, string | null> = {};
   const detailResults = await Promise.all(
     sessions.map((session) =>
       fetchPiSessionDetail(request, context, params.orgId!, session.id).catch(() => null),
@@ -133,15 +133,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     if (!session) {
       return;
     }
-    const summary = result?.session?.summaries?.at(-1)?.summary ?? null;
-    summaries[session.id] = summary;
+    const summary = result?.session?.turns?.at(-1)?.summary ?? null;
+    turnSummaries[session.id] = summary;
   });
 
   return {
     configError: null,
     sessionsError: null,
     sessions,
-    summaries,
+    turnSummaries,
   } satisfies PiSessionsLoaderData;
 }
 
@@ -172,6 +172,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const sessionId = getValue("sessionId");
     const text = getValue("text");
     const steeringMode = getValue("steeringMode");
+    const commandKind = getValue("commandKind");
     const done = parseOptionalBoolean(formData.get("done"));
 
     if (!sessionId) {
@@ -190,6 +191,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       } satisfies PiSendMessageActionData;
     }
 
+    if (commandKind && commandKind !== "followUp" && commandKind !== "steer") {
+      return {
+        intent: "send-message",
+        ok: false,
+        message: "Command kind must be followUp or steer.",
+      } satisfies PiSendMessageActionData;
+    }
+
     if (steeringMode && steeringMode !== "all" && steeringMode !== "one-at-a-time") {
       return {
         intent: "send-message",
@@ -201,6 +210,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const result = await sendPiSessionMessage(request, context, params.orgId, sessionId, {
       text,
       done,
+      commandKind: commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
       steeringMode:
         steeringMode === "all" || steeringMode === "one-at-a-time" ? steeringMode : undefined,
     });
@@ -338,7 +348,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationPiSessionsLayout() {
-  const { sessions, configError, sessionsError, summaries } = useLoaderData<typeof loader>();
+  const { sessions, configError, sessionsError, turnSummaries } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
   const navigation = useNavigation();
   const { orgId, configState } = useOutletContext<PiLayoutContext>();
@@ -591,7 +601,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                 </div>
               ) : (
                 sessions.map((session) => {
-                  const summary = summaries[session.id];
+                  const summary = turnSummaries[session.id];
                   const isSelected = session.id === selectedSessionId;
                   const [harnessId, provider, model] = session.agent.split("::");
                   const harnessLabel =
@@ -660,7 +670,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               <Outlet
                 context={{
                   sessions,
-                  summaries,
+                  turnSummaries,
                   harnesses,
                   selectedSessionId,
                   basePath,

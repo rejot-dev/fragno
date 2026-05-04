@@ -40,10 +40,12 @@ type PiSessionsResult = {
   sessionsError: string | null;
 };
 
+type PiRouteError = { message: string; code: string };
+
 type PiSessionDetailResult = {
   session: PiSessionDetail | null;
   status?: number;
-  sessionError: string | null;
+  sessionError: PiRouteError | null;
 };
 
 type PiCreateSessionResult = {
@@ -116,35 +118,30 @@ export async function fetchPiSessionDetail(
   orgId: string,
   sessionId: string,
 ): Promise<PiSessionDetailResult> {
-  try {
-    const callRoute = createPiRouteCaller(request, context, orgId);
-    const response = await callRoute("GET", "/sessions/:sessionId", {
-      pathParams: { sessionId },
-    });
+  const callRoute = createPiRouteCaller(request, context, orgId);
+  const response = await callRoute("GET", "/sessions/:sessionId", {
+    pathParams: { sessionId },
+  });
+  if (response.type === "json") {
+    return { session: response.data as PiSessionDetail, sessionError: null };
+  }
 
-    if (response.type === "json") {
-      return { session: response.data as PiSessionDetail, sessionError: null };
-    }
-
-    if (response.type === "error") {
-      return {
-        session: null,
-        status: response.status,
-        sessionError: response.error.message,
-      };
-    }
-
+  if (response.type === "error") {
     return {
       session: null,
       status: response.status,
-      sessionError: `Failed to fetch session (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      session: null,
-      sessionError: error instanceof Error ? error.message : "Failed to load session.",
+      sessionError: response.error,
     };
   }
+
+  return {
+    session: null,
+    status: response.status,
+    sessionError: {
+      code: "PI_SESSION_FETCH_FAILED",
+      message: `Failed to fetch session (${response.status}).`,
+    },
+  };
 }
 
 export async function createPiSession(
@@ -193,14 +190,17 @@ export async function sendPiSessionMessage(
   payload: {
     text: string;
     done?: boolean;
+    commandKind?: "followUp" | "steer";
     steeringMode?: "all" | "one-at-a-time";
   },
 ): Promise<PiSendMessageResult> {
   try {
     const callRoute = createPiRouteCaller(request, context, orgId);
-    const response = await callRoute("POST", "/sessions/:sessionId/messages", {
+    const response = await callRoute("POST", "/sessions/:sessionId/command", {
       pathParams: { sessionId },
-      body: payload,
+      body: payload.done
+        ? { kind: "complete", reason: payload.text }
+        : { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
     });
 
     if (response.type === "json") {

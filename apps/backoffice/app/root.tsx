@@ -10,6 +10,7 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { getRouteErrorDebugDetails } from "./routes/backoffice/route-errors";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -66,10 +67,23 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     details = error.message;
   }
 
+  const debugDetails =
+    import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
+
   return (
     <div className="bg-background min-h-screen p-10 text-sm">
       <h1 className="text-2xl font-semibold">{message}</h1>
       <p className="mt-2 text-zinc-600">{details}</p>
+      {debugDetails ? (
+        <details className="mt-6" open>
+          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+            Error details
+          </summary>
+          <pre className="mt-3 max-h-[70vh] overflow-auto border border-zinc-200 bg-zinc-50 p-4 text-xs whitespace-pre-wrap text-zinc-900">
+            {debugDetails}
+          </pre>
+        </details>
+      ) : null}
     </div>
   );
 }
