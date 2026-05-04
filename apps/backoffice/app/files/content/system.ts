@@ -92,7 +92,7 @@ The host exposes command families only when the matching runtime context is conf
   - Creates a Pi session.
   - --system-message appends an additional system message to the configured agent's system prompt
     for this session.
-- pi.session.get --session-id <id> [--events] [--trace] [--summaries]
+- pi.session.get --session-id <id> [--events] [--trace] [--turns]
   - Fetches session detail.
 - pi.session.list [--limit N]
   - Returns sessions with optional limit.
