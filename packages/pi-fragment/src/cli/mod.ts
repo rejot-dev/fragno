@@ -71,7 +71,7 @@ Commands:
   sessions list           List pi-fragment sessions
   sessions create         Create a pi-fragment session
   sessions get            Fetch session detail/status
-  sessions send-message   Send a user message to a session
+  sessions prompt         Send a prompt command to a session
 
 Global options:
   -b, --base-url <url>        Fragment base URL (FRAGNO_PI_BASE_URL)
@@ -97,14 +97,12 @@ sessions get:
   -s, --session <id>          Session id (or positional)
   --status-only               Only output status/workflow/current-run state fields
                                Non-JSON output includes current-run messages, events, trace,
-                               and summaries when present
+                               and turns when present
 
-sessions send-message:
+sessions prompt:
   -s, --session <id>          Session id (or positional)
-  --text <message>            Message text
-  --file <path>               Read message text from file
-  --done                      Mark session done
-  --steering-mode <mode>      all|one-at-a-time`;
+  --text <message>            Prompt text
+  --file <path>               Read prompt text from file`;
 
 const buildErrorResult = (message: string, usage = USAGE): CliActionResult => ({
   stderr: `${message}\n\n${usage}`,
@@ -528,23 +526,24 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
     }
   }
 
-  if ("summaries" in data) {
-    const summaries = Array.isArray(data["summaries"]) ? data["summaries"] : [];
+  if ("turns" in data) {
+    const turns = Array.isArray(data["turns"]) ? data["turns"] : [];
     lines.push("");
-    lines.push(...buildSection(`Summaries (${summaries.length})`));
-    if (summaries.length === 0) {
+    lines.push(...buildSection(`Turns (${turns.length})`));
+    if (turns.length === 0) {
       lines.push("(none)");
     } else {
-      const rows = summaries.map((entry) => {
+      const rows = turns.map((entry) => {
         const record = isRecord(entry) ? entry : null;
         const turn = toDisplayValue(record?.["turn"]);
+        const status = toDisplayValue(record?.["status"]);
         const summary =
           typeof record?.["summary"] === "string" && record["summary"].trim()
             ? record["summary"]
             : extractMessageText(record?.["assistant"]);
-        return [turn || "-", truncate(toOneLine(summary || "-"), 160)];
+        return [turn || "-", status || "-", truncate(toOneLine(summary || "-"), 160)];
       });
-      lines.push(buildTableText(["Turn", "Summary"], rows));
+      lines.push(buildTableText(["Turn", "Status", "Summary"], rows));
     }
   }
 
@@ -676,14 +675,8 @@ const defaultActions: CliActions = {
     if (!resolved.ok) {
       return resolved.error;
     }
-    const body: Record<string, unknown> = { text: resolved.text };
-    if (args.done) {
-      body["done"] = true;
-    }
-    if (args.steeringMode) {
-      body["steeringMode"] = args.steeringMode;
-    }
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}/messages`;
+    const body: Record<string, unknown> = { kind: "prompt", input: { text: resolved.text } };
+    const path = `/sessions/${encodeURIComponent(args.sessionId)}/command`;
     const response = await requestJson(ctx.config, ctx.logger, { method: "POST", path, body });
     if (!response.ok) {
       return response.error;
@@ -724,7 +717,7 @@ const SHORT_OPTIONS: Record<string, string> = {
   "-s": "session",
 };
 
-const ALL_LONG_OPTIONS = new Set([...VALUE_OPTIONS, "json", "debug", "status-only", "done"]);
+const ALL_LONG_OPTIONS = new Set([...VALUE_OPTIONS, "json", "debug", "status-only"]);
 
 const ALL_SHORT_OPTIONS = new Set(Object.keys(SHORT_OPTIONS));
 
@@ -1076,23 +1069,19 @@ export async function run(
             );
             break;
           }
-          case "send-message": {
+          case "prompt": {
             const sessionId = getStringOption(opts, "session") ?? parsed.positionals[0];
             if (!sessionId) {
               result = buildErrorResult("Missing required option: --session");
               break;
             }
-            const steeringMode = parseSteeringMode(getStringOption(opts, "steering-mode"));
             const text = getStringOption(opts, "text");
             const file = getStringOption(opts, "file");
             if (!text && !file) {
               result = buildErrorResult("Missing required option: --text (or --file)");
               break;
             }
-            result = await actions.sessionsSendMessage(
-              { sessionId, text, file, done: getBooleanOption(opts, "done"), steeringMode },
-              ctx,
-            );
+            result = await actions.sessionsSendMessage({ sessionId, text, file }, ctx);
             break;
           }
           default: {

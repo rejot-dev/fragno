@@ -147,9 +147,9 @@ describe("sessions actions", () => {
           turn: 1,
           waitingFor: { type: "assistant", turn: 1, stepKey: "do:assistant-1" },
           messages: [{ role: "user", content: "hello", timestamp: 1 }],
-          events: [{ type: "user_message", payload: { text: "hello" } }],
+          events: [{ type: "command", payload: { kind: "prompt", input: { text: "hello" } } }],
           trace: [{ type: "llm_start" }],
-          summaries: [{ turn: 1, summary: "hello" }],
+          turns: [{ turn: 1, status: "completed", summary: "hello" }],
         }),
         { status: 200 },
       ),
@@ -171,13 +171,13 @@ describe("sessions actions", () => {
       status: "running",
       phase: "running-agent",
       turn: 1,
-      events: [{ type: "user_message", payload: { text: "hello" } }],
+      events: [{ type: "command", payload: { kind: "prompt", input: { text: "hello" } } }],
       trace: [{ type: "llm_start" }],
-      summaries: [{ turn: 1, summary: "hello" }],
+      turns: [{ turn: 1, status: "completed", summary: "hello" }],
     });
   });
 
-  it("renders session detail text output with timestamps, trace, and summaries", async () => {
+  it("renders session detail text output with timestamps, trace, and turns", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -201,11 +201,15 @@ describe("sessions actions", () => {
             },
           ],
           events: [
-            { type: "user_message", timestamp: 1_700_000_000, payload: { text: "hello" } },
+            {
+              type: "command",
+              timestamp: 1_700_000_000,
+              payload: { kind: "prompt", input: { text: "hello" } },
+            },
             { type: "assistant_reply", timestamp: 1_700_000_005 },
           ],
           trace: [{ type: "llm_start" }],
-          summaries: [{ turn: 1, summary: "hello" }],
+          turns: [{ turn: 1, status: "completed", summary: "hello" }],
         }),
         { status: 200 },
       ),
@@ -226,14 +230,14 @@ describe("sessions actions", () => {
     expect(output).toContain("Messages (2)");
     expect(output).toContain("Events (2)");
     expect(output).toContain("Trace (1)");
-    expect(output).toContain("Summaries (1)");
+    expect(output).toContain("Turns (1)");
     expect(output).toContain("Writer");
     expect(output).toContain("Timestamp");
     expect(output).toContain("Message");
     expect(output).toContain("Phase");
     expect(output).toContain("Turn");
     expect(output).toContain("Waiting");
-    expect(output).toContain("user_message");
+    expect(output).toContain("command");
     expect(output).toContain("assistant_reply");
     expect(output).toContain("llm_start");
     expect(output).toContain("hello");
@@ -268,7 +272,7 @@ describe("sessions actions", () => {
     }
   });
 
-  it("sends message text via HTTP", async () => {
+  it("sends prompt text via HTTP", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" }), { status: 202 }));
@@ -276,30 +280,24 @@ describe("sessions actions", () => {
 
     const logger = createLogger();
     const exitCode = await run(
-      [
-        "node",
-        "fragno-pi",
-        "sessions",
-        "send-message",
-        "--session",
-        "session-3",
-        "--text",
-        "Hello",
-      ],
+      ["node", "fragno-pi", "sessions", "prompt", "--session", "session-3", "--text", "Hello"],
       { logger },
     );
 
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-3/messages`);
+    expect(url).toBe(`${BASE_URL}/sessions/session-3/command`);
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({ text: "Hello" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      kind: "prompt",
+      input: { text: "Hello" },
+    });
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(output).toContain("Status: running");
     expect(output).toContain("Message accepted.");
   });
 
-  it("reads message text from file", async () => {
+  it("reads prompt text from file", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-fragment-cli-"));
     const filePath = join(dir, "message.txt");
     try {
@@ -316,7 +314,7 @@ describe("sessions actions", () => {
           "node",
           "fragno-pi",
           "sessions",
-          "send-message",
+          "prompt",
           "--session",
           "session-4",
           "--file",
@@ -328,8 +326,11 @@ describe("sessions actions", () => {
 
       expect(exitCode).toBe(0);
       const [url, init] = fetchMock.mock.calls[0] ?? [];
-      expect(url).toBe(`${BASE_URL}/sessions/session-4/messages`);
-      expect(JSON.parse(String(init?.body))).toEqual({ text: "From file" });
+      expect(url).toBe(`${BASE_URL}/sessions/session-4/command`);
+      expect(JSON.parse(String(init?.body))).toEqual({
+        kind: "prompt",
+        input: { text: "From file" },
+      });
       expect(JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}")).toEqual({
         status: "done",
       });

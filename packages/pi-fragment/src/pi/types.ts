@@ -34,10 +34,61 @@ export type PiSession = {
   updatedAt: Date;
 };
 
+export type PiSessionCommandId = string;
+export type PiSessionCommandType =
+  | "prompt"
+  | "continue"
+  | "abort"
+  | "steer"
+  | "followUp"
+  | "complete";
+
+export type PiPromptInput = {
+  text: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
+};
+
+export type PiSessionCommandPayload =
+  | { commandId: PiSessionCommandId; kind: "prompt"; input: PiPromptInput }
+  | { commandId: PiSessionCommandId; kind: "continue" }
+  | { commandId: PiSessionCommandId; kind: "abort"; reason?: string }
+  | { commandId: PiSessionCommandId; kind: "steer"; input: PiPromptInput }
+  | { commandId: PiSessionCommandId; kind: "followUp"; input: PiPromptInput }
+  | { commandId: PiSessionCommandId; kind: "complete"; reason?: string };
+
+export type PiTurnStatus = "idle" | "running" | "waiting-to-continue" | "aborted" | "completed";
+export type PiTurnOperationKind = "prompt" | "continue" | "abort" | "steer" | "followUp";
+export type PiTurnOperationOutcome = "completed" | "errored" | "aborted";
+
+export type PiTurnOperationRecord = {
+  commandId: PiSessionCommandId;
+  turn: number;
+  operationIndex: number;
+  kind: PiTurnOperationKind;
+  stepKey: string;
+  outcome: PiTurnOperationOutcome;
+  errorMessage: string | null;
+  createdAt: Date;
+  completedAt: Date | null;
+};
+
 export type PiTurnSummary = {
   turn: number;
+  status: PiTurnStatus;
   assistant: AgentMessage | null;
   summary: string | null;
+  operations: PiTurnOperationRecord[];
+};
+
+export type PiSessionCommandRecord = {
+  commandId: PiSessionCommandId;
+  kind: PiSessionCommandType;
+  turn: number | null;
+  stepKey: string | null;
+  commandStatus: "accepted" | "applied" | "rejected";
+  rejectionReason: string | null;
+  createdAt: Date;
+  consumedAt: Date | null;
 };
 
 export type PiSessionDetailEvent = {
@@ -50,11 +101,11 @@ export type PiSessionDetailEvent = {
   runNumber?: number | null;
 };
 
-export type PiAgentLoopPhase = "waiting-for-user" | "running-agent" | "complete";
+export type PiAgentLoopPhase = "waiting-for-command" | "running-agent" | "complete";
 
 export type PiActiveSessionStreamItem = AgentEvent;
 
-export type PiActiveSessionSettledStatus = "waiting-for-user" | "complete" | "errored";
+export type PiActiveSessionSettledStatus = "waiting-for-command" | "complete" | "errored";
 
 export type PiActiveSessionUpdate =
   | {
@@ -77,6 +128,26 @@ export type PiActiveSessionReplayBufferEntry = {
 
 export type PiActiveSessionReplayBuffer = PiActiveSessionReplayBufferEntry[];
 
+export type PiLiveOperationController = {
+  turn: number;
+  operation: "prompt" | "continue";
+  stepKey: string;
+  abort(): void;
+  steer(input: PiPromptInput): void;
+  followUp(input: PiPromptInput): void;
+};
+
+export type PiLiveInjectionRecord = {
+  commandId: PiSessionCommandId;
+  commandKind: Extract<PiSessionCommandType, "abort" | "steer" | "followUp">;
+  attempted: boolean;
+  controllerPresent: boolean;
+  injected: boolean;
+  turn: number | null;
+  stepKey: string | null;
+  createdAt: Date;
+};
+
 export type PiActiveSessionState = {
   subscribe: (listener: PiActiveSessionSubscriber) => () => void;
   publishEvent: (turn: number, event: PiActiveSessionStreamItem) => void;
@@ -85,33 +156,50 @@ export type PiActiveSessionState = {
   exportReplayBuffer: () => PiActiveSessionReplayBuffer;
   importReplayBuffer: (buffer: PiActiveSessionReplayBuffer) => void;
   listenerCount: () => number;
+  registerLiveController: (controller: PiLiveOperationController) => void;
+  clearLiveController: (stepKey: string) => void;
+  getLiveController: () => PiLiveOperationController | null;
+  recordLiveInjection: (
+    commandId: PiSessionCommandId,
+    commandKind: Extract<PiSessionCommandType, "abort" | "steer" | "followUp">,
+    input?: PiPromptInput,
+  ) => PiLiveInjectionRecord;
+  getLiveInjection: (commandId: PiSessionCommandId) => PiLiveInjectionRecord | null;
 };
 
 export type PiAgentLoopWaitingFor =
   | {
-      type: "user_message";
+      type: "command";
       turn: number;
       stepKey: string;
+      allowedCommands: PiSessionCommandType[];
       timeoutMs: number | null;
     }
   | {
-      type: "assistant";
+      type: "agent" | "assistant";
       turn: number;
+      operation?: "prompt" | "continue";
       stepKey: string;
     }
   | null;
 
-export type PiAgentLoopSerializableState = {
+export type PiSessionDetailProjection = {
   messages: AgentMessage[];
   events: PiSessionDetailEvent[];
   trace: AgentEvent[];
-  summaries: PiTurnSummary[];
+  turns: PiTurnSummary[];
+  commandHistory: PiSessionCommandRecord[];
+};
+
+export type PiAgentLoopLiveState = {
   turn: number;
   phase: PiAgentLoopPhase;
   waitingFor: PiAgentLoopWaitingFor;
 };
 
-export type PiAgentLoopPersistedState = PiAgentLoopSerializableState & {
+export type PiAgentLoopSerializableState = PiSessionDetailProjection & PiAgentLoopLiveState;
+
+export type PiAgentLoopPersistedState = PiAgentLoopLiveState & {
   activeSessionUpdatesByTurn: PiActiveSessionReplayBuffer;
 };
 
@@ -124,9 +212,11 @@ export type PiSessionWorkflowStatus = {
 export type PiSessionDetail = PiSession & {
   workflow: PiSessionWorkflowStatus;
   messages: AgentMessage[];
+  /** @deprecated commandHistory is the command-oriented replacement. */
   events: PiSessionDetailEvent[];
   trace: AgentEvent[];
-  summaries: PiTurnSummary[];
+  turns: PiTurnSummary[];
+  commandHistory?: PiSessionCommandRecord[];
   turn: number;
   phase: PiAgentLoopPhase;
   waitingFor: PiAgentLoopWaitingFor;
@@ -145,6 +235,7 @@ export type PiWorkflowsService = Pick<
   | "createInstance"
   | "getInstanceStatus"
   | "getLiveInstanceState"
+  | "listHistory"
   | "restoreInstanceState"
   | "sendEvent"
 > & {

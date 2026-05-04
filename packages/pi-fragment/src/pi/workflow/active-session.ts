@@ -7,15 +7,20 @@ import type {
   PiActiveSessionUpdate,
   PiAgentLoopState,
   PiAgentLoopWaitingFor,
+  PiLiveInjectionRecord,
+  PiLiveOperationController,
+  PiPromptInput,
+  PiSessionCommandType,
 } from "../types";
 
-const WAIT_FOR_USER_TIMEOUT_MS = 60 * 60 * 1000;
+const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 
-const buildWaitingForUser = (turn: number): NonNullable<PiAgentLoopWaitingFor> => ({
-  type: "user_message",
+const buildWaitingForCommand = (turn: number): NonNullable<PiAgentLoopWaitingFor> => ({
+  type: "command",
   turn,
-  stepKey: `waitForEvent:wait-user-${turn}`,
-  timeoutMs: WAIT_FOR_USER_TIMEOUT_MS,
+  stepKey: `waitForEvent:wait-command-turn-${turn}-command-0`,
+  allowedCommands: ["prompt", "followUp", "complete"],
+  timeoutMs: WAIT_FOR_COMMAND_TIMEOUT_MS,
 });
 
 const getActiveSessionReplayBuffer = (state: PiAgentLoopState): PiActiveSessionReplayBuffer => {
@@ -32,6 +37,8 @@ export const createPiActiveSessionState = (options?: {
 }): PiActiveSessionState => {
   const listeners = new Set<PiActiveSessionSubscriber>();
   const updatesByTurn = new Map<number, PiActiveSessionUpdate[]>();
+  let liveController: PiLiveOperationController | null = null;
+  const liveInjections = new Map<string, PiLiveInjectionRecord>();
 
   const trimPreviousTurns = (turn: number) => {
     for (const previousTurn of updatesByTurn.keys()) {
@@ -82,6 +89,42 @@ export const createPiActiveSessionState = (options?: {
     }
   };
 
+  const recordLiveInjection = (
+    commandId: string,
+    commandKind: Extract<PiSessionCommandType, "abort" | "steer" | "followUp">,
+    input?: PiPromptInput,
+  ): PiLiveInjectionRecord => {
+    const controller = liveController;
+    let injected = false;
+    if (controller) {
+      try {
+        if (commandKind === "abort") {
+          controller.abort();
+        } else if (commandKind === "steer" && input) {
+          controller.steer(input);
+        } else if (commandKind === "followUp" && input) {
+          controller.followUp(input);
+        }
+        injected = true;
+      } catch {
+        injected = false;
+      }
+    }
+
+    const record: PiLiveInjectionRecord = {
+      commandId,
+      commandKind,
+      attempted: true,
+      controllerPresent: controller !== null,
+      injected,
+      turn: controller?.turn ?? null,
+      stepKey: controller?.stepKey ?? null,
+      createdAt: new Date(),
+    };
+    liveInjections.set(commandId, record);
+    return record;
+  };
+
   return {
     subscribe(listener) {
       listeners.add(listener);
@@ -107,17 +150,28 @@ export const createPiActiveSessionState = (options?: {
     exportReplayBuffer,
     importReplayBuffer,
     listenerCount: () => listeners.size,
+    registerLiveController(controller) {
+      liveController = controller;
+    },
+    clearLiveController(stepKey) {
+      if (liveController?.stepKey === stepKey) {
+        liveController = null;
+      }
+    },
+    getLiveController: () => liveController,
+    recordLiveInjection,
+    getLiveInjection(commandId) {
+      return liveInjections.get(commandId) ?? null;
+    },
   };
 };
 
-export const createInitialPiAgentLoopState = (messages: AgentMessage[] = []): PiAgentLoopState => ({
-  messages,
-  events: [],
-  trace: [],
-  summaries: [],
+export const createInitialPiAgentLoopState = (
+  _messages: AgentMessage[] = [],
+): PiAgentLoopState => ({
   turn: 0,
-  phase: "waiting-for-user",
-  waitingFor: buildWaitingForUser(0),
+  phase: "waiting-for-command",
+  waitingFor: buildWaitingForCommand(0),
   activeSessionUpdatesByTurn: [],
 });
 

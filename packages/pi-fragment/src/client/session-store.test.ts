@@ -45,13 +45,15 @@ const buildSession = (overrides: Partial<PiSessionDetail> = {}): PiSessionDetail
   messages: overrides.messages ?? [],
   events: overrides.events ?? [],
   trace: overrides.trace ?? [],
-  summaries: overrides.summaries ?? [],
+  turns: overrides.turns ?? [],
+  commandHistory: overrides.commandHistory ?? [],
   turn: overrides.turn ?? 0,
-  phase: overrides.phase ?? "waiting-for-user",
+  phase: overrides.phase ?? "waiting-for-command",
   waitingFor: overrides.waitingFor ?? {
-    type: "user_message",
+    type: "command",
     turn: 0,
-    stepKey: "wait-user-0",
+    stepKey: "waitForEvent:wait-command-turn-0-command-0",
+    allowedCommands: ["prompt", "followUp", "complete"],
     timeoutMs: 1_000,
   },
 });
@@ -102,7 +104,7 @@ describe("createPiSessionStore", () => {
     vi.restoreAllMocks();
   });
 
-  it("re-enables input when the live snapshot reports waiting for user after a refresh", async () => {
+  it("re-enables input when the live snapshot reports waiting for command after a refresh", async () => {
     const initialSession = buildSession({
       phase: "running-agent",
       waitingFor: { type: "assistant", turn: 0, stepKey: "assistant-0" },
@@ -116,8 +118,14 @@ describe("createPiSessionStore", () => {
           layer: "system",
           type: "snapshot",
           turn: 1,
-          phase: "waiting-for-user",
-          waitingFor: { type: "user_message", turn: 1, stepKey: "wait-user-1", timeoutMs: 1_000 },
+          phase: "waiting-for-command",
+          waitingFor: {
+            type: "command",
+            turn: 1,
+            stepKey: "waitForEvent:wait-command-turn-1-command-1",
+            allowedCommands: ["prompt", "followUp", "complete"],
+            timeoutMs: 1_000,
+          },
           replayCount: 0,
         },
       ]),
@@ -126,7 +134,7 @@ describe("createPiSessionStore", () => {
     const controller = createPiSessionStore(
       {
         createDetailStore: () => detailStore,
-        sendMessage: vi.fn(),
+        sendCommand: vi.fn(),
         buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
         fetcher,
       },
@@ -140,6 +148,49 @@ describe("createPiSessionStore", () => {
 
     expect(state.readyForInput).toBe(true);
     expect(state.statusText).toBeNull();
+
+    controller.destroy();
+  });
+
+  it("does not duplicate a prompt once the accepted command is visible in a snapshot", async () => {
+    const initialSession = buildSession();
+    const detailStore = createDetailStore(initialSession);
+    const sendCommand = vi.fn().mockResolvedValue({ commandId: "command-1", status: "active" });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(() => new Promise<Response>(() => undefined));
+
+    const controller = createPiSessionStore(
+      {
+        createDetailStore: () => detailStore,
+        sendCommand,
+        buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
+        fetcher,
+      },
+      {
+        sessionId: initialSession.id,
+        initialData: initialSession,
+      },
+    );
+
+    expect(controller.prompt({ text: "hello" })).toBe(true);
+    expect(controller.store.get().messages).toHaveLength(1);
+
+    await waitForStore(controller.store, (value) => !value.sending && value.messages.length === 0);
+
+    detailStore.set({
+      loading: false,
+      data: buildSession({
+        messages: [buildUserMessage("hello", 1_001)],
+        phase: "running-agent",
+        waitingFor: { type: "assistant", turn: 0, stepKey: "prompt-turn-0-op-0" },
+        updatedAt: initialSession.updatedAt,
+      }),
+    });
+
+    const state = controller.store.get();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({ role: "user", timestamp: 1_001 });
 
     controller.destroy();
   });
@@ -158,7 +209,13 @@ describe("createPiSessionStore", () => {
           messages: [buildUserMessage("hello", 1), committedAssistant],
           updatedAt: new Date("2026-01-01T00:00:01.000Z"),
           turn: 1,
-          waitingFor: { type: "user_message", turn: 1, stepKey: "wait-user-1", timeoutMs: 1_000 },
+          waitingFor: {
+            type: "command",
+            turn: 1,
+            stepKey: "waitForEvent:wait-command-turn-1-command-1",
+            allowedCommands: ["prompt", "followUp", "complete"],
+            timeoutMs: 1_000,
+          },
         }),
       });
     });
@@ -171,8 +228,14 @@ describe("createPiSessionStore", () => {
             layer: "system",
             type: "snapshot",
             turn: 0,
-            phase: "waiting-for-user",
-            waitingFor: { type: "user_message", turn: 0, stepKey: "wait-user-0", timeoutMs: 1_000 },
+            phase: "waiting-for-command",
+            waitingFor: {
+              type: "command",
+              turn: 0,
+              stepKey: "waitForEvent:wait-command-turn-0-command-0",
+              allowedCommands: ["prompt", "followUp", "complete"],
+              timeoutMs: 1_000,
+            },
             replayCount: 0,
           },
           {
@@ -193,7 +256,7 @@ describe("createPiSessionStore", () => {
             layer: "system",
             type: "settled",
             turn: 0,
-            status: "waiting-for-user",
+            status: "waiting-for-command",
           },
         ]),
       )
@@ -202,7 +265,7 @@ describe("createPiSessionStore", () => {
     const controller = createPiSessionStore(
       {
         createDetailStore: () => detailStore,
-        sendMessage: vi.fn(),
+        sendCommand: vi.fn(),
         buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
         fetcher,
       },
@@ -265,7 +328,7 @@ describe("createPiSessionStore", () => {
     const controller = createPiSessionStore(
       {
         createDetailStore: () => detailStore,
-        sendMessage: vi.fn(),
+        sendCommand: vi.fn(),
         buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
         fetcher,
       },
@@ -332,7 +395,7 @@ describe("createPiSessionStore", () => {
     const controller = createPiSessionStore(
       {
         createDetailStore: () => detailStore,
-        sendMessage: vi.fn(),
+        sendCommand: vi.fn(),
         buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
         fetcher,
       },
@@ -354,11 +417,11 @@ describe("createPiSessionStore", () => {
     controller.destroy();
   });
 
-  it("rolls back optimistic messages when sendMessage fails", async () => {
+  it("rolls back optimistic messages when prompt fails", async () => {
     const initialSession = buildSession();
     const detailStore = createDetailStore(initialSession);
 
-    const sendMessage = vi.fn().mockRejectedValue(new Error("send failed"));
+    const sendCommand = vi.fn().mockRejectedValue(new Error("send failed"));
     const fetcher = vi
       .fn<typeof fetch>()
       .mockImplementation(() => new Promise<Response>(() => undefined));
@@ -366,7 +429,7 @@ describe("createPiSessionStore", () => {
     const controller = createPiSessionStore(
       {
         createDetailStore: () => detailStore,
-        sendMessage,
+        sendCommand,
         buildActiveUrl: () => "http://localhost/api/pi/sessions/session-1/active",
         fetcher,
       },
@@ -376,7 +439,7 @@ describe("createPiSessionStore", () => {
       },
     );
 
-    expect(controller.sendMessage({ text: "hello" })).toBe(true);
+    expect(controller.prompt({ text: "hello" })).toBe(true);
     expect(controller.store.get().messages.at(-1)).toMatchObject({ role: "user" });
 
     const state = await waitForStore(
@@ -385,11 +448,9 @@ describe("createPiSessionStore", () => {
     );
 
     expect(state.sending).toBe(false);
-    expect(sendMessage).toHaveBeenCalledWith({
+    expect(sendCommand).toHaveBeenCalledWith({
       sessionId: initialSession.id,
-      text: "hello",
-      done: undefined,
-      steeringMode: undefined,
+      command: { kind: "prompt", input: { text: "hello" } },
     });
 
     controller.destroy();

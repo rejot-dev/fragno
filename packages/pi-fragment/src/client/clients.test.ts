@@ -19,7 +19,7 @@ const expectedKeys = [
   "useSessionDetail",
   "useCreateSession",
   "useActiveSession",
-  "useSendMessage",
+  "useCommandSession",
 ] as const;
 
 describe("pi-fragment client exports", () => {
@@ -45,10 +45,10 @@ describe("pi-fragment client exports", () => {
     expect(clients.useActiveSession.route.method).toBe("GET");
     expect(typeof clients.useActiveSession.store).toBe("function");
 
-    expect(clients.useSendMessage.route.path).toBe("/sessions/:sessionId/messages");
-    expect(clients.useSendMessage.route.method).toBe("POST");
-    expect(typeof clients.useSendMessage.mutateQuery).toBe("function");
-    expect(clients.useSendMessage.mutatorStore).toBeDefined();
+    expect(clients.useCommandSession.route.path).toBe("/sessions/:sessionId/command");
+    expect(clients.useCommandSession.route.method).toBe("POST");
+    expect(typeof clients.useCommandSession.mutateQuery).toBe("function");
+    expect(clients.useCommandSession.mutatorStore).toBeDefined();
   });
 
   it("creates vanilla client factory without throwing", () => {

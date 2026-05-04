@@ -27,7 +27,8 @@ export type PiSessionStoreView = {
   sending: ReadableAtom<PiSessionStoreState["sending"]>;
   error: ReadableAtom<PiSessionStoreState["error"]>;
   sendError: ReadableAtom<PiSessionStoreState["sendError"]>;
-  sendMessage: PiSessionStoreController["sendMessage"];
+  sendCommand: PiSessionStoreController["sendCommand"];
+  prompt: PiSessionStoreController["prompt"];
   refetch: PiSessionStoreController["refetch"];
   [Symbol.dispose]: () => void;
 };
@@ -58,7 +59,8 @@ export function createPiSessionControllerStore(
       sending: select(controller.store, (state) => state.sending),
       error: select(controller.store, (state) => state.error),
       sendError: select(controller.store, (state) => state.sendError),
-      sendMessage: controller.sendMessage,
+      sendCommand: controller.sendCommand,
+      prompt: controller.prompt,
       refetch: controller.refetch,
       // React store factories may dispose during dev StrictMode or transitional rerenders.
       // Use the lighter controller cleanup here so live subscriptions are torn down without

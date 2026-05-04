@@ -2,24 +2,30 @@ import { createId } from "@fragno-dev/db/id";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import { serviceCalls } from "@fragno-dev/db";
+import { serviceCalls, type DatabaseRequestContext } from "@fragno-dev/db";
 
 import { PiLogger } from "./debug-log";
 import { piFragmentDefinition } from "./pi/definition";
 import { normalizeSteeringMode, toSessionOutput } from "./pi/mappers";
+import { createPiJsonlExport } from "./pi/pi-jsonl-export";
 import {
   activeSessionStreamItemSchema,
-  messageAckSchema,
+  commandAckSchema,
+  commandInputSchema,
   sessionBaseSchema,
   sessionDetailSchema,
 } from "./pi/route-schemas";
 import type {
   PiActiveSessionProtocolMessage,
   PiActiveSessionUpdate,
-  PiAgentLoopState,
   PiAgentLoopSerializableState,
+  PiAgentLoopState,
+  PiPromptInput,
   PiSession,
+  PiSessionCommandPayload,
+  PiWorkflowsInstanceStatus,
 } from "./pi/types";
+import { projectSessionDetailFromWorkflowHistory } from "./pi/workflow/reconstruct-session";
 import {
   createInitialPiAgentLoopState,
   ensurePiActiveSessionState,
@@ -53,22 +59,6 @@ const parseBooleanQueryValue = (value: string | null, defaultValue: boolean): bo
   return defaultValue;
 };
 
-const projectSessionDetailState = (
-  state: PiAgentLoopState | null | undefined,
-): PiAgentLoopSerializableState => {
-  const nextState = state ?? createInitialPiAgentLoopState();
-
-  return {
-    messages: nextState.messages,
-    events: nextState.events,
-    trace: nextState.trace,
-    summaries: nextState.summaries,
-    turn: nextState.turn,
-    phase: nextState.phase,
-    waitingFor: nextState.waitingFor,
-  };
-};
-
 const isSessionStreamable = (state: PiAgentLoopState) => state.phase !== "complete";
 
 const ensureLiveSessionActiveState = (state: PiAgentLoopState) => {
@@ -76,6 +66,31 @@ const ensureLiveSessionActiveState = (state: PiAgentLoopState) => {
     return null;
   }
   return ensurePiActiveSessionState(state);
+};
+
+const createCommandPayload = (
+  commandId: string,
+  command: z.infer<typeof commandInputSchema>,
+): PiSessionCommandPayload => {
+  switch (command.kind) {
+    case "prompt":
+    case "steer":
+    case "followUp":
+      return { commandId, kind: command.kind, input: command.input as PiPromptInput };
+    case "abort":
+    case "complete":
+      return command.reason
+        ? { commandId, kind: command.kind, reason: command.reason }
+        : { commandId, kind: command.kind };
+    case "continue":
+      return { commandId, kind: command.kind };
+  }
+};
+
+type PiSessionDetailSnapshot = {
+  session: PiSession;
+  workflowStatus: PiWorkflowsInstanceStatus;
+  detailState: PiAgentLoopSerializableState;
 };
 
 const toActiveSessionProtocolMessage = (
@@ -106,6 +121,80 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
     if (config.logging) {
       PiLogger.configure(config.logging);
     }
+
+    const loadPiSessionDetailSnapshot = async (
+      routeContext: DatabaseRequestContext,
+      sessionId: string,
+    ): Promise<PiSessionDetailSnapshot> => {
+      const workflowsService = serviceDeps.workflows;
+      const workflowName = PI_WORKFLOW_NAME;
+      const liveSessionSnapshot = workflowsService.getLiveInstanceState(workflowName, sessionId);
+
+      const result = await routeContext
+        .handlerTx()
+        .withServiceCalls(() =>
+          serviceCalls(
+            workflowsService.getInstanceStatus(workflowName, sessionId),
+            workflowsService.listHistory({ workflowName, instanceId: sessionId }),
+            liveSessionSnapshot
+              ? undefined
+              : workflowsService.restoreInstanceState(workflowName, sessionId),
+          ),
+        )
+        .retrieve(({ forSchema }) =>
+          forSchema(piSchema).findFirst("session", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
+          ),
+        )
+        .transform(({ retrieveResult: [sessionRow], serviceResult }) => {
+          if (!sessionRow) {
+            throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
+          }
+
+          const [workflowStatus, history, restoredCursorState] = serviceResult;
+          const cursorState =
+            liveSessionSnapshot?.state ?? restoredCursorState ?? createInitialPiAgentLoopState();
+          const detailState = projectSessionDetailFromWorkflowHistory({
+            liveState: cursorState,
+            events: history.events,
+            steps: history.steps,
+          });
+
+          return {
+            session: toSessionOutput(sessionRow),
+            workflowStatus,
+            detailState,
+          };
+        })
+        .execute();
+
+      return result;
+    };
+
+    const toSessionDetailLoadError = (err: unknown, sessionId: string) => {
+      if (err && typeof err === "object" && "code" in err && "status" in err) {
+        const routeError = err as RouteError;
+        const code: "SESSION_NOT_FOUND" | "WORKFLOW_INSTANCE_MISSING" =
+          routeError.code === "SESSION_NOT_FOUND"
+            ? "SESSION_NOT_FOUND"
+            : "WORKFLOW_INSTANCE_MISSING";
+        return {
+          body: { message: routeError.message, code },
+          init: { status: code === "SESSION_NOT_FOUND" ? (404 as const) : (500 as const) },
+        };
+      }
+      if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
+        return {
+          body: { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" as const },
+          init: { status: 404 as const },
+        };
+      }
+      const message = err instanceof Error ? err.message : "Failed to load workflow detail.";
+      return {
+        body: { message, code: "WORKFLOW_INSTANCE_MISSING" as const },
+        init: { status: 500 as const },
+      };
+    };
 
     return [
       defineRoute({
@@ -228,62 +317,17 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/sessions/:sessionId",
-        queryParameters: ["events", "trace", "summaries"],
+        queryParameters: ["events", "trace", "turns"],
         outputSchema: sessionDetailSchema,
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
         handler: async function ({ pathParams, query }, { json, error }) {
           const sessionId = pathParams.sessionId;
           const includeEvents = parseBooleanQueryValue(query.get("events"), true);
           const includeTrace = parseBooleanQueryValue(query.get("trace"), true);
-          const includeSummaries = parseBooleanQueryValue(query.get("summaries"), true);
-
-          const workflowsService = serviceDeps.workflows;
-
-          const workflowName = PI_WORKFLOW_NAME;
+          const includeTurns = parseBooleanQueryValue(query.get("turns"), true);
 
           try {
-            const liveSessionSnapshot = workflowsService.getLiveInstanceState(
-              workflowName,
-              sessionId,
-            );
-
-            const result = await this.handlerTx()
-              .retrieve(({ forSchema }) => {
-                const uow = forSchema(piSchema);
-                return uow.findFirst("session", (b) =>
-                  b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
-                );
-              })
-              .withServiceCalls(() =>
-                serviceCalls(
-                  workflowsService.getInstanceStatus(workflowName, sessionId),
-                  liveSessionSnapshot
-                    ? undefined
-                    : workflowsService.restoreInstanceState(workflowName, sessionId),
-                ),
-              )
-              .transform(({ retrieveResult, serviceResult }) => {
-                const [sessionRow] = retrieveResult;
-                if (!sessionRow) {
-                  throw createRouteError(
-                    "SESSION_NOT_FOUND",
-                    `Session ${sessionId} not found.`,
-                    404,
-                  );
-                }
-
-                const [workflowStatus, restoredState] = serviceResult;
-                const detailState = projectSessionDetailState(
-                  liveSessionSnapshot?.state ?? restoredState,
-                );
-
-                return {
-                  session: toSessionOutput(sessionRow),
-                  workflowStatus,
-                  detailState,
-                };
-              })
-              .execute();
+            const result = await loadPiSessionDetailSnapshot(this, sessionId);
 
             return json({
               ...result.session,
@@ -299,26 +343,51 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               turn: result.detailState.turn,
               phase: result.detailState.phase,
               waitingFor: result.detailState.waitingFor,
-              summaries: includeSummaries ? result.detailState.summaries : [],
+              turns: includeTurns ? result.detailState.turns : [],
+              commandHistory: result.detailState.commandHistory,
             });
           } catch (err) {
-            if (err && typeof err === "object" && "code" in err && "status" in err) {
-              const routeError = err as RouteError;
-              const code =
-                routeError.code === "SESSION_NOT_FOUND"
-                  ? "SESSION_NOT_FOUND"
-                  : "WORKFLOW_INSTANCE_MISSING";
-              const status = code === "SESSION_NOT_FOUND" ? 404 : 500;
-              return error({ message: routeError.message, code }, { status });
-            }
-            if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
+            const loadError = toSessionDetailLoadError(err, sessionId);
+            return error(loadError.body, loadError.init);
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/sessions/:sessionId/export/pi-jsonl",
+        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
+        handler: async function ({ pathParams }, { error }) {
+          const sessionId = pathParams.sessionId;
+
+          try {
+            const snapshot = await loadPiSessionDetailSnapshot(this, sessionId);
+            const agent = config.agents[snapshot.session.agent];
+            if (!agent) {
               return error(
-                { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" },
-                { status: 404 },
+                {
+                  message: `Agent ${snapshot.session.agent} not found for session ${sessionId}.`,
+                  code: "WORKFLOW_INSTANCE_MISSING",
+                },
+                { status: 500 },
               );
             }
-            const message = err instanceof Error ? err.message : "Failed to load workflow detail.";
-            return error({ message, code: "WORKFLOW_INSTANCE_MISSING" }, { status: 500 });
+
+            const jsonl = createPiJsonlExport({
+              session: snapshot.session,
+              agent,
+              messages: snapshot.detailState.messages,
+            });
+
+            return new Response(jsonl, {
+              status: 200,
+              headers: {
+                "content-type": "application/x-ndjson; charset=utf-8",
+                "content-disposition": `attachment; filename="pi-session-${sessionId}.jsonl"`,
+              },
+            });
+          } catch (err) {
+            const loadError = toSessionDetailLoadError(err, sessionId);
+            return error(loadError.body, loadError.init);
           }
         },
       }),
@@ -498,86 +567,87 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       }),
       defineRoute({
         method: "POST",
-        path: "/sessions/:sessionId/messages",
-        inputSchema: z.object({
-          text: z.string(),
-          done: z.boolean().optional(),
-          steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
-        }),
-        outputSchema: messageAckSchema,
-        errorCodes: ["SESSION_NOT_FOUND", "SESSION_NOT_READY", "WORKFLOW_INSTANCE_MISSING"],
+        path: "/sessions/:sessionId/command",
+        inputSchema: commandInputSchema,
+        outputSchema: commandAckSchema,
+        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
         handler: async function ({ input, pathParams }, { json, error }) {
-          const values = await input.valid();
+          const command = await input.valid();
           const sessionId = pathParams.sessionId;
-
           const workflowsService = serviceDeps.workflows;
-
           const workflowName = PI_WORKFLOW_NAME;
-          const payload: {
-            text: string;
-            done?: boolean;
-            steeringMode?: "all" | "one-at-a-time";
-          } = {
-            text: values.text,
-            done: values.done,
-          };
-          if (values.steeringMode) {
-            payload.steeringMode = values.steeringMode;
-          }
+          const commandId = createId();
+          const payload = createCommandPayload(commandId, command);
 
           try {
-            const [sessionRow] = await this.handlerTx()
-              .retrieve(({ forSchema }) => {
-                const uow = forSchema(piSchema);
-                return uow.findFirst("session", (b) =>
-                  b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
-                );
-              })
-              .execute();
-
-            if (!sessionRow) {
-              throw createRouteError("SESSION_NOT_FOUND", `Session ${sessionId} not found.`, 404);
-            }
-
-            if (!payload.steeringMode) {
-              // This route still needs the persisted session row before sending the event so the
-              // workflow receives the session's effective steering mode when the caller omits it.
-              payload.steeringMode = normalizeSteeringMode(
-                sessionRow.steeringMode ?? config.defaultSteeringMode,
-              );
-            }
+            const liveInjection =
+              command.kind === "abort" || command.kind === "steer" || command.kind === "followUp"
+                ? (() => {
+                    const liveState = workflowsService.getLiveInstanceState(
+                      workflowName,
+                      sessionId,
+                    );
+                    const activeSession = liveState?.state
+                      ? ensurePiActiveSessionState(liveState.state)
+                      : null;
+                    return activeSession?.recordLiveInjection(
+                      commandId,
+                      command.kind,
+                      "input" in payload ? payload.input : undefined,
+                    );
+                  })()
+                : null;
 
             const result = await this.handlerTx()
               .withServiceCalls(() =>
-                serviceCalls(
-                  workflowsService.sendEvent(workflowName, sessionId, {
-                    type: "user_message",
-                    payload,
-                  }),
-                  workflowsService.getInstanceStatus(workflowName, sessionId),
+                liveInjection?.injected
+                  ? serviceCalls(workflowsService.getInstanceStatus(workflowName, sessionId))
+                  : serviceCalls(
+                      workflowsService.sendEvent(workflowName, sessionId, {
+                        type: "command",
+                        payload,
+                      }),
+                      workflowsService.getInstanceStatus(workflowName, sessionId),
+                    ),
+              )
+              .retrieve(({ forSchema }) =>
+                forSchema(piSchema).findFirst("session", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
                 ),
               )
-              .mutate(({ forSchema }) => {
-                const updates: {
-                  updatedAt: Date;
-                  steeringMode?: "all" | "one-at-a-time";
-                } = {
-                  updatedAt: new Date(),
-                };
-                if (values.steeringMode) {
-                  updates.steeringMode = values.steeringMode;
+              .mutate(({ forSchema, retrieveResult: [sessionRow] }) => {
+                if (!sessionRow) {
+                  throw createRouteError(
+                    "SESSION_NOT_FOUND",
+                    `Session ${sessionId} not found.`,
+                    404,
+                  );
                 }
+
                 const uow = forSchema(piSchema);
-                uow.update("session", sessionRow.id, (b) => b.set(updates).check());
+                uow.update("session", sessionRow.id, (b) =>
+                  b.set({ updatedAt: new Date() }).check(),
+                );
               })
               .transform(({ serviceResult }) => {
-                const [, workflowStatus] = serviceResult;
+                const workflowStatus = liveInjection?.injected
+                  ? serviceResult[0]
+                  : serviceResult[1];
+                if (!workflowStatus) {
+                  throw createRouteError(
+                    "WORKFLOW_INSTANCE_MISSING",
+                    `Session ${sessionId} workflow status is missing.`,
+                    500,
+                  );
+                }
                 return { workflowStatus };
               })
               .execute();
 
             return json(
               {
+                accepted: true,
+                commandId,
                 status: result.workflowStatus.status,
               },
               202,
@@ -588,11 +658,8 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               const code =
                 routeError.code === "SESSION_NOT_FOUND"
                   ? "SESSION_NOT_FOUND"
-                  : routeError.code === "SESSION_NOT_READY"
-                    ? "SESSION_NOT_READY"
-                    : "WORKFLOW_INSTANCE_MISSING";
-              const status =
-                code === "SESSION_NOT_FOUND" ? 404 : code === "SESSION_NOT_READY" ? 409 : 500;
+                  : "WORKFLOW_INSTANCE_MISSING";
+              const status = code === "SESSION_NOT_FOUND" ? 404 : 500;
               return error({ message: routeError.message, code }, { status });
             }
             if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
@@ -601,7 +668,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 { status: 404 },
               );
             }
-            const message = err instanceof Error ? err.message : "Failed to deliver message.";
+            const message = err instanceof Error ? err.message : "Failed to deliver command.";
             return error({ message, code: "WORKFLOW_INSTANCE_MISSING" }, { status: 500 });
           }
         },
