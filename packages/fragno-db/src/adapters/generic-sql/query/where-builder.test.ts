@@ -5,7 +5,7 @@ import { Kysely, PostgresDialect } from "kysely";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
 import { dbNow } from "../../../query/db-now";
 import { ReferenceSubquery } from "../../../query/value-encoding";
-import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import { column, FragnoId, idColumn, referenceColumn, schema } from "../../../schema/create";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
 
@@ -605,7 +605,7 @@ describe("where-builder", () => {
         expect(val).toHaveProperty("_limit", 1);
       });
 
-      it("should not generate subquery for bigint reference", () => {
+      it("should serialize bigint reference for sqlite", () => {
         const condition = {
           type: "compare" as const,
           a: postsTable.columns.userId,
@@ -616,18 +616,42 @@ describe("where-builder", () => {
         const result = buildWhere(
           condition,
           createMockEB(),
-          new NodePostgresDriverConfig(),
+          new BetterSQLite3DriverConfig(),
           undefined,
           undefined,
           postsTable,
         );
 
-        // Should not generate a subquery for bigint
         expect(result).toEqual({
           type: "compare",
           col: "posts.userId",
           op: "=",
-          val: 12345n,
+          val: 12345,
+        });
+      });
+
+      it("should serialize FragnoId internal ids for sqlite reference columns", () => {
+        const condition = {
+          type: "compare" as const,
+          a: postsTable.columns.userId,
+          operator: "=" as const,
+          b: new FragnoId({ externalId: "user-external-id-123", internalId: 12345n, version: 0 }),
+        };
+
+        const result = buildWhere(
+          condition,
+          createMockEB(),
+          new BetterSQLite3DriverConfig(),
+          undefined,
+          undefined,
+          postsTable,
+        );
+
+        expect(result).toEqual({
+          type: "compare",
+          col: "posts.userId",
+          op: "=",
+          val: 12345,
         });
       });
 

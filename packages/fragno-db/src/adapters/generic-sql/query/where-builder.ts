@@ -114,8 +114,8 @@ export function buildWhere(
               .limit(1);
           }
         } else if (val instanceof FragnoId && val.internalId !== undefined) {
-          // FragnoId with internal ID - use it directly (no serialization needed)
-          val = val.internalId;
+          // FragnoId with internal ID - use the referenced internal ID, serialized for the driver.
+          val = serializer.serialize(val.internalId, left);
         } else if (val instanceof FragnoId && val.internalId === undefined) {
           // FragnoId without internal ID - create subquery using external ID
           const foreignKey = getTableForeignKey(table, left.name);
@@ -142,8 +142,8 @@ export function buildWhere(
               .limit(1);
           }
         } else if (val instanceof FragnoReference) {
-          // FragnoReference - use internal ID directly (no serialization needed)
-          val = val.internalId;
+          // FragnoReference - use the referenced internal ID, serialized for the driver.
+          val = serializer.serialize(val.internalId, left);
         } else {
           // Other values - resolve and serialize
           const resolvedVal = resolveFragnoIdValue(val, left);
