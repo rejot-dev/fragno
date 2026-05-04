@@ -9,19 +9,44 @@ import {
 } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 
+import { PiLogger } from "../../debug-log";
 import type {
   PiAgentDefinition,
+  PiPersistedToolCall,
+  PiPersistedToolResult,
+  PiPromptInput,
   PiSession,
   PiToolFactory,
   PiToolFactoryContext,
+  PiToolReplayContext,
   PiToolRegistry,
 } from "../types";
+import {
+  buildStableToolCallKey,
+  buildToolErrorResult,
+  clonePersistedToolCall,
+  createPersistedToolCall,
+  extractToolErrorMessage,
+  takeNextReplaySequence,
+} from "./tool-journal";
 
 export type AgentLoopParams = {
   sessionId: string;
   agentName: string;
   systemPrompt?: string;
   initialMessages?: AgentMessage[];
+};
+
+export type PiAgentRunMode = "prompt" | "continue";
+
+export type PiAgentRunResult = {
+  mode: PiAgentRunMode;
+  outcome: "completed" | "errored" | "aborted";
+  messages: AgentMessage[];
+  trace: AgentEvent[];
+  assistant: AgentMessage | null;
+  errorMessage: string | null;
+  toolJournal: PiPersistedToolCall[];
 };
 
 // --- Stream wrapping ---
@@ -122,12 +147,74 @@ const resolveTool = async (
   return factory;
 };
 
+const wrapToolWithReplay = (options: {
+  toolName: string;
+  tool: AgentTool;
+  context: PiToolFactoryContext;
+}): AgentTool => ({
+  ...options.tool,
+  execute: async (toolCallId, params, signal, onUpdate) => {
+    const sessionId = options.context.session.id;
+    const toolCallIdValue = String(toolCallId);
+    const key = buildStableToolCallKey(sessionId, options.context.turnId, toolCallIdValue);
+    const replayEntry = options.context.replay.cache.get(key);
+
+    if (replayEntry) {
+      options.context.replay.journal.push(
+        clonePersistedToolCall({
+          ...replayEntry,
+          source: "replay",
+          seq: takeNextReplaySequence(options.context.replay),
+        }),
+      );
+      PiLogger.debug("tool replay hit", {
+        sessionId,
+        turnId: options.context.turnId,
+        toolName: replayEntry.toolName,
+        key,
+      });
+      if (replayEntry.isError) {
+        throw new Error(extractToolErrorMessage(replayEntry.result));
+      }
+      return structuredClone(replayEntry.result);
+    }
+
+    const argsSnapshot = structuredClone(params) as Record<string, unknown>;
+    const recordResult = (result: PiPersistedToolResult, isError: boolean) => {
+      const entry = createPersistedToolCall({
+        sessionId,
+        turnId: options.context.turnId,
+        toolCallId: toolCallIdValue,
+        toolName: options.toolName,
+        args: argsSnapshot,
+        result,
+        isError,
+        source: "executed",
+        seq: takeNextReplaySequence(options.context.replay),
+      });
+      options.context.replay.cache.set(entry.key, clonePersistedToolCall(entry));
+      options.context.replay.journal.push(clonePersistedToolCall(entry));
+      return entry;
+    };
+
+    try {
+      const result = await options.tool.execute(toolCallId, params, signal, onUpdate);
+      recordResult(structuredClone(result) as PiPersistedToolResult, false);
+      return result;
+    } catch (error) {
+      recordResult(buildToolErrorResult(error), true);
+      throw error;
+    }
+  },
+});
+
 const resolveTools = async (options: {
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
   session: PiSession;
   turnId: string;
   messages: AgentMessage[];
+  replay: PiToolReplayContext;
 }): Promise<AgentTool[]> => {
   const toolNames = options.agent.tools ?? [];
   if (toolNames.length === 0) {
@@ -139,12 +226,13 @@ const resolveTools = async (options: {
     turnId: options.turnId,
     toolConfig: options.agent.toolConfig ?? null,
     messages: options.messages,
+    replay: options.replay,
   };
 
   const resolved: AgentTool[] = [];
   for (const name of toolNames) {
     const tool = await resolveTool(name, options.tools[name], context);
-    resolved.push(tool);
+    resolved.push(wrapToolWithReplay({ toolName: name, tool, context }));
   }
 
   return resolved;
@@ -155,6 +243,47 @@ const resolveTools = async (options: {
 const findLastAssistantMessage = (messages: AgentMessage[]): AgentMessage | null =>
   messages.findLast((m) => m.role === "assistant") ?? null;
 
+const getAssistantErrorMessage = (assistant: AgentMessage | null): string | null => {
+  if (!assistant || assistant.role !== "assistant") {
+    return null;
+  }
+  return typeof assistant.errorMessage === "string" && assistant.errorMessage.length > 0
+    ? assistant.errorMessage
+    : null;
+};
+
+const getRunOutcome = (
+  agent: Agent,
+  assistant: AgentMessage | null,
+): PiAgentRunResult["outcome"] => {
+  if (assistant?.role === "assistant" && assistant.stopReason === "aborted") {
+    return "aborted";
+  }
+  if (typeof agent.state.errorMessage === "string" && agent.state.errorMessage.length > 0) {
+    return agent.signal?.aborted ||
+      (assistant?.role === "assistant" && assistant.stopReason === "aborted")
+      ? "aborted"
+      : "errored";
+  }
+  if (assistant?.role === "assistant" && assistant.stopReason === "error") {
+    return "errored";
+  }
+  return "completed";
+};
+
+const normalizeMessagesForContinue = (messages: AgentMessage[]): AgentMessage[] => {
+  const finalMessage = messages.at(-1);
+  if (
+    finalMessage?.role === "assistant" &&
+    (finalMessage.stopReason === "error" || finalMessage.stopReason === "aborted") &&
+    typeof finalMessage.errorMessage === "string" &&
+    finalMessage.errorMessage.length > 0
+  ) {
+    return messages.slice(0, -1);
+  }
+  return messages;
+};
+
 const createAgent = async (options: {
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
@@ -162,11 +291,14 @@ const createAgent = async (options: {
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
+  replay: PiToolReplayContext;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<{
   agent: Agent;
   trace: AgentEvent[];
   assistant: AgentMessage | null;
+  toolJournal: PiPersistedToolCall[];
+  unsubscribe: () => void;
 }> => {
   const now = new Date();
   const session: PiSession = {
@@ -187,6 +319,7 @@ const createAgent = async (options: {
     session,
     turnId: options.turnId,
     messages: options.messages,
+    replay: options.replay,
   });
 
   const initialState: Partial<AgentState> = {
@@ -233,40 +366,91 @@ const createAgent = async (options: {
     }
   });
 
-  try {
-    await agent.continue();
-  } finally {
-    unsubscribe();
-  }
-
-  const assistant = findLastAssistantMessage(agent.state.messages);
-  if (typeof agent.state.errorMessage === "string" && agent.state.errorMessage.length > 0) {
-    throw new Error(agent.state.errorMessage);
-  }
-  if (assistant && "errorMessage" in assistant && typeof assistant.errorMessage === "string") {
-    throw new Error(assistant.errorMessage);
-  }
   return {
     agent,
     trace,
-    assistant,
+    assistant: null,
+    toolJournal: options.replay.journal.map(clonePersistedToolCall),
+    unsubscribe,
   };
 };
 
+const runAgentOperation = async (
+  result: Awaited<ReturnType<typeof createAgent>>,
+  mode: PiAgentRunMode,
+  promptInput: PiPromptInput | undefined,
+) => {
+  try {
+    if (mode === "prompt") {
+      if (!promptInput) {
+        throw new NonRetryableError("Prompt mode requires prompt input.");
+      }
+      await result.agent.prompt(promptInput.text, promptInput.images);
+    } else {
+      await result.agent.continue();
+    }
+  } finally {
+    // The caller owns no subscription handle; createAgent registers exactly one subscription and
+    // the Agent API guarantees waitForIdle has settled when prompt/continue resolves.
+  }
+};
+
 export const runAgentTurn = async (options: {
+  mode: PiAgentRunMode;
+  promptInput?: PiPromptInput;
   params: AgentLoopParams;
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
+  replay: PiToolReplayContext;
   onEvent?: (event: AgentEvent) => void;
-}) => {
-  const result = await createAgent(options);
+  onController?: (controller: {
+    abort(): void;
+    steer(input: PiPromptInput): void;
+    followUp(input: PiPromptInput): void;
+  }) => void;
+  onControllerClear?: () => void;
+}): Promise<PiAgentRunResult> => {
+  const messages =
+    options.mode === "continue" ? normalizeMessagesForContinue(options.messages) : options.messages;
+  const result = await createAgent({ ...options, messages });
+  const unsubscribeController = () => options.onControllerClear?.();
+  options.onController?.({
+    abort: () => result.agent.abort(),
+    steer: (input) =>
+      result.agent.steer({
+        role: "user",
+        content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
+        timestamp: Date.now(),
+      }),
+    followUp: (input) =>
+      result.agent.followUp({
+        role: "user",
+        content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
+        timestamp: Date.now(),
+      }),
+  });
+
+  try {
+    await runAgentOperation(result, options.mode, options.promptInput);
+  } finally {
+    unsubscribeController();
+    result.unsubscribe();
+  }
+
+  const assistant = findLastAssistantMessage(result.agent.state.messages);
+  const outcome = getRunOutcome(result.agent, assistant);
+  const errorMessage = result.agent.state.errorMessage ?? getAssistantErrorMessage(assistant);
 
   return {
+    mode: options.mode,
+    outcome,
     messages: result.agent.state.messages,
     trace: result.trace,
-    assistant: result.assistant,
+    assistant: outcome === "completed" ? assistant : null,
+    errorMessage: errorMessage ?? null,
+    toolJournal: options.replay.journal.map(clonePersistedToolCall),
   };
 };

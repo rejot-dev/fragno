@@ -34,7 +34,7 @@ const baseState: PiSessionStoreState = {
 
 const sessionStoreDeps = {
   createDetailStore: vi.fn(),
-  sendMessage: vi.fn(),
+  sendCommand: vi.fn(),
   buildActiveUrl: vi.fn(() => "http://localhost/api/pi/sessions/session-1/active"),
   fetcher: vi.fn<typeof fetch>(),
 } satisfies CreatePiSessionStoreDependencies;
@@ -47,7 +47,8 @@ describe("createPiSessionControllerStore", () => {
   it("deactivates the session controller when the store view is disposed", () => {
     const controller: PiSessionStoreController = {
       store: atom(baseState),
-      sendMessage: vi.fn(() => true),
+      sendCommand: vi.fn(() => true),
+      prompt: vi.fn(() => true),
       refetch: vi.fn(),
       deactivate: vi.fn(),
       destroy: vi.fn(),
@@ -68,7 +69,8 @@ describe("createPiSessionControllerStore", () => {
 
     expect(controller.deactivate).toHaveBeenCalledTimes(1);
     expect(controller.destroy).not.toHaveBeenCalled();
-    expect(sessionView.sendMessage).toBe(controller.sendMessage);
+    expect(sessionView.sendCommand).toBe(controller.sendCommand);
+    expect(sessionView.prompt).toBe(controller.prompt);
     expect(sessionView.refetch).toBe(controller.refetch);
     expect(sessionView.connection.get()).toBe("idle");
   });

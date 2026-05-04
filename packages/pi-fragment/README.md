@@ -68,12 +68,25 @@ Workflows are executed via the workflows fragment durable hook dispatcher. For a
 - `POST /sessions`
 - `GET /sessions`
 - `GET /sessions/:sessionId`
-- `POST /sessions/:sessionId/messages`
+- `GET /sessions/:sessionId/active`
+- `GET /sessions/:sessionId/export/pi-jsonl`
+- `POST /sessions/:sessionId/command`
 
-`POST /sessions/:sessionId/messages` is asynchronous. It returns `202 Accepted` with a status-only
-ACK payload. Fetch `GET /sessions/:sessionId` to read the restored current-run detail payload
-(messages, events, trace, summaries, phase, and waiting markers) once the workflow processes the
-message.
+`POST /sessions/:sessionId/command` accepts a discriminated command body such as
+`{ kind: "prompt", input: { text: "hello" } }`, `{ kind: "continue" }`, or
+`{ kind: "complete", reason: "done" }`. It returns `202 Accepted` with a status-only ACK payload.
+Fetch `GET /sessions/:sessionId` to read the restored current-run detail payload (messages, events,
+trace, summaries, phase, and waiting markers) once the workflow processes the command.
+
+Export a session as a Pi-compatible JSONL file:
+
+```sh
+curl "$BASE_URL/sessions/$SESSION_ID/export/pi-jsonl" \
+  -o "pi-session-$SESSION_ID.jsonl"
+```
+
+The exported Pi `cwd` is fixed to `/workspace` by design; callers cannot override it with a query
+parameter.
 
 ## Client usage
 

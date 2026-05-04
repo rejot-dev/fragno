@@ -27,7 +27,7 @@ import type {
   PiToolRegistry,
   PiWorkflowsService,
 } from "./types";
-import { createPiWorkflows } from "./workflow/workflow";
+import { createPiWorkflows, type PiAgentRunner } from "./workflow/workflow";
 
 /** Matches `withDatabase(piSchema)` default namespace (sanitized schema name). */
 export const PI_DB_NAMESPACE = "pi_fragment";
@@ -258,22 +258,35 @@ export const createTestWorkflows = (options: {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
   logging?: PiFragmentConfig["logging"];
+  agentRunner?: PiAgentRunner;
 }) =>
   createPiWorkflows({
     agents: options.agents,
     tools: options.tools,
     logging: options.logging,
+    agentRunner: options.agentRunner,
   });
 
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;
 
 type WorkflowsHarness = WorkflowsTestHarness<ReturnType<typeof createTestWorkflows>>;
 
+const changedRouteRoundtripGuard = {
+  routes: [
+    { method: "GET" as const, path: "/sessions/:sessionId" },
+    { method: "GET" as const, path: "/sessions/:sessionId/export/pi-jsonl" },
+    { method: "GET" as const, path: "/sessions/:sessionId/active" },
+    { method: "POST" as const, path: "/sessions/:sessionId/command" },
+  ],
+};
+
 export type DatabaseFragmentsTest = {
   fragments: {
     pi: {
       callRoute: PiFragmentInstance["callRoute"];
       callRouteRaw: PiFragmentInstance["callRouteRaw"];
+      services: PiFragmentInstance["services"];
+      callServices: PiFragmentInstance["callServices"];
     };
   };
   workflows: WorkflowsHarness;
@@ -290,12 +303,14 @@ export const buildHarness = async (
     ) => PiWorkflowsService;
     autoTickHooks?: boolean;
     liveStateStore?: WorkflowLiveStateStore;
+    agentRunner?: PiAgentRunner;
   } = {},
 ): Promise<DatabaseFragmentsTest> => {
   const workflows = createTestWorkflows({
     agents: config.agents,
     tools: config.tools,
     logging: config.logging,
+    agentRunner: options.agentRunner,
   });
   const workflowsHarness = await createWorkflowsTestHarness({
     workflows,
@@ -318,7 +333,10 @@ export const buildHarness = async (
   const fragment = instantiate(piFragmentDefinition)
     .withConfig(config)
     .withRoutes([piRoutesFactory])
-    .withOptions({ databaseAdapter: workflowsHarness.test.adapter })
+    .withOptions({
+      databaseAdapter: workflowsHarness.test.adapter,
+      dbRoundtripGuard: changedRouteRoundtripGuard,
+    })
     .withServices({ workflows: workflowsService })
     .build();
 
@@ -329,6 +347,8 @@ export const buildHarness = async (
       pi: {
         callRoute: fragment.callRoute.bind(fragment),
         callRouteRaw: fragment.callRouteRaw.bind(fragment),
+        services: fragment.services,
+        callServices: fragment.callServices.bind(fragment),
       },
     },
     workflows: workflowsHarness,

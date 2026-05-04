@@ -1,14 +1,18 @@
 import { atom, computed, onMount, type ReadableAtom } from "nanostores";
+import type { z } from "zod";
 
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
 import type { PiSessionStatus } from "../pi/constants";
+import type { commandInputSchema } from "../pi/route-schemas";
 import type {
   PiActiveSessionProtocolMessage,
   PiAgentLoopPhase,
   PiAgentLoopWaitingFor,
   PiSessionDetail,
 } from "../pi/types";
+
+export type PiSessionCommandInput = z.infer<typeof commandInputSchema>;
 
 type QueryStoreValue<T> = {
   loading: boolean;
@@ -29,7 +33,7 @@ type OptimisticMessage = {
 
 type LiveActivity =
   | { kind: "none" }
-  | { kind: "sending-message" }
+  | { kind: "sending-command" }
   | { kind: "assistant-responding" }
   | { kind: "assistant-ready" }
   | { kind: "tool-running"; toolName: string }
@@ -75,7 +79,7 @@ type OverlayAction =
   | { type: "snapshot-updated"; sessionId: string }
   | { type: "send-started"; clientId: string; text: string }
   | { type: "send-failed"; clientId: string; message: string }
-  | { type: "send-acknowledged" }
+  | { type: "send-acknowledged"; clientId: string }
   | { type: "stream-connecting"; reconnecting: boolean }
   | { type: "stream-open" }
   | { type: "stream-message"; message: PiActiveSessionProtocolMessage }
@@ -105,11 +109,8 @@ export type CreatePiSessionStoreArgs = {
 
 export type PiSessionStoreController = {
   store: ReadableAtom<PiSessionStoreState>;
-  sendMessage: (input: {
-    text: string;
-    done?: boolean;
-    steeringMode?: "all" | "one-at-a-time";
-  }) => boolean;
+  sendCommand: (command: PiSessionCommandInput) => boolean;
+  prompt: (input: { text: string }) => boolean;
   refetch: () => void;
   deactivate: () => void;
   destroy: () => void;
@@ -117,12 +118,10 @@ export type PiSessionStoreController = {
 
 export type CreatePiSessionStoreDependencies = {
   createDetailStore: (sessionId: string) => QueryStore<PiSessionDetail>;
-  sendMessage: (options: {
+  sendCommand: (options: {
     sessionId: string;
-    text: string;
-    done?: boolean;
-    steeringMode?: "all" | "one-at-a-time";
-  }) => Promise<{ status: PiSessionStatus }>;
+    command: PiSessionCommandInput;
+  }) => Promise<{ commandId: string; status: PiSessionStatus }>;
   buildActiveUrl: (sessionId: string) => string;
   fetcher: typeof fetch;
   defaultOptions?: RequestInit;
@@ -250,8 +249,8 @@ const activityLabel = (activity: LiveActivity): string | null => {
   switch (activity.kind) {
     case "none":
       return null;
-    case "sending-message":
-      return "Sending message";
+    case "sending-command":
+      return "Sending command";
     case "assistant-responding":
       return "Assistant responding";
     case "assistant-ready":
@@ -477,7 +476,7 @@ const reduceOverlayState = (state: OverlayState, action: OverlayAction): Overlay
             message: buildOptimisticUserMessage(action.text),
           },
         ],
-        activity: { kind: "sending-message" as const },
+        activity: { kind: "sending-command" as const },
         pendingTurn: true,
         readyForInputOverride: false,
         error: null,
@@ -487,6 +486,9 @@ const reduceOverlayState = (state: OverlayState, action: OverlayAction): Overlay
         ...state,
         sending: false,
         sendError: null,
+        optimisticMessages: state.optimisticMessages.filter(
+          (message) => message.clientId !== action.clientId,
+        ),
       };
     case "send-failed": {
       const optimisticMessages = state.optimisticMessages.filter(
@@ -629,7 +631,9 @@ const waitWithAbort = (ms: number, signal: AbortSignal) =>
   });
 
 const isSessionReadyForInput = (phase: PiAgentLoopPhase, waitingFor: PiAgentLoopWaitingFor) =>
-  phase === "waiting-for-user" && waitingFor?.type === "user_message";
+  phase === "waiting-for-command" &&
+  waitingFor?.type === "command" &&
+  waitingFor.allowedCommands.includes("prompt");
 
 const shouldKeepLiveConnection = (session: PiSessionDetail | null) => session?.phase !== "complete";
 
@@ -917,37 +921,49 @@ export function createPiSessionStore(
     };
   });
 
-  const sendMessage: PiSessionStoreController["sendMessage"] = (input) => {
-    const text = input.text.trim();
-    if (!text) {
+  const sendCommand: PiSessionStoreController["sendCommand"] = (command) => {
+    const text = "input" in command ? command.input.text.trim() : "";
+    if (
+      (command.kind === "prompt" || command.kind === "steer" || command.kind === "followUp") &&
+      !text
+    ) {
       return false;
     }
 
     const current = store.get();
-    if (current.sending || !current.readyForInput) {
+    const canSendWhileRunning =
+      command.kind === "abort" || command.kind === "steer" || command.kind === "followUp";
+    if (current.sending || (!current.readyForInput && !canSendWhileRunning)) {
       return false;
     }
 
     const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    logActive("send:start", { clientId, text });
-    overlayStore.set(
-      reduceOverlayState(overlayStore.get(), { type: "send-started", clientId, text }),
-    );
+    logActive("send:start", { clientId, kind: command.kind, text });
+    if (command.kind === "prompt" || command.kind === "followUp") {
+      overlayStore.set(
+        reduceOverlayState(overlayStore.get(), { type: "send-started", clientId, text }),
+      );
+    } else {
+      overlayStore.set({
+        ...overlayStore.get(),
+        sendError: null,
+        sending: true,
+        activity: { kind: "sending-command" },
+      });
+    }
     ensureActiveLoop();
 
-    void deps
-      .sendMessage({
-        sessionId: args.sessionId,
-        text,
-        done: input.done,
-        steeringMode: input.steeringMode,
-      })
+    const submitCommand = deps.sendCommand({ sessionId: args.sessionId, command });
+
+    void submitCommand
       .then(() => {
         logActive("send:acknowledged", { clientId });
-        overlayStore.set(reduceOverlayState(overlayStore.get(), { type: "send-acknowledged" }));
+        overlayStore.set(
+          reduceOverlayState(overlayStore.get(), { type: "send-acknowledged", clientId }),
+        );
       })
       .catch((error) => {
-        const message = error instanceof Error ? error.message : "Failed to send message.";
+        const message = error instanceof Error ? error.message : "Failed to submit command.";
         logActive("send:failed", { clientId, message });
         overlayStore.set(
           reduceOverlayState(overlayStore.get(), { type: "send-failed", clientId, message }),
@@ -956,6 +972,9 @@ export function createPiSessionStore(
 
     return true;
   };
+
+  const prompt: PiSessionStoreController["prompt"] = (input) =>
+    sendCommand({ kind: "prompt", input: { text: input.text.trim() } });
 
   const deactivate = () => {
     logActive("store:dispose");
@@ -976,7 +995,8 @@ export function createPiSessionStore(
 
   return {
     store,
-    sendMessage,
+    sendCommand,
+    prompt,
     refetch,
     deactivate,
     destroy,

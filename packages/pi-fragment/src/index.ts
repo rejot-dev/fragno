@@ -1,6 +1,7 @@
 export { createPiFragmentClients } from "./client/clients";
 export { createPiSessionStore } from "./client/session-store";
 export { createPi, defineAgent } from "./pi/dsl";
+export { createPiJsonlExport, PI_JSONL_EXPORT_CWD } from "./pi/pi-jsonl-export";
 export { piFragmentDefinition } from "./pi/definition";
 export { createPiFragment } from "./pi/factory";
 export { createPiWorkflows, PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
@@ -23,9 +24,11 @@ export type {
   PiWorkflowsService,
 } from "./pi/types";
 export type { PiAgentDefinitionInput, PiRuntime } from "./pi/dsl";
+export type { CreatePiJsonlExportInput, PiJsonlExportLine } from "./pi/pi-jsonl-export";
 export type {
   CreatePiSessionStoreArgs,
   PiLiveToolExecution,
+  PiSessionCommandInput,
   PiSessionConnectionState,
   PiSessionStoreController,
   PiSessionStoreState,

@@ -1,12 +1,10 @@
 import { z } from "zod";
 
-import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 import {
   defineWorkflow,
   NonRetryableError,
   type WorkflowEvent,
   type WorkflowStep,
-  type WorkflowStepTx,
   type WorkflowsRegistry,
 } from "@fragno-dev/workflows";
 
@@ -14,8 +12,7 @@ import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
 import { PiLogger } from "../../debug-log";
 import { piSchema } from "../../schema";
-import type { PiSessionStatus } from "../constants";
-import { extractAssistantTextFromMessage, normalizeSteeringMode } from "../mappers";
+import { extractAssistantTextFromMessage } from "../mappers";
 import type {
   PiActiveSessionState,
   PiAgentLoopPhase,
@@ -23,8 +20,15 @@ import type {
   PiAgentLoopWaitingFor,
   PiAgentRegistry,
   PiFragmentConfig,
-  PiSessionDetailEvent,
+  PiLiveInjectionRecord,
+  PiPromptInput,
+  PiSessionCommandPayload,
+  PiSessionCommandType,
+  PiToolReplayContext,
   PiToolRegistry,
+  PiToolSideEffectReducerRegistry,
+  PiTurnOperationRecord,
+  PiTurnStatus,
   PiTurnSummary,
 } from "../types";
 import {
@@ -32,20 +36,49 @@ import {
   createInitialPiAgentLoopState,
   ensurePiActiveSessionState,
 } from "./active-session";
-import { runAgentTurn, type AgentLoopParams } from "./agent-runner";
+import {
+  runAgentTurn,
+  type AgentLoopParams,
+  type PiAgentRunResult,
+  type PiAgentRunMode,
+} from "./agent-runner";
+import { createReplayContext, hydrateReplayCache, parsePersistedToolJournal } from "./tool-journal";
 
 export { createInitialPiAgentLoopState, ensurePiActiveSessionState };
 
 export const PI_WORKFLOW_NAME = "agent-loop-workflow";
 
+export type PiAgentRunOptions = {
+  mode: PiAgentRunMode;
+  promptInput?: PiPromptInput;
+  params: AgentLoopParams;
+  agent: PiAgentRegistry[string];
+  tools: PiToolRegistry;
+  messages: AgentMessage[];
+  steeringMode: "all" | "one-at-a-time";
+  turnId: string;
+  replay: PiToolReplayContext;
+  onEvent?: (event: AgentEvent) => void;
+  onController?: (controller: {
+    abort(): void;
+    steer(input: PiPromptInput): void;
+    followUp(input: PiPromptInput): void;
+  }) => void;
+  onControllerClear?: () => void;
+};
+
+export type PiAgentRunner = (options: PiAgentRunOptions) => Promise<PiAgentRunResult>;
+
 type WorkflowsOptions = {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
+  toolSideEffectReducers?: PiToolSideEffectReducerRegistry;
   logging?: PiFragmentConfig["logging"];
+  agentRunner?: PiAgentRunner;
 };
 
-const WAIT_FOR_USER_TIMEOUT = "1 hour" as const;
-const WAIT_FOR_USER_TIMEOUT_MS = 60 * 60 * 1000;
+const WAIT_FOR_COMMAND_TIMEOUT = "1 hour" as const;
+const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 
 const agentLoopParamsSchema: z.ZodType<AgentLoopParams> = z.object({
   sessionId: z.string(),
@@ -54,81 +87,90 @@ const agentLoopParamsSchema: z.ZodType<AgentLoopParams> = z.object({
   initialMessages: z.array(z.custom<AgentMessage>()).optional(),
 });
 
-const userMessageSchema = z.object({
-  text: z.string().optional(),
-  done: z.boolean().optional(),
-  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
+const promptInputSchema = z.object({
+  text: z.string(),
+  images: z
+    .array(z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string() }))
+    .optional(),
 });
+
+const commandPayloadSchema: z.ZodType<PiSessionCommandPayload> = z.discriminatedUnion("kind", [
+  z.object({ commandId: z.string(), kind: z.literal("prompt"), input: promptInputSchema }),
+  z.object({ commandId: z.string(), kind: z.literal("continue") }),
+  z.object({ commandId: z.string(), kind: z.literal("abort"), reason: z.string().optional() }),
+  z.object({ commandId: z.string(), kind: z.literal("steer"), input: promptInputSchema }),
+  z.object({ commandId: z.string(), kind: z.literal("followUp"), input: promptInputSchema }),
+  z.object({ commandId: z.string(), kind: z.literal("complete"), reason: z.string().optional() }),
+]);
 
 // --- Loop state ---
 
-type LoopState = {
-  messages: AgentMessage[];
-  events: PiSessionDetailEvent[];
-  trace: AgentEvent[];
-  summaries: PiTurnSummary[];
+type LoopCursor = {
   turn: number;
   phase: PiAgentLoopPhase;
   waitingFor: PiAgentLoopWaitingFor;
+  commandIndex: number;
+  replayCache: PiToolReplayContext["cache"];
   activeSession: PiActiveSessionState;
 };
 
-const buildWaitingForUser = (turn: number): NonNullable<PiAgentLoopWaitingFor> => ({
-  type: "user_message",
+type TurnExecutionContext = {
+  messages: AgentMessage[];
+  turns: PiTurnSummary[];
+};
+
+const freshTurnCommands: PiSessionCommandType[] = ["prompt", "followUp", "complete"];
+const continueCommands: PiSessionCommandType[] = ["continue", "abort"];
+
+const allowedCommandsFor = (
+  loop: Pick<LoopCursor, "turn">,
+  turnContext: Pick<TurnExecutionContext, "turns">,
+): PiSessionCommandType[] => {
+  const currentTurn = turnContext.turns.find((entry) => entry.turn === loop.turn);
+  return currentTurn?.status === "waiting-to-continue" ? continueCommands : freshTurnCommands;
+};
+
+const buildWaitCommandStepName = (turn: number, commandIndex: number) =>
+  `wait-command-turn-${turn}-command-${commandIndex}`;
+
+const buildWaitingForCommand = (
+  turn: number,
+  commandIndex: number,
+  allowedCommands: PiSessionCommandType[],
+): NonNullable<PiAgentLoopWaitingFor> => ({
+  type: "command",
   turn,
-  stepKey: `waitForEvent:wait-user-${turn}`,
-  timeoutMs: WAIT_FOR_USER_TIMEOUT_MS,
+  stepKey: `waitForEvent:${buildWaitCommandStepName(turn, commandIndex)}`,
+  allowedCommands,
+  timeoutMs: WAIT_FOR_COMMAND_TIMEOUT_MS,
 });
 
-const initLoopState = (
-  params: AgentLoopParams,
-  existingState: PiAgentLoopState | undefined,
-): LoopState => {
+const initLoopCursor = (existingState: PiAgentLoopState | undefined): LoopCursor => {
   const activeSession = existingState
     ? ensurePiActiveSessionState(existingState)
     : createPiActiveSessionState();
 
   return {
-    messages: Array.isArray(params.initialMessages) ? params.initialMessages : [],
-    events: [],
-    trace: [],
-    summaries: [],
     turn: 0,
-    phase: "waiting-for-user",
-    waitingFor: buildWaitingForUser(0),
+    phase: "waiting-for-command",
+    waitingFor: buildWaitingForCommand(0, 0, freshTurnCommands),
+    commandIndex: 0,
+    replayCache: new Map(),
     activeSession,
   };
 };
 
-const setPhase = (loop: LoopState, phase: PiAgentLoopPhase) => {
-  loop.phase = phase;
-  switch (phase) {
-    case "waiting-for-user":
-      loop.waitingFor = buildWaitingForUser(loop.turn);
-      break;
-    case "running-agent":
-      loop.waitingFor = {
-        type: "assistant",
-        turn: loop.turn,
-        stepKey: `do:assistant-${loop.turn}`,
-      };
-      break;
-    case "complete":
-      loop.waitingFor = null;
-      break;
-  }
+const initTurnExecutionContext = (params: AgentLoopParams): TurnExecutionContext => {
+  const messages = Array.isArray(params.initialMessages) ? params.initialMessages : [];
+  const turns: PiTurnSummary[] = [];
+  return { messages, turns };
 };
 
-type WorkflowContext =
-  | { getState(): PiAgentLoopState; setState(state: Partial<PiAgentLoopState>): void }
-  | undefined;
-
-const emitState = (ctx: WorkflowContext, loop: LoopState) => {
+const setWorkflowState = (
+  ctx: { setState(state: Partial<PiAgentLoopState>): void } | undefined,
+  loop: LoopCursor,
+) => {
   ctx?.setState({
-    messages: loop.messages,
-    events: loop.events,
-    trace: loop.trace,
-    summaries: loop.summaries,
     turn: loop.turn,
     phase: loop.phase,
     waitingFor: loop.waitingFor,
@@ -137,83 +179,221 @@ const emitState = (ctx: WorkflowContext, loop: LoopState) => {
   });
 };
 
-// --- DB status projection ---
-
-const mutateSessionStatus = (
-  forSchema: HandlerTxContext<HooksMap>["forSchema"],
-  sessionId: string,
-  status: PiSessionStatus,
-): void => {
-  try {
-    const uow = forSchema(piSchema);
-    uow.update("session", sessionId, (builder) => builder.set({ status }));
-  } catch {
-    // Some workflow-only tests run without the pi fragment schema mounted. Status projection is a
-    // best-effort integration concern, so those environments can safely skip this mutation.
+const setPhase = (
+  loop: LoopCursor,
+  turnContext: TurnExecutionContext,
+  phase: PiAgentLoopPhase,
+  options?: { operation?: "prompt" | "continue"; stepKey?: string },
+) => {
+  loop.phase = phase;
+  switch (phase) {
+    case "waiting-for-command":
+      loop.waitingFor = buildWaitingForCommand(
+        loop.turn,
+        loop.commandIndex,
+        allowedCommandsFor(loop, turnContext),
+      );
+      break;
+    case "running-agent":
+      loop.waitingFor = {
+        type: "agent",
+        turn: loop.turn,
+        operation: options?.operation ?? "prompt",
+        stepKey: options?.stepKey ?? `do:${options?.operation ?? "prompt"}-turn-${loop.turn}-op-0`,
+      };
+      break;
+    case "complete":
+      loop.waitingFor = null;
+      break;
   }
-};
-
-const projectSessionStatus = (
-  tx: WorkflowStepTx,
-  sessionId: string,
-  status: PiSessionStatus,
-): void => {
-  tx.mutate(({ forSchema }) => {
-    mutateSessionStatus(forSchema, sessionId, status);
-  });
 };
 
 // --- Turn helpers ---
 
-const buildDetailEvent = (
-  turn: number,
-  event: { type: string; payload: unknown; timestamp: Date | string | number },
-): PiSessionDetailEvent => {
-  const timestamp = event.timestamp instanceof Date ? event.timestamp : new Date(event.timestamp);
-  return {
-    id: `${event.type}:${turn}:${timestamp.getTime()}`,
-    type: event.type,
-    payload: event.payload ?? null,
-    createdAt: timestamp,
-    deliveredAt: timestamp,
-    consumedByStepKey: `waitForEvent:wait-user-${turn}`,
-  };
+const getTurn = (turnContext: TurnExecutionContext, turn: number): PiTurnSummary | undefined =>
+  turnContext.turns.find((entry) => entry.turn === turn);
+
+const upsertTurn = (turnContext: TurnExecutionContext, next: PiTurnSummary) => {
+  const index = turnContext.turns.findIndex((entry) => entry.turn === next.turn);
+  turnContext.turns =
+    index >= 0
+      ? [...turnContext.turns.slice(0, index), next, ...turnContext.turns.slice(index + 1)]
+      : [...turnContext.turns, next];
 };
 
-const buildTurnSummary = (turn: number, assistant: AgentMessage | null): PiTurnSummary | null => {
-  if (!assistant) {
-    return null;
+const getOrCreateTurn = (turnContext: TurnExecutionContext, turn: number): PiTurnSummary => {
+  const existing = getTurn(turnContext, turn);
+  if (existing) {
+    return existing;
   }
-  return {
+  const created: PiTurnSummary = {
     turn,
-    assistant,
-    summary: extractAssistantTextFromMessage(assistant) || null,
+    status: "idle",
+    assistant: null,
+    summary: null,
+    operations: [],
   };
+  upsertTurn(turnContext, created);
+  return created;
 };
 
-const parseAssistantStepResult = (value: unknown, stepName: string) => {
+const nextOperationIndex = (turnContext: TurnExecutionContext, turn: number) =>
+  getOrCreateTurn(turnContext, turn).operations.length;
+
+const operationStepName = (
+  command: PiSessionCommandPayload,
+  turn: number,
+  operationIndex: number,
+  commandIndex: number,
+) => {
+  switch (command.kind) {
+    case "prompt":
+      return `prompt-turn-${turn}-op-${operationIndex}`;
+    case "continue":
+      return `continue-turn-${turn}-op-${operationIndex}`;
+    case "abort":
+      return `abort-turn-${turn}-op-${operationIndex}`;
+    case "steer":
+      return `steer-turn-${turn}-op-${operationIndex}`;
+    case "followUp":
+      return `follow-up-turn-${turn}-op-${operationIndex}`;
+    case "complete":
+      return `complete-session-command-${commandIndex}`;
+  }
+};
+
+const appendOperation = (
+  turnContext: TurnExecutionContext,
+  command: PiSessionCommandPayload,
+  options: {
+    turn: number;
+    operationIndex: number;
+    stepKey: string;
+    outcome: PiTurnOperationRecord["outcome"];
+    errorMessage?: string | null;
+    status: PiTurnStatus;
+    assistant?: AgentMessage | null;
+    createdAt: Date;
+    completedAt: Date;
+  },
+) => {
+  const existing = getOrCreateTurn(turnContext, options.turn);
+  const assistant = options.assistant === undefined ? existing.assistant : options.assistant;
+  const operation: PiTurnOperationRecord = {
+    commandId: command.commandId,
+    turn: options.turn,
+    operationIndex: options.operationIndex,
+    kind: command.kind as PiTurnOperationRecord["kind"],
+    stepKey: options.stepKey,
+    outcome: options.outcome,
+    errorMessage: options.errorMessage ?? null,
+    createdAt: options.createdAt,
+    completedAt: options.completedAt,
+  };
+  upsertTurn(turnContext, {
+    ...existing,
+    status: options.status,
+    assistant: assistant ?? null,
+    summary: assistant ? extractAssistantTextFromMessage(assistant) || null : existing.summary,
+    operations: [...existing.operations, operation],
+  });
+};
+
+const currentTurnStatus = (loop: LoopCursor, turnContext: TurnExecutionContext): PiTurnStatus =>
+  getTurn(turnContext, loop.turn)?.status ?? "idle";
+
+const canStartFreshTurn = (loop: LoopCursor, turnContext: TurnExecutionContext) =>
+  loop.phase === "waiting-for-command" &&
+  (currentTurnStatus(loop, turnContext) === "idle" ||
+    currentTurnStatus(loop, turnContext) === "completed" ||
+    currentTurnStatus(loop, turnContext) === "aborted");
+
+const rejectionReasonFor = (
+  loop: LoopCursor,
+  turnContext: TurnExecutionContext,
+  command: PiSessionCommandPayload,
+): string | null => {
+  if (loop.phase === "complete") {
+    return "Session is complete.";
+  }
+  const status = currentTurnStatus(loop, turnContext);
+  switch (command.kind) {
+    case "prompt":
+      return canStartFreshTurn(loop, turnContext)
+        ? null
+        : "Prompt only applies while waiting for a fresh turn.";
+    case "followUp":
+      return canStartFreshTurn(loop, turnContext)
+        ? null
+        : "Follow-up requires a live injection or a fresh waiting turn.";
+    case "continue":
+      return status === "waiting-to-continue"
+        ? null
+        : "Continue only applies after a recoverable agent error.";
+    case "abort":
+      return loop.phase === "running-agent" || status === "waiting-to-continue"
+        ? null
+        : "Abort only applies to a running or retryable turn.";
+    case "steer":
+      return "Steer requires a live running operation.";
+    case "complete":
+      return canStartFreshTurn(loop, turnContext)
+        ? null
+        : "Complete only applies while waiting for a fresh command.";
+  }
+};
+
+const parseOperationResult = (value: unknown, stepName: string): PiAgentRunResult => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new NonRetryableError(`Assistant step ${stepName} returned an invalid result.`);
+    throw new NonRetryableError(`Agent step ${stepName} returned an invalid result.`);
   }
-  const result = value as { messages?: unknown; trace?: unknown; assistant?: unknown };
+  const result = value as PiAgentRunResult;
   if (!Array.isArray(result.messages)) {
-    throw new NonRetryableError(`Assistant step ${stepName} is missing messages.`);
+    throw new NonRetryableError(`Agent step ${stepName} is missing messages.`);
   }
-  const messages = result.messages as AgentMessage[];
-  const trace = Array.isArray(result.trace) ? (result.trace as AgentEvent[]) : [];
-  const assistant =
-    (result.assistant && typeof result.assistant === "object"
-      ? (result.assistant as AgentMessage)
-      : null) ??
-    messages.findLast((m) => m.role === "assistant") ??
-    null;
-
   return {
-    messages,
-    trace,
-    assistant,
+    ...result,
+    trace: Array.isArray(result.trace) ? result.trace : [],
+    toolJournal: parsePersistedToolJournal(value, stepName),
   };
 };
+
+type CommandStepResult = {
+  commandId: string;
+  commandStatus: "applied" | "rejected";
+  rejectionReason: string | null;
+  turn: number | null;
+  operationIndex: number | null;
+  stepKey: string;
+  commandCreatedAt: Date;
+  consumedAt: Date;
+  operationCreatedAt?: Date;
+  operationCompletedAt?: Date;
+  outcome?: PiAgentRunResult["outcome"];
+  errorMessage?: string | null;
+  messages?: AgentMessage[];
+  trace?: AgentEvent[];
+  assistant?: AgentMessage | null;
+  toolJournal?: unknown;
+  liveInjection?: PiLiveInjectionRecord | null;
+};
+
+const buildRejectedResult = (
+  command: PiSessionCommandPayload,
+  stepKey: string,
+  turn: number,
+  reason: string,
+  now: Date,
+): CommandStepResult => ({
+  commandId: command.commandId,
+  commandStatus: "rejected",
+  rejectionReason: reason,
+  turn,
+  operationIndex: null,
+  stepKey: `do:${stepKey}`,
+  commandCreatedAt: now,
+  consumedAt: now,
+});
 
 // --- Workflow definition ---
 
@@ -231,99 +411,254 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
         throw new NonRetryableError(`Agent ${params.agentName} not found.`);
       }
 
-      const loop = initLoopState(params, this?.getState());
-      emitState(this, loop);
+      const loop = initLoopCursor(this?.getState());
+      const turnContext = initTurnExecutionContext(params);
+      setWorkflowState(this, loop);
 
-      while (true) {
-        setPhase(loop, "waiting-for-user");
-        emitState(this, loop);
+      while (loop.phase !== "complete") {
+        setPhase(loop, turnContext, "waiting-for-command");
+        setWorkflowState(this, loop);
 
-        // Wait for the user to send a message (or signal done).
-        const userEvent = await step.waitForEvent(`wait-user-${loop.turn}`, {
-          type: "user_message",
-          timeout: WAIT_FOR_USER_TIMEOUT,
+        const waitStepName = buildWaitCommandStepName(loop.turn, loop.commandIndex);
+        const commandEvent = await step.waitForEvent(waitStepName, {
+          type: "command",
+          timeout: WAIT_FOR_COMMAND_TIMEOUT,
         });
-        const userPayload = userMessageSchema.parse(userEvent.payload ?? {});
-        const userText = userPayload.text ?? "";
-        const isDone = userPayload.done ?? false;
-        const steeringMode = normalizeSteeringMode(userPayload.steeringMode);
+        const command = commandPayloadSchema.parse(commandEvent.payload ?? {});
+        const operationIndex =
+          command.kind === "complete" ? 0 : nextOperationIndex(turnContext, loop.turn);
+        const opStepName = operationStepName(command, loop.turn, operationIndex, loop.commandIndex);
+        const opStepKey = `do:${opStepName}`;
+        const rejectionReason = rejectionReasonFor(loop, turnContext, command);
 
-        // Persist the user message as a durable step.
-        loop.events = [...loop.events, buildDetailEvent(loop.turn, userEvent)];
-        const userResult = await step.do(`user-${loop.turn}`, async (tx) => {
-          projectSessionStatus(tx, event.instanceId, "active");
-          const userMessage: AgentMessage = {
-            role: "user",
-            content: [{ type: "text", text: userText }],
-            timestamp: Date.now(),
-          };
-          return { messages: [...loop.messages, userMessage] };
-        });
-        loop.messages = userResult.messages;
+        const commandResult = await step.do(
+          opStepName,
+          { retries: { limit: 1, delay: "0 ms", backoff: "constant" } },
+          async (tx): Promise<CommandStepResult> => {
+            const now = new Date();
+            tx.mutate(({ forSchema }) => {
+              const uow = forSchema(piSchema);
+              uow.update("session", event.instanceId, (builder) =>
+                builder.set({
+                  status: command.kind === "complete" ? "complete" : "active",
+                  updatedAt: now,
+                }),
+              );
+            });
+            if (rejectionReason) {
+              return buildRejectedResult(command, opStepName, loop.turn, rejectionReason, now);
+            }
 
-        setPhase(loop, "running-agent");
-        emitState(this, loop);
+            if (command.kind === "complete") {
+              return {
+                commandId: command.commandId,
+                commandStatus: "applied",
+                rejectionReason: null,
+                turn: null,
+                operationIndex: null,
+                stepKey: opStepKey,
+                commandCreatedAt: now,
+                consumedAt: now,
+              };
+            }
 
-        // Run the AI agent turn as a retryable durable step.
-        const assistantStepName = `assistant-${loop.turn}`;
-        const traceLengthBeforeTurn = loop.trace.length;
-        const turnId = `${event.instanceId}:${loop.turn}`;
+            if (command.kind === "abort") {
+              return {
+                commandId: command.commandId,
+                commandStatus: "applied",
+                rejectionReason: null,
+                turn: loop.turn,
+                operationIndex,
+                stepKey: opStepKey,
+                commandCreatedAt: now,
+                consumedAt: now,
+                operationCreatedAt: now,
+                operationCompletedAt: now,
+                outcome: "aborted",
+                errorMessage: command.reason ?? null,
+                liveInjection: loop.activeSession.getLiveInjection(command.commandId),
+              };
+            }
 
-        let assistantResult: Awaited<ReturnType<typeof runAgentTurn>>;
-        try {
-          assistantResult = await step.do(
-            assistantStepName,
-            { retries: { limit: 1, delay: "0 ms", backoff: "constant" } },
-            async (tx) => {
-              tx.onTerminalError.mutate(({ forSchema }) => {
-                mutateSessionStatus(forSchema, event.instanceId, "errored");
-              });
+            if (command.kind === "steer") {
+              const liveInjection = loop.activeSession.getLiveInjection(command.commandId);
+              if (!liveInjection?.injected) {
+                return buildRejectedResult(
+                  command,
+                  opStepName,
+                  loop.turn,
+                  "Steer command was not live-injected into a running operation.",
+                  now,
+                );
+              }
+              return {
+                commandId: command.commandId,
+                commandStatus: "applied",
+                rejectionReason: null,
+                turn: liveInjection.turn ?? loop.turn,
+                operationIndex,
+                stepKey: opStepKey,
+                commandCreatedAt: now,
+                consumedAt: now,
+                operationCreatedAt: now,
+                operationCompletedAt: now,
+                outcome: "completed",
+                errorMessage: null,
+                liveInjection,
+              };
+            }
 
-              const result = await runAgentTurn({
-                params,
-                agent: agentDefinition,
-                tools: options.tools,
-                messages: loop.messages,
-                steeringMode,
-                turnId,
-                onEvent: (agentEvent) => {
-                  loop.trace = [...loop.trace, agentEvent];
-                  loop.activeSession.publishEvent(loop.turn, agentEvent);
-                  emitState(this, loop);
-                },
-              });
+            const mode = command.kind === "continue" ? "continue" : "prompt";
+            const input: PiPromptInput | undefined =
+              command.kind === "prompt" || command.kind === "followUp" ? command.input : undefined;
+            setPhase(loop, turnContext, "running-agent", { operation: mode, stepKey: opStepKey });
+            setWorkflowState(this, loop);
+            const replay = createReplayContext({
+              cache: loop.replayCache,
+              reducers: options.toolSideEffectReducers,
+            });
+            const turnId = `${event.instanceId}:${loop.turn}`;
 
-              projectSessionStatus(tx, event.instanceId, isDone ? "complete" : "waiting");
-              return result;
-            },
-          );
-        } catch (error) {
-          if (!(error instanceof Error && error.name === "RunnerStepSuspended")) {
-            loop.activeSession.settleTurn(loop.turn, "errored");
-            emitState(this, loop);
-          }
-          throw error;
+            const runAgent = options.agentRunner ?? runAgentTurn;
+            const result = await runAgent({
+              mode,
+              promptInput: input,
+              params,
+              agent: agentDefinition,
+              tools: options.tools,
+              messages: turnContext.messages,
+              steeringMode: "all",
+              turnId,
+              replay,
+              onController: (controller) => {
+                loop.activeSession.registerLiveController({
+                  turn: loop.turn,
+                  operation: mode,
+                  stepKey: opStepKey,
+                  abort: controller.abort,
+                  steer: controller.steer,
+                  followUp: controller.followUp,
+                });
+              },
+              onControllerClear: () => loop.activeSession.clearLiveController(opStepKey),
+              onEvent: (agentEvent) => {
+                loop.activeSession.publishEvent(loop.turn, agentEvent);
+                setWorkflowState(this, loop);
+              },
+            });
+
+            const completedAt = new Date();
+            tx.mutate(({ forSchema }) => {
+              const uow = forSchema(piSchema);
+              uow.update("session", event.instanceId, (builder) =>
+                builder.set({ status: "waiting", updatedAt: completedAt }),
+              );
+            });
+            return {
+              ...result,
+              trace: result.trace,
+              commandId: command.commandId,
+              commandStatus: "applied",
+              rejectionReason: null,
+              turn: loop.turn,
+              operationIndex,
+              stepKey: opStepKey,
+              commandCreatedAt: now,
+              consumedAt: now,
+              operationCreatedAt: now,
+              operationCompletedAt: completedAt,
+              liveInjection:
+                command.kind === "followUp"
+                  ? loop.activeSession.getLiveInjection(command.commandId)
+                  : null,
+            };
+          },
+        );
+
+        const consumedAt = new Date(commandResult.consumedAt);
+        const operationCreatedAt = commandResult.operationCreatedAt
+          ? new Date(commandResult.operationCreatedAt)
+          : consumedAt;
+        const operationCompletedAt = commandResult.operationCompletedAt
+          ? new Date(commandResult.operationCompletedAt)
+          : consumedAt;
+
+        loop.commandIndex += 1;
+
+        if (commandResult.commandStatus === "rejected") {
+          setWorkflowState(this, loop);
+          continue;
         }
 
-        const parsed = parseAssistantStepResult(assistantResult, assistantStepName);
-        loop.messages = parsed.messages;
-        loop.trace = [...loop.trace.slice(0, traceLengthBeforeTurn), ...parsed.trace];
-        const summary = buildTurnSummary(loop.turn, parsed.assistant);
-        if (summary) {
-          loop.summaries = [...loop.summaries, summary];
-        }
-
-        if (isDone) {
-          setPhase(loop, "complete");
+        if (command.kind === "complete") {
+          setPhase(loop, turnContext, "complete");
           loop.activeSession.settleTurn(loop.turn, "complete");
-          emitState(this, loop);
-          return { messages: loop.messages };
+          setWorkflowState(this, loop);
+          return { messages: turnContext.messages };
         }
 
-        loop.activeSession.settleTurn(loop.turn, "waiting-for-user");
-        loop.turn += 1;
-        emitState(this, loop);
+        if (command.kind === "abort") {
+          appendOperation(turnContext, command, {
+            turn: loop.turn,
+            operationIndex,
+            stepKey: opStepKey,
+            outcome: "aborted",
+            errorMessage: commandResult.errorMessage ?? null,
+            status: "aborted",
+            assistant: null,
+            createdAt: operationCreatedAt,
+            completedAt: operationCompletedAt,
+          });
+          loop.activeSession.settleTurn(loop.turn, "waiting-for-command");
+          loop.turn += 1;
+          setWorkflowState(this, loop);
+          continue;
+        }
+
+        if (command.kind === "steer") {
+          appendOperation(turnContext, command, {
+            turn: commandResult.turn ?? loop.turn,
+            operationIndex,
+            stepKey: opStepKey,
+            outcome: "completed",
+            status: currentTurnStatus(loop, turnContext),
+            createdAt: operationCreatedAt,
+            completedAt: operationCompletedAt,
+          });
+          setWorkflowState(this, loop);
+          continue;
+        }
+
+        const parsed = parseOperationResult(commandResult, opStepName);
+        turnContext.messages = parsed.messages;
+        hydrateReplayCache(loop.replayCache, parsed.toolJournal);
+
+        const status: PiTurnStatus =
+          parsed.outcome === "completed"
+            ? "completed"
+            : parsed.outcome === "aborted"
+              ? "aborted"
+              : "waiting-to-continue";
+        appendOperation(turnContext, command, {
+          turn: loop.turn,
+          operationIndex,
+          stepKey: opStepKey,
+          outcome: parsed.outcome,
+          errorMessage: parsed.errorMessage,
+          status,
+          assistant: parsed.assistant,
+          createdAt: operationCreatedAt,
+          completedAt: operationCompletedAt,
+        });
+
+        if (parsed.outcome === "completed" || parsed.outcome === "aborted") {
+          loop.activeSession.settleTurn(loop.turn, "waiting-for-command");
+          loop.turn += 1;
+        }
+        setWorkflowState(this, loop);
       }
+
+      return { messages: turnContext.messages };
     },
   );
 

@@ -52,16 +52,7 @@ describe("fragno-pi CLI", () => {
     const logger = { log: vi.fn(), error: vi.fn() };
 
     const exitCode = await run(
-      [
-        "node",
-        "fragno-pi",
-        "sessions",
-        "send-message",
-        "--session-id",
-        "session-1",
-        "--text",
-        "hello",
-      ],
+      ["node", "fragno-pi", "sessions", "prompt", "--session-id", "session-1", "--text", "hello"],
       { logger },
     );
 
@@ -120,11 +111,11 @@ describe("fragno-pi CLI", () => {
     expect(logger.error.mock.calls[0]?.[0]).toContain("--agent");
   });
 
-  it("requires message text for send-message", async () => {
+  it("requires prompt text for prompt", async () => {
     const logger = { log: vi.fn(), error: vi.fn() };
 
     const exitCode = await run(
-      ["node", "fragno-pi", "sessions", "send-message", "--session", "session-1"],
+      ["node", "fragno-pi", "sessions", "prompt", "--session", "session-1"],
       { logger },
     );
 
