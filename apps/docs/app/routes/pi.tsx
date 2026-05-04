@@ -48,7 +48,7 @@ const routeSurface = `POST /sessions
 GET  /sessions
 GET  /sessions/:sessionId
 GET  /sessions/:sessionId/active
-POST /sessions/:sessionId/messages`;
+POST /sessions/:sessionId/command`;
 
 const serverSnippet = `import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createPi, createPiFragment, defineAgent } from "@fragno-dev/pi-fragment";

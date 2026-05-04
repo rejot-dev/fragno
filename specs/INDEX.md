@@ -14,6 +14,12 @@ Format:
 - [Pi Backoffice Sessions — Spec](./spec-pi-backoffice-sessions.md) — Backoffice integration for Pi
   fragment sessions: org-scoped Durable Object hosting, harness configuration, session list + detail
   UI, and configuration surfaces.
+- [Pi Fragment Agent Operations + Durable Turn Control — Spec](./spec-pi-fragment-agent-operations.md)
+  — Breaking redesign of pi-fragment around explicit `prompt`/`continue`/`abort`/`complete`
+  commands, workflow-visible turn steps, recoverable agent outcomes, and live abort control.
+- [Pi Fragment Pi-Compatible JSONL Export — Spec](./spec-pi-fragment-pi-jsonl-export.md) — Add a
+  server-side route that exports existing pi-fragment sessions as Pi v3-compatible JSONL snapshots
+  with a fixed `/workspace` cwd.
 - [Database Adapter Simplification — Spec](./spec-db-adapter-simplification.md) — Unify SQL runtime
   adapters, make schema output formats explicit, and replace ORM-specific adapters with a single SQL
   adapter plus explicit schema outputs.
