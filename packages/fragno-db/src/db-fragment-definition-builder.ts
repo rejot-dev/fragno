@@ -144,6 +144,10 @@ export type DbRoundtripGuardConfig = {
    * Defaults to 1 when the guard is enabled.
    */
   maxRoundtrips?: number;
+  /**
+   * Optional route allowlist. When provided, the guard only applies to matching route handlers.
+   */
+  routes?: readonly { method?: AnyHttpMethod; path: string }[];
 };
 
 /**
@@ -312,6 +316,7 @@ type DbRoundtripGuardState = {
   retrieveCount: number;
   mutateCount: number;
   maxRoundtrips: number;
+  routes?: readonly { method?: AnyHttpMethod; path: string }[];
 };
 
 type DurableHooksLogContext = HookNotifyContext;
@@ -563,7 +568,29 @@ function resolveDbRoundtripGuard(
     return { retrieveCount: 0, mutateCount: 0, maxRoundtrips: 1 };
   }
 
-  return { retrieveCount: 0, mutateCount: 0, maxRoundtrips: guard.maxRoundtrips ?? 1 };
+  return {
+    retrieveCount: 0,
+    mutateCount: 0,
+    maxRoundtrips: guard.maxRoundtrips ?? 1,
+    routes: guard.routes,
+  };
+}
+
+function routeMatchesDbRoundtripGuard(
+  guard: DbRoundtripGuardState,
+  routeInfo?: { method?: string; path?: string },
+): boolean {
+  if (!guard.routes) {
+    return true;
+  }
+  if (!routeInfo?.path) {
+    return false;
+  }
+  return guard.routes.some(
+    (route) =>
+      route.path === routeInfo.path &&
+      (route.method === undefined || route.method === routeInfo.method),
+  );
 }
 
 function getDbRoundtripGuardState(
@@ -577,6 +604,7 @@ function getDbRoundtripGuardState(
     storageWithGuard[dbRoundtripGuardStateSymbol] = { ...guard };
   } else {
     storageWithGuard[dbRoundtripGuardStateSymbol]!.maxRoundtrips = guard.maxRoundtrips;
+    storageWithGuard[dbRoundtripGuardStateSymbol]!.routes = guard.routes;
   }
   return storageWithGuard[dbRoundtripGuardStateSymbol]!;
 }
@@ -1317,17 +1345,22 @@ export class DatabaseFragmentDefinitionBuilder<
         const userOnAfterMutate = execOptions?.onAfterMutate;
         const userOnAfterRetrieve = execOptions?.onAfterRetrieve;
         const planMode = execOptions?.planMode ?? false;
-        const roundtripGuard = isRouteRequest(currentStorage)
-          ? resolveDbRoundtripGuard(options)
-          : null;
-        const roundtripState = roundtripGuard
-          ? getDbRoundtripGuardState(currentStorage, roundtripGuard)
-          : null;
         const routeInfo = (
           currentStorage as DatabaseContextStorage & {
             [requestRouteSymbol]?: { method?: string; path?: string };
           }
         )[requestRouteSymbol];
+        const configuredRoundtripGuard = isRouteRequest(currentStorage)
+          ? resolveDbRoundtripGuard(options)
+          : null;
+        const roundtripGuard =
+          configuredRoundtripGuard &&
+          routeMatchesDbRoundtripGuard(configuredRoundtripGuard, routeInfo)
+            ? configuredRoundtripGuard
+            : null;
+        const roundtripState = roundtripGuard
+          ? getDbRoundtripGuardState(currentStorage, roundtripGuard)
+          : null;
         const routeWaitUntil = (
           currentStorage as DatabaseContextStorage & {
             [requestWaitUntilSymbol]?: (promise: Promise<unknown>) => void;
