@@ -863,9 +863,9 @@ const createDefaultPiTurnResult = (
   const messages = Array.isArray(existing.messages) ? clone(existing.messages) : [];
   messages.push(createSimulatedAssistantMessage(assistantText, event.occurredAt));
 
-  const summaries = Array.isArray(existing.summaries) ? clone(existing.summaries) : [];
+  const turns = Array.isArray(existing.turns) ? clone(existing.turns) : [];
   const existingTurn = typeof existing.turn === "number" ? existing.turn : 0;
-  summaries.push({
+  turns.push({
     turn: existingTurn,
     assistant: null,
     summary: assistantText,
@@ -883,8 +883,8 @@ const createDefaultPiTurnResult = (
       status: "waiting",
     },
     messages,
-    summaries,
-    phase: "waiting-for-user",
+    turns,
+    phase: "waiting-for-command",
     waitingFor: null,
     updatedAt: event.occurredAt,
     assistantText,
@@ -902,14 +902,14 @@ const createDefaultPiTurnResult = (
         layer: "system",
         type: "settled",
         turn: existingTurn,
-        status: "waiting-for-user",
+        status: "waiting-for-command",
       },
     ],
     terminalFrame: {
       layer: "system",
       type: "settled",
       turn: existingTurn,
-      status: "waiting-for-user",
+      status: "waiting-for-command",
     },
   });
 };

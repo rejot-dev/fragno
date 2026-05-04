@@ -49,7 +49,7 @@ export type PiSessionGetArgs = {
   sessionId: string;
   events?: boolean;
   trace?: boolean;
-  summaries?: boolean;
+  turns?: boolean;
 };
 
 export type PiSessionListArgs = {
@@ -59,7 +59,6 @@ export type PiSessionListArgs = {
 export type PiSessionTurnArgs = {
   sessionId: string;
   text: string;
-  steeringMode?: "all" | "one-at-a-time";
 };
 
 export type PiSessionTurnTerminalFrame = Extract<
@@ -69,6 +68,8 @@ export type PiSessionTurnTerminalFrame = Extract<
 
 export type PiSessionTurnResult = PiSessionDetail & {
   assistantText: string;
+  commandStatus?: PiSession["status"];
+  /** @deprecated Use commandStatus. */
   messageStatus: PiSession["status"];
   stream: PiActiveSessionProtocolMessage[];
   terminalFrame: PiSessionTurnTerminalFrame;
@@ -232,9 +233,9 @@ const HELP: {
         description: "Include runtime trace in response",
       },
       {
-        name: "summaries",
+        name: "turns",
         valueRequired: false,
-        description: "Include turn summaries in response",
+        description: "Include turn records in response",
       },
     ],
     examples: [
@@ -260,7 +261,7 @@ const HELP: {
   },
   sessionTurn: {
     summary:
-      "pi.session.turn sends one user turn through the active-session stream + message routes and returns the settled result.",
+      "pi.session.turn sends one prompt command through the active-session stream and returns the settled result.",
     options: [
       {
         name: "session-id",
@@ -275,12 +276,6 @@ const HELP: {
         valueRequired: true,
         valueName: "text",
         description: "User message text to send for this turn",
-      },
-      {
-        name: "steering-mode",
-        valueRequired: true,
-        valueName: "steering-mode",
-        description: "Override steering mode for this turn (all|one-at-a-time)",
       },
     ],
     examples: [
@@ -322,7 +317,7 @@ const parsePiSessionGet = (args: string[]): PiParsedCommandByName["pi.session.ge
       sessionId: readStringOption(parsed, "session-id", true)!,
       events: parseBooleanOption(parsed.options, "events"),
       trace: parseBooleanOption(parsed.options, "trace"),
-      summaries: parseBooleanOption(parsed.options, "summaries"),
+      turns: parseBooleanOption(parsed.options, "turns"),
     },
     output: readOutputOptions(parsed),
     rawArgs: args,
@@ -356,7 +351,6 @@ const parsePiSessionTurn = (args: string[]): PiParsedCommandByName["pi.session.t
     args: {
       sessionId: readStringOption(parsed, "session-id", true)!,
       text: readStringOption(parsed, "text", true)!,
-      steeringMode: normalizeSteeringMode(readStringOption(parsed, "steering-mode")),
     },
     output: output.print || parsed.options.has("format") ? output : { ...output, format: "json" },
     rawArgs: args,
@@ -533,7 +527,7 @@ export const createPiRouteBashRuntime = ({
         label: "pi.session.create",
       });
     },
-    getSession: async ({ sessionId, events, trace, summaries }) => {
+    getSession: async ({ sessionId, events, trace, turns }) => {
       const query: Record<string, string> = {};
       if (typeof events === "boolean") {
         query.events = String(events);
@@ -541,8 +535,8 @@ export const createPiRouteBashRuntime = ({
       if (typeof trace === "boolean") {
         query.trace = String(trace);
       }
-      if (typeof summaries === "boolean") {
-        query.summaries = String(summaries);
+      if (typeof turns === "boolean") {
+        query.turns = String(turns);
       }
 
       const response = await callRoute("GET", "/sessions/:sessionId", {
@@ -572,7 +566,7 @@ export const createPiRouteBashRuntime = ({
         label: "pi.session.list",
       });
     },
-    runTurn: async ({ sessionId, text, steeringMode }) => {
+    runTurn: async ({ sessionId, text }) => {
       const normalizedSessionId = sessionId.trim();
       if (!normalizedSessionId) {
         throw new Error("pi.session.turn requires a session id");
@@ -599,17 +593,17 @@ export const createPiRouteBashRuntime = ({
       }
 
       try {
-        const messageResponse = await callRoute("POST", "/sessions/:sessionId/messages", {
+        const promptResponse = await callRoute("POST", "/sessions/:sessionId/command", {
           pathParams: { sessionId: normalizedSessionId },
           body: {
-            text: normalizedText,
-            ...(steeringMode ? { steeringMode } : {}),
+            kind: "prompt",
+            input: { text: normalizedText },
           },
         });
-        if (messageResponse.type !== "json" || !isSuccessStatus(messageResponse.status)) {
-          return throwOnRouteRuntimeError(messageResponse, {
+        if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
+          return throwOnRouteRuntimeError(promptResponse, {
             runtimeLabel: "Pi fragment",
-            label: "pi.session.turn message",
+            label: "pi.session.turn prompt",
           });
         }
 
@@ -631,7 +625,8 @@ export const createPiRouteBashRuntime = ({
         return {
           ...detail,
           assistantText: extractAssistantText(detail.messages),
-          messageStatus: messageResponse.data.status,
+          commandStatus: promptResponse.data.status,
+          messageStatus: promptResponse.data.status,
           stream: frames,
           terminalFrame,
         };

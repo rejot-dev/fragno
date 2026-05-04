@@ -663,9 +663,9 @@ describe("automation internalIngestEvent", () => {
       messages: [],
       events: [],
       trace: [],
-      summaries: [],
+      turns: [],
       turn: 0,
-      phase: "waiting-for-user" as const,
+      phase: "waiting-for-command" as const,
       waitingFor: null,
       assistantText: `agent:${text}`,
       messageStatus: "active" as const,
@@ -674,14 +674,14 @@ describe("automation internalIngestEvent", () => {
           layer: "system" as const,
           type: "settled" as const,
           turn: 0,
-          status: "waiting-for-user" as const,
+          status: "waiting-for-command" as const,
         },
       ],
       terminalFrame: {
         layer: "system" as const,
         type: "settled" as const,
         turn: 0,
-        status: "waiting-for-user" as const,
+        status: "waiting-for-command" as const,
       },
     }));
 

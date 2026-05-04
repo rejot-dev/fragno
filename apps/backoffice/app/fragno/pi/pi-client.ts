@@ -2,9 +2,9 @@ import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
 
 import type {
   PiLiveToolExecution,
+  PiSessionCommandInput,
   PiSessionConnectionState,
   PiSessionDetail,
-  PiSteeringMode,
 } from "@fragno-dev/pi-fragment";
 
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
@@ -22,11 +22,8 @@ export type OrgPiClient = {
     sending: boolean;
     error: string | null;
     sendError: string | null;
-    sendMessage: (input: {
-      text: string;
-      done?: boolean;
-      steeringMode?: PiSteeringMode;
-    }) => boolean;
+    sendCommand: (command: PiSessionCommandInput) => boolean;
+    prompt: (input: { text: string }) => boolean;
     refetch: () => void;
   };
 };

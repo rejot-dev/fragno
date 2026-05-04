@@ -6,6 +6,7 @@ import { Link, Outlet, isRouteErrorResponse, redirect, useRouteError } from "rea
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
+import { getRouteErrorDebugDetails } from "@/routes/backoffice/route-errors";
 
 import type { Route } from "./+types/backoffice-layout";
 
@@ -60,6 +61,8 @@ export function ErrorBoundary() {
     : error instanceof Error
       ? error.message
       : "An unexpected error occurred while loading the backoffice.";
+  const debugDetails =
+    import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
 
   return (
     <BackofficeShell me={null} isLoading={false}>
@@ -78,11 +81,19 @@ export function ErrorBoundary() {
             </Link>
           }
         />
-        {status ? (
-          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-            Error code: {status}
-          </div>
-        ) : null}
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+          {status ? <p>Error code: {status}</p> : null}
+          {debugDetails ? (
+            <details className="mt-3" open>
+              <summary className="cursor-pointer text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                Error details
+              </summary>
+              <pre className="mt-3 max-h-[60vh] overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs whitespace-pre-wrap text-[var(--bo-fg)]">
+                {debugDetails}
+              </pre>
+            </details>
+          ) : null}
+        </div>
       </div>
     </BackofficeShell>
   );

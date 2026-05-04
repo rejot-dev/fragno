@@ -23,7 +23,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const detail = await fetchPiSessionDetail(request, context, params.orgId, params.sessionId);
   if (detail.sessionError || !detail.session) {
-    throw new Response(detail.sessionError ?? "Not Found", { status: detail.status ?? 404 });
+    throw Response.json(detail.sessionError ?? { message: "Not Found", code: "NOT_FOUND" }, {
+      status: detail.status ?? 404,
+    });
   }
 
   return { session: detail.session };
@@ -86,7 +88,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
 
   const disabledReason = liveSession.readyForInput
     ? null
-    : "This session is still working through the current turn. Wait for it to return to user input before sending another message.";
+    : "The model is working. You can still send a follow-up, steer it, or stop the session.";
 
   const updateDisplayOption = (key: keyof typeof displayOptions) => (value: boolean) => {
     setDisplayOptions((current) => ({
@@ -95,13 +97,19 @@ export default function BackofficeOrganisationPiSessionDetail() {
     }));
   };
 
-  const handleSend = (text: string) => {
-    const didSend = liveSession.sendMessage({ text });
+  const handleSend = (command: { kind: "followUp" | "steer"; text: string }) => {
+    const didSend = liveSession.sendCommand({
+      kind: command.kind,
+      input: { text: command.text },
+    });
     if (didSend) {
       chatScroll.jumpToLatest("auto");
     }
     return didSend;
   };
+
+  const handleStop = () =>
+    liveSession.sendCommand({ kind: "abort", reason: "Stopped from backoffice UI" });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -113,6 +121,8 @@ export default function BackofficeOrganisationPiSessionDetail() {
       />
 
       <SessionDisplayOptions
+        exportHref={`/api/pi/${orgId}/sessions/${displaySession.id}/export/pi-jsonl`}
+        exportFilename={`pi-session-${displaySession.id}.jsonl`}
         showToolCalls={displayOptions.showToolCalls}
         showThinking={displayOptions.showThinking}
         showTrace={displayOptions.showTrace}
@@ -146,10 +156,11 @@ export default function BackofficeOrganisationPiSessionDetail() {
           <SessionComposer
             key={session.id}
             busy={liveSession.sending}
-            disabled={!liveSession.readyForInput}
+            readyForInput={liveSession.readyForInput}
             disabledReason={disabledReason}
             error={liveSession.sendError}
             onSend={handleSend}
+            onStop={handleStop}
           />
         }
       />
