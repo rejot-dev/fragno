@@ -522,6 +522,8 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: int("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
+  parentStepKey: text("parentStepKey"),
+  depth: int("depth").notNull().default(0),
   name: text("name").notNull(),
   type: text("type").notNull(),
   status: text("status").notNull(),

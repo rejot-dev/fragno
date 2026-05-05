@@ -6,6 +6,7 @@ import {
   type SupportedAdapter,
 } from "@fragno-dev/test";
 
+import type { WorkflowLiveStateSnapshot } from "./live-state";
 import { workflowsSchema } from "./schema";
 import {
   createWorkflowsTestHarness,
@@ -89,6 +90,8 @@ export type WorkflowScenarioStepRow = {
   instanceId: string;
   runNumber: number;
   stepKey: string;
+  parentStepKey: string | null;
+  depth: number;
   name: string;
   type: string;
   status: string;
@@ -137,6 +140,10 @@ export type WorkflowScenarioState<TRegistry extends WorkflowsRegistry = Workflow
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
   ) => Promise<InstanceStatus>;
+  getLiveState: (
+    workflow: (keyof TRegistry & string) | string,
+    instanceId: string,
+  ) => Promise<WorkflowLiveStateSnapshot | null>;
   getHistory: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
@@ -210,7 +217,13 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioTickStep<TRegistry, TVars>
   | WorkflowScenarioRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<TRegistry, TVars>
+  | WorkflowScenarioResolveControlStep<TRegistry, TVars>
+  | WorkflowScenarioRejectControlStep<TRegistry, TVars>
+  | WorkflowScenarioKillRunnerStep
+  | WorkflowScenarioRestartRunnerStep
+  | WorkflowScenarioKillAndRestartRunnerStep
   | WorkflowScenarioReadStep<TRegistry, TVars>
+  | WorkflowScenarioReadLiveStateStep<TRegistry, TVars>
   | WorkflowScenarioAssertStep<TRegistry, TVars>;
 
 export type WorkflowScenarioCreateStep<
@@ -413,12 +426,52 @@ export type WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<
   storeAs?: (keyof TVars & string) | undefined;
 };
 
+export type WorkflowScenarioResolveControlStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "resolveControl";
+  key: ScenarioInput<string, TRegistry, TVars>;
+  value?: ScenarioInput<unknown, TRegistry, TVars>;
+};
+
+export type WorkflowScenarioRejectControlStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "rejectControl";
+  key: ScenarioInput<string, TRegistry, TVars>;
+  error?: ScenarioInput<unknown, TRegistry, TVars>;
+};
+
+export type WorkflowScenarioKillRunnerStep = {
+  type: "killRunner";
+};
+
+export type WorkflowScenarioRestartRunnerStep = {
+  type: "restartRunner";
+};
+
+export type WorkflowScenarioKillAndRestartRunnerStep = {
+  type: "killAndRestartRunner";
+};
+
 export type WorkflowScenarioReadStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
 > = {
   type: "read";
   read: (ctx: WorkflowScenarioContext<TRegistry, TVars>) => unknown | Promise<unknown>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+export type WorkflowScenarioReadLiveStateStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "readLiveState";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -541,10 +594,37 @@ export const createScenarioSteps = <
     type: "advanceTimeAndRunUntilIdle",
     ...input,
   }),
+  resolveControl: (
+    input: StepInput<WorkflowScenarioResolveControlStep<TRegistry, TVars>>,
+  ): WorkflowScenarioResolveControlStep<TRegistry, TVars> => ({
+    type: "resolveControl",
+    ...input,
+  }),
+  rejectControl: (
+    input: StepInput<WorkflowScenarioRejectControlStep<TRegistry, TVars>>,
+  ): WorkflowScenarioRejectControlStep<TRegistry, TVars> => ({
+    type: "rejectControl",
+    ...input,
+  }),
+  killRunner: (): WorkflowScenarioKillRunnerStep => ({
+    type: "killRunner",
+  }),
+  restartRunner: (): WorkflowScenarioRestartRunnerStep => ({
+    type: "restartRunner",
+  }),
+  killAndRestartRunner: (): WorkflowScenarioKillAndRestartRunnerStep => ({
+    type: "killAndRestartRunner",
+  }),
   read: (
     input: StepInput<WorkflowScenarioReadStep<TRegistry, TVars>>,
   ): WorkflowScenarioReadStep<TRegistry, TVars> => ({
     type: "read",
+    ...input,
+  }),
+  readLiveState: (
+    input: StepInput<WorkflowScenarioReadLiveStateStep<TRegistry, TVars>>,
+  ): WorkflowScenarioReadLiveStateStep<TRegistry, TVars> => ({
+    type: "readLiveState",
     ...input,
   }),
   assert: (
@@ -698,6 +778,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       instanceRef: { internalId?: bigint } | bigint;
       runNumber: number;
       stepKey: string;
+      parentStepKey: string | null;
+      depth: number;
       name: string;
       type: string;
       status: string;
@@ -721,6 +803,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceId: context.instanceId,
     runNumber: row.runNumber,
     stepKey: row.stepKey,
+    parentStepKey: row.parentStepKey,
+    depth: row.depth,
     name: row.name,
     type: row.type,
     status: row.status,
@@ -843,6 +927,15 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     return await harness.getStatus(workflowName, instanceId);
   };
 
+  const getLiveState = async (
+    workflow: (keyof TRegistry & string) | string,
+    instanceId: string,
+  ) => {
+    const workflowName = resolver.resolveName(String(workflow));
+    const snapshots = harness.fragment.services.getLiveStepStates(workflowName, instanceId);
+    return snapshots[0] ?? null;
+  };
+
   const getHistory = async (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
@@ -919,6 +1012,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           id: { toString(): string };
           runNumber: number;
           stepKey: string;
+          parentStepKey: string | null;
+          depth: number;
           name: string;
           type: string;
           status: string;
@@ -938,6 +1033,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         id: row.id.toString(),
         runNumber: row.runNumber,
         stepKey: row.stepKey,
+        parentStepKey: row.parentStepKey,
+        depth: row.depth,
         name: row.name,
         type: row.type,
         status: row.status,
@@ -1033,6 +1130,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     getSteps,
     getEvents,
     getStatus,
+    getLiveState,
     getHistory,
     internal: {
       getHooks,
@@ -1595,8 +1693,43 @@ export async function runScenario<
           }
           break;
         }
+        case "resolveControl": {
+          const key = await resolveScenarioInput(step.key, context);
+          const value =
+            "value" in step ? await resolveScenarioInput(step.value, context) : undefined;
+          context.runtime.controls.resolve(key, value);
+          break;
+        }
+        case "rejectControl": {
+          const key = await resolveScenarioInput(step.key, context);
+          const error =
+            "error" in step ? await resolveScenarioInput(step.error, context) : undefined;
+          context.runtime.controls.reject(key, error);
+          break;
+        }
+        case "killRunner": {
+          await context.harness.killRunner();
+          break;
+        }
+        case "restartRunner": {
+          await context.harness.restartRunner();
+          break;
+        }
+        case "killAndRestartRunner": {
+          await context.harness.killAndRestartRunner();
+          break;
+        }
         case "read": {
           const value = await step.read(context);
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = value;
+          }
+          break;
+        }
+        case "readLiveState": {
+          const workflow = await resolveScenarioInput(step.workflow, context);
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
+          const value = await context.state.getLiveState(workflow, instanceId);
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = value;
           }

@@ -11,6 +11,11 @@ import {
 import { withDatabase } from "@fragno-dev/db";
 
 import {
+  createWorkflowLiveStateStore,
+  type WorkflowLiveStateSnapshot,
+  type WorkflowLiveStateStore,
+} from "./live-state";
+import {
   createScenarioSteps,
   defineScenario,
   runScenario,
@@ -20,6 +25,7 @@ import {
   type WorkflowScenarioStepRow,
 } from "./scenario";
 import { workflowsSchema } from "./schema";
+import { createWorkflowsTestRuntime } from "./test";
 import { defineWorkflow, WaitForEventTimeoutError } from "./workflow";
 
 type RouteResponse = {
@@ -44,6 +50,31 @@ const assertOkResponse = (response: RouteResponse) => {
   const data = assertJsonResponse<{ ok: true }>(response);
   expect(data.ok).toBe(true);
 };
+
+function createObservedLiveStateStore() {
+  const store = createWorkflowLiveStateStore();
+  const published: WorkflowLiveStateSnapshot[] = [];
+  const observed: WorkflowLiveStateStore = {
+    ...store,
+    set(snapshot) {
+      published.push(snapshot);
+      store.set(snapshot);
+    },
+    begin(snapshot) {
+      published.push(snapshot);
+      const lease = store.begin(snapshot);
+      return {
+        set(nextSnapshot) {
+          published.push(nextSnapshot);
+          lease.set(nextSnapshot);
+        },
+        clear: lease.clear,
+      };
+    },
+  };
+
+  return { store, observed, published };
+}
 
 describe("Workflows Runner (Scenario DSL)", () => {
   test("runs a simple workflow to completion", async () => {
@@ -227,32 +258,34 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("Promise.race nested inside a parent step saves the winner", async () => {
+  test("supports nested Promise.race with stable nested identity after a fast winner", async () => {
     const RaceWorkflow = defineWorkflow({ name: "race-workflow" }, async (_event, step) => {
-      const winner = await step.do("race-wrapper", async () => {
+      const raceReturn = await step.do("Promise step", async () => {
         return await Promise.race([
-          step.do("fast", async () => {
-            return "fast-wins";
+          step.do("Promise first race", async () => {
+            await step.sleep("Promise first delay", 1000);
+            return "first";
           }),
-          step.do("slow", async () => {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            return "slow-wins";
+          step.do("Promise second race", async () => {
+            return "second";
           }),
         ]);
       });
-      return { winner };
+
+      const cached = await step.do("After race", async () => raceReturn);
+      return { raceReturn, cached };
     });
 
     const workflows = { RACE: RaceWorkflow };
 
     type ScenarioVars = {
-      status?: { status: string; output?: { winner: string } };
+      status?: { status: string; output?: { raceReturn: string; cached: string } };
       steps?: WorkflowScenarioStepRow[];
     };
 
     const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "promise-race-nested",
+      name: "promise-race-step",
       workflows,
       steps: [
         scenarioSteps.initializeAndRunUntilIdle({ workflow: "RACE", id: "race-1" }),
@@ -266,14 +299,666 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         scenarioSteps.assert((ctx) => {
           expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ winner: "fast-wins" });
-
-          expect(ctx.vars.steps).toHaveLength(2);
-          expect(ctx.vars.steps?.map((s) => s.stepKey).sort()).toEqual([
-            "do:race-wrapper",
-            "do:race-wrapper/do:fast",
+          expect(ctx.vars.status?.output).toEqual({ raceReturn: "second", cached: "second" });
+          expect(ctx.vars.steps).toMatchObject([
+            {
+              stepKey: "do:Promise step",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "second",
+            },
+            {
+              stepKey: "do:Promise step>do:Promise first race",
+              parentStepKey: "do:Promise step",
+              depth: 1,
+              status: "waiting",
+            },
+            {
+              stepKey: "do:Promise step>do:Promise first race>sleep:Promise first delay",
+              parentStepKey: "do:Promise step>do:Promise first race",
+              depth: 2,
+              status: "waiting",
+            },
+            {
+              stepKey: "do:Promise step>do:Promise second race",
+              parentStepKey: "do:Promise step",
+              depth: 1,
+              status: "completed",
+              result: "second",
+            },
+            {
+              stepKey: "do:After race",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "second",
+            },
           ]);
-          expect(ctx.vars.steps?.every((s) => s.status === "completed")).toBe(true);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("supports nested Promise.race between a slow step and an event wait", async () => {
+    const RaceEventWorkflow = defineWorkflow(
+      { name: "race-event-workflow" },
+      async (_event, step) => {
+        const raceReturn = await step.do("Promise race", async () => {
+          return await Promise.race([
+            step.do("slow branch", async () => {
+              await step.sleep("slow delay", 1000);
+              return "slow";
+            }),
+            step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
+          ]);
+        });
+
+        const cached = await step.do("After race", async () => raceReturn);
+        return { raceReturn, cached };
+      },
+    );
+
+    const workflows = { RACE_EVENT: RaceEventWorkflow };
+
+    type ScenarioVars = {
+      waitingStatus?: { status: string };
+      finalStatus?: { status: string; output?: { raceReturn: string; cached: string } };
+      steps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "promise-race-slow-step-event-wait",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RACE_EVENT", id: "race-event-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RACE_EVENT", "race-event-1"),
+          storeAs: "waitingStatus",
+        }),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "RACE_EVENT",
+          instanceId: "race-event-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RACE_EVENT", "race-event-1"),
+          storeAs: "finalStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("RACE_EVENT", "race-event-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
+          expect(ctx.vars.finalStatus).toMatchObject({
+            status: "complete",
+            output: { raceReturn: "event", cached: "event" },
+          });
+          expect(ctx.vars.steps).toMatchObject([
+            {
+              stepKey: "do:Promise race",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "event",
+            },
+            {
+              stepKey: "do:Promise race>do:slow branch",
+              parentStepKey: "do:Promise race",
+              depth: 1,
+              status: "waiting",
+            },
+            {
+              stepKey: "do:Promise race>do:slow branch>sleep:slow delay",
+              parentStepKey: "do:Promise race>do:slow branch",
+              depth: 2,
+              status: "waiting",
+            },
+            {
+              stepKey: "do:Promise race>waitForEvent:event branch",
+              parentStepKey: "do:Promise race",
+              depth: 1,
+              status: "completed",
+            },
+            {
+              stepKey: "do:After race",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "event",
+            },
+          ]);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("supports nested Promise.any inside an outer step", async () => {
+    const AnyWorkflow = defineWorkflow({ name: "any-workflow" }, async (_event, step) => {
+      const anyReturn = await step.do("Promise any", async () => {
+        return await Promise.any([
+          step.do("Promise any first", async () => {
+            await step.sleep("Promise any first delay", 1000);
+            return "first";
+          }),
+          step.do("Promise any second", async () => {
+            return "second";
+          }),
+        ]);
+      });
+
+      return { anyReturn };
+    });
+
+    const workflows = { ANY: AnyWorkflow };
+
+    type ScenarioVars = {
+      status?: { status: string; output?: { anyReturn: string } };
+      steps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "promise-any-step",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "ANY", id: "any-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("ANY", "any-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("ANY", "any-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(ctx.vars.status?.output).toEqual({ anyReturn: "second" });
+          expect(ctx.vars.steps?.map((step) => step.stepKey)).toEqual([
+            "do:Promise any",
+            "do:Promise any>do:Promise any first",
+            "do:Promise any>do:Promise any first>sleep:Promise any first delay",
+            "do:Promise any>do:Promise any second",
+          ]);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("can resume a waiting workflow after killing the runner", async () => {
+    const RestartWorkflow = defineWorkflow(
+      { name: "scenario-kill-runner" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready" });
+        return await step.do("finish", async () => "done");
+      },
+    );
+
+    const workflows = { RESTART: RestartWorkflow };
+
+    type ScenarioVars = {
+      waitingStatus?: { status: string };
+      finalStatus?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-kill-runner",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RESTART", id: "restart-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
+          storeAs: "waitingStatus",
+        }),
+        scenarioSteps.killAndRestartRunner(),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "RESTART",
+          instanceId: "restart-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
+          storeAs: "finalStatus",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
+          expect(ctx.vars.finalStatus).toMatchObject({ status: "complete", output: "done" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("can resume a sleeping workflow after killing the runner", async () => {
+    const SleepWorkflow = defineWorkflow({ name: "scenario-kill-sleep" }, async (_event, step) => {
+      await step.sleep("pause", 1000);
+      return "awake";
+    });
+
+    const workflows = { SLEEP: SleepWorkflow };
+
+    type ScenarioVars = {
+      status?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-kill-sleep",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-kill-1" }),
+        scenarioSteps.killAndRestartRunner(),
+        scenarioSteps.advanceTimeAndRunUntilIdle({
+          workflow: "SLEEP",
+          instanceId: "sleep-kill-1",
+          advanceBy: 1000,
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("SLEEP", "sleep-kill-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "awake" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("does not run workflows while the runner is dead", async () => {
+    const DeadRunnerWorkflow = defineWorkflow(
+      { name: "scenario-dead-runner" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready" });
+        return "done";
+      },
+    );
+
+    const workflows = { DEAD: DeadRunnerWorkflow };
+
+    type ScenarioVars = {
+      deadRun?: { processed: number; ticks: number };
+      statusWhileDead?: { status: string; output?: string };
+      statusAfterRestart?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-dead-runner",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "DEAD", id: "dead-1" }),
+        scenarioSteps.killRunner(),
+        scenarioSteps.event({
+          workflow: "DEAD",
+          instanceId: "dead-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.runUntilIdle({
+          workflow: "DEAD",
+          instanceId: "dead-1",
+          reason: "event",
+          storeAs: "deadRun",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("DEAD", "dead-1"),
+          storeAs: "statusWhileDead",
+        }),
+        scenarioSteps.restartRunner(),
+        scenarioSteps.runUntilIdle({
+          workflow: "DEAD",
+          instanceId: "dead-1",
+          reason: "event",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("DEAD", "dead-1"),
+          storeAs: "statusAfterRestart",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.deadRun).toEqual({ processed: 0, ticks: 1 });
+          expect(ctx.vars.statusWhileDead?.status).toBe("waiting");
+          expect(ctx.vars.statusAfterRestart).toMatchObject({ status: "complete", output: "done" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("step live state clears after nested wait suspension and republishes only while executing", async () => {
+    const {
+      store: _liveState,
+      observed: observedLiveState,
+      published,
+    } = createObservedLiveStateStore();
+
+    const LiveWaitWorkflow = defineWorkflow(
+      { name: "scenario-step-live-wait" },
+      async (_event, step) => {
+        await step.do("approval", { liveState: { phase: "idle", approved: false } }, async (tx) => {
+          tx.liveState.setState({ phase: "waiting" });
+
+          await step.waitForEvent("ready", { type: "ready" });
+
+          tx.liveState.setState({ phase: "complete", approved: true });
+        });
+        return "done";
+      },
+    );
+
+    const workflows = { LIVE_WAIT: LiveWaitWorkflow };
+    type ScenarioVars = {
+      liveAfterSuspend?: WorkflowLiveStateSnapshot | null;
+      liveAfterComplete?: WorkflowLiveStateSnapshot | null;
+      status?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-step-live-wait",
+      workflows,
+      harness: { fragmentConfig: { liveState: observedLiveState } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "LIVE_WAIT", id: "live-wait-1" }),
+        scenarioSteps.readLiveState({
+          workflow: "LIVE_WAIT",
+          instanceId: "live-wait-1",
+          storeAs: "liveAfterSuspend",
+        }),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "LIVE_WAIT",
+          instanceId: "live-wait-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.readLiveState({
+          workflow: "LIVE_WAIT",
+          instanceId: "live-wait-1",
+          storeAs: "liveAfterComplete",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("LIVE_WAIT", "live-wait-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              workflowName: "scenario-step-live-wait",
+              instanceId: "live-wait-1",
+              runNumber: 0,
+              stepKey: "do:approval",
+              parentStepKey: null,
+              depth: 0,
+              name: "approval",
+              state: { phase: "waiting", approved: false },
+            }),
+          );
+          expect(ctx.vars.liveAfterSuspend).toBeNull();
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              stepKey: "do:approval",
+              state: { phase: "complete", approved: true },
+            }),
+          );
+          expect(ctx.vars.liveAfterComplete).toBeNull();
+          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("completed step replay does not republish step live state", async () => {
+    const {
+      store: _liveState,
+      observed: observedLiveState,
+      published,
+    } = createObservedLiveStateStore();
+    let publishExecutions = 0;
+
+    const StepReplayWorkflow = defineWorkflow(
+      { name: "scenario-step-live-replay" },
+      async (_event, step) => {
+        await step.do("publish once", { liveState: { phase: "idle" } }, async (tx) => {
+          publishExecutions += 1;
+          tx.liveState.setState({ phase: "inside-step" });
+        });
+
+        await step.waitForEvent("ready", { type: "ready" });
+        return "done";
+      },
+    );
+
+    const workflows = { STEP_REPLAY: StepReplayWorkflow };
+    type ScenarioVars = {
+      liveAfterFirstRun?: WorkflowLiveStateSnapshot | null;
+      liveAfterRestart?: WorkflowLiveStateSnapshot | null;
+      status?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-step-live-replay",
+      workflows,
+      harness: { fragmentConfig: { liveState: observedLiveState } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "STEP_REPLAY", id: "step-replay-1" }),
+        scenarioSteps.readLiveState({
+          workflow: "STEP_REPLAY",
+          instanceId: "step-replay-1",
+          storeAs: "liveAfterFirstRun",
+        }),
+        scenarioSteps.killAndRestartRunner(),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "STEP_REPLAY",
+          instanceId: "step-replay-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.readLiveState({
+          workflow: "STEP_REPLAY",
+          instanceId: "step-replay-1",
+          storeAs: "liveAfterRestart",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("STEP_REPLAY", "step-replay-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(publishExecutions).toBe(1);
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              stepKey: "do:publish once",
+              state: { phase: "inside-step" },
+            }),
+          );
+          expect(ctx.vars.liveAfterFirstRun).toBeNull();
+          expect(ctx.vars.liveAfterRestart).toBeNull();
+          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("step live state clears after callback error", async () => {
+    const {
+      store: _liveState,
+      observed: observedLiveState,
+      published,
+    } = createObservedLiveStateStore();
+
+    const ErrorWorkflow = defineWorkflow(
+      { name: "scenario-step-live-error" },
+      async (_event, step) => {
+        await step.do("fail", { liveState: { phase: "starting" } }, async (tx) => {
+          tx.liveState.setState({ phase: "failing" });
+          throw new Error("boom");
+        });
+      },
+    );
+
+    const workflows = { ERROR: ErrorWorkflow };
+    type ScenarioVars = {
+      liveAfterError?: WorkflowLiveStateSnapshot | null;
+      status?: { status: string; error?: { name: string; message: string } };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-step-live-error",
+      workflows,
+      harness: { fragmentConfig: { liveState: observedLiveState } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "ERROR", id: "error-1" }),
+        scenarioSteps.readLiveState({
+          workflow: "ERROR",
+          instanceId: "error-1",
+          storeAs: "liveAfterError",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("ERROR", "error-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              stepKey: "do:fail",
+              state: { phase: "failing" },
+            }),
+          );
+          expect(ctx.vars.liveAfterError).toBeNull();
+          expect(ctx.vars.status).toMatchObject({
+            status: "errored",
+            error: { name: "Error", message: "boom" },
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("step live state clears after retry suspension", async () => {
+    const {
+      store: _liveState,
+      observed: observedLiveState,
+      published,
+    } = createObservedLiveStateStore();
+
+    const RetryWorkflow = defineWorkflow(
+      { name: "scenario-step-live-retry" },
+      async (_event, step) => {
+        await step.do(
+          "retry later",
+          { retries: { limit: 1, delay: "1 hour" }, liveState: { phase: "starting" } },
+          async (tx) => {
+            tx.liveState.setState({ phase: "retrying" });
+            throw new Error("temporary");
+          },
+        );
+        return "done";
+      },
+    );
+
+    const workflows = { RETRY: RetryWorkflow };
+    type ScenarioVars = {
+      liveAfterRetrySuspend?: WorkflowLiveStateSnapshot | null;
+      status?: { status: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-step-live-retry",
+      workflows,
+      harness: { fragmentConfig: { liveState: observedLiveState } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RETRY", id: "retry-1" }),
+        scenarioSteps.readLiveState({
+          workflow: "RETRY",
+          instanceId: "retry-1",
+          storeAs: "liveAfterRetrySuspend",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RETRY", "retry-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              stepKey: "do:retry later",
+              state: { phase: "retrying" },
+            }),
+          );
+          expect(ctx.vars.liveAfterRetrySuspend).toBeNull();
+          expect(ctx.vars.status?.status).toBe("waiting");
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("can drive reusable runtime controls from the scenario DSL", async () => {
+    const runtime = createWorkflowsTestRuntime();
+
+    const ControlWorkflow = defineWorkflow({ name: "control-workflow" }, async (_event, step) => {
+      await step.waitForEvent("ready", { type: "ready" });
+      const value = await step.do("await control", async () => {
+        return await runtime.controls.wait<boolean>("control:ready");
+      });
+      return { value };
+    });
+
+    const workflows = { CONTROL: ControlWorkflow };
+
+    type ScenarioVars = {
+      status?: { status: string; output?: { value: boolean } };
+      control?: { key: string; status: string; pendingCount: number; value?: unknown };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-controls",
+      workflows,
+      harness: { runtime },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "CONTROL", id: "control-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.runtime.controls.get("control:ready"),
+          storeAs: "control",
+        }),
+        scenarioSteps.resolveControl({ key: "control:ready", value: false }),
+        scenarioSteps.eventAndRunUntilIdle({
+          workflow: "CONTROL",
+          instanceId: "control-1",
+          event: { type: "ready" },
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("CONTROL", "control-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.control).toMatchObject({
+            key: "control:ready",
+            status: "pending",
+            pendingCount: 0,
+          });
+          expect(ctx.vars.status).toMatchObject({
+            status: "complete",
+            output: { value: false },
+          });
         }),
       ],
     });
@@ -2463,236 +3148,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("runs nested sequential steps inside a parent step", async () => {
-    const NestedWorkflow = defineWorkflow(
-      { name: "nested-sequential-workflow" },
-      async (_event, step) => {
-        const result = await step.do("outer", async () => {
-          const a = await step.do("first", () => 10);
-          const b = await step.do("second", () => a + 20);
-          return { a, b };
-        });
-        return result;
-      },
-    );
-
-    const workflows = { NESTED: NestedWorkflow };
-
-    type ScenarioVars = {
-      status?: { status: string; output?: { a: number; b: number } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "nested-sequential-steps",
-      workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "NESTED", id: "nested-1" }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("NESTED", "nested-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("NESTED", "nested-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ a: 10, b: 30 });
-          expect(ctx.vars.steps).toHaveLength(3);
-          expect(ctx.vars.steps?.map((s) => s.stepKey).sort()).toEqual([
-            "do:outer",
-            "do:outer/do:first",
-            "do:outer/do:second",
-          ]);
-          expect(ctx.vars.steps?.every((s) => s.status === "completed")).toBe(true);
-        }),
-      ],
-    });
-
-    await runScenario(scenario);
-  });
-
-  test("nested steps get path-scoped keys distinct from top-level steps", async () => {
-    const NestedSameNameWorkflow = defineWorkflow(
-      { name: "nested-same-name-workflow" },
-      async (_event, step) => {
-        const outer = await step.do("wrapper", async () => {
-          const nested = await step.do("compute", () => "from-nested");
-          return nested;
-        });
-        const top = await step.do("compute", () => "from-top");
-        return { outer, top };
-      },
-    );
-
-    const workflows = { NESTED_NAME: NestedSameNameWorkflow };
-
-    type ScenarioVars = {
-      status?: { status: string; output?: { outer: string; top: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "nested-same-name-steps",
-      workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "NESTED_NAME", id: "nested-name-1" }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("NESTED_NAME", "nested-name-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("NESTED_NAME", "nested-name-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ outer: "from-nested", top: "from-top" });
-          expect(ctx.vars.steps).toHaveLength(3);
-          expect(ctx.vars.steps?.map((s) => s.stepKey).sort()).toEqual([
-            "do:compute",
-            "do:wrapper",
-            "do:wrapper/do:compute",
-          ]);
-        }),
-      ],
-    });
-
-    await runScenario(scenario);
-  });
-
-  test("replay after suspend skips committed step callbacks", async () => {
-    let alphaCallCount = 0;
-    let betaCallCount = 0;
-
-    const ReplayWorkflow = defineWorkflow({ name: "replay-workflow" }, async (_event, step) => {
-      const a = await step.do("alpha", async () => {
-        alphaCallCount++;
-        return "A";
-      });
-      await step.sleep("pause", "1h");
-      const b = await step.do("beta", async () => {
-        betaCallCount++;
-        return "B";
-      });
-      return { a, b };
-    });
-
-    const workflows = { REPLAY: ReplayWorkflow };
-
-    type ScenarioVars = {
-      statusAfterSleep?: { status: string };
-      stepsAfterSleep?: WorkflowScenarioStepRow[];
-      statusFinal?: { status: string; output?: { a: string; b: string } };
-      stepsFinal?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "replay-after-suspend",
-      workflows,
-      steps: [
-        // Tick 1: alpha completes, sleep suspends → committed
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "REPLAY", id: "replay-1" }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("REPLAY", "replay-1"),
-          storeAs: "statusAfterSleep",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("REPLAY", "replay-1"),
-          storeAs: "stepsAfterSleep",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusAfterSleep?.status).toBe("waiting");
-          expect(ctx.vars.stepsAfterSleep).toHaveLength(2);
-          expect(ctx.vars.stepsAfterSleep?.map((s) => s.stepKey).sort()).toEqual([
-            "do:alpha",
-            "sleep:pause",
-          ]);
-          expect(alphaCallCount).toBe(1);
-          expect(betaCallCount).toBe(0);
-        }),
-
-        // Simulate restart: advance time past the sleep, fire wake tick.
-        // The runner replays the workflow from the top — alpha hits its
-        // completed snapshot and returns the cached result without running
-        // the callback again.  Sleep completes.  Beta runs fresh.
-        scenarioSteps.advanceTimeAndRunUntilIdle({
-          workflow: "REPLAY",
-          instanceId: "replay-1",
-          advanceBy: "2h",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("REPLAY", "replay-1"),
-          storeAs: "statusFinal",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("REPLAY", "replay-1"),
-          storeAs: "stepsFinal",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusFinal?.status).toBe("complete");
-          expect(ctx.vars.statusFinal?.output).toEqual({ a: "A", b: "B" });
-
-          // alpha's callback ran exactly once (tick 1).
-          // On the wake tick, its completed snapshot was used — callback skipped.
-          expect(alphaCallCount).toBe(1);
-          // beta's callback ran exactly once (tick 2, after sleep completed).
-          expect(betaCallCount).toBe(1);
-
-          expect(ctx.vars.stepsFinal).toHaveLength(3);
-          expect(ctx.vars.stepsFinal?.map((s) => s.stepKey).sort()).toEqual([
-            "do:alpha",
-            "do:beta",
-            "sleep:pause",
-          ]);
-          expect(ctx.vars.stepsFinal?.every((s) => s.status === "completed")).toBe(true);
-        }),
-      ],
-    });
-
-    await runScenario(scenario);
-  });
-
-  test("throws on duplicate step names at the same level", async () => {
-    const DuplicateWorkflow = defineWorkflow(
-      { name: "duplicate-step-workflow" },
-      async (_event, step) => {
-        await step.do("compute", () => 1);
-        await step.do("compute", () => 2);
-        return { ok: true };
-      },
-    );
-
-    const workflows = { DUPLICATE: DuplicateWorkflow };
-
-    type ScenarioVars = {
-      status?: { status: string; error?: { message: string } };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "duplicate-step-name",
-      workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "DUPLICATE", id: "dup-1" }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("DUPLICATE", "dup-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("errored");
-          expect(ctx.vars.status?.error?.message).toContain("DUPLICATE_STEP_NAME");
-        }),
-      ],
-    });
-
-    await runScenario(scenario);
-  });
-
   test("createBatch route returns created instances", async () => {
     const RouteBatchWorkflow = defineWorkflow(
       { name: "batch-route-workflow" },
@@ -2750,5 +3205,50 @@ describe("Workflows Runner (Scenario DSL)", () => {
         process.env["FRAGNO_DEBUG_BATCH_ROUTE"] = previousDebug;
       }
     }
+  });
+
+  test("step live state is visible during the callback and cleared afterwards", async () => {
+    const {
+      store: _liveState,
+      observed: observedLiveState,
+      published,
+    } = createObservedLiveStateStore();
+
+    const LiveStepWorkflow = defineWorkflow(
+      { name: "live-step-workflow" },
+      async (_event, step) => {
+        await step.do("stream", { liveState: { phase: "starting", count: 0 } }, async (tx) => {
+          tx.liveState.setState((state) => ({ count: state.count + 1, phase: "streaming" }));
+        });
+        return { ok: true };
+      },
+    );
+
+    const workflows = { LIVE: LiveStepWorkflow };
+    const scenarioSteps = createScenarioSteps<typeof workflows, { status?: { status: string } }>();
+    const scenario = defineScenario<typeof workflows, { status?: { status: string } }>({
+      name: "step-live-state-clears",
+      workflows,
+      harness: { fragmentConfig: { liveState: observedLiveState } },
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "LIVE", id: "live-1" }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("LIVE", "live-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.status?.status).toBe("complete");
+          expect(published).toContainEqual(
+            expect.objectContaining({
+              stepKey: "do:stream",
+              state: { phase: "streaming", count: 1 },
+            }),
+          );
+          expect(_liveState.size()).toBe(0);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
   });
 });

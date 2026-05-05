@@ -23,3 +23,13 @@
 - `apps/backoffice/app/fragno/bash-runtime/pi-bash-runtime.ts`
   - Conflict: one side renamed turn submission from the old `/messages` route to the new `/command` route while the current branch had already switched route errors to the richer `throwOnRouteRuntimeError` helper.
   - Resolution: kept the new command route and `promptResponse` handling, but preserved the richer runtime error wrapper for failed prompt submissions.
+
+## `feat(workflows): add step live state`
+
+- `packages/fragment-workflows/src/runner/step.ts`
+  - Conflict: the rebased commit introduced workflow step live-state leases and scoped step occurrence tracking in the same runner areas that the current branch had changed.
+  - Resolution: accepted the live-state runner implementation from the rebased commit for this intermediate commit; later workflow step-emission commits in the rebase are expected to replace this live-state mechanism.
+
+- `packages/fragment-workflows/src/scenario-runner.test.ts`
+  - Conflict: scenario assertions changed around the live-state capable runner.
+  - Resolution: accepted the rebased commit's scenario coverage so the intermediate live-state commit remains self-consistent.

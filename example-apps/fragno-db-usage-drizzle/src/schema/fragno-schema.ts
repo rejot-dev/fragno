@@ -530,6 +530,8 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
+  parentStepKey: text("parentStepKey"),
+  depth: integer("depth").notNull().default(0),
   name: text("name").notNull(),
   type: text("type").notNull(),
   status: text("status").notNull(),

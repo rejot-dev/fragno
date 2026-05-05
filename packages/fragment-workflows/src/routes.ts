@@ -64,6 +64,8 @@ const instanceStatusOutputSchema = z.object({
 
 const currentStepOutputSchema = z.object({
   stepKey: z.string(),
+  parentStepKey: z.string().nullable(),
+  depth: z.number(),
   name: z.string(),
   type: z.string(),
   status: z.string(),
@@ -96,6 +98,8 @@ const historyStepSchema = z.object({
   id: z.string(),
   runNumber: z.number(),
   stepKey: z.string(),
+  parentStepKey: z.string().nullable(),
+  depth: z.number(),
   name: z.string(),
   type: z.string(),
   status: z.string(),
@@ -139,11 +143,7 @@ const parseCursor = (cursorParam: string | undefined) => {
   if (!cursorParam) {
     return undefined;
   }
-  try {
-    return decodeCursor(cursorParam);
-  } catch {
-    return undefined;
-  }
+  return decodeCursor(cursorParam);
 };
 
 const resolveInstanceStatus = (status: string): InstanceStatus["status"] => {
@@ -217,7 +217,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "GET",
         path: "/:workflowName/instances",
         queryParameters: ["status", "pageSize", "cursor"],
-        errorCodes: ["WORKFLOW_NOT_FOUND"],
+        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_CURSOR"],
         outputSchema: z.object({
           instances: z.array(
             z.object({
@@ -240,7 +240,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             cursor: query.get("cursor") || undefined,
           });
 
-          const cursor = parseCursor(params.cursor);
+          let cursor: ReturnType<typeof parseCursor>;
+          try {
+            cursor = parseCursor(params.cursor);
+          } catch {
+            return errorResponder({ message: "Invalid cursor", code: "INVALID_CURSOR" }, 400);
+          }
 
           try {
             const result = await this.handlerTx()
@@ -435,6 +440,8 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                   latestStep && latestStep.runNumber === instance.runNumber
                     ? {
                         stepKey: latestStep.stepKey,
+                        parentStepKey: latestStep.parentStepKey,
+                        depth: latestStep.depth,
                         name: latestStep.name,
                         type: latestStep.type,
                         status: latestStep.status,

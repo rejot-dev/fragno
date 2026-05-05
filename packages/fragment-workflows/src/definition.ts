@@ -1,13 +1,10 @@
 // Fragment definition and service implementations for workflow instances.
-import type { StandardSchemaV1 } from "@fragno-dev/core/api";
-
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
+import type { Cursor } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "./debug-log";
 import { runWorkflowsTick } from "./new-runner";
-import { restoreWorkflowState } from "./runner/restore-state";
 import type {
   WorkflowEventRecord,
   WorkflowInstanceRecord,
@@ -22,13 +19,10 @@ import {
 } from "./system-events";
 import type {
   InstanceStatus,
-  WorkflowDefinition,
   WorkflowEnqueuedHookPayload,
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
   WorkflowRegistryEntry,
-  WorkflowStateShape,
-  WorkflowsHooks,
   WorkflowsFragmentConfig,
 } from "./workflow";
 
@@ -56,6 +50,8 @@ export type WorkflowsHistoryStep = {
   id: string;
   runNumber: number;
   stepKey: string;
+  parentStepKey: string | null;
+  depth: number;
   name: string;
   type: string;
   status: string;
@@ -102,63 +98,6 @@ type ListHistoryParams = {
 };
 
 type InstanceDetails = { id: string; details: InstanceStatus };
-
-type RestoreInstanceStateState = WorkflowStateShape | undefined;
-
-type RestoreInstanceStateResult<TState extends RestoreInstanceStateState> = TState extends undefined
-  ? undefined
-  : TState;
-
-type RestoreInstanceStateWorkflow<TState extends RestoreInstanceStateState> = WorkflowDefinition<
-  unknown,
-  unknown,
-  StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined,
-  TState
->;
-
-type RestoreInstanceStateReadModel = {
-  instance: WorkflowInstanceRecord;
-  steps: WorkflowStepRecord[];
-};
-
-function buildRestoreInstanceStateReadModel(
-  instance: WorkflowInstanceRecord | null | undefined,
-  steps: WorkflowStepRecord[],
-): RestoreInstanceStateReadModel {
-  if (!instance) {
-    throw new Error("INSTANCE_NOT_FOUND");
-  }
-
-  return {
-    instance,
-    steps: steps.filter((step) => step.runNumber === instance.runNumber),
-  };
-}
-
-function restoreWorkflowStateFromReadModel<TState extends RestoreInstanceStateState>(
-  workflow: RestoreInstanceStateWorkflow<TState>,
-  readModel: RestoreInstanceStateReadModel,
-  liveState: WorkflowsFragmentConfig["liveState"] | undefined,
-) {
-  return restoreWorkflowState({
-    workflow,
-    instance: readModel.instance,
-    steps: readModel.steps,
-  }).then((state) => {
-    if (liveState && state !== undefined) {
-      liveState.set({
-        workflowName: readModel.instance.workflowName,
-        instanceId: readModel.instance.id.toString(),
-        runNumber: readModel.instance.runNumber,
-        status: buildInstanceStatus(readModel.instance).status,
-        capturedAt: readModel.instance.updatedAt,
-        state: state as WorkflowStateShape,
-      });
-    }
-    return state;
-  });
-}
 
 function generateInstanceId(randomUuid: () => string) {
   const prefix = "inst_";
@@ -213,6 +152,8 @@ function buildCurrentStepSummary(step: WorkflowStepRecord): WorkflowInstanceCurr
 
   return {
     stepKey: step.stepKey,
+    parentStepKey: step.parentStepKey,
+    depth: step.depth,
     name: step.name,
     type: step.type,
     status: step.status,
@@ -239,6 +180,8 @@ function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowsHistoryStep {
     id: step.id.toString(),
     runNumber: step.runNumber,
     stepKey: step.stepKey,
+    parentStepKey: step.parentStepKey,
+    depth: step.depth,
     name: step.name,
     type: step.type,
     status: step.status,
@@ -321,26 +264,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       getWorkflowEntry(workflowName);
     };
 
-    const readLiveInstanceState = (workflowName: string, instanceId: string) => {
+    const readLiveStepStates = (workflowName: string, instanceId: string) => {
       assertWorkflowName(workflowName);
-      return config.liveState?.get(instanceId, { workflowName }) ?? null;
-    };
-
-    const setLiveInstanceStatus = (
-      workflowName: string,
-      instanceId: string,
-      status: InstanceStatus["status"],
-    ) => {
-      const snapshot = readLiveInstanceState(workflowName, instanceId);
-      if (!snapshot || !config.liveState) {
-        return;
-      }
-
-      config.liveState.set({
-        ...snapshot,
-        status,
-        capturedAt: new Date(),
-      });
+      return config.liveState?.getAll(instanceId, { workflowName }) ?? [];
     };
 
     const deleteLiveInstanceState = (instanceId: string) => {
@@ -368,54 +294,15 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       return result.value;
     };
 
-    const getWorkflowEntryForRestore = <
-      TState extends RestoreInstanceStateState = RestoreInstanceStateState,
-    >(
-      workflowName: string,
-    ): RestoreInstanceStateWorkflow<TState> => {
-      return getWorkflowEntry(workflowName) as RestoreInstanceStateWorkflow<TState>;
-    };
-
-    const buildRestoreInstanceStateTx = <TState extends RestoreInstanceStateState>(
-      ctx: DatabaseServiceContext<WorkflowsHooks>,
-      workflowName: string,
-      workflow: RestoreInstanceStateWorkflow<TState>,
-      instanceId: string,
-    ) =>
-      ctx
-        .serviceTx(workflowsSchema)
-        .retrieve((uow) => {
-          return uow
-            .findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
-              ),
-            )
-            .find("workflow_step", (b) =>
-              b
-                .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                  eb("instanceRef", "=", instanceId),
-                )
-                .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc"),
-            );
-        })
-        .transformRetrieve(([instance, steps]) =>
-          buildRestoreInstanceStateReadModel(instance, steps),
-        )
-        .mutate(({ retrieveResult }) =>
-          restoreWorkflowStateFromReadModel(workflow, retrieveResult, config.liveState),
-        )
-        .build();
-
     return defineService({
       validateWorkflowParams,
-      getLiveInstanceState: function (
+      getLiveStepStates: function (
         workflowOrName: string | WorkflowRegistryEntry,
         instanceId: string,
       ) {
         const workflowName =
           typeof workflowOrName === "string" ? workflowOrName : workflowOrName.name;
-        return readLiveInstanceState(workflowName, instanceId);
+        return readLiveStepStates(workflowName, instanceId);
       },
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         assertWorkflowName(workflowName);
@@ -575,23 +462,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      restoreInstanceState: function <
-        TState extends RestoreInstanceStateState = RestoreInstanceStateState,
-      >(
-        workflowOrName: string | RestoreInstanceStateWorkflow<TState>,
-        instanceId: string,
-      ): TxResult<RestoreInstanceStateResult<TState>, RestoreInstanceStateReadModel> {
-        if (typeof workflowOrName === "string") {
-          return buildRestoreInstanceStateTx(
-            this,
-            workflowOrName,
-            getWorkflowEntryForRestore<TState>(workflowOrName),
-            instanceId,
-          );
-        }
-
-        return buildRestoreInstanceStateTx(this, workflowOrName.name, workflowOrName, instanceId);
-      },
       getInstanceCurrentStep: function ({
         instanceId,
         runNumber,
@@ -650,10 +520,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             uow.findWithCursor("workflow_instance", (b) => {
               if (status) {
                 const query = b
-                  .whereIndex("idx_workflow_instance_status_updatedAt", (eb) =>
+                  .whereIndex("idx_workflow_instance_workflowName_status_updatedAt", (eb) =>
                     eb.and(eb("workflowName", "=", workflowName), eb("status", "=", status)),
                   )
-                  .orderByIndex("idx_workflow_instance_status_updatedAt", effectiveOrder)
+                  .orderByIndex(
+                    "idx_workflow_instance_workflowName_status_updatedAt",
+                    effectiveOrder,
+                  )
                   .pageSize(effectivePageSize);
 
                 return cursor ? query.after(cursor) : query;
@@ -815,8 +688,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
-            setLiveInstanceStatus(workflowName, instanceId, "active");
-
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
               instanceId: instance.id.toString(),
@@ -863,7 +734,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
-            setLiveInstanceStatus(workflowName, instanceId, "terminated");
+            deleteLiveInstanceState(instanceId);
 
             return buildInstanceStatus({
               status: "terminated",
