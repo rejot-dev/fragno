@@ -974,11 +974,25 @@ export class DatabaseFragmentsTestBuilder<
       }
     };
 
+    const recreateFragments = async () => {
+      const newFragmentResults = createFragments();
+
+      newFragmentResults.forEach((newResult, index) => {
+        const result = fragmentResults[index]!;
+        result.fragment = newResult.fragment;
+        result.services = newResult.services;
+        result.deps = newResult.deps;
+        result.callRoute = newResult.callRoute;
+        result._orm = newResult._orm;
+      });
+    };
+
     const finalTestContext = {
       ...testContext,
       resetDatabase,
       cleanup,
       adapter,
+      recreateFragments,
       inContext: firstFragment.inContext.bind(firstFragment),
     };
 

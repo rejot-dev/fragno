@@ -539,6 +539,8 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   instanceRef: integer("instanceRef").notNull(),
   runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
+  parentStepKey: text("parentStepKey"),
+  depth: integer("depth").notNull().default(0),
   name: text("name").notNull(),
   type: text("type").notNull(),
   status: text("status").notNull(),

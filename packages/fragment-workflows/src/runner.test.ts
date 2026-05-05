@@ -2,6 +2,7 @@
 import { describe, expect, test } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { z } from "zod";
 
 import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
@@ -24,6 +25,41 @@ describe("Workflows Runner", () => {
     instanceRef: String(instance.id),
     runNumber: instance.runNumber,
     reason,
+  });
+
+  test("marks workflow errored when completed output violates outputSchema", async () => {
+    const InvalidOutputWorkflow = defineWorkflow(
+      { name: "invalid-output-workflow", outputSchema: z.object({ ok: z.boolean() }) },
+      async () => ({ ok: "not-a-boolean" }) as unknown as { ok: boolean },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { INVALID_OUTPUT: InvalidOutputWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("INVALID_OUTPUT");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    const finalStatus = await harness.getStatus("INVALID_OUTPUT", instanceId);
+    expect(finalStatus).toMatchObject({
+      status: "errored",
+      error: {
+        name: "WorkflowOutputValidationError",
+        message: "WORKFLOW_OUTPUT_INVALID",
+      },
+    });
+    expect(finalStatus.output).toBeUndefined();
   });
 
   test("waitForEvent should reject events created after wakeAt", async () => {
@@ -475,6 +511,42 @@ describe("Workflows Runner", () => {
     expect(rows).toHaveLength(0);
   });
 
+  test("marks workflow errored when a step throws a falsy value", async () => {
+    const FalsyThrowWorkflow = defineWorkflow(
+      { name: "falsy-throw-workflow" },
+      async (_event, step) => {
+        await step.do("throws-false", () => {
+          throw false;
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { FALSY_THROW: FalsyThrowWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+    });
+
+    const instanceId = await harness.createInstance("FALSY_THROW");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    const status = await harness.getStatus("FALSY_THROW", instanceId);
+    expect(status).toMatchObject({
+      status: "errored",
+      error: { message: "UNKNOWN_ERROR" },
+    });
+  });
+
   test("step mutations do not re-run on replay", async () => {
     // report: completed steps should not re-apply tx mutations on duplicate ticks.
     const mutationReplaySchema = schema("mutation_replay_test", (s) =>
@@ -728,5 +800,125 @@ describe("Workflows Runner", () => {
         .executeRetrieve()
     )[0];
     expect(updated?.runNumber).toBe(instance!.runNumber + 1);
+  });
+
+  test("cached parent subtree skip does not renumber later sibling steps", async () => {
+    const NestedKeyWorkflow = defineWorkflow(
+      { name: "nested-key-workflow" },
+      async (_event, step) => {
+        await step.do("parent", async () => {
+          await step.do("shared", async () => "nested-value");
+          return "parent-value";
+        });
+
+        await step.waitForEvent("ready", { type: "ready" });
+        const shared = await step.do("shared", async () => "top-level-value");
+        return { shared };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { NESTED: NestedKeyWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("NESTED");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+    await harness.sendEvent("NESTED", instanceId, { type: "ready" });
+    await harness.tick(buildPayload(instance!, "event"));
+
+    const status = await harness.getStatus("NESTED", instanceId);
+    expect(status).toMatchObject({
+      status: "complete",
+      output: { shared: "top-level-value" },
+    });
+
+    const steps = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+              eb.and(
+                eb("instanceRef", "=", instance!.id),
+                eb("runNumber", "=", instance!.runNumber),
+              ),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+        )
+        .executeRetrieve()
+    )[0];
+
+    expect(steps.map((step) => step.stepKey)).toEqual([
+      "do:parent",
+      "do:parent>do:shared",
+      "waitForEvent:ready",
+      "do:shared",
+    ]);
+    expect(steps[1]).toMatchObject({
+      parentStepKey: "do:parent",
+      depth: 1,
+      result: "nested-value",
+    });
+    expect(steps[3]).toMatchObject({
+      parentStepKey: null,
+      depth: 0,
+      result: "top-level-value",
+    });
+  });
+
+  test("late descendant failure does not override an observed race winner", async () => {
+    const LateFailureWorkflow = defineWorkflow(
+      { name: "late-descendant-failure-workflow" },
+      async (_event, step) => {
+        const raceReturn = await step.do("race", async () => {
+          return await Promise.race([
+            step.do("slow failure", async () => {
+              await step.sleep("slow failure delay", 1000);
+              throw new Error("LATE_DESCENDANT_FAILURE");
+            }),
+            step.do("fast success", async () => "fast"),
+          ]);
+        });
+        return { raceReturn };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { LATE_FAILURE: LateFailureWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("LATE_FAILURE");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    await harness.tick(buildPayload(instance!, "create"));
+    harness.clock.advanceBy(1000);
+    await harness.runUntilIdle(buildPayload(instance!, "wake"));
+
+    const status = await harness.getStatus("LATE_FAILURE", instanceId);
+    expect(status.status).toBe("complete");
+    expect(status.output).toEqual({ raceReturn: "fast" });
   });
 });

@@ -4,7 +4,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 import type { WorkflowsLoggerConfig } from "./debug-log";
-import type { WorkflowLiveStateStore } from "./live-state";
+import type { WorkflowLiveStateStore, WorkflowStepLiveStateShape } from "./live-state";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -18,12 +18,15 @@ export type WorkflowEvent<T> = {
 };
 
 /** Retry behavior for a step execution. */
-export type WorkflowStepConfig = {
+export type WorkflowStepConfig<
+  TLiveState extends WorkflowStepLiveStateShape | undefined = undefined,
+> = {
   retries?: {
     limit: number;
     delay: WorkflowDuration;
     backoff?: "constant" | "linear" | "exponential";
   };
+  liveState?: TLiveState | (() => TLiveState);
 };
 
 export type WorkflowLogLevel = "debug" | "info" | "warn" | "error";
@@ -42,26 +45,35 @@ export type WorkflowLogger = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTxResult = TxResult<any, any>;
 
-export type WorkflowStepTx = {
-  serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
-  mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
-  onTerminalError: {
-    /**
-     * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
-     * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
-     * runs and for retryable failures that suspend the step for another attempt.
-     */
-    mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
-  };
+export type WorkflowStepLiveStateController<TState extends WorkflowStepLiveStateShape> = {
+  getState: () => TState;
+  setState: (patch: Partial<TState> | ((state: TState) => Partial<TState>)) => void;
 };
+
+export type WorkflowStepTx<TLiveState extends WorkflowStepLiveStateShape | undefined = undefined> =
+  {
+    liveState: TLiveState extends WorkflowStepLiveStateShape
+      ? WorkflowStepLiveStateController<TLiveState>
+      : undefined;
+    serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
+    mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+    onTerminalError: {
+      /**
+       * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
+       * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
+       * runs and for retryable failures that suspend the step for another attempt.
+       */
+      mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+    };
+  };
 
 /** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
   do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
-  do<T>(
+  do<T, TLiveState extends WorkflowStepLiveStateShape>(
     name: string,
-    config: WorkflowStepConfig,
-    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+    config: WorkflowStepConfig<TLiveState>,
+    callback: (tx: WorkflowStepTx<TLiveState>) => Promise<T> | T,
   ): Promise<T>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
@@ -83,6 +95,8 @@ export type InstanceStatus = InstanceStatusWithOutput<unknown>;
 /** Summary of the latest step execution for an instance run. */
 export type WorkflowInstanceCurrentStep = {
   stepKey: string;
+  parentStepKey: string | null;
+  depth: number;
   name: string;
   type: string;
   status: string;
@@ -148,34 +162,8 @@ export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegi
   >;
 };
 
-/**
- * Workflow state shape.
- * Replay reconstructs the restorable fields, while live runs may also carry transient in-memory
- * members such as listeners, Sets, Maps, queues, or helper methods.
- */
-export type WorkflowStateShape = Record<string, unknown>;
-
-/**
- * Optional `this` binding exposed to stateful workflows.
- * Replay shallow-merges each emitted patch onto the latest in-memory state object.
- */
-export type WorkflowStateContext<TState extends WorkflowStateShape | undefined = undefined> = {
-  getState: () => TState extends WorkflowStateShape ? TState : undefined;
-  setState: (nextState: TState extends WorkflowStateShape ? Partial<TState> : never) => void;
-};
-
-/**
- * Function-based workflow run signature.
- * Note: replay reruns workflow code around cached completed step results, so `setState` calls
- * inside completed `step.do(...)` callbacks are not restorable unless user code re-emits them
- * after the step returns.
- */
-export type WorkflowRunFn<
-  TParams = unknown,
-  TOutput = unknown,
-  TState extends WorkflowStateShape | undefined = undefined,
-> = (
-  this: WorkflowStateContext<TState> | undefined,
+/** Function-based workflow run signature. */
+export type WorkflowRunFn<TParams = unknown, TOutput = unknown> = (
   event: WorkflowEvent<TParams>,
   step: WorkflowStep,
 ) => Promise<TOutput> | TOutput;
@@ -186,89 +174,63 @@ export interface WorkflowDefinition<
   TOutput = unknown,
   TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
-  TState extends WorkflowStateShape | undefined = undefined,
   TName extends string = string,
 > {
   name: TName;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
-  initialState?: TState;
-  run(
-    this: WorkflowStateContext<TState> | undefined,
-    event: WorkflowEvent<TParams>,
-    step: WorkflowStep,
-  ): Promise<TOutput> | TOutput;
+  run: WorkflowRunFn<TParams, TOutput>;
 }
 
-export function defineWorkflow<
-  TName extends string,
-  TParams,
-  TOutput = unknown,
-  TState extends WorkflowStateShape | undefined = undefined,
->(
-  options: { name: TName; schema?: undefined; outputSchema?: undefined; initialState?: TState },
-  run: WorkflowRunFn<TParams, TOutput, TState>,
-): WorkflowDefinition<TParams, TOutput, undefined, undefined, TState, TName>;
+export function defineWorkflow<TName extends string, TParams, TOutput = unknown>(
+  options: { name: TName; schema?: undefined; outputSchema?: undefined },
+  run: WorkflowRunFn<TParams, TOutput>,
+): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName>;
 export function defineWorkflow<
   TName extends string,
   TSchema extends StandardSchemaV1,
   TOutput = unknown,
-  TState extends WorkflowStateShape | undefined = undefined,
 >(
-  options: { name: TName; schema: TSchema; outputSchema?: undefined; initialState?: TState },
-  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput, TState>,
-): WorkflowDefinition<
-  StandardSchemaV1.InferOutput<TSchema>,
-  TOutput,
-  TSchema,
-  undefined,
-  TState,
-  TName
->;
+  options: { name: TName; schema: TSchema; outputSchema?: undefined },
+  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput>,
+): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined, TName>;
 export function defineWorkflow<
   TName extends string,
   TOutputSchema extends StandardSchemaV1,
   TParams = unknown,
-  TState extends WorkflowStateShape | undefined = undefined,
 >(
   options: {
     name: TName;
     schema?: undefined;
     outputSchema: TOutputSchema;
-    initialState?: TState;
   },
-  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>, TState>,
+  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>>,
 ): WorkflowDefinition<
   TParams,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   undefined,
   TOutputSchema,
-  TState,
   TName
 >;
 export function defineWorkflow<
   TName extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
-  TState extends WorkflowStateShape | undefined = undefined,
 >(
   options: {
     name: TName;
     schema: TInputSchema;
     outputSchema: TOutputSchema;
-    initialState?: TState;
   },
   run: WorkflowRunFn<
     StandardSchemaV1.InferOutput<TInputSchema>,
-    StandardSchemaV1.InferOutput<TOutputSchema>,
-    TState
+    StandardSchemaV1.InferOutput<TOutputSchema>
   >,
 ): WorkflowDefinition<
   StandardSchemaV1.InferOutput<TInputSchema>,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   TInputSchema,
   TOutputSchema,
-  TState,
   TName
 >;
 export function defineWorkflow<TName extends string>(
@@ -276,35 +238,21 @@ export function defineWorkflow<TName extends string>(
     name: TName;
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
-    initialState?: WorkflowStateShape;
   },
-  run: WorkflowRunFn<unknown, unknown, WorkflowStateShape | undefined>,
+  run: WorkflowRunFn<unknown, unknown>,
 ): WorkflowDefinition<
   unknown,
   unknown,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined,
-  WorkflowStateShape | undefined,
   TName
 > {
   return { ...options, run };
 }
 
-/**
- * Registry helpers intentionally erase workflow-local state variance.
- * Concrete workflow definitions still preserve their exact `TState` when used directly.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type WorkflowRegistryState = any;
-
 /** Workflow registry entry (function-based). */
-export type WorkflowRegistryEntry = WorkflowDefinition<
-  unknown,
-  unknown,
-  StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined,
-  WorkflowRegistryState
->;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WorkflowRegistryEntry = WorkflowDefinition<any, any, any, any, string>;
 
 export type WorkflowParamsFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
@@ -312,7 +260,7 @@ export type WorkflowParamsFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowRegistryState
+    string
   >
     ? TParams
     : unknown;
@@ -323,24 +271,10 @@ export type WorkflowOutputFromEntry<TEntry> =
     infer TOutput,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowRegistryState
+    string
   >
     ? TOutput
     : unknown;
-
-export type WorkflowStateFromEntry<TEntry> =
-  TEntry extends WorkflowDefinition<
-    unknown,
-    unknown,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    infer TState
-  >
-    ? TState
-    : undefined;
-
-export type WorkflowRestoredState<TEntry> =
-  WorkflowStateFromEntry<TEntry> extends undefined ? undefined : WorkflowStateFromEntry<TEntry>;
 
 export type WorkflowNameFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
@@ -348,7 +282,6 @@ export type WorkflowNameFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    WorkflowRegistryState,
     infer TName
   >
     ? TName

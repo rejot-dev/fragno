@@ -61,6 +61,10 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("runNumber", column("integer"))
             // Deterministic step key (type:name) for replay/idempotency.
             .addColumn("stepKey", column("string"))
+            // Parent step key for nested step subtrees (null for top-level steps).
+            .addColumn("parentStepKey", column("string").nullable())
+            // Nesting depth (0 for top-level steps).
+            .addColumn("depth", column("integer").defaultTo(0))
             // Human-readable step name as supplied by author.
             .addColumn("name", column("string"))
             // Step type (do/sleep/waitForEvent).

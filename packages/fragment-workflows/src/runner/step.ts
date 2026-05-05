@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 
+import type { WorkflowLiveStateLease, WorkflowLiveStateStore } from "../live-state";
 import { isSystemEventActor } from "../system-events";
 import { parseDurationMs } from "../utils";
 import type {
@@ -11,6 +12,7 @@ import type {
   WorkflowDuration,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowStepLiveStateController,
   WorkflowStepTx,
 } from "../workflow";
 import { WaitForEventTimeoutError } from "../workflow";
@@ -45,20 +47,14 @@ export class RunnerStepSuspended extends Error {
   }
 }
 
-export class RunnerStepReplayStopped extends Error {
-  readonly stepKey: string;
-
-  constructor(stepKey: string) {
-    super("WORKFLOW_REPLAY_STOPPED");
-    this.name = "RunnerStepReplayStopped";
-    this.stepKey = stepKey;
-  }
-}
-
 type RunnerStepOptions = {
   state: RunnerState;
   taskKind: RunnerTaskKind;
-  mode?: "execute" | "restore";
+  liveState?: WorkflowLiveStateStore;
+  workflowName?: string;
+  instanceId?: string;
+  runNumber?: number;
+  timestamp?: Date;
 };
 
 type StepTxQueue = {
@@ -67,12 +63,33 @@ type StepTxQueue = {
   commitTerminalError: () => void;
 };
 
+type StepIdentity = {
+  stepKey: string;
+  parentStepKey: string | null;
+  depth: number;
+};
+
+type StepExecutionContext = {
+  identity: StepIdentity;
+};
+
+const ROOT_STEP_SCOPE = "$root";
+const NESTED_STEP_SEPARATOR = ">";
+
 /**
- * Build a deterministic step key from type and name.
- * Stable step keys are the identity for replayable workflow steps.
+ * Build a deterministic step key from type, name, and optional occurrence.
+ * Bigger picture: stable step keys are the identity for replayable workflow steps.
  */
-function buildStepKey(type: string, name: string): string {
-  return `${type}:${name}`;
+function buildStepKey(type: string, name: string, occurrence?: number): string {
+  const base = `${type}:${name}`;
+  if (occurrence === undefined || occurrence === 0) {
+    return base;
+  }
+  return `${base}#${occurrence}`;
+}
+
+function buildNestedStepKey(parentStepKey: string, childStepKey: string): string {
+  return `${parentStepKey}${NESTED_STEP_SEPARATOR}${childStepKey}`;
 }
 
 /**
@@ -96,10 +113,11 @@ function stripDelayFields<T extends Record<string, unknown>>(data: T): T {
 }
 
 /**
- * Treat "completed" as the terminal success status for steps.
+ * Treat both "complete" and "completed" as terminal step statuses.
+ * Bigger picture: keeps runner compatible with existing persisted values.
  */
 function isCompletedStatus(status?: string | null): boolean {
-  return status === "completed";
+  return status === "completed" || status === "complete";
 }
 
 /**
@@ -121,24 +139,124 @@ function computeBackoffDelayMs(
   }
 }
 
+function isSuspended(error: unknown): error is RunnerStepSuspended {
+  return error instanceof RunnerStepSuspended;
+}
+
+function buildErrorFromSnapshot(snapshot: WorkflowStepSnapshot): Error {
+  const error = new Error(snapshot.errorMessage ?? "STEP_FAILED");
+  error.name = snapshot.errorName ?? "Error";
+  return error;
+}
+
 export class RunnerStep implements WorkflowStep {
   #state: RunnerState;
   #taskKind: RunnerTaskKind;
-  #mode: "execute" | "restore";
-  #usedStepKeys = new Set<string>();
-  #parentScope = new AsyncLocalStorage<string>();
+  #stepOccurrences = new Map<string, number>();
+  #scopeStorage = new AsyncLocalStorage<StepExecutionContext>();
+  #liveState?: WorkflowLiveStateStore;
+  #workflowName?: string;
+  #instanceId?: string;
+  #runNumber?: number;
+  #timestamp?: Date;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
     this.#taskKind = options.taskKind;
-    this.#mode = options.mode ?? "execute";
+    this.#liveState = options.liveState;
+    this.#workflowName = options.workflowName;
+    this.#instanceId = options.instanceId;
+    this.#runNumber = options.runNumber;
+    this.#timestamp = options.timestamp;
+  }
+
+  #runInStepContext<T>(identity: StepIdentity, execute: () => Promise<T> | T): Promise<T> {
+    return this.#scopeStorage.run({ identity }, async () => await execute());
+  }
+
+  #createStepIdentity(type: string, name: string): StepIdentity {
+    const parent = this.#scopeStorage.getStore()?.identity ?? null;
+    const baseKey = buildStepKey(type, name);
+    const scopeKey = parent?.stepKey ?? ROOT_STEP_SCOPE;
+    const occurrenceKey = `${scopeKey}\u0000${baseKey}`;
+    const occurrence = this.#stepOccurrences.get(occurrenceKey) ?? 0;
+    this.#stepOccurrences.set(occurrenceKey, occurrence + 1);
+
+    const localStepKey = buildStepKey(type, name, occurrence);
+    const identity: StepIdentity = parent
+      ? {
+          stepKey: buildNestedStepKey(parent.stepKey, localStepKey),
+          parentStepKey: parent.stepKey,
+          depth: parent.depth + 1,
+        }
+      : {
+          stepKey: localStepKey,
+          parentStepKey: null,
+          depth: 0,
+        };
+
+    return identity;
+  }
+
+  #prepareWaitingDraft(
+    identity: StepIdentity,
+    base: {
+      name: string;
+      attempts: number;
+      maxAttempts: number;
+      timeoutMs: number | null;
+      errorName?: string | null;
+      errorMessage?: string | null;
+    },
+    reason?: RunnerStepSuspendReason,
+  ): WorkflowStepUpdateDraft {
+    const draft: WorkflowStepUpdateDraft = {
+      name: base.name,
+      type: "do",
+      status: "waiting",
+      attempts: base.attempts,
+      maxAttempts: base.maxAttempts,
+      timeoutMs: base.timeoutMs,
+      parentStepKey: identity.parentStepKey,
+      depth: identity.depth,
+      result: null,
+      errorName: base.errorName ?? null,
+      errorMessage: base.errorMessage ?? null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+    };
+
+    if (!reason) {
+      return draft;
+    }
+
+    if (reason.type === "retry") {
+      return {
+        ...draft,
+        nextRetryDelayMs: reason.delayMs,
+      };
+    }
+
+    if (reason.type === "sleep") {
+      return {
+        ...draft,
+        ...(reason.runAt ? { wakeAt: reason.runAt } : { wakeDelayMs: reason.delayMs }),
+      };
+    }
+
+    return {
+      ...draft,
+      waitEventType: reason.eventType,
+      ...(reason.runAt ? { wakeAt: reason.runAt } : { wakeDelayMs: reason.delayMs }),
+    };
   }
 
   async do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
-  async do<T>(
+  async do<T, TLiveState extends Record<string, unknown>>(
     name: string,
-    config: WorkflowStepConfig,
-    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+    config: WorkflowStepConfig<TLiveState>,
+    callback: (tx: WorkflowStepTx<TLiveState>) => Promise<T> | T,
   ): Promise<T>;
   async do<T>(
     name: string,
@@ -156,39 +274,61 @@ export class RunnerStep implements WorkflowStep {
       throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
     }
 
-    const stepKey = this.#nextStepKey("do", name);
+    const identity = this.#createStepIdentity("do", name);
+    const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
       return snapshot.result as T;
     }
 
-    if (this.#mode === "restore") {
-      throw new RunnerStepReplayStopped(stepKey);
-    }
-
     if (snapshot?.status === "errored") {
-      const error = new Error(snapshot.errorMessage ?? "STEP_FAILED");
-      error.name = snapshot.errorName ?? "Error";
-      throw error;
+      throw buildErrorFromSnapshot(snapshot);
     }
 
-    if (snapshot?.status === "waiting" && snapshot.nextRetryAt) {
-      if (this.#taskKind !== "retry") {
-        throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
-      }
+    if (snapshot?.status === "waiting" && snapshot.nextRetryAt && this.#taskKind !== "retry") {
+      throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
     }
 
     const attempt = (snapshot?.attempts ?? 0) + 1;
     const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
     const timeoutMs = snapshot?.timeoutMs ?? null;
-
     const txQueue = this.#createStepTxQueue();
+    const liveLease = this.#createLiveStateLease(
+      identity,
+      name,
+      config?.liveState as Record<string, unknown> | (() => Record<string, unknown>) | undefined,
+    );
+    const tx = liveLease ? { ...txQueue.tx, liveState: liveLease.controller } : txQueue.tx;
+
+    this.#upsertStep(
+      stepKey,
+      this.#prepareWaitingDraft(identity, {
+        name,
+        attempts: attempt,
+        maxAttempts,
+        timeoutMs,
+      }),
+    );
+
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
+    let callbackThrew = false;
 
     try {
-      const result = await this.#parentScope.run(stepKey, () => callback(txQueue.tx));
-      txQueue.commitSuccess();
+      callbackResult = await this.#runInStepContext(
+        identity,
+        async () => await callback(tx as WorkflowStepTx),
+      );
+    } catch (error) {
+      callbackThrew = true;
+      callbackError = error;
+    } finally {
+      liveLease?.lease.clear();
+    }
 
+    if (!callbackThrew) {
+      txQueue.commitSuccess();
       this.#upsertStep(stepKey, {
         name,
         type: "do",
@@ -196,7 +336,9 @@ export class RunnerStep implements WorkflowStep {
         attempts: attempt,
         maxAttempts,
         timeoutMs,
-        result,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
+        result: callbackResult,
         errorName: null,
         errorMessage: null,
         nextRetryAt: null,
@@ -204,56 +346,32 @@ export class RunnerStep implements WorkflowStep {
         waitEventType: null,
       });
 
-      return result;
-    } catch (err) {
-      if (err instanceof RunnerStepSuspended || err instanceof RunnerStepReplayStopped) {
-        throw err;
-      }
+      return callbackResult as T;
+    }
 
-      const error = toError(err);
-      const nonRetryable = isNonRetryableError(error);
-      const retries = config?.retries;
-      const canRetry = !nonRetryable && Boolean(retries && attempt <= retries.limit);
+    if (isSuspended(callbackError)) {
+      this.#upsertStep(
+        stepKey,
+        this.#prepareWaitingDraft(
+          identity,
+          {
+            name,
+            attempts: attempt,
+            maxAttempts,
+            timeoutMs,
+          },
+          callbackError.reason,
+        ),
+      );
+      throw callbackError;
+    }
 
-      if (nonRetryable) {
-        txQueue.commitTerminalError();
-        this.#upsertStep(stepKey, {
-          name,
-          type: "do",
-          status: "errored",
-          attempts: attempt,
-          maxAttempts,
-          timeoutMs,
-          errorName: error.name,
-          errorMessage: error.message,
-          nextRetryAt: null,
-          wakeAt: null,
-          waitEventType: null,
-        });
-        throw error;
-      }
+    const error = toError(callbackError);
+    const nonRetryable = isNonRetryableError(error);
+    const retries = config?.retries;
+    const canRetry = !nonRetryable && Boolean(retries && attempt <= retries.limit);
 
-      if (canRetry && retries) {
-        const delayMs = computeBackoffDelayMs(retries, attempt);
-
-        this.#upsertStep(stepKey, {
-          name,
-          type: "do",
-          status: "waiting",
-          attempts: attempt,
-          maxAttempts: retries.limit + 1,
-          timeoutMs,
-          errorName: error.name,
-          errorMessage: error.message,
-          nextRetryDelayMs: delayMs,
-          nextRetryAt: null,
-          wakeAt: null,
-          waitEventType: null,
-        });
-
-        throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs });
-      }
-
+    if (nonRetryable) {
       txQueue.commitTerminalError();
       this.#upsertStep(stepKey, {
         name,
@@ -262,28 +380,67 @@ export class RunnerStep implements WorkflowStep {
         attempts: attempt,
         maxAttempts,
         timeoutMs,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         errorName: error.name,
         errorMessage: error.message,
         nextRetryAt: null,
         wakeAt: null,
         waitEventType: null,
       });
-
       throw error;
     }
+
+    if (canRetry && retries) {
+      const delayMs = computeBackoffDelayMs(retries, attempt);
+
+      this.#upsertStep(
+        stepKey,
+        this.#prepareWaitingDraft(
+          identity,
+          {
+            name,
+            attempts: attempt,
+            maxAttempts: retries.limit + 1,
+            timeoutMs,
+            errorName: error.name,
+            errorMessage: error.message,
+          },
+          { type: "retry", stepKey, delayMs },
+        ),
+      );
+
+      throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs });
+    }
+
+    txQueue.commitTerminalError();
+    this.#upsertStep(stepKey, {
+      name,
+      type: "do",
+      status: "errored",
+      attempts: attempt,
+      maxAttempts,
+      timeoutMs,
+      parentStepKey: identity.parentStepKey,
+      depth: identity.depth,
+      errorName: error.name,
+      errorMessage: error.message,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+    });
+
+    throw error;
   }
 
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
+    const identity = this.#createStepIdentity("sleep", name);
     const delayMs = parseDurationMs(duration);
-    const stepKey = this.#nextStepKey("sleep", name);
+    const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (isCompletedStatus(snapshot?.status)) {
       return;
-    }
-
-    if (this.#mode === "restore") {
-      throw new RunnerStepReplayStopped(stepKey);
     }
 
     if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
@@ -294,6 +451,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: snapshot?.attempts ?? 0,
         maxAttempts: snapshot?.maxAttempts ?? 1,
         timeoutMs: snapshot?.timeoutMs ?? null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         wakeAt: null,
         waitEventType: null,
         nextRetryAt: null,
@@ -313,6 +472,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: 0,
         maxAttempts: 1,
         timeoutMs: null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         wakeDelayMs: delayMs,
         wakeAt: null,
         waitEventType: null,
@@ -324,16 +485,13 @@ export class RunnerStep implements WorkflowStep {
   }
 
   async sleepUntil(name: string, timestamp: Date | number): Promise<void> {
-    const stepKey = this.#nextStepKey("sleep", name);
+    const identity = this.#createStepIdentity("sleep", name);
+    const { stepKey } = identity;
     const target = coerceTimestamp(timestamp);
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (isCompletedStatus(snapshot?.status)) {
       return;
-    }
-
-    if (this.#mode === "restore") {
-      throw new RunnerStepReplayStopped(stepKey);
     }
 
     if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
@@ -344,6 +502,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: snapshot?.attempts ?? 0,
         maxAttempts: snapshot?.maxAttempts ?? 1,
         timeoutMs: snapshot?.timeoutMs ?? null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         wakeAt: null,
         waitEventType: null,
         nextRetryAt: null,
@@ -363,6 +523,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: 0,
         maxAttempts: 1,
         timeoutMs: null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         wakeAt: target,
         waitEventType: null,
         nextRetryAt: null,
@@ -376,15 +538,16 @@ export class RunnerStep implements WorkflowStep {
     name: string,
     options: { type: string; timeout?: WorkflowDuration },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
-    const stepKey = this.#nextStepKey("waitForEvent", name);
+    const identity = this.#createStepIdentity("waitForEvent", name);
+    const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
-      return snapshot.result as { type: string; payload: Readonly<T>; timestamp: Date };
-    }
-
-    if (this.#mode === "restore") {
-      throw new RunnerStepReplayStopped(stepKey);
+      return snapshot.result as {
+        type: string;
+        payload: Readonly<T>;
+        timestamp: Date;
+      };
     }
 
     const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);
@@ -407,6 +570,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: snapshot?.attempts ?? 0,
         maxAttempts: snapshot?.maxAttempts ?? 1,
         timeoutMs: snapshot?.timeoutMs ?? null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         result,
         waitEventType: options.type,
         errorName: null,
@@ -447,6 +612,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: snapshot?.attempts ?? 0,
         maxAttempts: snapshot?.maxAttempts ?? 1,
         timeoutMs: snapshot?.timeoutMs ?? null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         errorName: error.name,
         errorMessage: error.message,
         waitEventType: options.type,
@@ -464,6 +631,8 @@ export class RunnerStep implements WorkflowStep {
         attempts: 0,
         maxAttempts: 1,
         timeoutMs,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
         wakeDelayMs: timeoutMs ?? undefined,
         waitEventType: options.type,
         nextRetryAt: null,
@@ -479,12 +648,61 @@ export class RunnerStep implements WorkflowStep {
     });
   }
 
+  #createLiveStateLease<TState extends Record<string, unknown>>(
+    identity: StepIdentity,
+    name: string,
+    initialLiveState: TState | (() => TState) | undefined,
+  ):
+    | {
+        lease: WorkflowLiveStateLease<TState>;
+        controller: WorkflowStepLiveStateController<TState>;
+      }
+    | undefined {
+    if (
+      !initialLiveState ||
+      !this.#liveState ||
+      !this.#workflowName ||
+      !this.#instanceId ||
+      this.#runNumber === undefined
+    ) {
+      return undefined;
+    }
+
+    let state = typeof initialLiveState === "function" ? initialLiveState() : initialLiveState;
+    const snapshot = () => ({
+      workflowName: this.#workflowName!,
+      instanceId: this.#instanceId!,
+      runNumber: this.#runNumber!,
+      stepKey: identity.stepKey,
+      parentStepKey: identity.parentStepKey,
+      depth: identity.depth,
+      name,
+      capturedAt: this.#timestamp ?? new Date(),
+      state,
+    });
+    const lease = this.#liveState.begin(snapshot());
+    return {
+      lease,
+      controller: {
+        getState: () => state,
+        setState: (patch) => {
+          state = {
+            ...state,
+            ...(typeof patch === "function" ? patch(state) : patch),
+          };
+          lease.set(snapshot());
+        },
+      },
+    };
+  }
+
   #createStepTxQueue(): StepTxQueue {
     const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
     const pendingServiceCalls: AnyTxResult[] = [];
     const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
 
     const tx: WorkflowStepTx = {
+      liveState: undefined,
       mutate: (fn) => {
         pendingMutations.push(fn);
       },
@@ -535,19 +753,6 @@ export class RunnerStep implements WorkflowStep {
     );
   }
 
-  #nextStepKey(type: string, name: string): string {
-    const segment = buildStepKey(type, name);
-    const parent = this.#parentScope.getStore();
-    const fullKey = parent ? `${parent}/${segment}` : segment;
-
-    if (this.#usedStepKeys.has(fullKey)) {
-      throw new Error(`DUPLICATE_STEP_NAME: step "${name}" (key "${fullKey}") already exists`);
-    }
-
-    this.#usedStepKeys.add(fullKey);
-    return fullKey;
-  }
-
   #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {
     const key = event.id.toString();
     const existing = this.#state.mutations.eventUpdates.get(key);
@@ -579,7 +784,10 @@ export class RunnerStep implements WorkflowStep {
           data: { ...existingUpdate.data, ...data },
         });
       } else {
-        this.#state.mutations.stepUpdates.set(stepKey, { id: snapshot.id, data });
+        this.#state.mutations.stepUpdates.set(stepKey, {
+          id: snapshot.id,
+          data,
+        });
       }
     } else {
       const createBase = this.#buildStepCreateBase(stepKey, data);
@@ -603,6 +811,8 @@ export class RunnerStep implements WorkflowStep {
       instanceRef: this.#state.instance.id,
       runNumber: this.#state.instance.runNumber,
       stepKey,
+      parentStepKey: data.parentStepKey ?? null,
+      depth: data.depth ?? 0,
       name: data.name ?? stepKey,
       type: data.type ?? "do",
       status: data.status ?? "waiting",

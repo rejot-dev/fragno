@@ -1,5 +1,7 @@
 // New single-transaction runner scaffold (no task claiming, OCC-only coordination).
 
+import type { StandardSchemaV1 } from "@fragno-dev/core/api";
+
 import {
   ConcurrencyConflictError,
   type DatabaseRequestContext,
@@ -18,17 +20,13 @@ import type {
   WorkflowStepRecord,
 } from "./runner/types";
 import { toError } from "./runner/utils";
-import {
-  createIsolatedWorkflowState,
-  createWorkflowStateController,
-} from "./runner/workflow-state";
 import { workflowsSchema } from "./schema";
 import {
   isSystemEventActor,
   WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
   WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
 } from "./system-events";
-import type { WorkflowsRegistry, WorkflowStateShape } from "./workflow";
+import type { WorkflowsRegistry } from "./workflow";
 import type { WorkflowEnqueuedHookPayload } from "./workflow";
 
 function resolveWorkflowsNamespace(uow: IUnitOfWork): string {
@@ -57,6 +55,35 @@ type RunnerTickSelectionResult = {
   steps: WorkflowStepRecord[];
   events: WorkflowEventRecord[];
 };
+
+class WorkflowOutputValidationError extends Error {
+  readonly workflowName: string;
+  readonly issues: readonly StandardSchemaV1.Issue[];
+
+  constructor(workflowName: string, issues: readonly StandardSchemaV1.Issue[]) {
+    super("WORKFLOW_OUTPUT_INVALID");
+    this.name = "WorkflowOutputValidationError";
+    this.workflowName = workflowName;
+    this.issues = issues;
+  }
+}
+
+async function validateWorkflowOutput(
+  workflowName: string,
+  outputSchema: StandardSchemaV1 | undefined,
+  output: unknown,
+) {
+  if (!outputSchema) {
+    return output;
+  }
+
+  const result = await outputSchema["~standard"].validate(output);
+  if (result.issues) {
+    throw new WorkflowOutputValidationError(workflowName, result.issues);
+  }
+
+  return result.value;
+}
 
 /**
  * Map hook reasons to runner task kinds.
@@ -303,29 +330,6 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
   };
 }
 
-function publishWorkflowLiveState(options: {
-  liveState?: WorkflowLiveStateStore;
-  workflowName: string;
-  instanceId: string;
-  runNumber: number | null;
-  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  timestamp: Date;
-  state: WorkflowStateShape;
-}) {
-  if (!options.liveState) {
-    return;
-  }
-
-  options.liveState.set({
-    workflowName: options.workflowName,
-    instanceId: options.instanceId,
-    runNumber: options.runNumber,
-    status: options.status,
-    capturedAt: options.timestamp,
-    state: options.state,
-  });
-}
-
 /**
  * Execute workflow code for a single tick using RunnerStep and return an outcome.
  * Bigger picture: converts user code into buffered mutations plus a scheduling decision.
@@ -342,72 +346,30 @@ async function runTask(
     return { type: "errored", error: new Error("WORKFLOW_NOT_FOUND") };
   }
 
-  const liveSnapshot = workflow.initialState
-    ? ctx.liveState?.get(instance.id.toString(), {
-        workflowName: instance.workflowName,
-        runNumber: instance.runNumber,
-      })
-    : null;
-  let hasPublishedLiveState = liveSnapshot !== null;
   const step = new RunnerStep({
     state,
     taskKind,
+    liveState: ctx.liveState,
+    workflowName: instance.workflowName,
+    instanceId: instance.id.toString(),
+    runNumber: instance.runNumber,
+    timestamp,
   });
   const initialEvent = buildWorkflowEvent(instance, timestamp);
-  const effectiveWorkflowState =
-    workflow.initialState === undefined
-      ? undefined
-      : createWorkflowStateController(
-          liveSnapshot?.state ?? createIsolatedWorkflowState(workflow.initialState),
-          {
-            onStateChange: (nextState) => {
-              hasPublishedLiveState = true;
-              publishWorkflowLiveState({
-                liveState: ctx.liveState,
-                workflowName: instance.workflowName,
-                instanceId: instance.id.toString(),
-                runNumber: instance.runNumber,
-                status: "active",
-                timestamp,
-                state: nextState,
-              });
-            },
-          },
-        );
-  const runContext = effectiveWorkflowState
-    ? {
-        getState: effectiveWorkflowState.getState,
-        setState: effectiveWorkflowState.setState,
-      }
-    : undefined;
-
-  const publishFinalLiveState = (status: "errored" | "complete" | "waiting") => {
-    if (!effectiveWorkflowState || !hasPublishedLiveState) {
-      return;
-    }
-
-    publishWorkflowLiveState({
-      liveState: ctx.liveState,
-      workflowName: instance.workflowName,
-      instanceId: instance.id.toString(),
-      runNumber: instance.runNumber,
-      status,
-      timestamp,
-      state: effectiveWorkflowState.getState(),
-    });
-  };
 
   try {
-    const output = await workflow.run.call(runContext, initialEvent, step);
-    publishFinalLiveState("complete");
+    const rawOutput = await workflow.run(initialEvent, step);
+    const output = await validateWorkflowOutput(
+      instance.workflowName,
+      workflow.outputSchema,
+      rawOutput,
+    );
     return { type: "completed", output };
   } catch (err) {
     if (err instanceof RunnerStepSuspended) {
-      publishFinalLiveState("waiting");
       return { type: "suspended", reason: err.reason };
     }
 
-    publishFinalLiveState("errored");
     return { type: "errored", error: toError(err) };
   }
 }
@@ -590,17 +552,6 @@ export async function runWorkflowsTick(options: {
     if (mutatePhase) {
       const error = toError(err);
       await markInstanceErrored(options.handlerTx, options.payload, error);
-      const liveSnapshot = options.liveState?.get(options.payload.instanceId, {
-        workflowName: options.payload.workflowName,
-        runNumber: options.payload.runNumber,
-      });
-      if (liveSnapshot) {
-        options.liveState?.set({
-          ...liveSnapshot,
-          status: "errored",
-          capturedAt: options.payload.timestamp,
-        });
-      }
       return 0;
     }
     throw err;

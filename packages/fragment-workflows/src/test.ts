@@ -33,6 +33,8 @@ export type WorkflowsHistoryStep = {
   id: string;
   runNumber: number;
   stepKey: string;
+  parentStepKey: string | null;
+  depth: number;
   name: string;
   type: string;
   status: string;
@@ -70,8 +72,22 @@ export type WorkflowsTestClock = {
   advanceBy: (duration: WorkflowDuration) => Date;
 };
 
+export type WorkflowsTestControlSnapshot =
+  | { key: string; status: "resolved"; pendingCount: number; value: unknown }
+  | { key: string; status: "rejected"; pendingCount: number; error: Error }
+  | { key: string; status: "pending"; pendingCount: number };
+
+export type WorkflowsTestControls = {
+  wait: <T = unknown>(key: string) => Promise<T>;
+  resolve: (key: string, value?: unknown) => void;
+  reject: (key: string, error?: unknown) => void;
+  get: (key: string) => WorkflowsTestControlSnapshot;
+  reset: (key?: string) => void;
+};
+
 export type WorkflowsTestRuntime = FragnoRuntime & {
   time: WorkflowsTestClock;
+  controls: WorkflowsTestControls;
 };
 
 export type WorkflowsTestHarnessFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
@@ -170,6 +186,9 @@ export type WorkflowsTestHarness<
     payload: WorkflowEnqueuedHookPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
+  killRunner: () => Promise<void>;
+  restartRunner: () => Promise<void>;
+  killAndRestartRunner: () => Promise<void>;
 };
 
 type RunUntilIdleOptions = {
@@ -197,11 +216,118 @@ const createTestClock = (startAt?: Date | number): WorkflowsTestClock => {
   };
 };
 
+type PendingControlWaiter = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+};
+
+type ControlEntry = {
+  waiters: Set<PendingControlWaiter>;
+  value?: unknown;
+  error?: Error;
+  status: "pending" | "resolved" | "rejected";
+};
+
+const toControlError = (error: unknown): Error => {
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(typeof error === "string" ? error : "WORKFLOWS_TEST_CONTROL_REJECTED");
+};
+
+const createWorkflowsTestControls = (): WorkflowsTestControls => {
+  const entries = new Map<string, ControlEntry>();
+
+  const getOrCreateEntry = (key: string): ControlEntry => {
+    const existing = entries.get(key);
+    if (existing) {
+      return existing;
+    }
+    const entry: ControlEntry = {
+      waiters: new Set(),
+      status: "pending",
+    };
+    entries.set(key, entry);
+    return entry;
+  };
+
+  return {
+    wait: <T = unknown>(key: string) => {
+      const entry = getOrCreateEntry(key);
+      if (entry.status === "resolved") {
+        return Promise.resolve(entry.value as T);
+      }
+      if (entry.status === "rejected") {
+        return Promise.reject(entry.error ?? new Error("WORKFLOWS_TEST_CONTROL_REJECTED"));
+      }
+      return new Promise<T>((resolve, reject) => {
+        entry.waiters.add({
+          resolve: (value) => resolve(value as T),
+          reject,
+        });
+      });
+    },
+    resolve: (key, value) => {
+      const entry = getOrCreateEntry(key);
+      entry.status = "resolved";
+      entry.value = value;
+      entry.error = undefined;
+      for (const waiter of entry.waiters) {
+        waiter.resolve(value);
+      }
+      entry.waiters.clear();
+    },
+    reject: (key, error) => {
+      const entry = getOrCreateEntry(key);
+      const resolvedError = toControlError(error);
+      entry.status = "rejected";
+      entry.error = resolvedError;
+      entry.value = undefined;
+      for (const waiter of entry.waiters) {
+        waiter.reject(resolvedError);
+      }
+      entry.waiters.clear();
+    },
+    get: (key) => {
+      const entry = getOrCreateEntry(key);
+      if (entry.status === "resolved") {
+        return {
+          key,
+          status: "resolved",
+          pendingCount: entry.waiters.size,
+          value: entry.value,
+        };
+      }
+      if (entry.status === "rejected") {
+        return {
+          key,
+          status: "rejected",
+          pendingCount: entry.waiters.size,
+          error: entry.error ?? new Error("WORKFLOWS_TEST_CONTROL_REJECTED"),
+        };
+      }
+      return {
+        key,
+        status: "pending",
+        pendingCount: entry.waiters.size,
+      };
+    },
+    reset: (key) => {
+      if (key === undefined) {
+        entries.clear();
+        return;
+      }
+      entries.delete(key);
+    },
+  };
+};
+
 export const createWorkflowsTestRuntime = (options?: {
   startAt?: Date | number;
   seed?: number;
 }): WorkflowsTestRuntime => {
   const time = createTestClock(options?.startAt);
+  const controls = createWorkflowsTestControls();
   let state = options?.seed ?? 1;
 
   const nextFloat = () => {
@@ -231,6 +357,7 @@ export const createWorkflowsTestRuntime = (options?: {
 
   return {
     time,
+    controls,
     random: {
       float: () => nextFloat(),
       uuid,
@@ -290,6 +417,9 @@ export async function createWorkflowsTestHarness<
     autoTickHooks: options.autoTickHooks,
     ...options.fragmentConfig,
   };
+  const killLiveState = () => {
+    config.liveState?.clear();
+  };
 
   const baseBuilder = options.testBuilder.withTestAdapter(adapterConfig);
   const configuredBuilder = options.configureBuilder
@@ -311,9 +441,12 @@ export async function createWorkflowsTestHarness<
     TRegistry,
     TConfiguredFragments
   >;
-  const { fragment, db } = fragmentsWithWorkflows.workflows;
-  const callRoute: AnyFragnoInstantiatedFragment["callRoute"] =
-    fragmentsWithWorkflows.workflows.callRoute;
+  const getWorkflowFragment = () => fragmentsWithWorkflows.workflows;
+  const getFragment = () => getWorkflowFragment().fragment;
+  const getDb = () => getWorkflowFragment().db;
+  const callRoute: AnyFragnoInstantiatedFragment["callRoute"] = (...args) =>
+    getWorkflowFragment().callRoute(...args);
+  let isRunnerAlive = true;
   const workflowsByName = new Map<string, WorkflowRegistryEntry>();
   for (const entry of Object.values(workflows)) {
     workflowsByName.set(entry.name, entry);
@@ -354,10 +487,10 @@ export async function createWorkflowsTestHarness<
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
     if (eventOptions.createdAt !== undefined) {
-      return await fragment.inContext(async function () {
+      return await getFragment().inContext(async function () {
         const status = await this.handlerTx()
           .withServiceCalls(() => [
-            fragment.services.sendEvent(workflowName, instanceId, eventOptions),
+            getFragment().services.sendEvent(workflowName, instanceId, eventOptions),
           ])
           .transform(({ serviceResult: [result] }) => result)
           .execute();
@@ -407,8 +540,12 @@ export async function createWorkflowsTestHarness<
     return assertJsonResponse<WorkflowsHistory>(response);
   };
 
-  const tick = async (payload: WorkflowEnqueuedHookPayload) =>
-    await fragment.inContext(function () {
+  const tick = async (payload: WorkflowEnqueuedHookPayload) => {
+    if (!isRunnerAlive) {
+      return 0;
+    }
+
+    return await getFragment().inContext(function () {
       return runWorkflowsTick({
         handlerTx: this.handlerTx,
         workflows,
@@ -417,6 +554,7 @@ export async function createWorkflowsTestHarness<
         payload: { ...payload, timestamp: clock.now() },
       });
     });
+  };
 
   const runUntilIdle = async (
     payload: WorkflowEnqueuedHookPayload,
@@ -428,15 +566,7 @@ export async function createWorkflowsTestHarness<
     let processed = 0;
 
     while (ticks < maxTicks) {
-      const result = await fragment.inContext(function () {
-        return runWorkflowsTick({
-          handlerTx: this.handlerTx,
-          workflows,
-          workflowsByName,
-          liveState: config.liveState,
-          payload: { ...payload, timestamp: clock.now() },
-        });
-      });
+      const result = await tick(payload);
       ticks += 1;
       processed += result;
       if (result === 0) {
@@ -449,8 +579,12 @@ export async function createWorkflowsTestHarness<
 
   return {
     fragments: fragmentsWithWorkflows,
-    fragment,
-    db,
+    get fragment() {
+      return getFragment();
+    },
+    get db() {
+      return getDb();
+    },
     clock,
     runtime,
     test,
@@ -467,5 +601,19 @@ export async function createWorkflowsTestHarness<
     getHistory,
     tick,
     runUntilIdle,
+    async killRunner() {
+      isRunnerAlive = false;
+      killLiveState();
+    },
+    async restartRunner() {
+      await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
+      isRunnerAlive = true;
+    },
+    async killAndRestartRunner() {
+      isRunnerAlive = false;
+      killLiveState();
+      await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
+      isRunnerAlive = true;
+    },
   };
 }

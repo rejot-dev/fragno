@@ -51,6 +51,8 @@ const instanceStatusOutputSchema = z.object({
 
 const currentStepOutputSchema = z.object({
   stepKey: z.string(),
+  parentStepKey: z.string().nullable(),
+  depth: z.number(),
   name: z.string(),
   type: z.string(),
   status: z.string(),
@@ -83,6 +85,8 @@ const historyStepSchema = z.object({
   id: z.string(),
   runNumber: z.number(),
   stepKey: z.string(),
+  parentStepKey: z.string().nullable(),
+  depth: z.number(),
   name: z.string(),
   type: z.string(),
   status: z.string(),

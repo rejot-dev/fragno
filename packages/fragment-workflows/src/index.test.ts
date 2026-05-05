@@ -250,6 +250,61 @@ describe("Workflows Fragment", () => {
       }
     });
 
+    test("GET /:workflowName/instances should filter by status", async () => {
+      const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: "active-route",
+        workflowName: "demo-workflow",
+        status: "active",
+        params: {},
+        runNumber: 0,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+      uow.create("workflow_instance", {
+        id: "complete-route",
+        workflowName: "demo-workflow",
+        status: "complete",
+        params: {},
+        runNumber: 0,
+        startedAt: null,
+        completedAt: null,
+        output: { ok: true },
+        errorName: null,
+        errorMessage: null,
+      });
+      const { success } = await uow.executeMutations();
+      expect(success).toBe(true);
+
+      const response = await fragment.callRoute("GET", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        query: { status: "complete" },
+      });
+
+      assert(response.type === "json");
+      expect(response.data.instances).toHaveLength(1);
+      expect(response.data.instances[0]).toMatchObject({
+        id: "complete-route",
+        details: { status: "complete", output: { ok: true } },
+      });
+    });
+
+    test("GET /:workflowName/instances should reject invalid cursors", async () => {
+      const response = await fragment.callRoute("GET", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        query: { cursor: "not-valid-base64!!!" },
+      });
+
+      expect(response.type).toBe("error");
+      if (response.type === "error") {
+        expect(response.error.code).toBe("INVALID_CURSOR");
+        expect(response.status).toBe(400);
+      }
+    });
+
     test("POST /:workflowName/instances should create a workflow instance", async () => {
       const response = await fragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
