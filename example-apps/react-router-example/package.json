@@ -29,8 +29,8 @@
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "catalog:",
     "tailwindcss": "^4.1.18",
-    "vite": "catalog:",
     "vite-env-only": "^3.0.3",
-    "vite-plugin-devtools-json": "^1.0.0"
+    "vite-plugin-devtools-json": "^1.0.0",
+    "vite-plus": "catalog:"
   }
 }

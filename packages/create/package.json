@@ -21,9 +21,9 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "test": "vp test run",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit"
   },
   "dependencies": {
@@ -34,7 +34,7 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:"

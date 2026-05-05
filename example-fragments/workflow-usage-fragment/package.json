@@ -78,7 +78,7 @@
   },
   "scripts": {
     "types:check": "tsgo --noEmit",
-    "build": "tsdown",
+    "build": "vp pack",
     "serve": "tsx --watch src/server/test-server.ts",
     "cli": "tsx src/server/cli.ts",
     "db:dump": "sqlite3 ${WORKFLOW_USAGE_DB_PATH:-usage-fragment.sqlite} .dump | grep -E '^INSERT' > db-dump.txt",
@@ -99,8 +99,8 @@
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.2.2",
-    "tsdown": "^0.20.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",

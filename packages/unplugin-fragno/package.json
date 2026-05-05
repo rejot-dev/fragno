@@ -74,10 +74,10 @@
   },
   "scripts": {
     "types:check": "tsgo --noEmit",
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@babel/core": "^7.28.6",
@@ -104,10 +104,8 @@
     "eslint": "^9.39.2",
     "nodemon": "^3.1.11",
     "rollup": "^4.55.2",
-    "tsdown": "^0.12.9",
     "tsx": "^4.21.0",
-    "vite": "catalog:",
-    "vitest": "catalog:",
+    "vite-plus": "catalog:",
     "webpack": "^5.104.1"
   },
   "peerDependencies": {

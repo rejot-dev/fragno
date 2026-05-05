@@ -3,7 +3,7 @@
   "include": ["**/*.ts", "**/*.tsx"],
   "extends": "@fragno-private/typescript-config/tsconfig.node.json",
   "compilerOptions": {
-    "types": ["vite/client"],
+    "types": ["vite-plus/client"],
     "paths": {
       "@/*": ["./src/*"]
     }

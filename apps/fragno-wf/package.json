@@ -23,11 +23,11 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "gunshi": "^0.26.3"
@@ -41,7 +41,7 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "engines": {
     "node": ">=22"

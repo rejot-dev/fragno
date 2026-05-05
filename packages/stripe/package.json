@@ -52,9 +52,9 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vp test run",
     "types:check": "tsgo --noEmit",
-    "build": "tsdown"
+    "build": "vp pack"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -68,8 +68,7 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^20.19.30",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "tsdown": "^0.11.13",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@fragno-dev/db": "^0.3.0",

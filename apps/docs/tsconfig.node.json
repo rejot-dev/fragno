@@ -1,5 +1,5 @@
 {
-  "include": ["vite.config.ts", "source.config.ts"],
+  "include": ["vite.config.ts", "vite.workers.config.ts", "source.config.ts"],
   "compilerOptions": {
     "composite": true,
     "strict": true,

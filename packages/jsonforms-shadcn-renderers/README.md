@@ -39,7 +39,7 @@ If you get this error, it means vite cannot find your components.
 ```
 
 ```ts
-import { defineConfig } from "vite";
+import { defineConfig } from "vite-plus";
 import path from "path";
 
 const config = defineConfig({

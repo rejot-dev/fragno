@@ -7,7 +7,7 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "types:check": "react-router typegen && tsgo --noEmit",
-    "test": "vitest run",
+    "test": "vp test run",
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^7.5.3",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
@@ -39,9 +40,8 @@
     "@vitest/coverage-istanbul": "^4.1.0",
     "drizzle-kit": "^0.31.5",
     "tailwindcss": "^4.1.4",
-    "vite": "catalog:",
     "vite-env-only": "^3.0.3",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

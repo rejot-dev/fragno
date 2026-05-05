@@ -74,8 +74,8 @@
   },
   "scripts": {
     "types:check": "tsgo --noEmit",
-    "build": "tsdown",
-    "test": "vitest run",
+    "build": "vp pack",
+    "test": "vp test run",
     "cli": "tsx src/cli/mod.ts"
   },
   "dependencies": {
@@ -97,9 +97,8 @@
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
-    "tsdown": "^0.20.3",
     "tsx": "^4.21.0",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@fragno-dev/db": "workspace:*",

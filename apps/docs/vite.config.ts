@@ -4,11 +4,12 @@ import path from "path";
 
 import { reactRouter } from "@react-router/dev/vite";
 import mdx from "fumadocs-mdx/vite";
-import { defineConfig } from "vite";
-import type { Plugin } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
+import { coverageConfigDefaults, defineConfig } from "vite-plus";
+import type { Plugin, UserConfig } from "vite-plus";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import tailwindcss from "@tailwindcss/vite";
 
 import * as MdxConfig from "./source.config";
@@ -38,26 +39,39 @@ const fumadocsDeps = [
 // during dev-server boot instead of on the first SSR request.
 const workerWarmupFiles = ["./workers/app.ts"];
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   const isDev = mode === "development";
-  return {
+  const isVitest = process.env["VITEST"] === "true";
+  const plugins: unknown[] = [await mdx(MdxConfig)];
+
+  if (!isVitest) {
+    plugins.push(cloudflare({ viteEnvironment: { name: "ssr" } }));
+    plugins.push(
+      cloudflareTest({
+        // CI is not logged into Wrangler. Disable remote bindings so Vitest
+        // doesn't try to open a remote proxy session for the dispatch
+        // namespace configured with remote: true in wrangler.jsonc.
+        remoteBindings: false,
+        wrangler: { configPath: "./wrangler.jsonc" },
+      }),
+    );
+  }
+
+  plugins.push(tailwindcss(), reactRouter(), devtoolsJson());
+  const config: UserConfig = {
     resolve: {
       tsconfigPaths: true,
       alias: {
+        "@": path.resolve(__dirname, "./app"),
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),
         ajv: path.resolve(__dirname, "./shims/ajv.ts"),
         "ajv-formats": path.resolve(__dirname, "./shims/ajv-formats.ts"),
+        svix: path.resolve(__dirname, "./shims/svix.ts"),
         undici: path.resolve(__dirname, "./shims/undici.ts"),
       },
     },
-    plugins: [
-      mdx(MdxConfig),
-      cloudflare({ viteEnvironment: { name: "ssr" } }),
-      tailwindcss(),
-      reactRouter(),
-      devtoolsJson(),
-    ],
+    plugins: plugins as NonNullable<UserConfig["plugins"]>,
     optimizeDeps: isDev
       ? {
           include: fumadocsDeps,
@@ -97,7 +111,34 @@ export default defineConfig(({ mode }) => {
           }
         : undefined,
     },
+    test: {
+      globals: true,
+      environment: "node",
+      include: [
+        "app/**/*.test.ts",
+        "app/**/*.test.tsx",
+        "workers/**/*.test.ts",
+        "workers/**/*.test.tsx",
+        "scripts/**/*.test.ts",
+        "scripts/**/*.test.tsx",
+      ],
+      exclude: ["**/*.workers.test.ts"],
+      deps: {
+        optimizer: {
+          ssr: {
+            include: ["just-bash", "@mariozechner/pi-ai", "@cloudflare/sandbox"],
+          },
+        },
+      },
+      coverage: {
+        provider: "istanbul",
+        exclude: ["templates/**", ...coverageConfigDefaults.exclude],
+        reporter: [["json", { file: "../coverage.json" }]],
+        enabled: false,
+      },
+    },
   };
+  return config;
 });
 
 // oxlint-disable-next-line no-unused-vars
@@ -132,7 +173,7 @@ function environmentInfoPlugin(): Plugin {
 
       const outputPath = join(config.root, "vite-environments.json");
       writeFileSync(outputPath, JSON.stringify(envInfo, null, 2), "utf-8");
-      console.log(`\nEnvironment info written to: ${outputPath}\n`);
+      console.log("\\nEnvironment info written to: " + outputPath + "\\n");
     },
   };
 }

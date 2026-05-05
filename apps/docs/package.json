@@ -9,15 +9,19 @@
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
     "postinstall": "fumadocs-mdx",
-    "preview": "pnpm run build && vite preview",
+    "preview": "pnpm run build && vp preview",
     "types:check": "tsgo -b --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen && fumadocs-mdx",
     "db:fragno:generate": "fragno-cli db generate app/fragno/mailing-list.ts -o app/db/mailing-list-do.schema.ts && fragno-cli db generate app/fragno/forms.ts -o app/db/forms-do.schema.ts",
     "db:mailing-list-do:generate": "drizzle-kit generate --config mailing-list-do.drizzle.config.ts",
     "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts",
     "shadcn:generate": "tsx app/components/form-builder/generate-registry.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "pnpm run test:node && pnpm run test:workers",
+    "test:node": "vp test run -c vite.config.ts",
+    "test:node:watch": "vp test -c vite.config.ts",
+    "test:workers": "vp test run -c vite.workers.config.ts --passWithNoTests",
+    "test:workers:watch": "vp test -c vite.workers.config.ts --passWithNoTests",
+    "test:watch": "pnpm run test:node:watch"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -101,9 +105,8 @@
     "satori": "^0.19.2",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
-    "vite": "catalog:",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vitest": "catalog:",
+    "vite-plus": "catalog:",
     "wrangler": "^4.73.0"
   }
 }

@@ -1,8 +1,8 @@
 import { reactRouter } from "@react-router/dev/vite";
-import { defineConfig } from "vite";
-import type { PluginOption } from "vite";
 import { envOnlyMacros } from "vite-env-only";
 import devtoolsJson from "vite-plugin-devtools-json";
+import { defineConfig } from "vite-plus";
+import type { PluginOption } from "vite-plus";
 
 import tailwindcss from "@tailwindcss/vite";
 

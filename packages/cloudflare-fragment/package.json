@@ -70,9 +70,9 @@
   },
   "scripts": {
     "types:check": "tsc --noEmit",
-    "build": "tsdown --config-loader unrun",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "build": "vp pack --config-loader unrun",
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -86,8 +86,7 @@
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^25.2.2",
-    "tsdown": "^0.20.3",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

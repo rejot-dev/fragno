@@ -45,10 +45,10 @@
   },
   "scripts": {
     "types:check": "tsgo --noEmit",
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
+    "test": "vp test run",
+    "test:watch": "vp test"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -65,8 +65,7 @@
     "drizzle-orm": "^0.44.7",
     "kysely": "^0.28.10",
     "kysely-pglite": "^0.6.1",
-    "tsdown": "^0.11.13",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",

@@ -30,7 +30,9 @@ export type FormsInit =
       state: DurableObjectState;
     };
 
-export function createFormsServer(init: FormsInit) {
+type FormsServer = ReturnType<typeof createFormsFragment>;
+
+export function createFormsServer(init: FormsInit): FormsServer {
   const turnstileSecretKey = init.type === "live" ? init.env.TURNSTILE_SECRET_KEY : undefined;
 
   return createFormsFragment(
@@ -95,6 +97,6 @@ export function createFormsServer(init: FormsInit) {
   });
 }
 
-export type FormsFragment = ReturnType<typeof createFormsServer>;
+export type FormsFragment = FormsServer;
 
-export const fragment = createFormsServer({ type: "dry-run" });
+export const fragment: FormsFragment = createFormsServer({ type: "dry-run" });

@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vue";
-import { ref, computed } from "vue";
+import { atom } from "nanostores";
+import { computed, ref, watchEffect } from "vue";
 
 const { useData } = createExampleFragmentClient();
 
 const refreshKey = ref(0);
 const shouldTriggerError = ref(false);
+const queryName = atom(refreshKey.value.toString());
+const queryError = atom(shouldTriggerError.value ? "true" : "");
+
+watchEffect(() => {
+  queryName.set(refreshKey.value.toString());
+  queryError.set(shouldTriggerError.value ? "true" : "");
+});
 
 const {
   loading,
@@ -13,10 +21,13 @@ const {
   error: dataError,
 } = useData({
   query: {
-    name: computed(() => refreshKey.value.toString()),
-    error: computed(() => (shouldTriggerError.value ? "true" : "")),
+    name: queryName,
+    error: queryError,
   },
 });
+
+const dataErrorMessage = computed(() => dataError.value?.message ?? "Unknown error");
+const dataErrorCode = computed(() => dataError.value?.code ?? "unknown");
 </script>
 
 <template>
@@ -39,7 +50,7 @@ const {
         color: #721c24;
       "
     >
-      Error: {{ dataError.message }} (code: {{ dataError.code }})
+      Error: {{ dataErrorMessage }} (code: {{ dataErrorCode }})
     </div>
     <div
       v-else

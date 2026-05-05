@@ -31,8 +31,9 @@ export const unpluginFactory: UnpluginFactory<Options | undefined> = (options = 
   };
 };
 
-export const unplugin = /* #__PURE__ */ createUnplugin(unpluginFactory);
+const fragnoPlugin = /* #__PURE__ */ createUnplugin(unpluginFactory);
 
-export default unplugin;
+export { fragnoPlugin as unplugin };
+export default fragnoPlugin;
 export type { Options };
 export { isMacroBinding } from "./transform-macros";

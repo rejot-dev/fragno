@@ -36,11 +36,11 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vp test run",
+    "test:watch": "vp test"
   },
   "dependencies": {
     "@jsonforms/core": "^3.7.0",
@@ -57,6 +57,7 @@
     "jsdom": "^27.4.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "vite-plus": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {

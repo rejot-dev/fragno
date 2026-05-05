@@ -1,0 +1,52 @@
+import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+import { defineConfig } from "vite-plus";
+
+import { baseConfig } from "@fragno-private/vitest-config";
+
+export default defineConfig({
+  pack: [
+    {
+      ignoreWatch: ["./dist"],
+      entry: [
+        "./src/index.ts",
+        "./src/client/react.ts",
+        "./src/client/svelte.ts",
+        "./src/client/solid.ts",
+        "./src/client/vanilla.ts",
+        "./src/client/vue.ts",
+      ],
+      dts: true,
+      failOnWarn: true,
+      platform: "browser",
+      outDir: "./dist/browser",
+      plugins: [unpluginFragno({ platform: "browser" })],
+      deps: {
+        alwaysBundle: [/^@fragno-dev\/core\//],
+        onlyBundle: [/^@fragno-dev\/core/, /^nanostores$/, /^@nanostores\//, /^nanoevents$/],
+      },
+    },
+    {
+      ignoreWatch: ["./dist"],
+      entry: "./src/index.ts",
+      dts: true,
+      failOnWarn: true,
+      platform: "node",
+      outDir: "./dist/node",
+      fixedExtension: false,
+      plugins: [unpluginFragno({ platform: "node" })],
+      unbundle: true,
+    },
+    {
+      ignoreWatch: ["./dist"],
+      entry: "./src/cli/index.ts",
+      dts: true,
+      failOnWarn: true,
+      platform: "node",
+      outDir: "./dist/cli",
+      fixedExtension: false,
+      unbundle: true,
+    },
+  ],
+
+  test: baseConfig.test,
+});

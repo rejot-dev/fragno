@@ -15,11 +15,12 @@
   "types": "./dist/mod.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/mod.d.ts",
+      "node": "./dist/mod.js",
+      "browser": "./dist/mod-client.js",
       "workerd": {
         "default": "./dist/mod.js"
       },
-      "browser": "./dist/mod-client.js",
-      "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./api": {
@@ -85,11 +86,11 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@nanostores/query": "^0.3.4",
@@ -114,7 +115,7 @@
     "react-dom": "^19.0.3",
     "solid-js": "^1.9.10",
     "svelte": "^5.47.0",
-    "vitest": "catalog:",
+    "vite-plus": "catalog:",
     "vue": "^3.5.27",
     "zod": "^4.3.5"
   },

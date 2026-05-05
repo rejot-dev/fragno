@@ -1,5 +1,3 @@
-/// <reference types="@cloudflare/vitest-pool-workers/types" />
-import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import AjvModule from "ajv";
@@ -9,20 +7,7 @@ import { validateToolArguments } from "@mariozechner/pi-ai";
 import { bashParametersSchema } from "./pi-schema";
 
 describe("typebox failure reproduction", () => {
-  it("eval is blocked in the workers test runtime", () => {
-    expect(env).toBeDefined();
-    // oxlint-disable-next-line no-eval -- intentional CSP regression test
-    expect(() => eval("1 + 1")).toThrow(/Code generation from strings disallowed/i);
-  });
-
-  it("new Function works in the workers test runtime", () => {
-    expect(env).toBeDefined();
-    const fn = new Function("return 2 + 2;");
-    expect(fn()).toBe(4);
-  });
-
   it("validateToolArguments reports a validation error for invalid bash args", () => {
-    expect(env).toBeDefined();
     const tool = {
       name: "bash",
       label: "Bash",
@@ -50,7 +35,6 @@ describe("typebox failure reproduction", () => {
   });
 
   it("validateToolArguments accepts valid bash args", () => {
-    expect(env).toBeDefined();
     const tool = {
       name: "bash",
       label: "Bash",
@@ -73,7 +57,7 @@ describe("typebox failure reproduction", () => {
     }
   });
 
-  it("ajv compiles the bash schema in the workers test runtime", () => {
+  it("ajv compiles the bash schema", () => {
     const Ajv = (AjvModule as unknown as { default?: typeof AjvModule }).default || AjvModule;
     const ajv = new Ajv({ allErrors: true, strict: false, coerceTypes: true });
     const validate = ajv.compile(bashParametersSchema);

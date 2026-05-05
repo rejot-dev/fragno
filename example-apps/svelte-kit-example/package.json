@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
     "prepare": "svelte-kit sync || echo ''",
     "types:check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
@@ -20,6 +20,6 @@
     "@typescript/native-preview": "catalog:",
     "svelte": "^5.47.0",
     "svelte-check": "^4.3.5",
-    "vite": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

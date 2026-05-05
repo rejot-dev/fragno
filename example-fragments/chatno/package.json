@@ -39,11 +39,11 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -55,7 +55,7 @@
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@typescript/native-preview": "catalog:",

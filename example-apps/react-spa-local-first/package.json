@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
     "types:check": "tsgo --noEmit"
   },
   "dependencies": {
@@ -21,6 +21,6 @@
     "@types/react-dom": "^19.2.3",
     "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-react": "^6.0.1",
-    "vite": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

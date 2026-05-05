@@ -1,5 +1,6 @@
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from "vite-plus";
+import { coverageConfigDefaults } from "vite-plus";
 
 import tailwindcss from "@tailwindcss/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -17,6 +18,15 @@ const config = defineConfig({
   // Needed for 'Could not resolve "#tanstack-router-entry"' type errors
   optimizeDeps: {
     exclude: ["@tanstack/start-server-core", "@tanstack/react-start", "@tanstack/react-router"],
+  },
+  test: {
+    globals: true,
+    coverage: {
+      provider: "istanbul",
+      exclude: ["templates/**", ...coverageConfigDefaults.exclude],
+      reporter: [["json", { file: "../coverage.json" }]],
+      enabled: true,
+    },
   },
 });
 

@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "run-p \"dev:frontend\" \"dev:backend\"",
-    "dev:frontend": "vite",
+    "dev:frontend": "vp dev",
     "dev:backend": "node --import tsx server/index.ts",
     "build": "run-p types:check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "build-only": "vite build",
+    "preview": "vp preview",
+    "build-only": "vp build",
     "types:check": "vue-tsc --build"
   },
   "dependencies": {
@@ -23,8 +23,8 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/tsconfig": "^0.7.0",
     "npm-run-all2": "^8.0.4",
-    "vite": "catalog:",
     "vite-plugin-vue-devtools": "^8.1.0",
+    "vite-plus": "catalog:",
     "vue-tsc": "^3.2.2"
   },
   "engines": {

@@ -498,6 +498,8 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             | { ok: false; code: "invalid_credentials" | "user_banned" }
             | null = null;
 
+          console.log("passwordCheck xxx", { email, password, session });
+
           const result = await this.handlerTx({
             onAfterRetrieve: async (_uow, results) => {
               const firstResult = Array.isArray(results[0]) ? results[0] : [];

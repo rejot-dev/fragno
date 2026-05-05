@@ -12,15 +12,15 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "prisma generate --schema ./prisma/schema.prisma && tsgo --noEmit",
     "db:push": "prisma db push --schema ./prisma/schema.prisma",
     "db:generate:prisma-client": "prisma generate --schema ./prisma/schema.prisma",
     "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:migrate:fragno": "fragno-cli db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:generate": "pnpm run db:generate:fragno && pnpm run db:generate:prisma-client",
-    "test": "vitest run"
+    "test": "vp test run"
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
@@ -39,6 +39,6 @@
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^4.1.0",
     "prisma": "^6.16.1",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

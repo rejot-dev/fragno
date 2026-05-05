@@ -1,4 +1,4 @@
-import { coverageConfigDefaults } from "vitest/config";
+import { coverageConfigDefaults } from "vite-plus";
 
 const baseConfig = {
   test: {

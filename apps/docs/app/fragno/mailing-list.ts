@@ -27,7 +27,9 @@ export type MailingListInit =
       state: DurableObjectState;
     };
 
-export function createMailingListServer(init: MailingListInit) {
+type MailingListServer = ReturnType<typeof createMailingListFragment>;
+
+export function createMailingListServer(init: MailingListInit): MailingListServer {
   return createMailingListFragment(
     {
       onSubscribe: async (email) => {
@@ -77,6 +79,6 @@ export function createMailingListServer(init: MailingListInit) {
   });
 }
 
-export type MailingListFragment = ReturnType<typeof createMailingListServer>;
+export type MailingListFragment = MailingListServer;
 
-export const fragment = createMailingListServer({ type: "dry-run" });
+export const fragment: MailingListFragment = createMailingListServer({ type: "dry-run" });

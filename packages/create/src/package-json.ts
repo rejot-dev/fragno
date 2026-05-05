@@ -54,10 +54,10 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   vite: {
     devDependencies: {
-      vite: "^7.3.1",
+      "vite-plus": "latest",
     },
     scripts: {
-      build: "vite build",
+      build: "vp build",
     },
   },
   rollup: {

@@ -22,11 +22,11 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -41,6 +41,6 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "kysely": "^0.28.10",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

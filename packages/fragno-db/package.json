@@ -11,10 +11,11 @@
   "type": "module",
   "exports": {
     ".": {
+      "types": "./dist/mod.d.ts",
+      "node": "./dist/mod.js",
+      "browser": "./dist/browser/mod.js",
       "workerd": "./dist/mod.js",
       "worker": "./dist/mod.js",
-      "browser": "./dist/browser/mod.js",
-      "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./id": {
@@ -70,8 +71,9 @@
       "default": "./dist/client.js"
     },
     "./sync": {
-      "browser": "./dist/browser/mod.js",
       "types": "./dist/sync/index.d.ts",
+      "node": "./dist/sync/index.js",
+      "browser": "./dist/browser/mod.js",
       "default": "./dist/sync/index.js"
     },
     "./unit-of-work": {
@@ -81,10 +83,6 @@
     "./cursor": {
       "types": "./dist/query/cursor.d.ts",
       "default": "./dist/query/cursor.js"
-    },
-    "./fragment": {
-      "types": "./dist/fragment.d.ts",
-      "default": "./dist/fragment.js"
     },
     "./fragment-definition-builder": {
       "types": "./dist/db-fragment-definition-builder.d.ts",
@@ -108,11 +106,11 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test": "vp test run",
+    "test:watch": "vp test --watch"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -134,7 +132,7 @@
     "kysely-pglite": "^0.6.1",
     "mysql2": "^3.16.1",
     "sqlocal": "^0.15.2",
-    "vitest": "catalog:",
+    "vite-plus": "catalog:",
     "zod": "^4.3.5"
   },
   "peerDependencies": {

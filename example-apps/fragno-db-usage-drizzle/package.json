@@ -12,10 +12,10 @@
     }
   },
   "scripts": {
-    "build": "tsdown && pnpm run db:fragno:generate:all",
-    "build:watch": "tsdown --watch",
+    "build": "vp pack && pnpm run db:fragno:generate:all",
+    "build:watch": "vp pack --watch",
     "types:check": "tsgo --noEmit",
-    "test": "vitest run",
+    "test": "vp test run",
     "db:fragno:generate": "fragno-cli db generate ./src/fragno/schema-entry.postgres.ts --format drizzle -o ./src/schema/fragno-schema.ts",
     "db:fragno:generate:sqlite": "fragno-cli db generate ./src/fragno/schema-entry.sqlite.ts --format drizzle -o ./src/schema/fragno-schema.sqlite.ts",
     "db:fragno:generate:mysql": "fragno-cli db generate ./src/fragno/schema-entry.mysql.ts --format drizzle -o ./src/schema/fragno-schema.mysql.ts",
@@ -45,6 +45,6 @@
     "@vitest/coverage-istanbul": "^4.1.0",
     "drizzle-kit": "^0.31.8",
     "gunshi": "^0.26.3",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }
