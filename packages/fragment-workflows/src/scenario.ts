@@ -15,6 +15,7 @@ import {
   type WorkflowsTestHarness,
   type WorkflowsTestHarnessOptions,
   type WorkflowsTestRuntime,
+  type WorkflowsTestRunner,
 } from "./test";
 import type {
   InstanceStatus,
@@ -217,11 +218,14 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioTickStep<TRegistry, TVars>
   | WorkflowScenarioRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<TRegistry, TVars>
+  | WorkflowScenarioWaitForControlStep<TRegistry, TVars>
   | WorkflowScenarioResolveControlStep<TRegistry, TVars>
   | WorkflowScenarioRejectControlStep<TRegistry, TVars>
   | WorkflowScenarioKillRunnerStep
   | WorkflowScenarioRestartRunnerStep
   | WorkflowScenarioKillAndRestartRunnerStep
+  | WorkflowScenarioWithRunnerStep<TRegistry, TVars>
+  | WorkflowScenarioWithRunnersStep<TRegistry, TVars>
   | WorkflowScenarioReadStep<TRegistry, TVars>
   | WorkflowScenarioReadLiveStateStep<TRegistry, TVars>
   | WorkflowScenarioAssertStep<TRegistry, TVars>;
@@ -426,6 +430,15 @@ export type WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<
   storeAs?: (keyof TVars & string) | undefined;
 };
 
+export type WorkflowScenarioWaitForControlStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "waitForControl";
+  key: ScenarioInput<string, TRegistry, TVars>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
 export type WorkflowScenarioResolveControlStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
@@ -454,6 +467,22 @@ export type WorkflowScenarioRestartRunnerStep = {
 
 export type WorkflowScenarioKillAndRestartRunnerStep = {
   type: "killAndRestartRunner";
+};
+
+export type WorkflowScenarioWithRunnerStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "withRunner";
+  steps: WorkflowScenarioStep<TRegistry, TVars>[];
+};
+
+export type WorkflowScenarioWithRunnersStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "withRunners";
+  runners: Record<string, WorkflowScenarioStep<TRegistry, TVars>[]>;
 };
 
 export type WorkflowScenarioReadStep<
@@ -594,6 +623,12 @@ export const createScenarioSteps = <
     type: "advanceTimeAndRunUntilIdle",
     ...input,
   }),
+  waitForControl: (
+    input: StepInput<WorkflowScenarioWaitForControlStep<TRegistry, TVars>>,
+  ): WorkflowScenarioWaitForControlStep<TRegistry, TVars> => ({
+    type: "waitForControl",
+    ...input,
+  }),
   resolveControl: (
     input: StepInput<WorkflowScenarioResolveControlStep<TRegistry, TVars>>,
   ): WorkflowScenarioResolveControlStep<TRegistry, TVars> => ({
@@ -614,6 +649,18 @@ export const createScenarioSteps = <
   }),
   killAndRestartRunner: (): WorkflowScenarioKillAndRestartRunnerStep => ({
     type: "killAndRestartRunner",
+  }),
+  withRunner: (
+    steps: WorkflowScenarioStep<TRegistry, TVars>[],
+  ): WorkflowScenarioWithRunnerStep<TRegistry, TVars> => ({
+    type: "withRunner",
+    steps,
+  }),
+  withRunners: (
+    runners: Record<string, WorkflowScenarioStep<TRegistry, TVars>[]>,
+  ): WorkflowScenarioWithRunnersStep<TRegistry, TVars> => ({
+    type: "withRunners",
+    runners,
   }),
   read: (
     input: StepInput<WorkflowScenarioReadStep<TRegistry, TVars>>,
@@ -1201,11 +1248,37 @@ export async function runScenario<
     };
   };
 
-  let result: WorkflowScenarioResult<TVars> | undefined;
-  let scenarioError: unknown;
+  let hasUsedExplicitRunnerScope = false;
+  const isTopLevelObservationStepAfterExplicitRunners = (
+    step: WorkflowScenarioStep<TRegistry, TVars>,
+  ): boolean => {
+    switch (step.type) {
+      case "read":
+      case "readLiveState":
+      case "assert":
+        return true;
+      default:
+        return false;
+    }
+  };
 
-  try {
-    for (const step of scenario.steps) {
+  const executeSteps = async (
+    scenarioSteps: WorkflowScenarioStep<TRegistry, TVars>[],
+    runner: WorkflowsTestRunner,
+    options?: { topLevel?: boolean },
+  ) => {
+    for (const step of scenarioSteps) {
+      if (
+        options?.topLevel &&
+        hasUsedExplicitRunnerScope &&
+        !isTopLevelObservationStepAfterExplicitRunners(step)
+      ) {
+        throw new Error(
+          `TOP_LEVEL_SCENARIO_STEP_AFTER_EXPLICIT_RUNNER: ${step.type}. ` +
+            "All runner-affecting work must be part of the first withRunner(...) or withRunners(...) block.",
+        );
+      }
+
       switch (step.type) {
         case "create": {
           const workflowName = resolver.resolveName(
@@ -1248,7 +1321,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1315,7 +1388,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1380,7 +1453,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1436,7 +1509,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1462,7 +1535,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1525,7 +1598,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1563,7 +1636,7 @@ export async function runScenario<
             });
           }
 
-          const processed = await context.harness.tick(payload);
+          const processed = await runner.tick(payload);
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = processed;
           }
@@ -1602,7 +1675,7 @@ export async function runScenario<
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
 
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1684,12 +1757,20 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await context.harness.runUntilIdle(
+          const resultTicks = await runner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = resultTicks;
+          }
+          break;
+        }
+        case "waitForControl": {
+          const key = await resolveScenarioInput(step.key, context);
+          const value = await context.runtime.controls.wait(key);
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = value;
           }
           break;
         }
@@ -1708,15 +1789,33 @@ export async function runScenario<
           break;
         }
         case "killRunner": {
-          await context.harness.killRunner();
+          await runner.kill();
           break;
         }
         case "restartRunner": {
-          await context.harness.restartRunner();
+          await runner.restart();
           break;
         }
         case "killAndRestartRunner": {
-          await context.harness.killAndRestartRunner();
+          await runner.killAndRestart();
+          break;
+        }
+        case "withRunner": {
+          if (options?.topLevel) {
+            hasUsedExplicitRunnerScope = true;
+          }
+          await executeSteps(step.steps, context.harness.createRunner());
+          break;
+        }
+        case "withRunners": {
+          if (options?.topLevel) {
+            hasUsedExplicitRunnerScope = true;
+          }
+          await Promise.all(
+            Object.values(step.runners).map((runnerSteps) =>
+              executeSteps(runnerSteps, context.harness.createRunner()),
+            ),
+          );
           break;
         }
         case "read": {
@@ -1745,6 +1844,13 @@ export async function runScenario<
         }
       }
     }
+  };
+
+  let result: WorkflowScenarioResult<TVars> | undefined;
+  let scenarioError: unknown;
+
+  try {
+    await executeSteps(scenario.steps, context.harness.createRunner(), { topLevel: true });
 
     result = {
       name: context.name,

@@ -539,6 +539,388 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("event runner wins a nested Promise.race against a normal promise sleep", async () => {
+    const runtime = createWorkflowsTestRuntime();
+
+    const RaceRunnerWorkflow = defineWorkflow(
+      { name: "scenario-race-event-second-runner-wins" },
+      async (_event, step) => {
+        const raceReturn = await step.do("Promise race", async () => {
+          return await Promise.race([
+            step.do("promise sleep branch", async () => {
+              runtime.controls.resolve("sleep:started");
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              return "sleep";
+            }),
+            step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
+          ]);
+        });
+
+        const cached = await step.do("After race", async () => raceReturn);
+        return { raceReturn, cached };
+      },
+    );
+
+    const workflows = { RACE: RaceRunnerWorkflow };
+
+    type ScenarioVars = {
+      createTick?: number;
+      eventTick?: number;
+      status?: { status: string; output?: { raceReturn: string; cached: string } };
+      steps?: WorkflowScenarioStepRow[];
+      events?: WorkflowScenarioEventRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-race-event-second-runner-wins",
+      workflows,
+      harness: { runtime },
+      steps: [
+        scenarioSteps.create({ workflow: "RACE", id: "race-runner-1" }),
+        scenarioSteps.withRunners({
+          create: [
+            scenarioSteps.tick({
+              workflow: "RACE",
+              instanceId: "race-runner-1",
+              reason: "create",
+              storeAs: "createTick",
+            }),
+          ],
+          event: [
+            scenarioSteps.waitForControl({ key: "sleep:started" }),
+            scenarioSteps.event({
+              workflow: "RACE",
+              instanceId: "race-runner-1",
+              event: { type: "ready" },
+            }),
+            scenarioSteps.tick({
+              workflow: "RACE",
+              instanceId: "race-runner-1",
+              reason: "event",
+              storeAs: "eventTick",
+            }),
+          ],
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RACE", "race-runner-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("RACE", "race-runner-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("RACE", "race-runner-1"),
+          storeAs: "events",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.createTick).toBe(1);
+          expect(ctx.vars.eventTick).toBe(1);
+          expect(ctx.vars.status).toMatchObject({
+            status: "complete",
+            output: { raceReturn: "event", cached: "event" },
+          });
+          expect(ctx.vars.steps).toMatchObject([
+            {
+              stepKey: "do:Promise race",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "event",
+            },
+            {
+              stepKey: "do:Promise race>do:promise sleep branch",
+              parentStepKey: "do:Promise race",
+              depth: 1,
+              status: "waiting",
+            },
+            {
+              stepKey: "do:Promise race>waitForEvent:event branch",
+              parentStepKey: "do:Promise race",
+              depth: 1,
+              status: "completed",
+            },
+            {
+              stepKey: "do:After race",
+              parentStepKey: null,
+              depth: 0,
+              status: "completed",
+              result: "event",
+            },
+          ]);
+          expect(ctx.vars.events).toHaveLength(1);
+          expect(ctx.vars.events?.[0]).toMatchObject({
+            type: "ready",
+            consumedByStepKey: "do:Promise race>waitForEvent:event branch",
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("event sent before waitForEvent is persisted is buffered and enqueues a later tick", async () => {
+    const runtime = createWorkflowsTestRuntime();
+
+    const EventBeforeWaitWorkflow = defineWorkflow(
+      { name: "scenario-event-before-wait-persisted" },
+      async (_event, step) => {
+        await step.do("slow promise", async () => {
+          runtime.controls.resolve("slow:started");
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        });
+
+        await step.waitForEvent("ready", { type: "ready" });
+        return "done";
+      },
+    );
+
+    const workflows = { EARLY_EVENT: EventBeforeWaitWorkflow };
+
+    type ScenarioVars = {
+      eventStatus?: { status: string; output?: string };
+      createTick?: number;
+      statusAfterCreate?: { status: string; output?: string };
+      eventsAfterCreate?: WorkflowScenarioEventRow[];
+      hooksAfterCreate?: WorkflowScenarioHookRow[];
+      finalRun?: { processed: number; ticks: number };
+      finalStatus?: { status: string; output?: string };
+      events?: WorkflowScenarioEventRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-event-before-wait-persisted-enqueues",
+      workflows,
+      harness: { runtime },
+      steps: [
+        scenarioSteps.create({ workflow: "EARLY_EVENT", id: "early-event-1" }),
+        scenarioSteps.withRunners({
+          create: [
+            scenarioSteps.tick({
+              workflow: "EARLY_EVENT",
+              instanceId: "early-event-1",
+              reason: "create",
+              storeAs: "createTick",
+            }),
+            scenarioSteps.resolveControl({ key: "create:tick:done" }),
+          ],
+          event: [
+            scenarioSteps.waitForControl({ key: "slow:started" }),
+            scenarioSteps.event({
+              workflow: "EARLY_EVENT",
+              instanceId: "early-event-1",
+              event: { type: "ready" },
+              storeAs: "eventStatus",
+            }),
+            scenarioSteps.waitForControl({ key: "create:tick:done" }),
+            scenarioSteps.read({
+              read: (ctx) => ctx.state.getStatus("EARLY_EVENT", "early-event-1"),
+              storeAs: "statusAfterCreate",
+            }),
+            scenarioSteps.read({
+              read: (ctx) => ctx.state.getEvents("EARLY_EVENT", "early-event-1"),
+              storeAs: "eventsAfterCreate",
+            }),
+            scenarioSteps.read({
+              read: (ctx) =>
+                ctx.state.internal.getHooks({
+                  hookName: "onWorkflowEnqueued",
+                  workflowName: "scenario-event-before-wait-persisted",
+                  instanceId: "early-event-1",
+                }),
+              storeAs: "hooksAfterCreate",
+            }),
+            scenarioSteps.runUntilIdle({
+              workflow: "EARLY_EVENT",
+              instanceId: "early-event-1",
+              reason: "event",
+              storeAs: "finalRun",
+            }),
+          ],
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("EARLY_EVENT", "early-event-1"),
+          storeAs: "finalStatus",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getEvents("EARLY_EVENT", "early-event-1"),
+          storeAs: "events",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.eventStatus?.status).toBe("active");
+          expect(ctx.vars.createTick).toBe(1);
+          expect(ctx.vars.statusAfterCreate?.status).toBe("waiting");
+          expect(ctx.vars.eventsAfterCreate).toHaveLength(1);
+          expect(ctx.vars.eventsAfterCreate?.[0]).toMatchObject({
+            type: "ready",
+            consumedByStepKey: null,
+            deliveredAt: null,
+          });
+          expect(ctx.vars.hooksAfterCreate).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                hookName: "onWorkflowEnqueued",
+                status: "pending",
+                payload: expect.objectContaining({ reason: "event" }),
+              }),
+            ]),
+          );
+          expect(ctx.vars.finalRun).toEqual({ processed: 1, ticks: 2 });
+          expect(ctx.vars.finalStatus).toMatchObject({ status: "complete", output: "done" });
+          expect(ctx.vars.events?.[0]).toMatchObject({
+            type: "ready",
+            consumedByStepKey: "waitForEvent:ready",
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("stale in-flight runner loses when another runner commits first", async () => {
+    const runtime = createWorkflowsTestRuntime();
+    let invocationCount = 0;
+
+    const OccWorkflow = defineWorkflow(
+      { name: "scenario-stale-runner-occ" },
+      async (_event, step) => {
+        const value = await step.do("racy work", async () => {
+          invocationCount += 1;
+          if (invocationCount === 1) {
+            runtime.controls.resolve("first:started");
+            await runtime.controls.wait("first:release");
+          }
+          return "committed";
+        });
+        return { value };
+      },
+    );
+
+    const workflows = { OCC: OccWorkflow };
+
+    type ScenarioVars = {
+      firstTick?: number;
+      secondTick?: number;
+      status?: { status: string; output?: { value: string } };
+      steps?: WorkflowScenarioStepRow[];
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-stale-runner-occ",
+      workflows,
+      harness: { runtime },
+      steps: [
+        scenarioSteps.create({ workflow: "OCC", id: "occ-1" }),
+        scenarioSteps.withRunners({
+          first: [
+            scenarioSteps.tick({
+              workflow: "OCC",
+              instanceId: "occ-1",
+              reason: "create",
+              storeAs: "firstTick",
+            }),
+          ],
+          second: [
+            scenarioSteps.waitForControl({ key: "first:started" }),
+            scenarioSteps.tick({
+              workflow: "OCC",
+              instanceId: "occ-1",
+              reason: "create",
+              storeAs: "secondTick",
+            }),
+            scenarioSteps.resolveControl({ key: "first:release" }),
+          ],
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("OCC", "occ-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getSteps("OCC", "occ-1"),
+          storeAs: "steps",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.firstTick).toBe(0);
+          expect(ctx.vars.secondTick).toBe(1);
+          expect(ctx.vars.status).toMatchObject({
+            status: "complete",
+            output: { value: "committed" },
+          });
+          expect(ctx.vars.steps).toHaveLength(1);
+          expect(ctx.vars.steps?.[0]).toMatchObject({
+            stepKey: "do:racy work",
+            status: "completed",
+            result: "committed",
+          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("supports independent runners in scenario blocks", async () => {
+    const RunnerWorkflow = defineWorkflow(
+      { name: "scenario-independent-runners" },
+      async (_event, step) => {
+        await step.waitForEvent("ready", { type: "ready" });
+        return "done";
+      },
+    );
+
+    const workflows = { RUNNER: RunnerWorkflow };
+
+    type ScenarioVars = {
+      killedRunnerTick?: number;
+      eventRunnerRun?: { processed: number; ticks: number };
+      status?: { status: string; output?: string };
+    };
+
+    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-independent-runners",
+      workflows,
+      steps: [
+        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RUNNER", id: "runner-1" }),
+        scenarioSteps.withRunners({
+          killed: [
+            scenarioSteps.killRunner(),
+            scenarioSteps.tick({
+              workflow: "RUNNER",
+              instanceId: "runner-1",
+              reason: "event",
+              storeAs: "killedRunnerTick",
+            }),
+          ],
+          active: [
+            scenarioSteps.eventAndRunUntilIdle({
+              workflow: "RUNNER",
+              instanceId: "runner-1",
+              event: { type: "ready" },
+              runStoreAs: "eventRunnerRun",
+            }),
+          ],
+        }),
+        scenarioSteps.read({
+          read: (ctx) => ctx.state.getStatus("RUNNER", "runner-1"),
+          storeAs: "status",
+        }),
+        scenarioSteps.assert((ctx) => {
+          expect(ctx.vars.killedRunnerTick).toBe(0);
+          expect(ctx.vars.eventRunnerRun?.processed).toBeGreaterThan(0);
+          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("can resume a sleeping workflow after killing the runner", async () => {
     const SleepWorkflow = defineWorkflow({ name: "scenario-kill-sleep" }, async (_event, step) => {
       await step.sleep("pause", 1000);

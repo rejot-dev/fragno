@@ -848,46 +848,22 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             });
 
             const currentRunSteps = steps.filter((step) => step.runNumber === instance.runNumber);
-            const shouldWake =
-              currentStatus === "waiting" &&
-              currentRunSteps.some((step) => step.waitEventType === options.type);
-
-            if (shouldWake) {
-              WorkflowsLogger.debug("sendEvent wake", () => ({
-                workflowName,
-                instanceId,
-                runNumber: instance.runNumber,
-                eventType: options.type,
-                status: currentStatus,
-                waitingSteps: currentRunSteps.filter((step) => step.status === "waiting").length,
-              }));
-              uow.triggerHook("onWorkflowEnqueued", {
-                workflowName,
-                instanceId: instance.id.toString(),
-                instanceRef: String(instance.id),
-                runNumber: instance.runNumber,
-                reason: "event",
-              });
-            } else {
-              WorkflowsLogger.debug("sendEvent no-wake", () => {
-                const waitingSteps = currentRunSteps.filter((step) => step.status === "waiting");
-                const waitTypes = new Set<string>();
-                for (const step of waitingSteps) {
-                  if (step.waitEventType) {
-                    waitTypes.add(step.waitEventType);
-                  }
-                }
-                return {
-                  workflowName,
-                  instanceId,
-                  runNumber: instance.runNumber,
-                  eventType: options.type,
-                  status: currentStatus,
-                  waitingSteps: waitingSteps.length,
-                  waitEventTypes: Array.from(waitTypes),
-                };
-              });
-            }
+            WorkflowsLogger.debug("sendEvent wake", () => ({
+              workflowName,
+              instanceId,
+              runNumber: instance.runNumber,
+              eventType: options.type,
+              status: currentStatus,
+              waitingSteps: currentRunSteps.filter((step) => step.status === "waiting").length,
+              reason: "event-created",
+            }));
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId: instance.id.toString(),
+              instanceRef: String(instance.id),
+              runNumber: instance.runNumber,
+              reason: "event",
+            });
 
             return buildInstanceStatus(instance);
           })
