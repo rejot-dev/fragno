@@ -128,6 +128,17 @@ export type WorkflowsTestHarnessOptions<
   fragmentOptions?: FragnoPublicConfigWithDatabase;
 };
 
+export type WorkflowsTestRunner = {
+  tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
+  runUntilIdle: (
+    payload: WorkflowEnqueuedHookPayload,
+    options?: RunUntilIdleOptions,
+  ) => Promise<{ processed: number; ticks: number }>;
+  kill: () => Promise<void>;
+  restart: () => Promise<void>;
+  killAndRestart: () => Promise<void>;
+};
+
 export type WorkflowsTestHarness<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
@@ -186,12 +197,13 @@ export type WorkflowsTestHarness<
     payload: WorkflowEnqueuedHookPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
+  createRunner: () => WorkflowsTestRunner;
   killRunner: () => Promise<void>;
   restartRunner: () => Promise<void>;
   killAndRestartRunner: () => Promise<void>;
 };
 
-type RunUntilIdleOptions = {
+export type RunUntilIdleOptions = {
   maxTicks?: number;
 };
 
@@ -446,7 +458,6 @@ export async function createWorkflowsTestHarness<
   const getDb = () => getWorkflowFragment().db;
   const callRoute: AnyFragnoInstantiatedFragment["callRoute"] = (...args) =>
     getWorkflowFragment().callRoute(...args);
-  let isRunnerAlive = true;
   const workflowsByName = new Map<string, WorkflowRegistryEntry>();
   for (const entry of Object.values(workflows)) {
     workflowsByName.set(entry.name, entry);
@@ -540,11 +551,7 @@ export async function createWorkflowsTestHarness<
     return assertJsonResponse<WorkflowsHistory>(response);
   };
 
-  const tick = async (payload: WorkflowEnqueuedHookPayload) => {
-    if (!isRunnerAlive) {
-      return 0;
-    }
-
+  const runTick = async (payload: WorkflowEnqueuedHookPayload) => {
     return await getFragment().inContext(function () {
       return runWorkflowsTick({
         handlerTx: this.handlerTx,
@@ -556,26 +563,58 @@ export async function createWorkflowsTestHarness<
     });
   };
 
-  const runUntilIdle = async (
-    payload: WorkflowEnqueuedHookPayload,
-    options?: RunUntilIdleOptions,
-  ) => {
-    const maxTicks = options?.maxTicks ?? 25;
+  const createRunner = (): WorkflowsTestRunner => {
+    let isAlive = true;
 
-    let ticks = 0;
-    let processed = 0;
-
-    while (ticks < maxTicks) {
-      const result = await tick(payload);
-      ticks += 1;
-      processed += result;
-      if (result === 0) {
-        break;
+    const tick = async (payload: WorkflowEnqueuedHookPayload) => {
+      if (!isAlive) {
+        return 0;
       }
-    }
+      return await runTick(payload);
+    };
 
-    return { processed, ticks };
+    const runUntilIdle = async (
+      payload: WorkflowEnqueuedHookPayload,
+      options?: RunUntilIdleOptions,
+    ) => {
+      const maxTicks = options?.maxTicks ?? 25;
+
+      let ticks = 0;
+      let processed = 0;
+
+      while (ticks < maxTicks) {
+        const result = await tick(payload);
+        ticks += 1;
+        processed += result;
+        if (result === 0) {
+          break;
+        }
+      }
+
+      return { processed, ticks };
+    };
+
+    return {
+      tick,
+      runUntilIdle,
+      async kill() {
+        isAlive = false;
+        killLiveState();
+      },
+      async restart() {
+        isAlive = true;
+      },
+      async killAndRestart() {
+        isAlive = false;
+        killLiveState();
+        isAlive = true;
+      },
+    };
   };
+
+  const defaultRunner = createRunner();
+  const tick = defaultRunner.tick;
+  const runUntilIdle = defaultRunner.runUntilIdle;
 
   return {
     fragments: fragmentsWithWorkflows,
@@ -601,19 +640,18 @@ export async function createWorkflowsTestHarness<
     getHistory,
     tick,
     runUntilIdle,
+    createRunner,
     async killRunner() {
-      isRunnerAlive = false;
-      killLiveState();
+      await defaultRunner.kill();
     },
     async restartRunner() {
       await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
-      isRunnerAlive = true;
+      await defaultRunner.restart();
     },
     async killAndRestartRunner() {
-      isRunnerAlive = false;
-      killLiveState();
+      await defaultRunner.kill();
       await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
-      isRunnerAlive = true;
+      await defaultRunner.restart();
     },
   };
 }
