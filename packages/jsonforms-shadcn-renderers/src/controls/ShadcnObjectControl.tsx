@@ -8,7 +8,9 @@ import {
   type RankedTester,
   type StatePropsOfControlWithDetail,
 } from "@jsonforms/core";
-import { JsonFormsDispatch, withJsonFormsDetailProps } from "@jsonforms/react";
+import { JsonFormsDispatch } from "@jsonforms/react";
+
+import { withJsonFormsDetailProps } from "../jsonforms-hocs";
 
 export const ShadcnObjectControl = ({
   renderers,

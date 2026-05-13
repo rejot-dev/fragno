@@ -1,10 +1,10 @@
 import type { ControlProps, RankedTester } from "@jsonforms/core";
 import { isDateControl, rankWith } from "@jsonforms/core";
-import { withJsonFormsControlProps } from "@jsonforms/react";
 
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 
 import { useTouched } from "../hooks/useTouched";
+import { withJsonFormsControlProps } from "../jsonforms-hocs";
 import { ShadcnDatePicker } from "../shadcn-controls/ShadcnDatePicker";
 
 export const ShadcnDateControl = ({

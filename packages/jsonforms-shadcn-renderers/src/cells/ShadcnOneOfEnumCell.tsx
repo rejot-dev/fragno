@@ -1,7 +1,7 @@
 import type { EnumCellProps, RankedTester, WithClassname } from "@jsonforms/core";
 import { isOneOfEnumControl, rankWith } from "@jsonforms/core";
-import { withJsonFormsOneOfEnumCellProps } from "@jsonforms/react";
 
+import { withJsonFormsOneOfEnumCellProps } from "../jsonforms-hocs";
 import { ShadcnSelect } from "../shadcn-controls/ShadcnSelect";
 
 export const ShadcnOneOfEnumCell = (props: EnumCellProps & WithClassname) => {

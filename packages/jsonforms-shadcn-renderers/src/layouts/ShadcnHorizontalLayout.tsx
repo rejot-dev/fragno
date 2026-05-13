@@ -1,6 +1,8 @@
 import type { HorizontalLayout, LayoutProps, RankedTester } from "@jsonforms/core";
 import { rankWith, uiTypeIs } from "@jsonforms/core";
-import { JsonFormsDispatch, withJsonFormsLayoutProps } from "@jsonforms/react";
+import { JsonFormsDispatch } from "@jsonforms/react";
+
+import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
 
 export const ShadcnHorizontalLayout = ({
   uischema,
