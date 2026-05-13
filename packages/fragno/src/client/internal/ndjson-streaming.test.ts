@@ -70,6 +70,73 @@ describe("handleNdjsonStreaming", () => {
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
+  test("should preserve complete NDJSON lines that arrive in the same chunk as the first item", async () => {
+    const mockReader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: new TextEncoder().encode(
+            [
+              '{"type":"snapshot","state":{"messages":[]}}',
+              '{"type":"agent_start"}',
+              '{"type":"turn_start"}',
+              '{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"should be at least twice as long"}],"timestamp":1778251635259}}',
+              '{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"should be at least twice as long"}],"timestamp":1778251635259}}',
+            ].join("\n") + "\n",
+          ),
+        })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+      releaseLock: vi.fn(),
+    };
+
+    const mockResponse = {
+      body: {
+        getReader: vi.fn().mockReturnValue(mockReader),
+      },
+    } as unknown as Response;
+
+    const mockStore = {
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
+
+    const { firstItem, streamingPromise } = await handleNdjsonStreamingFirstItem(
+      mockResponse,
+      mockStore,
+    );
+
+    expect(firstItem).toEqual({ type: "snapshot", state: { messages: [] } });
+    await expect(streamingPromise).resolves.toEqual([
+      { type: "snapshot", state: { messages: [] } },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      {
+        type: "message_start",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "should be at least twice as long" }],
+          timestamp: 1778251635259,
+        },
+      },
+      {
+        type: "message_end",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "should be at least twice as long" }],
+          timestamp: 1778251635259,
+        },
+      },
+    ]);
+    expect(mockStore.setData).toHaveBeenCalledWith([
+      { type: "snapshot", state: { messages: [] } },
+      { type: "agent_start" },
+      { type: "turn_start" },
+      expect.objectContaining({ type: "message_start" }),
+      expect.objectContaining({ type: "message_end" }),
+    ]);
+  });
+
   test("should handle empty stream", async () => {
     const mockReader = {
       read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
