@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
+import type { StatusCode } from "../../http/http-status";
 import {
   FragnoClientError,
   FragnoClientFetchError,
@@ -39,6 +40,54 @@ export interface NdjsonStreamingStore<
   setData(value: StandardSchemaV1.InferOutput<TOutputSchema>): void;
   setError(value: FragnoClientError<TErrorCode>): void;
 }
+
+type NdjsonParseResult = {
+  buffer: string;
+  stopped: boolean;
+};
+
+const parseNdjsonBuffer = <T>(
+  buffer: string,
+  options: {
+    flush?: boolean;
+    parseErrorStatus: StatusCode;
+    onItem: (item: T) => boolean | void;
+  },
+): NdjsonParseResult => {
+  const lines = buffer.split("\n");
+  const trailingBuffer = options.flush ? "" : (lines.pop() ?? "");
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) {
+      continue;
+    }
+
+    let jsonObject: T;
+    try {
+      jsonObject = JSON.parse(line) as T;
+    } catch (parseError) {
+      throw new FragnoClientUnknownApiError(
+        "Failed to parse NDJSON line",
+        options.parseErrorStatus,
+        { cause: parseError },
+      );
+    }
+
+    if (options.onItem(jsonObject) === false) {
+      const remainingLines = lines.slice(index + 1);
+      return {
+        stopped: true,
+        buffer:
+          remainingLines.length > 0
+            ? `${remainingLines.join("\n")}\n${trailingBuffer}`
+            : trailingBuffer,
+      };
+    }
+  }
+
+  return { stopped: false, buffer: trailingBuffer };
+};
 
 /**
  * Handles NDJSON streaming responses by returning the first item from the fetcher
@@ -97,43 +146,32 @@ export async function handleNdjsonStreamingFirstItem<
       // Decode the chunk and add to buffer
       buffer += decoder.decode(value, { stream: true });
 
-      // Process complete lines
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) {
-          continue;
-        }
-
-        try {
-          const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
+      const parseResult = parseNdjsonBuffer<StandardSchemaV1.InferOutput<TOutputSchema>>(buffer, {
+        parseErrorStatus: 500,
+        onItem: (jsonObject) => {
           items.push(jsonObject);
+          firstItem = jsonObject;
+          return false;
+        },
+      });
+      buffer = parseResult.buffer;
 
-          if (firstItem === null) {
-            firstItem = jsonObject;
-            // We don't call store.setKey here for the first item
-            // The caller will handle it via the return value
-
-            // Start background streaming for remaining items and return the promise
-            const streamingPromise = continueStreaming(
-              reader,
-              decoder,
-              buffer,
-              items,
-              store,
-              abortSignal,
-            );
-            return {
-              firstItem,
-              streamingPromise,
-            };
-          }
-        } catch (parseError) {
-          throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 500, {
-            cause: parseError,
-          });
-        }
+      if (firstItem !== null) {
+        // We don't call store.setKey here for the first item. The caller will handle it via the
+        // fetcher return value. Any complete lines already read after the first item are preserved
+        // in `buffer` and processed by the background continuation.
+        const streamingPromise = continueStreaming(
+          reader,
+          decoder,
+          buffer,
+          items,
+          store,
+          abortSignal,
+        );
+        return {
+          firstItem,
+          streamingPromise,
+        };
       }
     }
 
@@ -176,8 +214,18 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
 ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>[]> {
   let buffer = initialBuffer;
 
+  const appendItem = (jsonObject: StandardSchemaV1.InferOutput<TOutputSchema>) => {
+    items.push(jsonObject);
+    store?.setData([...items]);
+  };
+
   try {
     while (true) {
+      buffer = parseNdjsonBuffer<StandardSchemaV1.InferOutput<TOutputSchema>>(buffer, {
+        parseErrorStatus: 400,
+        onItem: appendItem,
+      }).buffer;
+
       // Check for abort signal before each read
       if (abortSignal?.aborted) {
         throw new FragnoClientFetchAbortError("Operation was aborted");
@@ -188,50 +236,16 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
         : reader.read());
 
       if (done) {
-        // Process any remaining buffer content
-        if (buffer.trim()) {
-          const lines = buffer.split("\n");
-          for (const line of lines) {
-            if (!line.trim()) {
-              continue;
-            }
-
-            try {
-              const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
-              items.push(jsonObject);
-              store?.setData([...items]);
-            } catch (parseError) {
-              throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 400, {
-                cause: parseError,
-              });
-            }
-          }
-        }
+        parseNdjsonBuffer<StandardSchemaV1.InferOutput<TOutputSchema>>(buffer, {
+          flush: true,
+          parseErrorStatus: 400,
+          onItem: appendItem,
+        });
         break;
       }
 
       // Decode the chunk and add to buffer
       buffer += decoder.decode(value, { stream: true });
-
-      // Process complete lines
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) {
-          continue;
-        }
-
-        try {
-          const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
-          items.push(jsonObject);
-          store?.setData([...items]);
-        } catch (parseError) {
-          throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 400, {
-            cause: parseError,
-          });
-        }
-      }
     }
   } catch (error) {
     if (error instanceof FragnoClientError) {
