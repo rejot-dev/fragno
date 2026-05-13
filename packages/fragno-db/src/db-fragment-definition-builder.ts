@@ -252,6 +252,9 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
   ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
 };
 
+export type DatabaseHandlerTx<THooks extends HooksMap = {}> =
+  DatabaseHandlerContext<THooks>["handlerTx"];
+
 /**
  * Database fragment context provided to user callbacks.
  */
@@ -619,6 +622,7 @@ function isRouteRequest(storage: DatabaseContextStorage): boolean {
  */
 export type DatabaseRequestStorage = {
   uow: IUnitOfWork;
+  activeHandlerTxDepth?: number;
 };
 
 /**
@@ -1274,10 +1278,19 @@ export class DatabaseFragmentDefinitionBuilder<
               },
             },
             undefined,
-            (run) =>
-              hookContextStorage.runWithInitializer(() => {
-                const inheritedWaitUntil = getHookWaitUntil();
-                storageRef = { uow: null as unknown as DatabaseContextStorage["uow"] };
+            async (run) => {
+              const parentStorage = hookContextStorage.hasStore()
+                ? hookContextStorage.getStore()
+                : undefined;
+              const inheritedWaitUntil = getHookWaitUntil();
+              const parentDepth = parentStorage?.activeHandlerTxDepth ?? 0;
+              storageRef = null;
+              return await hookContextStorage.runWithInitializer(() => {
+                storageRef = {
+                  ...parentStorage,
+                  uow: null as unknown as DatabaseContextStorage["uow"],
+                  activeHandlerTxDepth: parentDepth + 1,
+                };
                 if (inheritedWaitUntil) {
                   (
                     storageRef as DatabaseContextStorage & {
@@ -1286,7 +1299,8 @@ export class DatabaseFragmentDefinitionBuilder<
                   )[requestWaitUntilSymbol] = inheritedWaitUntil;
                 }
                 return storageRef;
-              }, run),
+              }, run);
+            },
           );
         },
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
@@ -1416,84 +1430,128 @@ export class DatabaseFragmentDefinitionBuilder<
             }
           : userOnAfterRetrieve;
 
-        const builder = createHandlerTxBuilder<THooks>({
-          ...execOptions,
-          createUnitOfWork: () => {
-            currentStorage.uow.reset();
-            if (internalFragment) {
-              currentStorage.uow.registerSchema(
-                internalFragment.$internal.deps.schema,
-                internalFragment.$internal.deps.namespace,
-              );
+        const parentDepth = currentStorage.activeHandlerTxDepth ?? 0;
+        const isNestedHandlerTx = parentDepth > 0;
+        let childStorage: DatabaseContextStorage | null = null;
+
+        const executeWrapper = async <T>(run: () => Promise<T>): Promise<T> => {
+          if (!isNestedHandlerTx) {
+            currentStorage.activeHandlerTxDepth = parentDepth + 1;
+            try {
+              return await run();
+            } finally {
+              currentStorage.activeHandlerTxDepth = parentDepth;
             }
-            return currentStorage.uow;
-          },
-          onBeforeMutate: (uow) => {
-            if (internalFragment && !planMode) {
-              prepareHookMutations(uow, internalFragment, hooksConfig?.defaultRetryPolicy);
-            }
-            if (userOnBeforeMutate) {
-              userOnBeforeMutate(uow);
-            }
-            if (
-              roundtripState &&
-              roundtripExecutionState &&
-              !roundtripExecutionState.countedMutate &&
-              uow.getMutationOperations().length > 0
-            ) {
-              roundtripExecutionState.countedMutate = true;
-              roundtripState.mutateCount += 1;
-              if (roundtripState.mutateCount > roundtripState.maxRoundtrips) {
-                throw buildRoundtripError("mutate");
+          }
+
+          childStorage = null;
+          return await storage.runWithInitializer(() => {
+            childStorage = {
+              ...currentStorage,
+              uow: null as unknown as IUnitOfWork,
+              activeHandlerTxDepth: parentDepth + 1,
+            };
+            return childStorage;
+          }, run);
+        };
+
+        const builder = createHandlerTxBuilder<THooks>(
+          {
+            ...execOptions,
+            createUnitOfWork: () => {
+              const txStorage = childStorage ?? currentStorage;
+              if (isNestedHandlerTx) {
+                const nestedUow = databaseAdapter.createBaseUnitOfWork();
+                nestedUow.registerSchema(
+                  (deps as ImplicitDatabaseDependencies).schema,
+                  (deps as ImplicitDatabaseDependencies).namespace,
+                );
+                if (internalFragment) {
+                  nestedUow.registerSchema(
+                    internalFragment.$internal.deps.schema,
+                    internalFragment.$internal.deps.namespace,
+                  );
+                }
+                txStorage.uow = nestedUow;
+                return nestedUow;
               }
-            }
-          },
-          onAfterRetrieve: guardOnAfterRetrieve,
-          onAfterMutate: async (uow) => {
-            notifyDurableHooksAfterMutate({
-              uow,
-              hooksConfig,
-              internalFragment,
-              autoSchedule,
-              planMode,
-              logContext: { route: routeLabel, source: "request", waitUntil: routeWaitUntil },
-            });
-            if (hooksConfig && !planMode) {
-              const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);
+              txStorage.uow.reset();
+              if (internalFragment) {
+                txStorage.uow.registerSchema(
+                  internalFragment.$internal.deps.schema,
+                  internalFragment.$internal.deps.namespace,
+                );
+              }
+              return txStorage.uow;
+            },
+            onBeforeMutate: (uow) => {
+              if (internalFragment && !planMode) {
+                prepareHookMutations(uow, internalFragment, hooksConfig?.defaultRetryPolicy);
+              }
+              if (userOnBeforeMutate) {
+                userOnBeforeMutate(uow);
+              }
               if (
-                runtimeState &&
-                !runtimeState.dispatcherRegistered &&
-                !runtimeState.dispatcherWarningEmitted
+                roundtripState &&
+                roundtripExecutionState &&
+                !roundtripExecutionState.countedMutate &&
+                uow.getMutationOperations().length > 0
               ) {
-                const hasHooks = uow
-                  .getTriggeredHooks()
-                  .some((hook) => hook.namespace === hooksConfig.namespace);
-                if (hasHooks) {
-                  runtimeState.dispatcherWarningEmitted = true;
-                  DurableHooksLogger.warn("Durable hooks dispatcher not configured for fragment", {
-                    namespace: hooksConfig.namespace,
-                    fields: {
-                      guidance:
-                        "Hooks will only run during requests; scheduled/retry hooks may stall. " +
-                        "Create a dispatcher with createDurableHooksProcessor([...]) from " +
-                        "`@fragno-dev/db/dispatchers/node` or `@fragno-dev/db/dispatchers/cloudflare-do`.",
-                    },
-                  });
+                roundtripExecutionState.countedMutate = true;
+                roundtripState.mutateCount += 1;
+                if (roundtripState.mutateCount > roundtripState.maxRoundtrips) {
+                  throw buildRoundtripError("mutate");
                 }
               }
-            }
-            if (userOnAfterMutate) {
-              await userOnAfterMutate(uow);
-            }
+            },
+            onAfterRetrieve: guardOnAfterRetrieve,
+            onAfterMutate: async (uow) => {
+              notifyDurableHooksAfterMutate({
+                uow,
+                hooksConfig,
+                internalFragment,
+                autoSchedule,
+                planMode,
+                logContext: { route: routeLabel, source: "request", waitUntil: routeWaitUntil },
+              });
+              if (hooksConfig && !planMode) {
+                const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);
+                if (
+                  runtimeState &&
+                  !runtimeState.dispatcherRegistered &&
+                  !runtimeState.dispatcherWarningEmitted
+                ) {
+                  const hasHooks = uow
+                    .getTriggeredHooks()
+                    .some((hook) => hook.namespace === hooksConfig.namespace);
+                  if (hasHooks) {
+                    runtimeState.dispatcherWarningEmitted = true;
+                    DurableHooksLogger.warn(
+                      "Durable hooks dispatcher not configured for fragment",
+                      {
+                        namespace: hooksConfig.namespace,
+                        fields: {
+                          guidance:
+                            "Hooks will only run during requests; scheduled/retry hooks may stall. " +
+                            "Create a dispatcher with createDurableHooksProcessor([...]) from " +
+                            "`@fragno-dev/db/dispatchers/node` or `@fragno-dev/db/dispatchers/cloudflare-do`.",
+                        },
+                      },
+                    );
+                  }
+                }
+              }
+              if (userOnAfterMutate) {
+                await userOnAfterMutate(uow);
+              }
+            },
           },
-        });
+          hooksConfig?.hooks,
+          executeWrapper,
+        );
 
         if (roundtripState) {
-          const guardedBuilder = wrapHandlerTxBuilderWithRoundtripGuard(
-            builder,
-            resetRoundtripExecutionState,
-          );
-          return guardedBuilder;
+          return wrapHandlerTxBuilderWithRoundtripGuard(builder, resetRoundtripExecutionState);
         }
 
         return builder;

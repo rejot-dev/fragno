@@ -17,6 +17,7 @@ export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-
  */
 export type DatabaseContextStorage = {
   uow: IUnitOfWork;
+  activeHandlerTxDepth?: number;
 };
 
 export type SQLiteProfile = "default" | "prisma";

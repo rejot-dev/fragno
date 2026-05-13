@@ -41,6 +41,7 @@ export {
   type DatabaseFragmentContext,
   type DatabaseServiceContext,
   type DatabaseHandlerContext as DatabaseRequestContext,
+  type DatabaseHandlerTx,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
 
