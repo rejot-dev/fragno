@@ -1,8 +1,9 @@
 import type { LabelProps, RankedTester } from "@jsonforms/core";
 import { rankWith, uiTypeIs } from "@jsonforms/core";
-import { withJsonFormsLabelProps } from "@jsonforms/react";
 
 import { Label } from "@/components/ui/label";
+
+import { withJsonFormsLabelProps } from "../jsonforms-hocs";
 
 /**
  * Default tester for a label.

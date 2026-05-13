@@ -1,8 +1,10 @@
 import type { GroupLayout, LayoutProps, RankedTester } from "@jsonforms/core";
 import { rankWith, uiTypeIs } from "@jsonforms/core";
-import { JsonFormsDispatch, withJsonFormsLayoutProps } from "@jsonforms/react";
+import { JsonFormsDispatch } from "@jsonforms/react";
 
 import { FieldSet, FieldLabel, FieldDescription } from "@/components/ui/field";
+
+import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
 
 export const ShadcnGroupLayout = ({
   uischema,

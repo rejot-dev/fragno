@@ -2,10 +2,12 @@ import { useState } from "react";
 
 import type { Categorization, Category, LayoutProps, RankedTester } from "@jsonforms/core";
 import { and, categorizationHasCategory, rankWith, uiTypeIs } from "@jsonforms/core";
-import { JsonFormsDispatch, withJsonFormsLayoutProps } from "@jsonforms/react";
+import { JsonFormsDispatch } from "@jsonforms/react";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
 
 export const ShadcnCategorizationLayout = ({
   uischema,
