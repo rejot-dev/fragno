@@ -788,6 +788,64 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(typeof contexts.serviceContext.serviceTx).toBe("function");
       expect(typeof contexts.handlerContext.handlerTx).toBe("function");
     });
+
+    it("preserves outer mutations when handlerTx is nested", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      const namespace = sanitizeNamespace(testSchema.name);
+      const definition = withDatabase(testSchema)(
+        defineFragment("db-frag-nested-handler-tx"),
+      ).build();
+
+      try {
+        const migrations = adapter.prepareMigrations(testSchema, namespace);
+        await migrations.executeWithDriver(adapter.driver, 0, testSchema.version, {
+          updateVersionInMigration: false,
+        });
+
+        const fragment = instantiate(definition)
+          .withConfig({})
+          .withOptions({ databaseAdapter: adapter })
+          .build();
+
+        await fragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(async ({ forSchema }) => {
+              forSchema(testSchema).create("users", {
+                name: "outer",
+                email: "outer@example.com",
+              });
+
+              await this.handlerTx()
+                .mutate(({ forSchema }) =>
+                  forSchema(testSchema).create("users", {
+                    name: "inner",
+                    email: "inner@example.com",
+                  }),
+                )
+                .execute();
+            })
+            .execute();
+        });
+
+        const users = await fragment.inContext(async function () {
+          return await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(testSchema).find("users", (b) => b.whereIndex("primary")),
+            )
+            .transformRetrieve(([users], _serviceResult) => users)
+            .execute();
+        });
+
+        expect(users.map((user) => user.name).sort()).toEqual(["inner", "outer"]);
+      } finally {
+        await adapter.close();
+        sqlite.close();
+      }
+    });
   });
 
   describe("complex database fragment", () => {
