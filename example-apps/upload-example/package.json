@@ -27,8 +27,8 @@
     "@react-router/serve": "^7.5.3",
     "isbot": "^5",
     "kysely-pglite": "^0.6.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "react-router": "^7.5.3"
   },
   "devDependencies": {
@@ -36,8 +36,8 @@
     "@react-router/dev": "^7.5.3",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-basic-ssl": "^2.2.0",
     "@vitest/coverage-istanbul": "^4.1.0",

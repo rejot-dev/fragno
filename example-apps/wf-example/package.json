@@ -28,8 +28,8 @@
     "drizzle-orm": "^0.44.6",
     "isbot": "^5",
     "pg": "^8.13.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "react-router": "^7.5.3"
   },
   "devDependencies": {
@@ -38,8 +38,8 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
     "@types/pg": "^8.15.5",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
     "@vitest/coverage-istanbul": "^4.1.0",
     "drizzle-kit": "^0.31.5",
