@@ -81,7 +81,7 @@
     "types:check": "tsgo --noEmit",
     "build": "tsdown",
     "test": "vitest run",
-    "cli": "tsx src/cli/mod.ts"
+    "cli": "tsx src/cli/cli.ts"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -99,7 +99,7 @@
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^25.2.2",
-    "@types/react": "^19.2.8",
+    "@types/react": "catalog:",
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",

@@ -33,3 +33,9 @@
 - `packages/fragment-workflows/src/scenario-runner.test.ts`
   - Conflict: scenario assertions changed around the live-state capable runner.
   - Resolution: accepted the rebased commit's scenario coverage so the intermediate live-state commit remains self-consistent.
+
+## `fix(deps): catalog react dependency versions`
+
+- `pnpm-lock.yaml`
+  - Conflict: dependency catalog edits touched the same importer and package resolution sections as the current branch lockfile.
+  - Resolution: regenerated the lockfile with `pnpm install --lockfile-only`, which let pnpm merge the lockfile against the updated workspace manifests.

@@ -17,13 +17,13 @@
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
     "@fragno-dev/lofi": "workspace:*",
-    "react": "^19.1.4",
-    "react-dom": "^19.1.4"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "@types/react": "^19.2.8",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-react": "^6.0.1",
     "vite": "catalog:"
