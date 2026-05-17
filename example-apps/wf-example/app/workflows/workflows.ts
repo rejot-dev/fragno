@@ -1,4 +1,8 @@
-import { type WorkflowEvent, type WorkflowStep, defineWorkflow } from "@fragno-dev/workflows";
+import {
+  type WorkflowEvent,
+  type WorkflowStep,
+  defineWorkflow,
+} from "@fragno-dev/workflows/workflow";
 
 export type ApprovalParams = {
   requestId: string;

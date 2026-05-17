@@ -29,6 +29,10 @@ export type WorkflowEventRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_event"]
 >;
 
+export type WorkflowStepEmissionRecord = TableToColumnValues<
+  (typeof workflowsSchema)["tables"]["workflow_step_emission"]
+>;
+
 export type WorkflowStepCreate = Omit<
   TableToInsertValues<(typeof workflowsSchema)["tables"]["workflow_step"]>,
   "id" | "createdAt" | "updatedAt"

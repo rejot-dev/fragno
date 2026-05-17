@@ -17,6 +17,10 @@ Format:
 - [Pi Fragment Agent Operations + Durable Turn Control — Spec](./spec-pi-fragment-agent-operations.md)
   — Breaking redesign of pi-fragment around explicit `prompt`/`continue`/`abort`/`complete`
   commands, workflow-visible turn steps, recoverable agent outcomes, and live abort control.
+- [Pi Fragment Pi Lifecycle Routes — Plan](./spec-pi-fragment-pi-lifecycle-routes.md) — Breaking
+  route/detail/event-stream rework that aligns pi-fragment with Pi's `AgentEvent` lifecycle,
+  persists the full lifecycle event log in workflow step results, and streams live progress via
+  `/events`.
 - [Pi Fragment Pi-Compatible JSONL Export — Spec](./spec-pi-fragment-pi-jsonl-export.md) — Add a
   server-side route that exports existing pi-fragment sessions as Pi v3-compatible JSONL snapshots
   with a fixed `/workspace` cwd.

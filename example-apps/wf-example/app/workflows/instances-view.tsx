@@ -1,7 +1,6 @@
+import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-
-import type { InstanceStatus } from "@fragno-dev/workflows";
 
 import { workflowsClient } from "./workflows-client";
 
@@ -46,7 +45,6 @@ export function InstancesView() {
     usePauseInstance,
     useResumeInstance,
     useTerminateInstance,
-    useRestartInstance,
     helpers,
   } = workflowsClient;
 
@@ -121,7 +119,6 @@ export function InstancesView() {
   const { mutate: pauseInstance, loading: pauseLoading } = usePauseInstance();
   const { mutate: resumeInstance, loading: resumeLoading } = useResumeInstance();
   const { mutate: terminateInstance, loading: terminateLoading } = useTerminateInstance();
-  const { mutate: restartInstance, loading: restartLoading } = useRestartInstance();
 
   const statusCounts = useMemo(() => {
     return instances.reduce<Record<string, number>>((acc, instance) => {
@@ -293,7 +290,6 @@ export function InstancesView() {
             onSendEvent={handleSendEvent}
             pauseLoading={!!pauseLoading}
             resumeLoading={!!resumeLoading}
-            restartLoading={!!restartLoading}
             terminateLoading={!!terminateLoading}
             onPause={() =>
               pauseInstance({
@@ -303,12 +299,6 @@ export function InstancesView() {
             }
             onResume={() =>
               resumeInstance({
-                path: { workflowName: selectedWorkflow, instanceId: selectedInstance },
-                body: {},
-              })
-            }
-            onRestart={() =>
-              restartInstance({
                 path: { workflowName: selectedWorkflow, instanceId: selectedInstance },
                 body: {},
               })
@@ -343,11 +333,9 @@ type InstanceDetailPanelProps = {
   onSendEvent: () => void;
   pauseLoading: boolean;
   resumeLoading: boolean;
-  restartLoading: boolean;
   terminateLoading: boolean;
   onPause: () => void;
   onResume: () => void;
-  onRestart: () => void;
   onTerminate: () => void;
 };
 
@@ -368,11 +356,9 @@ function InstanceDetailPanel({
   onSendEvent,
   pauseLoading,
   resumeLoading,
-  restartLoading,
   terminateLoading,
   onPause,
   onResume,
-  onRestart,
   onTerminate,
 }: InstanceDetailPanelProps) {
   const { useInstance, useInstanceHistory, helpers } = workflowsClient;
@@ -425,7 +411,6 @@ function InstanceDetailPanel({
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                 {helpers.statusLabel(data.details.status)}
               </span>
-              <span className="text-xs text-slate-500">Run #{data.meta.runNumber}</span>
             </div>
           )}
         </div>
@@ -445,14 +430,6 @@ function InstanceDetailPanel({
             className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:text-slate-400"
           >
             {resumeLoading ? "Resuming…" : "Resume"}
-          </button>
-          <button
-            type="button"
-            onClick={onRestart}
-            disabled={restartLoading}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:text-slate-400"
-          >
-            {restartLoading ? "Restarting…" : "Restart"}
           </button>
           <button
             type="button"

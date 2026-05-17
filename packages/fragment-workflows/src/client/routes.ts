@@ -72,7 +72,6 @@ const currentStepOutputSchema = z.object({
 
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
-  runNumber: z.number(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -83,7 +82,6 @@ const instanceMetaOutputSchema = z.object({
 
 const historyStepSchema = z.object({
   id: z.string(),
-  runNumber: z.number(),
   stepKey: z.string(),
   parentStepKey: z.string().nullable(),
   depth: z.number(),
@@ -109,7 +107,6 @@ const historyStepSchema = z.object({
 
 const historyEventSchema = z.object({
   id: z.string(),
-  runNumber: z.number(),
   type: z.string(),
   payload: z.unknown().nullable(),
   createdAt: z.date(),
@@ -117,10 +114,20 @@ const historyEventSchema = z.object({
   consumedByStepKey: z.string().nullable(),
 });
 
+const historyEmissionSchema = z.object({
+  id: z.string(),
+  stepKey: z.string(),
+  epoch: z.string(),
+  sequence: z.number(),
+  actor: z.string(),
+  payload: z.unknown().nullable(),
+  createdAt: z.date(),
+});
+
 const historyOutputSchema = z.object({
-  runNumber: z.number(),
   steps: z.array(historyStepSchema),
   events: z.array(historyEventSchema),
+  emissions: z.array(historyEmissionSchema),
 });
 
 const stubHandler = async () => new Response();
@@ -201,18 +208,6 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
     handler: stubHandler,
   }),
   defineRoute({
-    method: "GET",
-    path: "/:workflowName/instances/:instanceId/history/:run",
-    outputSchema: historyOutputSchema,
-    errorCodes: [
-      "WORKFLOW_NOT_FOUND",
-      "INVALID_INSTANCE_ID",
-      "INVALID_RUN_NUMBER",
-      "INSTANCE_NOT_FOUND",
-    ],
-    handler: stubHandler,
-  }),
-  defineRoute({
     method: "POST",
     path: "/:workflowName/instances/:instanceId/pause",
     outputSchema: z.object({ ok: z.literal(true) }),
@@ -229,13 +224,6 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   defineRoute({
     method: "POST",
     path: "/:workflowName/instances/:instanceId/terminate",
-    outputSchema: z.object({ ok: z.literal(true) }),
-    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-    handler: stubHandler,
-  }),
-  defineRoute({
-    method: "POST",
-    path: "/:workflowName/instances/:instanceId/restart",
     outputSchema: z.object({ ok: z.literal(true) }),
     errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
     handler: stubHandler,

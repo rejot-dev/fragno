@@ -1,12 +1,16 @@
+import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+
 import type { AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
 import {
   buildDatabaseFragmentsTest,
+  drainDurableHooks,
   type DatabaseFragmentsTestBuilder,
   type SupportedAdapter,
 } from "@fragno-dev/test";
 
-import type { WorkflowLiveStateSnapshot } from "./live-state";
+import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
+import type { WorkflowStepLivePump } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
 import {
   createWorkflowsTestHarness,
@@ -81,7 +85,6 @@ export type WorkflowScenarioInstanceRow = {
   output: unknown | null;
   errorName: string | null;
   errorMessage: string | null;
-  runNumber: number;
 };
 
 export type WorkflowScenarioStepRow = {
@@ -89,7 +92,6 @@ export type WorkflowScenarioStepRow = {
   instanceRef: bigint;
   workflowName: string;
   instanceId: string;
-  runNumber: number;
   stepKey: string;
   parentStepKey: string | null;
   depth: number;
@@ -114,12 +116,35 @@ export type WorkflowScenarioEventRow = {
   instanceRef: bigint;
   workflowName: string;
   instanceId: string;
-  runNumber: number;
   type: string;
   payload: unknown | null;
   createdAt: Date;
   deliveredAt: Date | null;
   consumedByStepKey: string | null;
+};
+
+export type WorkflowScenarioEmissionRow = {
+  id: bigint;
+  instanceRef: bigint;
+  workflowName: string;
+  instanceId: string;
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  actor: "user" | "system" | string;
+  payload: unknown | null;
+  createdAt: Date;
+};
+
+export type WorkflowScenarioObservedEmission<TPayload = unknown> = {
+  workflowName: string;
+  instanceId: string;
+  stepKey: string;
+  epoch: string;
+  id: string;
+  sequence: number;
+  actor: "user" | "system" | string;
+  payload: TPayload;
 };
 
 export type WorkflowScenarioState<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
@@ -130,26 +155,26 @@ export type WorkflowScenarioState<TRegistry extends WorkflowsRegistry = Workflow
   getSteps: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { runNumber?: number; order?: "asc" | "desc" },
+    options?: { order?: "asc" | "desc" },
   ) => Promise<WorkflowScenarioStepRow[]>;
   getEvents: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { runNumber?: number; order?: "asc" | "desc" },
+    options?: { order?: "asc" | "desc" },
   ) => Promise<WorkflowScenarioEventRow[]>;
+  getEmissions: (
+    workflow: (keyof TRegistry & string) | string,
+    instanceId: string,
+    options?: { order?: "asc" | "desc"; actor?: "user" | "system" | string; stepKey?: string },
+  ) => Promise<WorkflowScenarioEmissionRow[]>;
   getStatus: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
   ) => Promise<InstanceStatus>;
-  getLiveState: (
-    workflow: (keyof TRegistry & string) | string,
-    instanceId: string,
-  ) => Promise<WorkflowLiveStateSnapshot | null>;
   getHistory: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
     options?: {
-      runNumber?: number;
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
@@ -211,7 +236,6 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioResumeStep<TRegistry, TVars>
   | WorkflowScenarioResumeAndRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioTerminateStep<TRegistry, TVars>
-  | WorkflowScenarioRestartStep<TRegistry, TVars>
   | WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioRunResumeUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioRetryAndRunUntilIdleStep<TRegistry, TVars>
@@ -221,13 +245,17 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioWaitForControlStep<TRegistry, TVars>
   | WorkflowScenarioResolveControlStep<TRegistry, TVars>
   | WorkflowScenarioRejectControlStep<TRegistry, TVars>
+  | WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars>
+  | WorkflowScenarioFlushEmissionsStep<TRegistry, TVars>
+  | WorkflowScenarioWaitForEmissionStep<TRegistry, TVars>
+  | WorkflowScenarioStopEmissionCaptureStep<TVars>
+  | WorkflowScenarioDrainHooksStep
   | WorkflowScenarioKillRunnerStep
   | WorkflowScenarioRestartRunnerStep
   | WorkflowScenarioKillAndRestartRunnerStep
   | WorkflowScenarioWithRunnerStep<TRegistry, TVars>
   | WorkflowScenarioWithRunnersStep<TRegistry, TVars>
   | WorkflowScenarioReadStep<TRegistry, TVars>
-  | WorkflowScenarioReadLiveStateStep<TRegistry, TVars>
   | WorkflowScenarioAssertStep<TRegistry, TVars>;
 
 export type WorkflowScenarioCreateStep<
@@ -457,6 +485,48 @@ export type WorkflowScenarioRejectControlStep<
   error?: ScenarioInput<unknown, TRegistry, TVars>;
 };
 
+export type WorkflowScenarioCaptureEmissionsStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "captureEmissions";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
+  storeAs: keyof TVars & string;
+};
+
+export type WorkflowScenarioFlushEmissionsStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "flushEmissions";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
+};
+
+export type WorkflowScenarioWaitForEmissionStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "waitForEmission";
+  capture: keyof TVars & string;
+  match?: (
+    message: WorkflowScenarioObservedEmission,
+    ctx: WorkflowScenarioContext<TRegistry, TVars>,
+  ) => boolean;
+  timeoutMs?: ScenarioInput<number, TRegistry, TVars>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+export type WorkflowScenarioStopEmissionCaptureStep<TVars extends WorkflowScenarioVars> = {
+  type: "stopEmissionCapture";
+  capture: keyof TVars & string;
+};
+
+export type WorkflowScenarioDrainHooksStep = {
+  type: "drainHooks";
+};
+
 export type WorkflowScenarioKillRunnerStep = {
   type: "killRunner";
 };
@@ -491,16 +561,6 @@ export type WorkflowScenarioReadStep<
 > = {
   type: "read";
   read: (ctx: WorkflowScenarioContext<TRegistry, TVars>) => unknown | Promise<unknown>;
-  storeAs?: (keyof TVars & string) | undefined;
-};
-
-export type WorkflowScenarioReadLiveStateStep<
-  TRegistry extends WorkflowsRegistry,
-  TVars extends WorkflowScenarioVars,
-> = {
-  type: "readLiveState";
-  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
-  instanceId: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -581,12 +641,6 @@ export const createScenarioSteps = <
     type: "terminate",
     ...input,
   }),
-  restart: (
-    input: StepInput<WorkflowScenarioRestartStep<TRegistry, TVars>>,
-  ): WorkflowScenarioRestartStep<TRegistry, TVars> => ({
-    type: "restart",
-    ...input,
-  }),
   runCreateUntilIdle: (
     input: StepInput<WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars>>,
   ): WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars> => ({
@@ -641,6 +695,33 @@ export const createScenarioSteps = <
     type: "rejectControl",
     ...input,
   }),
+  captureEmissions: (
+    input: StepInput<WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars>>,
+  ): WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars> => ({
+    type: "captureEmissions",
+    ...input,
+  }),
+  flushEmissions: (
+    input: StepInput<WorkflowScenarioFlushEmissionsStep<TRegistry, TVars>>,
+  ): WorkflowScenarioFlushEmissionsStep<TRegistry, TVars> => ({
+    type: "flushEmissions",
+    ...input,
+  }),
+  waitForEmission: (
+    input: StepInput<WorkflowScenarioWaitForEmissionStep<TRegistry, TVars>>,
+  ): WorkflowScenarioWaitForEmissionStep<TRegistry, TVars> => ({
+    type: "waitForEmission",
+    ...input,
+  }),
+  stopEmissionCapture: (
+    input: StepInput<WorkflowScenarioStopEmissionCaptureStep<TVars>>,
+  ): WorkflowScenarioStopEmissionCaptureStep<TVars> => ({
+    type: "stopEmissionCapture",
+    ...input,
+  }),
+  drainHooks: (): WorkflowScenarioDrainHooksStep => ({
+    type: "drainHooks",
+  }),
   killRunner: (): WorkflowScenarioKillRunnerStep => ({
     type: "killRunner",
   }),
@@ -666,12 +747,6 @@ export const createScenarioSteps = <
     input: StepInput<WorkflowScenarioReadStep<TRegistry, TVars>>,
   ): WorkflowScenarioReadStep<TRegistry, TVars> => ({
     type: "read",
-    ...input,
-  }),
-  readLiveState: (
-    input: StepInput<WorkflowScenarioReadLiveStateStep<TRegistry, TVars>>,
-  ): WorkflowScenarioReadLiveStateStep<TRegistry, TVars> => ({
-    type: "readLiveState",
     ...input,
   }),
   assert: (
@@ -753,7 +828,6 @@ type ScenarioDbWorkflowInstance = {
   output: unknown | null;
   errorName: string | null;
   errorMessage: string | null;
-  runNumber: number;
 };
 
 const getScenarioInstanceRow = async <TRegistry extends WorkflowsRegistry>(
@@ -802,7 +876,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     output: unknown | null;
     errorName: string | null;
     errorMessage: string | null;
-    runNumber: number;
   }): WorkflowScenarioInstanceRow => ({
     id: resolveInternalId(instance.id, "workflow instance"),
     instanceId: instance.id.toString(),
@@ -816,14 +889,12 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     output: instance.output ?? null,
     errorName: instance.errorName ?? null,
     errorMessage: instance.errorMessage ?? null,
-    runNumber: instance.runNumber,
   });
 
   const mapStepRow = (
     row: {
       id: { internalId?: bigint } | bigint;
       instanceRef: { internalId?: bigint } | bigint;
-      runNumber: number;
       stepKey: string;
       parentStepKey: string | null;
       depth: number;
@@ -848,7 +919,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceRef: resolveInternalId(row.instanceRef, "workflow step instance"),
     workflowName: context.workflowName,
     instanceId: context.instanceId,
-    runNumber: row.runNumber,
     stepKey: row.stepKey,
     parentStepKey: row.parentStepKey,
     depth: row.depth,
@@ -872,7 +942,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     row: {
       id: { internalId?: bigint } | bigint;
       instanceRef: { internalId?: bigint } | bigint;
-      runNumber: number;
       type: string;
       payload: unknown | null;
       createdAt: Date;
@@ -885,12 +954,36 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceRef: resolveInternalId(row.instanceRef, "workflow event instance"),
     workflowName: context.workflowName,
     instanceId: context.instanceId,
-    runNumber: row.runNumber,
     type: row.type,
     payload: row.payload ?? null,
     createdAt: row.createdAt,
     deliveredAt: row.deliveredAt,
     consumedByStepKey: row.consumedByStepKey,
+  });
+
+  const mapEmissionRow = (
+    row: {
+      id: { internalId?: bigint } | bigint;
+      instanceRef: { internalId?: bigint } | bigint;
+      stepKey: string;
+      epoch: string;
+      sequence: number;
+      actor: string;
+      payload: unknown | null;
+      createdAt: Date;
+    },
+    context: { workflowName: string; instanceId: string },
+  ): WorkflowScenarioEmissionRow => ({
+    id: resolveInternalId(row.id, "workflow step emission"),
+    instanceRef: resolveInternalId(row.instanceRef, "workflow step emission instance"),
+    workflowName: context.workflowName,
+    instanceId: context.instanceId,
+    stepKey: row.stepKey,
+    epoch: row.epoch,
+    sequence: row.sequence,
+    actor: row.actor,
+    payload: row.payload ?? null,
+    createdAt: row.createdAt,
   });
 
   const getInstance = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
@@ -902,14 +995,13 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   const getSteps = async (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { runNumber?: number; order?: "asc" | "desc" },
+    options?: { order?: "asc" | "desc" },
   ) => {
     const workflowName = resolver.resolveName(String(workflow));
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
     }
-    const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
     const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
@@ -920,10 +1012,10 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           .forSchema(workflowsSchema)
           .find("workflow_step", (b) =>
             b
-              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", instanceRef),
               )
-              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order),
+              .orderByIndex("idx_workflow_step_instanceRef_createdAt", order),
           )
           .executeRetrieve()
       )[0];
@@ -937,14 +1029,13 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   const getEvents = async (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { runNumber?: number; order?: "asc" | "desc" },
+    options?: { order?: "asc" | "desc" },
   ) => {
     const workflowName = resolver.resolveName(String(workflow));
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
     }
-    const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
     const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
@@ -955,10 +1046,10 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           .forSchema(workflowsSchema)
           .find("workflow_event", (b) =>
             b
-              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", instanceRef),
               )
-              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order),
+              .orderByIndex("idx_workflow_event_instanceRef_createdAt", order),
           )
           .executeRetrieve()
       )[0];
@@ -969,25 +1060,61 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     );
   };
 
+  const getEmissions = async (
+    workflow: (keyof TRegistry & string) | string,
+    instanceId: string,
+    options?: { order?: "asc" | "desc"; actor?: "user" | "system" | string; stepKey?: string },
+  ) => {
+    const workflowName = resolver.resolveName(String(workflow));
+    const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
+    if (!instance) {
+      throw new Error("INSTANCE_NOT_FOUND");
+    }
+    const order = options?.order ?? "asc";
+    const actor = options?.actor;
+    const instanceRef = resolveInternalId(instance.id, "workflow instance");
+
+    const rows = (
+      await harness.db
+        .createUnitOfWork("scenario-emissions")
+        .forSchema(workflowsSchema)
+        .find("workflow_step_emission", (b) => {
+          if (actor) {
+            return b
+              .whereIndex("idx_workflow_step_emission_instance_actor_createdAt_sequence_id", (eb) =>
+                eb.and(eb("instanceRef", "=", instanceRef), eb("actor", "=", actor)),
+              )
+              .orderByIndex(
+                "idx_workflow_step_emission_instance_actor_createdAt_sequence_id",
+                order,
+              );
+          }
+
+          return b
+            .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+              eb("instanceRef", "=", instanceRef),
+            )
+            .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", order);
+        })
+        .executeRetrieve()
+    )[0];
+
+    return rows
+      .filter((row) => (options?.stepKey ? row.stepKey === options.stepKey : true))
+      .map((row) =>
+        mapEmissionRow(row as Parameters<typeof mapEmissionRow>[0], { workflowName, instanceId }),
+      );
+  };
+
   const getStatus = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
     const workflowName = resolver.resolveName(String(workflow));
     return await harness.getStatus(workflowName, instanceId);
-  };
-
-  const getLiveState = async (
-    workflow: (keyof TRegistry & string) | string,
-    instanceId: string,
-  ) => {
-    const workflowName = resolver.resolveName(String(workflow));
-    const snapshots = harness.fragment.services.getLiveStepStates(workflowName, instanceId);
-    return snapshots[0] ?? null;
   };
 
   const getHistory = async (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
     options?: {
-      runNumber?: number;
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
@@ -999,8 +1126,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
     }
-
-    const runNumber = options?.runNumber ?? instance.runNumber;
     const order = options?.order ?? "asc";
     const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
@@ -1011,10 +1136,10 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           .forSchema(workflowsSchema)
           .find("workflow_step", (b) => {
             let builder = b
-              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", instanceRef),
               )
-              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", order);
+              .orderByIndex("idx_workflow_step_instanceRef_createdAt", order);
 
             if (options?.stepsCursor) {
               builder = builder.after(options.stepsCursor);
@@ -1035,10 +1160,10 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           .forSchema(workflowsSchema)
           .find("workflow_event", (b) => {
             let builder = b
-              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(eb("instanceRef", "=", instanceRef), eb("runNumber", "=", runNumber)),
+              .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", instanceRef),
               )
-              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", order);
+              .orderByIndex("idx_workflow_event_instanceRef_createdAt", order);
 
             if (options?.eventsCursor) {
               builder = builder.after(options.eventsCursor);
@@ -1052,12 +1177,26 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       )[0];
     })();
 
+    const emissionsRows = await (async () => {
+      return (
+        await harness.db
+          .createUnitOfWork("scenario-history-emissions")
+          .forSchema(workflowsSchema)
+          .find("workflow_step_emission", (b) =>
+            b
+              .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                eb("instanceRef", "=", instanceRef),
+              )
+              .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", order),
+          )
+          .executeRetrieve()
+      )[0];
+    })();
+
     return {
-      runNumber,
       steps: (
         stepsRows as Array<{
           id: { toString(): string };
-          runNumber: number;
           stepKey: string;
           parentStepKey: string | null;
           depth: number;
@@ -1078,7 +1217,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         }>
       ).map((row) => ({
         id: row.id.toString(),
-        runNumber: row.runNumber,
         stepKey: row.stepKey,
         parentStepKey: row.parentStepKey,
         depth: row.depth,
@@ -1099,7 +1237,6 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       events: (
         eventsRows as Array<{
           id: { toString(): string };
-          runNumber: number;
           type: string;
           payload: unknown | null;
           createdAt: Date;
@@ -1108,12 +1245,30 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         }>
       ).map((row) => ({
         id: row.id.toString(),
-        runNumber: row.runNumber,
         type: row.type,
         payload: row.payload ?? null,
         createdAt: row.createdAt,
         deliveredAt: row.deliveredAt,
         consumedByStepKey: row.consumedByStepKey,
+      })),
+      emissions: (
+        emissionsRows as Array<{
+          id: { toString(): string };
+          stepKey: string;
+          epoch: string;
+          sequence: number;
+          actor: string;
+          payload: unknown | null;
+          createdAt: Date;
+        }>
+      ).map((row) => ({
+        id: row.id.toString(),
+        stepKey: row.stepKey,
+        epoch: row.epoch,
+        sequence: row.sequence,
+        actor: row.actor,
+        payload: row.payload ?? null,
+        createdAt: row.createdAt,
       })),
     };
   };
@@ -1176,8 +1331,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     getInstance,
     getSteps,
     getEvents,
+    getEmissions,
     getStatus,
-    getLiveState,
     getHistory,
     internal: {
       getHooks,
@@ -1189,7 +1344,29 @@ export async function runScenario<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
 >(scenario: WorkflowScenarioDefinition<TRegistry, TVars>): Promise<WorkflowScenarioResult<TVars>> {
-  const { adapter, testBuilder, autoTickHooks, ...harnessOptions } = scenario.harness ?? {};
+  const { adapter, testBuilder, autoTickHooks, fragmentConfig, ...harnessOptions } =
+    scenario.harness ?? {};
+  const scenarioUsesEmissions = (steps: WorkflowScenarioStep<TRegistry, TVars>[]): boolean =>
+    steps.some((step) => {
+      switch (step.type) {
+        case "captureEmissions":
+        case "flushEmissions":
+        case "waitForEmission":
+          return true;
+        case "withRunner":
+          return scenarioUsesEmissions(step.steps);
+        case "withRunners":
+          return Object.values(step.runners).some((runnerSteps) =>
+            scenarioUsesEmissions(runnerSteps),
+          );
+        default:
+          return false;
+      }
+    });
+  const stepEmissions =
+    fragmentConfig?.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
+  const shouldInjectStepEmissions =
+    !!fragmentConfig?.stepEmissions || scenarioUsesEmissions(scenario.steps);
 
   const harness = await createWorkflowsTestHarness({
     workflows: scenario.workflows,
@@ -1197,6 +1374,9 @@ export async function runScenario<
     testBuilder: testBuilder ?? buildDatabaseFragmentsTest(),
     autoTickHooks: autoTickHooks ?? false,
     ...harnessOptions,
+    fragmentConfig: shouldInjectStepEmissions
+      ? { ...fragmentConfig, stepEmissions }
+      : fragmentConfig,
   });
 
   const resolver = createWorkflowResolver(scenario.workflows);
@@ -1208,6 +1388,9 @@ export async function runScenario<
     vars: {},
     state: createScenarioState(harness, resolver),
     cleanup: async () => {
+      while (emissionCaptureCleanups.length > 0) {
+        await emissionCaptureCleanups.pop()?.();
+      }
       await harness.test.cleanup();
     },
   };
@@ -1222,11 +1405,20 @@ export async function runScenario<
   const callInstanceRoute = async (path: string, workflowName: string, instanceId: string) =>
     await callRoute("POST", path, { pathParams: { workflowName, instanceId } });
 
+  const emissionCaptureCleanups: Array<() => void | Promise<void>> = [];
+  const emissionCaptureWaiters = new Map<string, Array<() => void>>();
+
+  const notifyEmissionCaptureWaiters = (capture: string) => {
+    const waiters = emissionCaptureWaiters.get(capture)?.splice(0) ?? [];
+    for (const resolve of waiters) {
+      resolve();
+    }
+  };
+
   const buildPayload = async (options: {
     workflow: (keyof TRegistry & string) | string;
     instanceId: string;
     reason: WorkflowEnqueuedHookPayload["reason"];
-    runNumber?: number;
     timestamp?: Date;
   }): Promise<WorkflowEnqueuedHookPayload> => {
     const workflowName = resolver.resolveName(String(options.workflow));
@@ -1243,7 +1435,6 @@ export async function runScenario<
       workflowName,
       instanceId: instance.id.toString(),
       instanceRef: String(instance.id),
-      runNumber: options.runNumber ?? instance.runNumber,
       reason: options.reason,
     };
   };
@@ -1254,7 +1445,11 @@ export async function runScenario<
   ): boolean => {
     switch (step.type) {
       case "read":
-      case "readLiveState":
+      case "captureEmissions":
+      case "flushEmissions":
+      case "waitForEmission":
+      case "stopEmissionCapture":
+      case "drainHooks":
       case "assert":
         return true;
       default:
@@ -1477,21 +1672,6 @@ export async function runScenario<
           }
           break;
         }
-        case "restart": {
-          const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
-          );
-          const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const response = await callInstanceRoute(
-            "/:workflowName/instances/:instanceId/restart",
-            workflowName,
-            instanceId,
-          );
-          if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = response;
-          }
-          break;
-        }
         case "runCreateUntilIdle": {
           const workflowName = resolver.resolveName(
             String(await resolveScenarioInput(step.workflow, context)),
@@ -1564,13 +1744,10 @@ export async function runScenario<
                     .forSchema(workflowsSchema)
                     .find("workflow_step", (b) =>
                       b
-                        .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                          eb.and(
-                            eb("instanceRef", "=", instanceRef),
-                            eb("runNumber", "=", instance.runNumber),
-                          ),
+                        .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                          eb("instanceRef", "=", instanceRef),
                         )
-                        .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+                        .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
                     )
                     .executeRetrieve()
                 )[0];
@@ -1723,13 +1900,10 @@ export async function runScenario<
                   .forSchema(workflowsSchema)
                   .find("workflow_step", (b) =>
                     b
-                      .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                        eb.and(
-                          eb("instanceRef", "=", instanceRef),
-                          eb("runNumber", "=", instance.runNumber),
-                        ),
+                      .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                        eb("instanceRef", "=", instanceRef),
                       )
-                      .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+                      .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
                   )
                   .executeRetrieve()
               )[0];
@@ -1788,6 +1962,102 @@ export async function runScenario<
           context.runtime.controls.reject(key, error);
           break;
         }
+        case "captureEmissions": {
+          const workflowName = resolver.resolveName(
+            String(await resolveScenarioInput(step.workflow, context)),
+          );
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
+          const messages: WorkflowScenarioObservedEmission[] = [];
+          (context.vars as Record<string, unknown>)[step.storeAs] = messages;
+          const { busHandle, unsubscribe } = await context.harness.fragment.inContext(function () {
+            const handle = stepEmissions.getOrCreate(
+              workflowStepLivePumpKey(workflowName, instanceId),
+              () =>
+                createWorkflowStepLivePump({
+                  handlerTx: this.handlerTx,
+                  workflowName,
+                  instanceId,
+                }),
+            );
+            handle.pump.setHandlerTx(this.handlerTx);
+            const unsubscribe = handle.pump.observe((message) => {
+              messages.push({ workflowName, instanceId, ...message });
+              notifyEmissionCaptureWaiters(step.storeAs);
+            });
+            return { busHandle: handle, unsubscribe };
+          });
+          emissionCaptureCleanups.push(async () => {
+            unsubscribe();
+            await busHandle.close();
+          });
+          break;
+        }
+        case "flushEmissions": {
+          const workflowName = resolver.resolveName(
+            String(await resolveScenarioInput(step.workflow, context)),
+          );
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
+          await context.harness.fragment.inContext(async function () {
+            const handle = stepEmissions.getOrCreate(
+              workflowStepLivePumpKey(workflowName, instanceId),
+              () =>
+                createWorkflowStepLivePump({
+                  handlerTx: this.handlerTx,
+                  workflowName,
+                  instanceId,
+                }),
+            );
+            handle.pump.setHandlerTx(this.handlerTx);
+            await handle.waitForNextFlushAndClose();
+          });
+          break;
+        }
+        case "waitForEmission": {
+          const capture = String(step.capture);
+          const timeoutMs = step.timeoutMs
+            ? await resolveScenarioInput(step.timeoutMs, context)
+            : 2_000;
+          const findMatch = () => {
+            const messages = ((context.vars as Record<string, unknown>)[capture] ?? []) as
+              | WorkflowScenarioObservedEmission[]
+              | unknown[];
+            return (messages as WorkflowScenarioObservedEmission[]).find((message) =>
+              step.match ? step.match(message, context) : true,
+            );
+          };
+
+          let matched = findMatch();
+          if (!matched) {
+            const deadline = Date.now() + timeoutMs;
+            while (!matched && Date.now() < deadline) {
+              await new Promise<void>((resolve) => {
+                const waiters = emissionCaptureWaiters.get(capture) ?? [];
+                waiters.push(resolve);
+                emissionCaptureWaiters.set(capture, waiters);
+                setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))).unref?.();
+              });
+              matched = findMatch();
+            }
+          }
+          if (!matched) {
+            throw new Error(`EMISSION_NOT_OBSERVED: ${capture}`);
+          }
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = matched;
+          }
+          break;
+        }
+        case "stopEmissionCapture": {
+          const capture = String(step.capture);
+          notifyEmissionCaptureWaiters(capture);
+          const cleanup = emissionCaptureCleanups.pop();
+          await cleanup?.();
+          break;
+        }
+        case "drainHooks": {
+          await drainDurableHooks(context.harness.fragment);
+          break;
+        }
         case "killRunner": {
           await runner.kill();
           break;
@@ -1820,15 +2090,6 @@ export async function runScenario<
         }
         case "read": {
           const value = await step.read(context);
-          if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = value;
-          }
-          break;
-        }
-        case "readLiveState": {
-          const workflow = await resolveScenarioInput(step.workflow, context);
-          const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const value = await context.state.getLiveState(workflow, instanceId);
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = value;
           }

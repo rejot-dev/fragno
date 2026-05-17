@@ -6,6 +6,10 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
+      "./src/workflow.ts",
+      "./src/debug-log.ts",
+      "./src/stream-step-emissions.ts",
+      "./src/runner/step-live-pump.ts",
       "./src/scenario.ts",
       "./src/test.ts",
       "./src/client/react.ts",

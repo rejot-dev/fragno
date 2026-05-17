@@ -517,7 +517,6 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   output: json("output"),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  runNumber: integer("runNumber").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -528,7 +527,6 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
   parentStepKey: text("parentStepKey"),
   depth: integer("depth").notNull().default(0),
@@ -554,15 +552,14 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_step_workflow_instance_workflow_step_instanceRef_fk"
   }),
-  uniqueIndex("idx_workflow_step_instanceRef_runNumber_stepKey").on(table.instanceRef, table.runNumber, table.stepKey),
-  index("idx_workflow_step_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt),
+  uniqueIndex("idx_workflow_step_instanceRef_stepKey").on(table.instanceRef, table.stepKey),
+  index("idx_workflow_step_instanceRef_createdAt").on(table.instanceRef, table.createdAt),
   index("idx_workflow_step_instanceRef_status_wakeAt").on(table.instanceRef, table.status, table.wakeAt)
 ])
 
 export const workflow_event_workflows = schema_workflows.table("workflow_event", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  runNumber: integer("runNumber").notNull(),
   actor: text("actor").notNull().default("user"),
   type: text("type").notNull(),
   payload: json("payload"),
@@ -577,7 +574,29 @@ export const workflow_event_workflows = schema_workflows.table("workflow_event",
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_event_workflow_instance_workflow_event_inst7a7e6da9"
   }),
-  index("idx_workflow_event_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt)
+  index("idx_workflow_event_instanceRef_createdAt").on(table.instanceRef, table.createdAt)
+])
+
+export const workflow_step_emission_workflows = schema_workflows.table("workflow_step_emission", {
+  id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+  instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
+  stepKey: text("stepKey").notNull(),
+  epoch: text("epoch").notNull(),
+  sequence: integer("sequence").notNull(),
+  actor: text("actor").notNull().default("user"),
+  payload: json("payload"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_step_emission_workflow_instance_workflow_st2cce7185"
+  }),
+  index("idx_workflow_step_emission_instance_createdAt_sequence_id").on(table.instanceRef, table.createdAt, table.sequence, table.id),
+  index("idx_workflow_step_emission_instance_step_epoch_createdAda0a838d").on(table.instanceRef, table.stepKey, table.epoch, table.createdAt, table.sequence, table.id),
+  index("idx_workflow_step_emission_instance_actor_createdAt_sequence_id").on(table.instanceRef, table.actor, table.createdAt, table.sequence, table.id)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
@@ -586,6 +605,9 @@ export const workflow_instance_workflowsRelations = relations(workflow_instance_
   }),
   workflow_eventList: many(workflow_event_workflows, {
     relationName: "workflow_event_instanceRef"
+  }),
+  workflow_step_emissionList: many(workflow_step_emission_workflows, {
+    relationName: "workflow_step_emission_instanceRef"
   })
 }));
 
@@ -605,6 +627,14 @@ export const workflow_event_workflowsRelations = relations(workflow_event_workfl
   })
 }));
 
+export const workflow_step_emission_workflowsRelations = relations(workflow_step_emission_workflows, ({ one }) => ({
+  instanceRef: one(workflow_instance_workflows, {
+    relationName: "workflow_step_emission_instanceRef",
+    fields: [workflow_step_emission_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
+
 export const workflows_schema = {
   workflow_instance_workflows: workflow_instance_workflows,
   workflow_instance_workflowsRelations: workflow_instance_workflowsRelations,
@@ -618,5 +648,9 @@ export const workflows_schema = {
   workflow_event_workflowsRelations: workflow_event_workflowsRelations,
   workflow_event: workflow_event_workflows,
   workflow_eventRelations: workflow_event_workflowsRelations,
-  schemaVersion: 5
+  workflow_step_emission_workflows: workflow_step_emission_workflows,
+  workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
+  workflow_step_emission: workflow_step_emission_workflows,
+  workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
+  schemaVersion: 6
 }

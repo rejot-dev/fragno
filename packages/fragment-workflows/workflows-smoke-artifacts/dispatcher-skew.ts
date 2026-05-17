@@ -4,14 +4,11 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import type { WorkflowsFragmentConfig } from "@fragno-dev/workflows/workflow";
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
-import {
-  workflowsFragmentDefinition,
-  workflowsRoutesFactory,
-  type WorkflowsFragmentConfig,
-} from "@fragno-dev/workflows";
+import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
 const skewMs = Number(process.env.WF_CLOCK_SKEW_MS ?? "0");
 const RealDate = Date;

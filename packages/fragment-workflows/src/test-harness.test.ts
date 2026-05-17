@@ -31,7 +31,6 @@ describe("createWorkflowsTestHarness", () => {
     instance: {
       id: { internalId?: bigint };
       workflowName: string;
-      runNumber: number;
     },
     reason: WorkflowEnqueuedHookPayload["reason"],
   ): WorkflowEnqueuedHookPayload => {
@@ -39,7 +38,6 @@ describe("createWorkflowsTestHarness", () => {
       workflowName: instance.workflowName,
       instanceId: instance.id.toString(),
       instanceRef: instance.id.toString(),
-      runNumber: instance.runNumber,
       reason,
     };
   };

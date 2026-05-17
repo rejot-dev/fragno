@@ -4,7 +4,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 import type { WorkflowsLoggerConfig } from "./debug-log";
-import type { WorkflowLiveStateStore, WorkflowStepLiveStateShape } from "./live-state";
+import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -14,19 +14,15 @@ export type WorkflowEvent<T> = {
   payload: Readonly<T>;
   timestamp: Date;
   instanceId: string;
-  runNumber?: number;
 };
 
 /** Retry behavior for a step execution. */
-export type WorkflowStepConfig<
-  TLiveState extends WorkflowStepLiveStateShape | undefined = undefined,
-> = {
+export type WorkflowStepConfig = {
   retries?: {
     limit: number;
     delay: WorkflowDuration;
     backoff?: "constant" | "linear" | "exponential";
   };
-  liveState?: TLiveState | (() => TLiveState);
 };
 
 export type WorkflowLogLevel = "debug" | "info" | "warn" | "error";
@@ -45,35 +41,46 @@ export type WorkflowLogger = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTxResult = TxResult<any, any>;
 
-export type WorkflowStepLiveStateController<TState extends WorkflowStepLiveStateShape> = {
-  getState: () => TState;
-  setState: (patch: Partial<TState> | ((state: TState) => Partial<TState>)) => void;
+export type WorkflowStepEvent<TPayload = unknown> = {
+  id: string;
+  type: string;
+  payload: Readonly<TPayload>;
+  timestamp: Date;
+  /** Queue this durable event for consumption if the enclosing step completes successfully. */
+  consume(): void;
 };
 
-export type WorkflowStepTx<TLiveState extends WorkflowStepLiveStateShape | undefined = undefined> =
-  {
-    liveState: TLiveState extends WorkflowStepLiveStateShape
-      ? WorkflowStepLiveStateController<TLiveState>
-      : undefined;
-    serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
+export type WorkflowStepEventHandler<TPayload = unknown> = (
+  event: WorkflowStepEvent<TPayload>,
+) => void | Promise<void>;
+
+export type WorkflowStepTx = {
+  serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
+  mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+  onTerminalError: {
+    /**
+     * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
+     * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
+     * runs and for retryable failures that suspend the step for another attempt.
+     */
     mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
-    onTerminalError: {
-      /**
-       * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
-       * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
-       * runs and for retryable failures that suspend the step for another attempt.
-       */
-      mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
-    };
   };
+  /** Persist an outbound workflow-authored step emission. */
+  emit: (payload: unknown) => void;
+  /**
+   * Observe durable workflow events of an exact type while this step is active.
+   * Handlers may replay on retry; event.consume() commits only when this step completes.
+   */
+  onEvent: (type: string, handler: WorkflowStepEventHandler<unknown>) => () => void;
+};
 
 /** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
   do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
-  do<T, TLiveState extends WorkflowStepLiveStateShape>(
+  do<T>(
     name: string,
-    config: WorkflowStepConfig<TLiveState>,
-    callback: (tx: WorkflowStepTx<TLiveState>) => Promise<T> | T,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
@@ -112,7 +119,6 @@ export type WorkflowInstanceCurrentStep = {
 /** Metadata describing a workflow instance for operators. */
 export type WorkflowInstanceMetadata = {
   workflowName: string;
-  runNumber: number;
   params: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -128,7 +134,6 @@ export interface WorkflowInstance<TOutput = unknown> {
   pause(): Promise<void>;
   resume(): Promise<void>;
   terminate(): Promise<void>;
-  restart(): Promise<void>;
   sendEvent(options: { type: string; payload?: unknown }): Promise<void>;
 }
 
@@ -324,12 +329,22 @@ export type WorkflowEnqueuedHookPayload = {
   workflowName: string;
   instanceId: string;
   instanceRef: string;
-  runNumber: number;
   reason: "create" | "event" | "resume" | "retry" | "wake";
+};
+
+export type WorkflowStepEmissionsCleanupHookPayload = {
+  workflowName: string;
+  instanceId: string;
+  instanceRef: string;
+  stepKey: string;
+  epoch: string;
 };
 
 export type WorkflowsHooks = {
   onWorkflowEnqueued: (payload: WorkflowEnqueuedHookPayload) => void | Promise<void>;
+  onWorkflowStepEmissionsCleanup: (
+    payload: WorkflowStepEmissionsCleanupHookPayload,
+  ) => void | Promise<void>;
 };
 
 /** Dispatcher interface used by durable hooks to trigger runner work. */
@@ -338,7 +353,7 @@ export interface WorkflowsDispatcher {
 }
 
 /** Actions available on workflow instances. */
-export type WorkflowManagementAction = "pause" | "resume" | "terminate" | "restart";
+export type WorkflowManagementAction = "pause" | "resume" | "terminate";
 
 /** Configuration for the workflows fragment. */
 export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
@@ -353,7 +368,7 @@ export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = W
    * Optional logging config for internal workflows diagnostics.
    */
   logging?: WorkflowsLoggerConfig;
-  liveState?: WorkflowLiveStateStore;
+  stepEmissions?: WorkflowStepLivePumpRegistry;
   runtime: FragnoRuntime;
 }
 

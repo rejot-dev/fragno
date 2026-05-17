@@ -39,3 +39,15 @@
 - `pnpm-lock.yaml`
   - Conflict: dependency catalog edits touched the same importer and package resolution sections as the current branch lockfile.
   - Resolution: regenerated the lockfile with `pnpm install --lockfile-only`, which let pnpm merge the lockfile against the updated workspace manifests.
+
+## `feat(workflows): persist and stream step emissions`
+
+- `packages/fragment-workflows/src/schema.ts`
+  - Conflict: persisted step emissions were added where the current schema had already removed obsolete explicit workflow instance references and retained table-scoped reference columns.
+  - Resolution: kept the current table-scoped `referenceColumn({ table: "workflow_instance" })` approach and obsolete-reference no-op migrations, removed run-number fields, and added the new `workflow_step_emission` table and indexes.
+
+- `example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema.ts`
+- `example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema.mysql.ts`
+- `example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema.sqlite.ts`
+  - Conflict: generated Drizzle relation names differed for existing workflow events while the rebased commit added workflow step emission relations.
+  - Resolution: preserved the existing `workflow_event_instanceRef` relation name and added the new workflow step emission relation/list entries.

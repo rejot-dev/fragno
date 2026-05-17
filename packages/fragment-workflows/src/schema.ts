@@ -36,8 +36,6 @@ export const workflowsSchema = schema("workflows", (s) => {
             // Failure diagnostics for terminal errors.
             .addColumn("errorName", column("string").nullable())
             .addColumn("errorMessage", column("string").nullable())
-            // Run number increments on restart to separate histories.
-            .addColumn("runNumber", column("integer").defaultTo(0))
             .createIndex("idx_workflow_instance_workflowName_id", ["workflowName", "id"], {
               unique: true,
             })
@@ -57,8 +55,6 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("id", idColumn())
             // Reference to workflow_instance (internal id).
             .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
-            // Run number (ties steps to the instance run).
-            .addColumn("runNumber", column("integer"))
             // Deterministic step key (type:name) for replay/idempotency.
             .addColumn("stepKey", column("string"))
             // Parent step key for nested step subtrees (null for top-level steps).
@@ -98,16 +94,10 @@ export const workflowsSchema = schema("workflows", (s) => {
               "updatedAt",
               column("timestamp").defaultTo((b) => b.now()),
             )
-            .createIndex(
-              "idx_workflow_step_instanceRef_runNumber_stepKey",
-              ["instanceRef", "runNumber", "stepKey"],
-              { unique: true },
-            )
-            .createIndex("idx_workflow_step_instanceRef_runNumber_createdAt", [
-              "instanceRef",
-              "runNumber",
-              "createdAt",
-            ])
+            .createIndex("idx_workflow_step_instanceRef_stepKey", ["instanceRef", "stepKey"], {
+              unique: true,
+            })
+            .createIndex("idx_workflow_step_instanceRef_createdAt", ["instanceRef", "createdAt"])
             // Runner lookup for waiting steps on a given instance.
             .createIndex("idx_workflow_step_instanceRef_status_wakeAt", [
               "instanceRef",
@@ -124,8 +114,6 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("id", idColumn())
             // Reference to workflow_instance (internal id).
             .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
-            // Run number (ties events to the instance run).
-            .addColumn("runNumber", column("integer"))
             // Actor describes who emitted the event; typical values are "user" and "system".
             .addColumn("actor", column("string").defaultTo("user"))
             // Event type used to match waitForEvent.
@@ -141,14 +129,46 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("deliveredAt", column("timestamp").nullable())
             // Step key that consumed the event (null if pending).
             .addColumn("consumedByStepKey", column("string").nullable())
-            .createIndex("idx_workflow_event_instanceRef_runNumber_createdAt", [
-              "instanceRef",
-              "runNumber",
-              "createdAt",
-            ])
+            .createIndex("idx_workflow_event_instanceRef_createdAt", ["instanceRef", "createdAt"])
         );
       })
       .noOp("removed obsolete workflow_step -> workflow_instance addReference history")
       .noOp("removed obsolete workflow_event -> workflow_instance addReference history")
+      // Ephemeral step-scoped emission bus rows for running workflow steps.
+      .addTable("workflow_step_emission", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
+          .addColumn("stepKey", column("string"))
+          .addColumn("epoch", column("string"))
+          .addColumn("sequence", column("integer"))
+          .addColumn("actor", column("string").defaultTo("user"))
+          .addColumn("payload", column("json").nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", [
+            "instanceRef",
+            "createdAt",
+            "sequence",
+            "id",
+          ])
+          .createIndex("idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id", [
+            "instanceRef",
+            "stepKey",
+            "epoch",
+            "createdAt",
+            "sequence",
+            "id",
+          ])
+          .createIndex("idx_workflow_step_emission_instance_actor_createdAt_sequence_id", [
+            "instanceRef",
+            "actor",
+            "createdAt",
+            "sequence",
+            "id",
+          ]),
+      )
   );
 });

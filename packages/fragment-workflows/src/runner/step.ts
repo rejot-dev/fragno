@@ -2,21 +2,26 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
+import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 
-import type { WorkflowLiveStateLease, WorkflowLiveStateStore } from "../live-state";
+import type { DatabaseRequestContext, HandlerTxContext, HooksMap } from "@fragno-dev/db";
+
+import { WorkflowsLogger } from "../debug-log";
 import { isSystemEventActor } from "../system-events";
 import { parseDurationMs } from "../utils";
 import type {
   AnyTxResult,
   WorkflowDuration,
+  WorkflowStepEmissionsCleanupHookPayload,
   WorkflowStep,
   WorkflowStepConfig,
-  WorkflowStepLiveStateController,
+  WorkflowStepEvent,
   WorkflowStepTx,
 } from "../workflow";
 import { WaitForEventTimeoutError } from "../workflow";
 import type { RunnerState, WorkflowStepSnapshot } from "./state";
+import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
+import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-live-pump";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -24,7 +29,7 @@ import type {
   WorkflowStepCreateDraft,
   WorkflowStepUpdateDraft,
 } from "./types";
-import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
+import { buildNestedStepKey, isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
 export type RunnerStepSuspendReason =
   | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
@@ -50,11 +55,11 @@ export class RunnerStepSuspended extends Error {
 type RunnerStepOptions = {
   state: RunnerState;
   taskKind: RunnerTaskKind;
-  liveState?: WorkflowLiveStateStore;
-  workflowName?: string;
-  instanceId?: string;
-  runNumber?: number;
-  timestamp?: Date;
+  workflowName: string;
+  instanceId: string;
+  handlerTx: DatabaseRequestContext["handlerTx"];
+  createEpoch: () => string;
+  stepEmissions?: WorkflowStepLivePumpRegistry;
 };
 
 type StepTxQueue = {
@@ -74,7 +79,6 @@ type StepExecutionContext = {
 };
 
 const ROOT_STEP_SCOPE = "$root";
-const NESTED_STEP_SEPARATOR = ">";
 
 /**
  * Build a deterministic step key from type, name, and optional occurrence.
@@ -86,10 +90,6 @@ function buildStepKey(type: string, name: string, occurrence?: number): string {
     return base;
   }
   return `${base}#${occurrence}`;
-}
-
-function buildNestedStepKey(parentStepKey: string, childStepKey: string): string {
-  return `${parentStepKey}${NESTED_STEP_SEPARATOR}${childStepKey}`;
 }
 
 /**
@@ -154,20 +154,20 @@ export class RunnerStep implements WorkflowStep {
   #taskKind: RunnerTaskKind;
   #stepOccurrences = new Map<string, number>();
   #scopeStorage = new AsyncLocalStorage<StepExecutionContext>();
-  #liveState?: WorkflowLiveStateStore;
-  #workflowName?: string;
-  #instanceId?: string;
-  #runNumber?: number;
-  #timestamp?: Date;
+  #workflowName: string;
+  #instanceId: string;
+  #handlerTx: DatabaseRequestContext["handlerTx"];
+  #createEpoch: () => string;
+  #stepEmissions: WorkflowStepLivePumpRegistry;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
     this.#taskKind = options.taskKind;
-    this.#liveState = options.liveState;
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
-    this.#runNumber = options.runNumber;
-    this.#timestamp = options.timestamp;
+    this.#handlerTx = options.handlerTx;
+    this.#createEpoch = options.createEpoch;
+    this.#stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
   }
 
   #runInStepContext<T>(identity: StepIdentity, execute: () => Promise<T> | T): Promise<T> {
@@ -253,10 +253,10 @@ export class RunnerStep implements WorkflowStep {
   }
 
   async do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
-  async do<T, TLiveState extends Record<string, unknown>>(
+  async do<T>(
     name: string,
-    config: WorkflowStepConfig<TLiveState>,
-    callback: (tx: WorkflowStepTx<TLiveState>) => Promise<T> | T,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T>;
   async do<T>(
     name: string,
@@ -294,12 +294,63 @@ export class RunnerStep implements WorkflowStep {
     const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
     const timeoutMs = snapshot?.timeoutMs ?? null;
     const txQueue = this.#createStepTxQueue();
-    const liveLease = this.#createLiveStateLease(
-      identity,
-      name,
-      config?.liveState as Record<string, unknown> | (() => Record<string, unknown>) | undefined,
+    const pendingEventConsumptions = new Map<string, WorkflowEventRecord>();
+    const queueEventConsumption = (event: WorkflowEventRecord, consumedByStepKey: string) => {
+      if (consumedByStepKey !== identity.stepKey) {
+        return;
+      }
+      pendingEventConsumptions.set(event.id.toString(), event);
+    };
+    const isEventConsumptionQueued = (event: WorkflowEventRecord) =>
+      Boolean(this.#state.mutations.eventUpdates.get(event.id.toString())?.data.consumedByStepKey);
+    const livePumpHandle = this.#stepEmissions.getOrCreate(
+      workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
+      () =>
+        createWorkflowStepLivePump({
+          handlerTx: this.#handlerTx,
+          workflowName: this.#workflowName,
+          instanceId: this.#instanceId,
+        }),
     );
-    const tx = liveLease ? { ...txQueue.tx, liveState: liveLease.controller } : txQueue.tx;
+    livePumpHandle.pump.setHandlerTx(this.#handlerTx);
+    const emissionScope = livePumpHandle.pump.openScope(identity.stepKey, {
+      stepKey: identity.stepKey,
+      epoch: this.#createEpoch(),
+      queueEventConsumption,
+      isEventConsumptionQueued,
+    });
+    const tx = {
+      ...txQueue.tx,
+      emit: (payload: unknown) => {
+        WorkflowsLogger.debug("workflow tx.emit", () => ({
+          workflowName: this.#workflowName,
+          instanceId: this.#instanceId,
+          stepKey: identity.stepKey,
+        }));
+        emissionScope.enqueueOutgoing(payload);
+      },
+      onEvent: (
+        type: string,
+        handler: (event: WorkflowStepEvent<unknown>) => void | Promise<void>,
+      ) => {
+        const nextCount = (emissionScope.meta.eventTypeCounts.get(type) ?? 0) + 1;
+        emissionScope.meta.eventTypeCounts.set(type, nextCount);
+        const unsubscribeDelivery = emissionScope.onDelivery((event) => {
+          if (event.type === type) {
+            return handler(event as WorkflowStepEvent<unknown>);
+          }
+        });
+        return () => {
+          unsubscribeDelivery();
+          const count = emissionScope.meta.eventTypeCounts.get(type) ?? 0;
+          if (count <= 1) {
+            emissionScope.meta.eventTypeCounts.delete(type);
+          } else {
+            emissionScope.meta.eventTypeCounts.set(type, count - 1);
+          }
+        };
+      },
+    };
 
     this.#upsertStep(
       stepKey,
@@ -324,11 +375,22 @@ export class RunnerStep implements WorkflowStep {
       callbackThrew = true;
       callbackError = error;
     } finally {
-      liveLease?.lease.clear();
+      await emissionScope.flushAndClose();
+      await livePumpHandle.close();
+      this.#queueStepEmissionCleanup({
+        workflowName: this.#workflowName,
+        instanceId: this.#instanceId,
+        instanceRef: this.#state.instance.id.toString(),
+        stepKey: identity.stepKey,
+        epoch: emissionScope.meta.epoch,
+      });
     }
 
     if (!callbackThrew) {
       txQueue.commitSuccess();
+      for (const event of pendingEventConsumptions.values()) {
+        this.#queueEventUpdate(event, { consumedByStepKey: identity.stepKey });
+      }
       this.#upsertStep(stepKey, {
         name,
         type: "do",
@@ -648,52 +710,8 @@ export class RunnerStep implements WorkflowStep {
     });
   }
 
-  #createLiveStateLease<TState extends Record<string, unknown>>(
-    identity: StepIdentity,
-    name: string,
-    initialLiveState: TState | (() => TState) | undefined,
-  ):
-    | {
-        lease: WorkflowLiveStateLease<TState>;
-        controller: WorkflowStepLiveStateController<TState>;
-      }
-    | undefined {
-    if (
-      !initialLiveState ||
-      !this.#liveState ||
-      !this.#workflowName ||
-      !this.#instanceId ||
-      this.#runNumber === undefined
-    ) {
-      return undefined;
-    }
-
-    let state = typeof initialLiveState === "function" ? initialLiveState() : initialLiveState;
-    const snapshot = () => ({
-      workflowName: this.#workflowName!,
-      instanceId: this.#instanceId!,
-      runNumber: this.#runNumber!,
-      stepKey: identity.stepKey,
-      parentStepKey: identity.parentStepKey,
-      depth: identity.depth,
-      name,
-      capturedAt: this.#timestamp ?? new Date(),
-      state,
-    });
-    const lease = this.#liveState.begin(snapshot());
-    return {
-      lease,
-      controller: {
-        getState: () => state,
-        setState: (patch) => {
-          state = {
-            ...state,
-            ...(typeof patch === "function" ? patch(state) : patch),
-          };
-          lease.set(snapshot());
-        },
-      },
-    };
+  #queueStepEmissionCleanup(request: WorkflowStepEmissionsCleanupHookPayload) {
+    this.#state.mutations.stepEmissionCleanupRequests.push(request);
   }
 
   #createStepTxQueue(): StepTxQueue {
@@ -702,7 +720,6 @@ export class RunnerStep implements WorkflowStep {
     const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
 
     const tx: WorkflowStepTx = {
-      liveState: undefined,
       mutate: (fn) => {
         pendingMutations.push(fn);
       },
@@ -711,6 +728,8 @@ export class RunnerStep implements WorkflowStep {
           pendingTerminalErrorMutations.push(fn);
         },
       },
+      emit: () => {},
+      onEvent: () => () => {},
       serviceCalls: (factory) => {
         let calls: readonly AnyTxResult[];
         try {
@@ -809,7 +828,6 @@ export class RunnerStep implements WorkflowStep {
   #buildStepCreateBase(stepKey: string, data: WorkflowStepUpdateDraft): WorkflowStepCreateDraft {
     return {
       instanceRef: this.#state.instance.id,
-      runNumber: this.#state.instance.runNumber,
       stepKey,
       parentStepKey: data.parentStepKey ?? null,
       depth: data.depth ?? 0,
