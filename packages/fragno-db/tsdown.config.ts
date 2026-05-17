@@ -23,6 +23,7 @@ export default defineConfig([
       "./src/query/cursor.ts",
       "./src/fragment.ts",
       "./src/db-fragment-definition-builder.ts",
+      "./src/buffered-pump.ts",
       "./src/dispatchers/node/index.ts",
       "./src/dispatchers/cloudflare-do/index.ts",
       "./src/migration-engine/generation-engine.ts",
