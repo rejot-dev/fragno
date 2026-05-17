@@ -58,6 +58,9 @@ Examples:
 ## Development Practices
 
 - [IMPORTANT]: Always run tests and type-check for relevant packages after making changes.
+- DO NOT export things from barrel files (e.g. index.ts or mod.ts). Export files from package.json
+  instead.
+- ALWAYS assume full breaking changes.
 
 ### Testing
 
@@ -66,6 +69,7 @@ Examples:
   - Use toMatchObjectType to perform a strict check on a subset of your type's keys
   - Use toExtend to check if your type extends the expected type
 - Tests are colocated, e.g. `route.ts` -> `route.test.ts`
+- DO NOT use mocks. Instead write the implementation such that real objects can be mocked in tests.
 
 ## Package Structure
 
@@ -105,12 +109,11 @@ Examples:
 - `packages-private/typescript-config/` - Shared TS config presets
 - `packages-private/vitest-config/` - Shared Vitest config presets
 
-### Example Fragments
+### Misc
 
-- `example-fragments/chatno/` - OpenAI integration fragment example
-- `example-fragments/example-fragment/` - Minimal fragment template
-- `example-fragments/fragno-db-library/` - Fragment using @fragno-dev/db
-- `example-fragments/otp-fragment/` - OTP fragment example
+- `example-fragments/*` - Example fragments
+- `example-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
+  Vue SPA, SolidStart) plus DB usage demos and workflow samples
 
 ### Documentation & Example Apps
 
@@ -120,6 +123,3 @@ Examples:
   - `content/docs/stripe/` - Stripe fragment docs
   - `content/docs/forms/` - Forms fragment docs
   - `content/docs/workflows/` - Workflows docs
-- `apps/logo-viewer/` - Logo preview playground
-- `example-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
-  Vue SPA, SolidStart) plus DB usage demos and workflow samples
