@@ -92,25 +92,6 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
         });
       },
     ),
-    useRestartInstance: builder.createMutator(
-      "POST",
-      "/:workflowName/instances/:instanceId/restart",
-      (invalidate, params) => {
-        const { workflowName, instanceId } = params.pathParams;
-        if (!workflowName || !instanceId) {
-          return;
-        }
-        invalidate("GET", "/:workflowName/instances/:instanceId", {
-          pathParams: { workflowName, instanceId },
-        });
-        invalidate("GET", "/:workflowName/instances", {
-          pathParams: { workflowName },
-        });
-        invalidate("GET", "/:workflowName/instances/:instanceId/history", {
-          pathParams: { workflowName, instanceId },
-        });
-      },
-    ),
     useSendEvent: builder.createMutator(
       "POST",
       "/:workflowName/instances/:instanceId/events",

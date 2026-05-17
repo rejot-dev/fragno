@@ -19,6 +19,22 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./workflow": {
+      "types": "./dist/node/workflow.d.ts",
+      "default": "./dist/node/workflow.js"
+    },
+    "./debug-log": {
+      "types": "./dist/node/debug-log.d.ts",
+      "default": "./dist/node/debug-log.js"
+    },
+    "./stream-step-emissions": {
+      "types": "./dist/node/stream-step-emissions.d.ts",
+      "default": "./dist/node/stream-step-emissions.js"
+    },
+    "./step-live-pump": {
+      "types": "./dist/node/runner/step-live-pump.d.ts",
+      "default": "./dist/node/runner/step-live-pump.js"
+    },
     "./client": {
       "types": "./dist/browser/client/clients.d.ts",
       "default": "./dist/browser/client/clients.js"

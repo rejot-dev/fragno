@@ -1,10 +1,10 @@
 import { createId } from "@fragno-dev/db/id";
 import type { FragnoId } from "@fragno-dev/db/schema";
+import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { serviceCalls } from "@fragno-dev/db";
-import type { InstanceStatus } from "@fragno-dev/workflows";
 
 import { workflowUsageFragmentDefinition } from "./definition";
 import { workflowUsageSchema } from "./schema";
@@ -85,7 +85,6 @@ const sessionSchema = z.object({
 });
 
 const historySchema = z.object({
-  runNumber: z.number(),
   steps: z.array(z.unknown()),
   events: z.array(z.unknown()),
 });

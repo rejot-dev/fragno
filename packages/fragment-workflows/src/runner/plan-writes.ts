@@ -124,16 +124,21 @@ function applyServiceCalls(uow: IUnitOfWork, calls: AnyTxResult[]) {
 export function applyRunnerMutations(uow: IUnitOfWork, state: RunnerState) {
   const schemaUow = uow.forSchema(workflowsSchema);
 
-  for (const draft of state.mutations.stepCreates.values()) {
+  for (const [_, draft] of state.mutations.stepCreates) {
     const data = resolveStepDraftTimes(schemaUow, draft);
     schemaUow.create("workflow_step", data);
   }
 
-  for (const entry of state.mutations.stepUpdates.values()) {
+  for (const [_, entry] of state.mutations.stepUpdates) {
     const data = resolveStepDraftTimes(schemaUow, entry.data);
     schemaUow.update("workflow_step", entry.id, (b) =>
-      b.set({ ...data, updatedAt: b.now() }).check(),
+      b.set({ ...data, updatedAt: schemaUow.now() }).check(),
     );
+  }
+
+  const namespace = schemaUow.namespace ?? workflowsSchema.name;
+  for (const payload of state.mutations.stepEmissionCleanupRequests) {
+    uow.triggerHook(namespace, "onWorkflowStepEmissionsCleanup", payload);
   }
 
   for (const entry of state.mutations.eventUpdates.values()) {
@@ -142,7 +147,7 @@ export function applyRunnerMutations(uow: IUnitOfWork, state: RunnerState) {
       const update = stripUndefined(data);
       const withDeliveredAt =
         data.consumedByStepKey && data.deliveredAt === undefined
-          ? { ...update, deliveredAt: b.now() }
+          ? { ...update, deliveredAt: schemaUow.now() }
           : update;
       return b.set(withDeliveredAt).check();
     });
@@ -165,7 +170,7 @@ export function applyOutcome(
 
   schemaUow.update("workflow_instance", instance.id, (b) => {
     const baseUpdate = {
-      updatedAt: b.now(),
+      updatedAt: schemaUow.now(),
       ...(instance.startedAt ? {} : { startedAt: b.now() }),
     };
 
@@ -176,7 +181,7 @@ export function applyOutcome(
             output: outcome.output ?? null,
             errorName: null,
             errorMessage: null,
-            completedAt: b.now(),
+            completedAt: schemaUow.now(),
           }
         : outcome.type === "errored"
           ? {
@@ -184,7 +189,7 @@ export function applyOutcome(
               output: null,
               errorName: outcome.error.name,
               errorMessage: outcome.error.message,
-              completedAt: b.now(),
+              completedAt: schemaUow.now(),
             }
           : outcome.type === "suspended"
             ? { status: "waiting" }
@@ -219,7 +224,6 @@ export function applyOutcome(
       workflowName: instance.workflowName,
       instanceId: instance.id.toString(),
       instanceRef: String(instance.id),
-      runNumber: instance.runNumber,
       reason: kind,
     },
     { processAt },

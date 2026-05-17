@@ -1,6 +1,5 @@
+import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
-
-import { defineWorkflow } from "@fragno-dev/workflows";
 
 import { workflowUsageHooks } from "./definition";
 import type { WorkflowUsageDslState } from "./dsl";

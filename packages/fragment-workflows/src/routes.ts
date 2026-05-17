@@ -28,8 +28,6 @@ const listInstancesQuerySchema = z.object({
   cursor: z.string().optional(),
 });
 
-const runNumberSchema = z.coerce.number().int().min(0);
-
 const createInstanceSchema = z.object({
   id: identifierSchema.optional(),
   params: z.unknown().optional(),
@@ -85,7 +83,6 @@ const currentStepOutputSchema = z.object({
 
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
-  runNumber: z.number(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -96,7 +93,6 @@ const instanceMetaOutputSchema = z.object({
 
 const historyStepSchema = z.object({
   id: z.string(),
-  runNumber: z.number(),
   stepKey: z.string(),
   parentStepKey: z.string().nullable(),
   depth: z.number(),
@@ -122,12 +118,21 @@ const historyStepSchema = z.object({
 
 const historyEventSchema = z.object({
   id: z.string(),
-  runNumber: z.number(),
   type: z.string(),
   payload: z.unknown().nullable(),
   createdAt: z.date(),
   deliveredAt: z.date().nullable(),
   consumedByStepKey: z.string().nullable(),
+});
+
+const historyEmissionSchema = z.object({
+  id: z.string(),
+  stepKey: z.string(),
+  epoch: z.string(),
+  sequence: z.number(),
+  actor: z.string(),
+  payload: z.unknown().nullable(),
+  createdAt: z.date(),
 });
 
 type ErrorResponder<Code extends string = string> = (
@@ -400,10 +405,10 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                   )
                   .findWithCursor("workflow_step", (b) =>
                     b
-                      .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
+                      .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
                         eb("instanceRef", "=", instanceId),
                       )
-                      .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc")
+                      .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc")
                       .pageSize(1),
                   ),
               )
@@ -427,7 +432,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 };
                 const meta = {
                   workflowName: instance.workflowName,
-                  runNumber: instance.runNumber,
                   params: instance.params ?? {},
                   createdAt: instance.createdAt,
                   updatedAt: instance.updatedAt,
@@ -436,30 +440,29 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 };
 
                 const latestStep = steps.items[0];
-                const currentStep =
-                  latestStep && latestStep.runNumber === instance.runNumber
-                    ? {
-                        stepKey: latestStep.stepKey,
-                        parentStepKey: latestStep.parentStepKey,
-                        depth: latestStep.depth,
-                        name: latestStep.name,
-                        type: latestStep.type,
-                        status: latestStep.status,
-                        attempts: latestStep.attempts,
-                        maxAttempts: latestStep.maxAttempts,
-                        timeoutMs: latestStep.timeoutMs,
-                        nextRetryAt: latestStep.nextRetryAt,
-                        wakeAt: latestStep.wakeAt,
-                        waitEventType: latestStep.waitEventType,
-                        error:
-                          latestStep.errorName || latestStep.errorMessage
-                            ? {
-                                name: latestStep.errorName ?? "Error",
-                                message: latestStep.errorMessage ?? "",
-                              }
-                            : undefined,
-                      }
-                    : undefined;
+                const currentStep = latestStep
+                  ? {
+                      stepKey: latestStep.stepKey,
+                      parentStepKey: latestStep.parentStepKey,
+                      depth: latestStep.depth,
+                      name: latestStep.name,
+                      type: latestStep.type,
+                      status: latestStep.status,
+                      attempts: latestStep.attempts,
+                      maxAttempts: latestStep.maxAttempts,
+                      timeoutMs: latestStep.timeoutMs,
+                      nextRetryAt: latestStep.nextRetryAt,
+                      wakeAt: latestStep.wakeAt,
+                      waitEventType: latestStep.waitEventType,
+                      error:
+                        latestStep.errorName || latestStep.errorMessage
+                          ? {
+                              name: latestStep.errorName ?? "Error",
+                              message: latestStep.errorMessage ?? "",
+                            }
+                          : undefined,
+                    }
+                  : undefined;
 
                 return { details, meta, currentStep };
               })
@@ -475,9 +478,9 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "GET",
         path: "/:workflowName/instances/:instanceId/history",
         outputSchema: z.object({
-          runNumber: z.number(),
           steps: z.array(historyStepSchema),
           events: z.array(historyEventSchema),
+          emissions: z.array(historyEmissionSchema),
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -503,65 +506,9 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               .execute();
 
             return json({
-              runNumber: result.runNumber,
               steps: result.steps,
               events: result.events,
-            });
-          } catch (err) {
-            return handleServiceError(err, errorResponder);
-          }
-        },
-      }),
-      defineRoute({
-        method: "GET",
-        path: "/:workflowName/instances/:instanceId/history/:run",
-        outputSchema: z.object({
-          runNumber: z.number(),
-          steps: z.array(historyStepSchema),
-          events: z.array(historyEventSchema),
-        }),
-        errorCodes: [
-          "WORKFLOW_NOT_FOUND",
-          "INVALID_INSTANCE_ID",
-          "INVALID_RUN_NUMBER",
-          "INSTANCE_NOT_FOUND",
-        ],
-        handler: async function (context, { json, error }) {
-          const { pathParams } = context;
-          const errorResponder = error as ErrorResponder;
-          const workflowName = pathParams.workflowName;
-
-          const instanceId = pathParams.instanceId;
-          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
-          if (idError) {
-            return idError;
-          }
-
-          const parsedRun = runNumberSchema.safeParse(pathParams.run);
-          if (!parsedRun.success) {
-            return errorResponder(
-              { message: "Invalid run number", code: "INVALID_RUN_NUMBER" },
-              400,
-            );
-          }
-          const resolvedRunNumber = parsedRun.data;
-
-          try {
-            const result = await this.handlerTx()
-              .withServiceCalls(() => [
-                services.listHistory({
-                  workflowName,
-                  instanceId,
-                  runNumber: resolvedRunNumber,
-                }),
-              ])
-              .transform(({ serviceResult: [result] }) => result)
-              .execute();
-
-            return json({
-              runNumber: result.runNumber,
-              steps: result.steps,
-              events: result.events,
+              emissions: result.emissions,
             });
           } catch (err) {
             return handleServiceError(err, errorResponder);
@@ -639,32 +586,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           try {
             await this.handlerTx()
               .withServiceCalls(() => [services.terminateInstance(workflowName, instanceId)])
-              .execute();
-            return json({ ok: true });
-          } catch (err) {
-            return handleServiceError(err, errorResponder);
-          }
-        },
-      }),
-      defineRoute({
-        method: "POST",
-        path: "/:workflowName/instances/:instanceId/restart",
-        outputSchema: z.object({ ok: z.literal(true) }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function (context, { json, error }) {
-          const { pathParams } = context;
-          const errorResponder = error as ErrorResponder;
-          const workflowName = pathParams.workflowName;
-
-          const instanceId = pathParams.instanceId;
-          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
-          if (idError) {
-            return idError;
-          }
-
-          try {
-            await this.handlerTx()
-              .withServiceCalls(() => [services.restartInstance(workflowName, instanceId)])
               .execute();
             return json({ ok: true });
           } catch (err) {

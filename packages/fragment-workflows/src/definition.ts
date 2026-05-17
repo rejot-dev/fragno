@@ -1,13 +1,18 @@
+import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+
 // Fragment definition and service implementations for workflow instances.
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import type { Cursor } from "@fragno-dev/db";
+import type { Cursor, DatabaseHandlerTx } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "./debug-log";
 import { runWorkflowsTick } from "./new-runner";
+import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
+import type { WorkflowStepLivePump, WorkflowStepLivePumpHandle } from "./runner/step-live-pump";
 import type {
   WorkflowEventRecord,
   WorkflowInstanceRecord,
+  WorkflowStepEmissionRecord,
   WorkflowStepRecord,
 } from "./runner/types";
 import { workflowsSchema } from "./schema";
@@ -27,7 +32,6 @@ import type {
 } from "./workflow";
 
 const DEFAULT_PAGE_SIZE = 25;
-
 const INSTANCE_STATUSES = new Set<InstanceStatus["status"]>([
   "active",
   "paused",
@@ -48,7 +52,6 @@ type WorkflowInstanceStatusRecord = {
 
 export type WorkflowsHistoryStep = {
   id: string;
-  runNumber: number;
   stepKey: string;
   parentStepKey: string | null;
   depth: number;
@@ -69,7 +72,6 @@ export type WorkflowsHistoryStep = {
 
 export type WorkflowsHistoryEvent = {
   id: string;
-  runNumber: number;
   type: string;
   payload: unknown | null;
   createdAt: Date;
@@ -77,10 +79,20 @@ export type WorkflowsHistoryEvent = {
   consumedByStepKey: string | null;
 };
 
+export type WorkflowsHistoryEmission = {
+  id: string;
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  actor: string;
+  payload: unknown | null;
+  createdAt: Date;
+};
+
 export type WorkflowsHistory = {
-  runNumber: number;
   steps: WorkflowsHistoryStep[];
   events: WorkflowsHistoryEvent[];
+  emissions: WorkflowsHistoryEmission[];
 };
 
 type ListInstancesParams = {
@@ -94,7 +106,6 @@ type ListInstancesParams = {
 type ListHistoryParams = {
   workflowName: string;
   instanceId: string;
-  runNumber?: number;
 };
 
 type InstanceDetails = { id: string; details: InstanceStatus };
@@ -132,7 +143,6 @@ function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceSt
 function buildInstanceMetadata(instance: WorkflowInstanceRecord): WorkflowInstanceMetadata {
   return {
     workflowName: instance.workflowName,
-    runNumber: instance.runNumber,
     params: instance.params ?? {},
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
@@ -178,7 +188,6 @@ function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowsHistoryStep {
 
   return {
     id: step.id.toString(),
-    runNumber: step.runNumber,
     stepKey: step.stepKey,
     parentStepKey: step.parentStepKey,
     depth: step.depth,
@@ -201,12 +210,23 @@ function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowsHistoryStep {
 function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowsHistoryEvent {
   return {
     id: event.id.toString(),
-    runNumber: event.runNumber,
     type: event.type,
     payload: event.payload ?? null,
     createdAt: event.createdAt,
     deliveredAt: event.deliveredAt,
     consumedByStepKey: event.consumedByStepKey,
+  };
+}
+
+function buildEmissionHistoryEntry(emission: WorkflowStepEmissionRecord): WorkflowsHistoryEmission {
+  return {
+    id: emission.id.toString(),
+    stepKey: emission.stepKey,
+    epoch: emission.epoch,
+    sequence: emission.sequence,
+    actor: emission.actor,
+    payload: emission.payload ?? null,
+    createdAt: emission.createdAt,
   };
 }
 
@@ -216,44 +236,69 @@ function isTerminalStatus(status: InstanceStatus["status"]) {
 
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
-  .provideHooks(({ defineHook, config }) => {
+  .withDependencies(({ config }) => {
     const workflows = config.workflows ?? {};
+    const stepEmissions = config.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
     const workflowsByName = new Map<string, WorkflowRegistryEntry>();
     for (const entry of Object.values(workflows)) {
       workflowsByName.set(entry.name, entry);
     }
+
+    return { stepEmissions, workflowsByName };
+  })
+  .provideHooks(({ defineHook, config, deps }) => {
     return {
       onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
         if (config.autoTickHooks === false) {
           return;
         }
-        if (workflowsByName.size === 0) {
+        if (deps.workflowsByName.size === 0) {
           return;
         }
         // nextRetryAt is null if the try is immediate, in that case we can use createdAt.
         const timestamp = this.nextRetryAt ?? this.createdAt;
         await runWorkflowsTick({
           handlerTx: this.handlerTx,
-          workflowsByName,
-          workflows,
-          liveState: config.liveState,
+          busHandlerTx: this.handlerTx,
+          workflowsByName: deps.workflowsByName,
+          workflows: config.workflows ?? {},
+          createEpoch: () => config.runtime.random.uuid(),
+          stepEmissions: deps.stepEmissions,
           payload: { ...payload, timestamp },
         });
       }),
+      onWorkflowStepEmissionsCleanup: defineHook(async function (payload) {
+        await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).find("workflow_step_emission", (b) =>
+              b.whereIndex(
+                "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
+                (eb) =>
+                  eb.and(
+                    eb("instanceRef", "=", payload.instanceId),
+                    eb("stepKey", "=", payload.stepKey),
+                    eb("epoch", "=", payload.epoch),
+                  ),
+              ),
+            ),
+          )
+          .mutate(({ forSchema, retrieveResult: [rows] }) => {
+            const uow = forSchema(workflowsSchema);
+            for (const row of rows) {
+              uow.delete("workflow_step_emission", row.id);
+            }
+          })
+          .execute();
+      }),
     };
   })
-  .providesBaseService(({ defineService, config }) => {
+  .providesBaseService(({ defineService, config, deps }) => {
     WorkflowsLogger.configure(config.logging);
 
     const randomUuid = () => config.runtime.random.uuid();
-    const workflowsByName = new Map<string, WorkflowRegistryEntry>();
-
-    for (const entry of Object.values(config.workflows ?? {})) {
-      workflowsByName.set(entry.name, entry);
-    }
 
     const getWorkflowEntry = (workflowName: string) => {
-      const entry = workflowsByName.get(workflowName);
+      const entry = deps.workflowsByName.get(workflowName);
       if (!entry) {
         throw new Error("WORKFLOW_NOT_FOUND");
       }
@@ -262,15 +307,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
     const assertWorkflowName = (workflowName: string) => {
       getWorkflowEntry(workflowName);
-    };
-
-    const readLiveStepStates = (workflowName: string, instanceId: string) => {
-      assertWorkflowName(workflowName);
-      return config.liveState?.getAll(instanceId, { workflowName }) ?? [];
-    };
-
-    const deleteLiveInstanceState = (instanceId: string) => {
-      config.liveState?.delete(instanceId);
     };
 
     const validateWorkflowParams = async (workflowName: string, params: unknown) => {
@@ -296,14 +332,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
     return defineService({
       validateWorkflowParams,
-      getLiveStepStates: function (
-        workflowOrName: string | WorkflowRegistryEntry,
-        instanceId: string,
-      ) {
-        const workflowName =
-          typeof workflowOrName === "string" ? workflowOrName : workflowOrName.name;
-        return readLiveStepStates(workflowName, instanceId);
-      },
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         assertWorkflowName(workflowName);
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
@@ -327,7 +355,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName,
               status: "active",
               params,
-              runNumber: 0,
               startedAt: null,
               completedAt: null,
               output: null,
@@ -339,7 +366,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName,
               instanceId,
               instanceRef: String(instanceRef),
-              runNumber: 0,
               reason: "create",
             });
 
@@ -395,7 +421,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 workflowName,
                 status: "active",
                 params: instance.params ?? {},
-                runNumber: 0,
                 startedAt: null,
                 completedAt: null,
                 output: null,
@@ -407,7 +432,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 workflowName,
                 instanceId: instance.id,
                 instanceRef: String(instanceRef),
-                runNumber: 0,
                 reason: "create",
               });
 
@@ -462,45 +486,21 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      getInstanceCurrentStep: function ({
-        instanceId,
-        runNumber,
-      }: {
-        instanceId: string;
-        runNumber: number;
-      }) {
+      getInstanceCurrentStep: function (instanceId: string) {
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findWithCursor("workflow_step", (b) => {
               return b
-                .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                  eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
+                .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceId),
                 )
-                .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc")
+                .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc")
                 .pageSize(1);
             }),
           )
           .transformRetrieve(([steps]) => {
             const latest = steps.items[0];
             return latest ? buildCurrentStepSummary(latest) : undefined;
-          })
-          .build();
-      },
-      getInstanceRunNumber: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
-        return this.serviceTx(workflowsSchema)
-          .retrieve((uow) =>
-            uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
-              ),
-            ),
-          )
-          .transformRetrieve(([instance]) => {
-            if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
-            }
-            return instance.runNumber;
           })
           .build();
       },
@@ -555,7 +555,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      listHistory: function ({ workflowName, instanceId, runNumber }: ListHistoryParams) {
+      listHistory: function ({ workflowName, instanceId }: ListHistoryParams) {
         assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) => {
@@ -567,49 +567,46 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               )
               .find("workflow_step", (b) =>
                 b
-                  .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                    runNumber === undefined
-                      ? eb("instanceRef", "=", instanceId)
-                      : eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
+                  .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                    eb("instanceRef", "=", instanceId),
                   )
-                  .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc"),
               )
               .find("workflow_event", (b) =>
                 b
-                  .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-                    runNumber === undefined
-                      ? eb("instanceRef", "=", instanceId)
-                      : eb.and(eb("instanceRef", "=", instanceId), eb("runNumber", "=", runNumber)),
+                  .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                    eb("instanceRef", "=", instanceId),
                   )
-                  .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_event_instanceRef_createdAt", "desc"),
+              )
+              .find("workflow_step_emission", (b) =>
+                b
+                  .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                    eb("instanceRef", "=", instanceId),
+                  )
+                  .orderByIndex(
+                    "idx_workflow_step_emission_instance_createdAt_sequence_id",
+                    "desc",
+                  ),
               );
           })
           .mutate(({ retrieveResult }) => {
-            const [instance, steps, events] = retrieveResult as [
+            const [instance, steps, events, emissions] = retrieveResult as [
               WorkflowInstanceRecord | undefined,
               WorkflowStepRecord[],
               WorkflowEventRecord[],
+              WorkflowStepEmissionRecord[],
             ];
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }
 
-            const resolvedRunNumber = runNumber ?? instance.runNumber;
-            const selectedSteps =
-              runNumber === undefined
-                ? steps.filter((step) => step.runNumber === resolvedRunNumber)
-                : steps;
-            const selectedEvents =
-              runNumber === undefined
-                ? events.filter((event) => event.runNumber === resolvedRunNumber)
-                : events;
-
             return {
-              runNumber: resolvedRunNumber,
-              steps: selectedSteps.map(buildStepHistoryEntry),
-              events: selectedEvents
+              steps: steps.map(buildStepHistoryEntry),
+              events: events
                 .filter((event) => !isSystemEventActor(event.actor))
                 .map(buildEventHistoryEntry),
+              emissions: emissions.map(buildEmissionHistoryEntry),
             };
           })
           .build();
@@ -640,7 +637,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.create("workflow_event", {
               instanceRef: instance.id,
-              runNumber: instance.runNumber,
               actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
               type: WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
               payload: null,
@@ -652,7 +648,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName,
               instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
-              runNumber: instance.runNumber,
               reason: "event",
             });
 
@@ -692,7 +687,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName,
               instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
-              runNumber: instance.runNumber,
               reason: "resume",
             });
 
@@ -734,8 +728,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
-            deleteLiveInstanceState(instanceId);
-
             return buildInstanceStatus({
               status: "terminated",
               output: instance.output,
@@ -745,55 +737,23 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      restartInstance: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
-        return this.serviceTx(workflowsSchema)
-          .retrieve((uow) =>
-            uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
-              ),
-            ),
-          )
-          .mutate(({ uow, retrieveResult: [instance] }) => {
-            if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
-            }
-
-            const nextRun = instance.runNumber + 1;
-
-            uow.update("workflow_instance", instance.id, (b) =>
-              b
-                .set({
-                  status: "active",
-                  runNumber: nextRun,
-                  startedAt: null,
-                  completedAt: null,
-                  output: null,
-                  errorName: null,
-                  errorMessage: null,
-                  updatedAt: b.now(),
-                })
-                .check(),
-            );
-            deleteLiveInstanceState(instanceId);
-
-            uow.triggerHook("onWorkflowEnqueued", {
-              workflowName,
-              instanceId: instance.id.toString(),
-              instanceRef: String(instance.id),
-              runNumber: nextRun,
-              reason: "create",
-            });
-
-            return buildInstanceStatus({
-              status: "active",
-              output: null,
-              errorName: null,
-              errorMessage: null,
-            });
-          })
-          .build();
+      observeStepEmissions: function <TOutEmission = unknown>(params: {
+        workflowName: string;
+        instanceId: string;
+        handlerTx: DatabaseHandlerTx;
+      }) {
+        assertWorkflowName(params.workflowName);
+        const handle = deps.stepEmissions.getOrCreate(
+          workflowStepLivePumpKey(params.workflowName, params.instanceId),
+          () =>
+            createWorkflowStepLivePump({
+              handlerTx: params.handlerTx,
+              workflowName: params.workflowName,
+              instanceId: params.instanceId,
+            }),
+        );
+        handle.pump.setHandlerTx(params.handlerTx);
+        return handle as WorkflowStepLivePumpHandle<TOutEmission>;
       },
       /**
        * Send an event to a workflow instance. Wakes the instance if it is waiting for this event type.
@@ -838,7 +798,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             uow.create("workflow_event", {
               instanceRef: instance.id,
-              runNumber: instance.runNumber,
               actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
               payload: options.payload ?? null,
@@ -847,21 +806,18 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               consumedByStepKey: null,
             });
 
-            const currentRunSteps = steps.filter((step) => step.runNumber === instance.runNumber);
             WorkflowsLogger.debug("sendEvent wake", () => ({
               workflowName,
               instanceId,
-              runNumber: instance.runNumber,
               eventType: options.type,
               status: currentStatus,
-              waitingSteps: currentRunSteps.filter((step) => step.status === "waiting").length,
+              waitingSteps: steps.filter((step) => step.status === "waiting").length,
               reason: "event-created",
             }));
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
               instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
-              runNumber: instance.runNumber,
               reason: "event",
             });
 

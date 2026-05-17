@@ -525,7 +525,6 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   output: text("output", { mode: "json" }),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  runNumber: integer("runNumber").notNull().default(0),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -537,7 +536,6 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
 export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   instanceRef: integer("instanceRef").notNull(),
-  runNumber: integer("runNumber").notNull(),
   stepKey: text("stepKey").notNull(),
   parentStepKey: text("parentStepKey"),
   depth: integer("depth").notNull().default(0),
@@ -563,8 +561,8 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_step_workflow_instance_workflow_step_instanf10e6a91"
   }),
-  uniqueIndex("uidx_workflow_step_idx_workflow_step_instanceRef_runNum2a6b0b25").on(table.instanceRef, table.runNumber, table.stepKey),
-  index("idx_workflow_step_idx_workflow_step_instanceRef_runNumbe91f4dec").on(table.instanceRef, table.runNumber, table.createdAt),
+  uniqueIndex("uidx_workflow_step_idx_workflow_step_instanceRef_stepKe162ea092").on(table.instanceRef, table.stepKey),
+  index("idx_workflow_step_idx_workflow_step_instanceRef_created6b466127").on(table.instanceRef, table.createdAt),
   index("idx_workflow_step_idx_workflow_step_instanceRef_status_8e044a37").on(table.instanceRef, table.status, table.wakeAt),
   uniqueIndex("uidx_workflow_step_idx_workflow_step_external_id_workfl2105beea").on(table.id)
 ])
@@ -572,7 +570,6 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
 export const workflow_event_workflows = sqliteTable("workflow_event_workflows", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   instanceRef: integer("instanceRef").notNull(),
-  runNumber: integer("runNumber").notNull(),
   actor: text("actor").notNull().default("user"),
   type: text("type").notNull(),
   payload: text("payload", { mode: "json" }),
@@ -587,8 +584,31 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_event_workflow_instance_workflow_event_inst3029c2ed"
   }),
-  index("idx_workflow_event_idx_workflow_event_instanceRef_runNu9d715b8f").on(table.instanceRef, table.runNumber, table.createdAt),
+  index("idx_workflow_event_idx_workflow_event_instanceRef_creat86cb7414").on(table.instanceRef, table.createdAt),
   uniqueIndex("uidx_workflow_event_idx_workflow_event_external_id_workd61ca377").on(table.id)
+])
+
+export const workflow_step_emission_workflows = sqliteTable("workflow_step_emission_workflows", {
+  id: text("id").notNull().unique().$defaultFn(() => createId()),
+  instanceRef: integer("instanceRef").notNull(),
+  stepKey: text("stepKey").notNull(),
+  epoch: text("epoch").notNull(),
+  sequence: integer("sequence").notNull(),
+  actor: text("actor").notNull().default("user"),
+  payload: text("payload", { mode: "json" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_step_emission_workflow_instance_workflow_st29820e46"
+  }),
+  index("idx_workflow_step_emission_idx_workflow_step_emission_i1ae99c17").on(table.instanceRef, table.createdAt, table.sequence, table.id),
+  index("idx_workflow_step_emission_idx_workflow_step_emission_if42e82f2").on(table.instanceRef, table.stepKey, table.epoch, table.createdAt, table.sequence, table.id),
+  index("idx_workflow_step_emission_idx_workflow_step_emission_i3b95bbf7").on(table.instanceRef, table.actor, table.createdAt, table.sequence, table.id),
+  uniqueIndex("uidx_workflow_step_emission_idx_workflow_step_emission_79baef87").on(table.id)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
@@ -597,6 +617,9 @@ export const workflow_instance_workflowsRelations = relations(workflow_instance_
   }),
   workflow_eventList: many(workflow_event_workflows, {
     relationName: "workflow_event_instanceRef"
+  }),
+  workflow_step_emissionList: many(workflow_step_emission_workflows, {
+    relationName: "workflow_step_emission_instanceRef"
   })
 }));
 
@@ -616,6 +639,14 @@ export const workflow_event_workflowsRelations = relations(workflow_event_workfl
   })
 }));
 
+export const workflow_step_emission_workflowsRelations = relations(workflow_step_emission_workflows, ({ one }) => ({
+  instanceRef: one(workflow_instance_workflows, {
+    relationName: "workflow_step_emission_instanceRef",
+    fields: [workflow_step_emission_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
+
 export const workflows_schema = {
   workflow_instance_workflows: workflow_instance_workflows,
   workflow_instance_workflowsRelations: workflow_instance_workflowsRelations,
@@ -629,5 +660,9 @@ export const workflows_schema = {
   workflow_event_workflowsRelations: workflow_event_workflowsRelations,
   workflow_event: workflow_event_workflows,
   workflow_eventRelations: workflow_event_workflowsRelations,
-  schemaVersion: 5
+  workflow_step_emission_workflows: workflow_step_emission_workflows,
+  workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
+  workflow_step_emission: workflow_step_emission_workflows,
+  workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
+  schemaVersion: 6
 }

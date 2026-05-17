@@ -13,6 +13,7 @@ import type {
 } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
+export type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
 import { runWorkflowsTick } from "./new-runner";
 import { workflowsRoutesFactory } from "./routes";
@@ -31,7 +32,6 @@ import type {
 
 export type WorkflowsHistoryStep = {
   id: string;
-  runNumber: number;
   stepKey: string;
   parentStepKey: string | null;
   depth: number;
@@ -52,7 +52,6 @@ export type WorkflowsHistoryStep = {
 
 export type WorkflowsHistoryEvent = {
   id: string;
-  runNumber: number;
   type: string;
   payload: unknown | null;
   createdAt: Date;
@@ -60,10 +59,20 @@ export type WorkflowsHistoryEvent = {
   consumedByStepKey: string | null;
 };
 
+export type WorkflowsHistoryEmission = {
+  id: string;
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  actor: string;
+  payload: unknown | null;
+  createdAt: Date;
+};
+
 export type WorkflowsHistory = {
-  runNumber: number;
   steps: WorkflowsHistoryStep[];
   events: WorkflowsHistoryEvent[];
+  emissions: WorkflowsHistoryEmission[];
 };
 
 export type WorkflowsTestClock = {
@@ -146,6 +155,9 @@ export type WorkflowsTestHarness<
   fragments: WorkflowsTestHarnessFragments<TRegistry, TFragments>;
   fragment: WorkflowsFragment<TRegistry>;
   db: TestDb;
+  services: WorkflowsFragmentServices<TRegistry>;
+  deps: WorkflowsFragment<TRegistry>["$internal"]["deps"];
+  callRoute: WorkflowsFragment<TRegistry>["callRoute"];
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;
@@ -190,7 +202,6 @@ export type WorkflowsTestHarness<
   getHistory: (
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { runNumber?: number },
   ) => Promise<WorkflowsHistory>;
   tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
   runUntilIdle: (
@@ -429,10 +440,6 @@ export async function createWorkflowsTestHarness<
     autoTickHooks: options.autoTickHooks,
     ...options.fragmentConfig,
   };
-  const killLiveState = () => {
-    config.liveState?.clear();
-  };
-
   const baseBuilder = options.testBuilder.withTestAdapter(adapterConfig);
   const configuredBuilder = options.configureBuilder
     ? options.configureBuilder(baseBuilder)
@@ -531,20 +538,8 @@ export async function createWorkflowsTestHarness<
   const getHistory = async (
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
-    historyOptions?: { runNumber?: number },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    if (historyOptions?.runNumber !== undefined) {
-      const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history/:run", {
-        pathParams: {
-          workflowName,
-          instanceId,
-          run: String(historyOptions.runNumber),
-        },
-      });
-      return assertJsonResponse<WorkflowsHistory>(response);
-    }
-
     const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history", {
       pathParams: { workflowName, instanceId },
     });
@@ -555,9 +550,10 @@ export async function createWorkflowsTestHarness<
     return await getFragment().inContext(function () {
       return runWorkflowsTick({
         handlerTx: this.handlerTx,
+        busHandlerTx: this.handlerTx,
         workflows,
         workflowsByName,
-        liveState: config.liveState,
+        stepEmissions: config.stepEmissions,
         payload: { ...payload, timestamp: clock.now() },
       });
     });
@@ -599,14 +595,12 @@ export async function createWorkflowsTestHarness<
       runUntilIdle,
       async kill() {
         isAlive = false;
-        killLiveState();
       },
       async restart() {
         isAlive = true;
       },
       async killAndRestart() {
         isAlive = false;
-        killLiveState();
         isAlive = true;
       },
     };
@@ -623,6 +617,15 @@ export async function createWorkflowsTestHarness<
     },
     get db() {
       return getDb();
+    },
+    get services() {
+      return getFragment().services;
+    },
+    get deps() {
+      return getFragment().$internal.deps;
+    },
+    get callRoute() {
+      return getFragment().callRoute;
     },
     clock,
     runtime,

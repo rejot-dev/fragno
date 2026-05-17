@@ -84,7 +84,6 @@ describe("Workflows Fragment", () => {
         workflowName,
         status: "pending",
         params: { source: "tests" },
-        runNumber: 0,
       });
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -101,7 +100,6 @@ describe("Workflows Fragment", () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_step", {
         instanceRef,
-        runNumber: 0,
         stepKey: "do:step-1",
         name: "Start",
         type: "do",
@@ -131,7 +129,6 @@ describe("Workflows Fragment", () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_event", {
         instanceRef,
-        runNumber: 0,
         actor: "user",
         type: "approval",
         payload: { approved: true },
@@ -175,14 +172,12 @@ describe("Workflows Fragment", () => {
       workflowName,
       status: "pending",
       params: { source: "tests" },
-      runNumber: 0,
     });
     expect(instance.id.toString()).toBe(instanceId);
     expect(instance.createdAt).toBeInstanceOf(Date);
     expect(instance.updatedAt).toBeInstanceOf(Date);
 
     expect(step).toMatchObject({
-      runNumber: 0,
       stepKey: "do:step-1",
       name: "Start",
       type: "do",
@@ -201,7 +196,6 @@ describe("Workflows Fragment", () => {
     expect(step.updatedAt).toBeInstanceOf(Date);
 
     expect(event).toMatchObject({
-      runNumber: 0,
       type: "approval",
       payload: { approved: true },
       deliveredAt: null,
@@ -257,7 +251,6 @@ describe("Workflows Fragment", () => {
         workflowName: "demo-workflow",
         status: "active",
         params: {},
-        runNumber: 0,
         startedAt: null,
         completedAt: null,
         output: null,
@@ -269,7 +262,6 @@ describe("Workflows Fragment", () => {
         workflowName: "demo-workflow",
         status: "complete",
         params: {},
-        runNumber: 0,
         startedAt: null,
         completedAt: null,
         output: { ok: true },
@@ -338,7 +330,6 @@ describe("Workflows Fragment", () => {
           workflowName: "demo-workflow",
           status: "active",
           params: {},
-          runNumber: 2,
           startedAt: null,
           completedAt: null,
           output: null,
@@ -360,7 +351,6 @@ describe("Workflows Fragment", () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
-          runNumber: 2,
           stepKey: "do:step-1",
           name: "Example",
           type: "do",
@@ -390,12 +380,32 @@ describe("Workflows Fragment", () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_event", {
           instanceRef,
-          runNumber: 2,
           actor: "user",
           type: "approval",
           payload: { approved: true },
           deliveredAt: null,
           consumedByStepKey: null,
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create record");
+        }
+        const id = uow.getCreatedIds()[0];
+        if (!id) {
+          throw new Error("Missing created id");
+        }
+        return id;
+      })();
+
+      await (async () => {
+        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
+        uow.create("workflow_step_emission", {
+          instanceRef,
+          stepKey: "do:step-1",
+          epoch: "epoch-1",
+          sequence: 1,
+          actor: "user",
+          payload: { frame: "partial" },
         });
         const { success } = await uow.executeMutations();
         if (!success) {
@@ -417,12 +427,19 @@ describe("Workflows Fragment", () => {
       );
 
       assert(response.type === "json");
-      expect(response.data.runNumber).toBe(2);
       expect(response.data.steps).toHaveLength(1);
       expect(response.data.events).toHaveLength(1);
+      expect(response.data.emissions).toHaveLength(1);
+      expect(response.data.emissions[0]).toMatchObject({
+        stepKey: "do:step-1",
+        epoch: "epoch-1",
+        sequence: 1,
+        actor: "user",
+        payload: { frame: "partial" },
+      });
     });
 
-    test("GET /:workflowName/instances/:instanceId/history should default to latest run", async () => {
+    test("GET /:workflowName/instances/:instanceId/history should return full instance history", async () => {
       const instanceRef = await (async () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
@@ -430,7 +447,6 @@ describe("Workflows Fragment", () => {
           workflowName: "demo-workflow",
           status: "active",
           params: {},
-          runNumber: 3,
           startedAt: null,
           completedAt: null,
           output: null,
@@ -452,7 +468,6 @@ describe("Workflows Fragment", () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
-          runNumber: 2,
           stepKey: "do:step-old",
           name: "Old",
           type: "do",
@@ -482,7 +497,6 @@ describe("Workflows Fragment", () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_step", {
           instanceRef,
-          runNumber: 3,
           stepKey: "do:step-new",
           name: "New",
           type: "do",
@@ -512,7 +526,6 @@ describe("Workflows Fragment", () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_event", {
           instanceRef,
-          runNumber: 3,
           actor: "user",
           type: "latest",
           payload: { latest: true },
@@ -539,180 +552,13 @@ describe("Workflows Fragment", () => {
       );
 
       assert(response.type === "json");
-      expect(response.data.runNumber).toBe(3);
-      expect(response.data.steps).toHaveLength(1);
-      expect(response.data.steps[0].stepKey).toBe("do:step-new");
+      expect(response.data.steps).toHaveLength(2);
+      expect(response.data.steps.map((step) => step.stepKey)).toEqual([
+        "do:step-new",
+        "do:step-old",
+      ]);
       expect(response.data.events).toHaveLength(1);
       expect(response.data.events[0].type).toBe("latest");
-    });
-
-    test("GET /:workflowName/instances/:instanceId/history/:run should return requested run", async () => {
-      const instanceRef = await (async () => {
-        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
-        uow.create("workflow_instance", {
-          id: "history-run",
-          workflowName: "demo-workflow",
-          status: "active",
-          params: {},
-          runNumber: 3,
-          startedAt: null,
-          completedAt: null,
-          output: null,
-          errorName: null,
-          errorMessage: null,
-        });
-        const { success } = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to create record");
-        }
-        const id = uow.getCreatedIds()[0];
-        if (!id) {
-          throw new Error("Missing created id");
-        }
-        return id;
-      })();
-
-      await (async () => {
-        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
-        uow.create("workflow_step", {
-          instanceRef,
-          runNumber: 2,
-          stepKey: "do:step-old",
-          name: "Old",
-          type: "do",
-          status: "completed",
-          attempts: 1,
-          maxAttempts: 1,
-          timeoutMs: null,
-          nextRetryAt: null,
-          wakeAt: null,
-          waitEventType: null,
-          result: { ok: false },
-          errorName: null,
-          errorMessage: null,
-        });
-        const { success } = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to create record");
-        }
-        const id = uow.getCreatedIds()[0];
-        if (!id) {
-          throw new Error("Missing created id");
-        }
-        return id;
-      })();
-
-      await (async () => {
-        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
-        uow.create("workflow_step", {
-          instanceRef,
-          runNumber: 3,
-          stepKey: "do:step-new",
-          name: "New",
-          type: "do",
-          status: "completed",
-          attempts: 1,
-          maxAttempts: 1,
-          timeoutMs: null,
-          nextRetryAt: null,
-          wakeAt: null,
-          waitEventType: null,
-          result: { ok: true },
-          errorName: null,
-          errorMessage: null,
-        });
-        const { success } = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to create record");
-        }
-        const id = uow.getCreatedIds()[0];
-        if (!id) {
-          throw new Error("Missing created id");
-        }
-        return id;
-      })();
-
-      await (async () => {
-        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
-        uow.create("workflow_event", {
-          instanceRef,
-          runNumber: 2,
-          actor: "user",
-          type: "prior",
-          payload: { prior: true },
-          deliveredAt: null,
-          consumedByStepKey: null,
-        });
-        const { success } = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to create record");
-        }
-        const id = uow.getCreatedIds()[0];
-        if (!id) {
-          throw new Error("Missing created id");
-        }
-        return id;
-      })();
-
-      const response = await fragment.callRoute(
-        "GET",
-        "/:workflowName/instances/:instanceId/history/:run",
-        {
-          pathParams: { workflowName: "demo-workflow", instanceId: "history-run", run: "2" },
-        },
-      );
-
-      assert(response.type === "json");
-      expect(response.data.runNumber).toBe(2);
-      expect(response.data.steps).toHaveLength(1);
-      expect(response.data.steps[0].stepKey).toBe("do:step-old");
-      expect(response.data.events).toHaveLength(1);
-      expect(response.data.events[0].type).toBe("prior");
-    });
-
-    test("GET /:workflowName/instances/:instanceId/history/:run should reject invalid run", async () => {
-      await (async () => {
-        const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
-        uow.create("workflow_instance", {
-          id: "history-invalid-run",
-          workflowName: "demo-workflow",
-          status: "active",
-          params: {},
-          runNumber: 1,
-          startedAt: null,
-          completedAt: null,
-          output: null,
-          errorName: null,
-          errorMessage: null,
-        });
-        const { success } = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to create record");
-        }
-        const id = uow.getCreatedIds()[0];
-        if (!id) {
-          throw new Error("Missing created id");
-        }
-        return id;
-      })();
-
-      const response = await fragment.callRoute(
-        "GET",
-        "/:workflowName/instances/:instanceId/history/:run",
-        {
-          pathParams: {
-            workflowName: "demo-workflow",
-            instanceId: "history-invalid-run",
-            run: "nope",
-          },
-        },
-      );
-
-      expect(response.type).toBe("error");
-      if (response.type === "error") {
-        expect(response.error.code).toBe("INVALID_RUN_NUMBER");
-        expect(response.status).toBe(400);
-      }
     });
 
     test("GET /:workflowName/instances/:instanceId/history should return 404 for missing instance", async () => {

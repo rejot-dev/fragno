@@ -2,17 +2,13 @@
 
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 
-import {
-  ConcurrencyConflictError,
-  type DatabaseRequestContext,
-  type IUnitOfWork,
-} from "@fragno-dev/db";
+import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
-import type { WorkflowLiveStateStore } from "./live-state";
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { createRunnerState } from "./runner/state";
 import { isTerminalStatus } from "./runner/status";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
+import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -26,8 +22,7 @@ import {
   WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
   WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
 } from "./system-events";
-import type { WorkflowsRegistry } from "./workflow";
-import type { WorkflowEnqueuedHookPayload } from "./workflow";
+import type { WorkflowEnqueuedHookPayload, WorkflowsRegistry } from "./workflow";
 
 function resolveWorkflowsNamespace(uow: IUnitOfWork): string {
   const ns = uow.forSchema(workflowsSchema).namespace;
@@ -47,7 +42,10 @@ type RunnerTickPlan = {
 
 type RunnerTickContext = {
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
-  liveState?: WorkflowLiveStateStore;
+  handlerTx: DatabaseRequestContext["handlerTx"];
+  busHandlerTx: DatabaseRequestContext["handlerTx"];
+  createEpoch: () => string;
+  stepEmissions?: WorkflowStepLivePumpRegistry;
 };
 
 type RunnerTickSelectionResult = {
@@ -92,6 +90,10 @@ async function validateWorkflowOutput(
  * Bigger picture: keep initial/event/resume ticks on the normal run path, and reserve
  * wake/retry paths for scheduled wakeups and retry hooks.
  */
+function isConcurrencyConflictError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ConcurrencyConflictError";
+}
+
 function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTaskKind {
   if (reason === "retry") {
     return "retry";
@@ -128,18 +130,11 @@ function findPendingPauseEvents(events: WorkflowEventRecord[]): WorkflowEventRec
   );
 }
 
-function selectTickInput(
-  selection: RunnerTickSelection,
-  payload: WorkflowEnqueuedHookPayload,
-): RunnerTickSelectionResult | null {
+function selectTickInput(selection: RunnerTickSelection): RunnerTickSelectionResult | null {
   const instance = selection.instance;
   if (!instance) {
     return null;
   }
-  if (instance.runNumber !== payload.runNumber) {
-    return null;
-  }
-
   return {
     instance,
     steps: selection.steps,
@@ -242,7 +237,6 @@ function planEarlyReschedule(
                 workflowName: selectionResult.instance.workflowName,
                 instanceId: selectionResult.instance.id.toString(),
                 instanceRef: String(selectionResult.instance.id),
-                runNumber: selectionResult.instance.runNumber,
                 reason: "wake",
               },
               { processAt: wakeAt },
@@ -277,7 +271,6 @@ function planEarlyReschedule(
                 workflowName: selectionResult.instance.workflowName,
                 instanceId: selectionResult.instance.id.toString(),
                 instanceRef: String(selectionResult.instance.id),
-                runNumber: selectionResult.instance.runNumber,
                 reason: "retry",
               },
               { processAt: nextRetryAt },
@@ -326,7 +319,6 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
     payload: instance.params ?? {},
     timestamp,
     instanceId: instance.id.toString(),
-    runNumber: instance.runNumber,
   };
 }
 
@@ -349,11 +341,11 @@ async function runTask(
   const step = new RunnerStep({
     state,
     taskKind,
-    liveState: ctx.liveState,
     workflowName: instance.workflowName,
     instanceId: instance.id.toString(),
-    runNumber: instance.runNumber,
-    timestamp,
+    handlerTx: ctx.busHandlerTx,
+    createEpoch: ctx.createEpoch,
+    stepEmissions: ctx.stepEmissions,
   });
   const initialEvent = buildWorkflowEvent(instance, timestamp);
 
@@ -388,7 +380,7 @@ async function buildTickPlan(
   ctx: RunnerTickContext,
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
 ): Promise<RunnerTickPlan> {
-  const selectionResult = selectTickInput(selection, payload);
+  const selectionResult = selectTickInput(selection);
   if (!selectionResult) {
     return { processed: 0, operations: [] };
   }
@@ -425,9 +417,6 @@ async function markInstanceErrored(
       const [instances] = results as [WorkflowInstanceRecord[]];
       const instance = instances[0];
       if (!instance) {
-        return;
-      }
-      if (instance.runNumber !== payload.runNumber) {
         return;
       }
       if (isTerminalStatus(instance.status)) {
@@ -468,10 +457,12 @@ async function markInstanceErrored(
  */
 export async function runWorkflowsTick(options: {
   handlerTx: DatabaseRequestContext["handlerTx"];
+  busHandlerTx?: DatabaseRequestContext["handlerTx"];
   workflows: WorkflowsRegistry;
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date };
   workflowsByName?: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
-  liveState?: WorkflowLiveStateStore;
+  createEpoch?: () => string;
+  stepEmissions?: WorkflowStepLivePumpRegistry;
 }): Promise<number> {
   const workflowsByName =
     options.workflowsByName ??
@@ -482,6 +473,7 @@ export async function runWorkflowsTick(options: {
   if (workflowsByName.size === 0) {
     return 0;
   }
+  const createEpoch = options.createEpoch ?? (() => crypto.randomUUID());
 
   // Instance-scoped tick: we only fetch data for the payload's instance/run.
   let processed = 0;
@@ -506,7 +498,13 @@ export async function runWorkflowsTick(options: {
           };
           const plan = await buildTickPlan(
             selection,
-            { workflowsByName, liveState: options.liveState },
+            {
+              workflowsByName,
+              handlerTx: options.handlerTx,
+              busHandlerTx: options.busHandlerTx ?? options.handlerTx,
+              createEpoch,
+              stepEmissions: options.stepEmissions,
+            },
             options.payload,
           );
           processed = plan.processed;
@@ -525,28 +523,22 @@ export async function runWorkflowsTick(options: {
           )
           .find("workflow_step", (b) =>
             b
-              .whereIndex("idx_workflow_step_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(
-                  eb("instanceRef", "=", options.payload.instanceRef),
-                  eb("runNumber", "=", options.payload.runNumber),
-                ),
+              .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", options.payload.instanceRef),
               )
-              .orderByIndex("idx_workflow_step_instanceRef_runNumber_createdAt", "asc"),
+              .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
           )
           .find("workflow_event", (b) =>
             b
-              .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
-                eb.and(
-                  eb("instanceRef", "=", options.payload.instanceRef),
-                  eb("runNumber", "=", options.payload.runNumber),
-                ),
+              .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                eb("instanceRef", "=", options.payload.instanceRef),
               )
-              .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
+              .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
           ),
       )
       .execute();
   } catch (err) {
-    if (err instanceof ConcurrencyConflictError) {
+    if (isConcurrencyConflictError(err)) {
       return 0;
     }
     if (mutatePhase) {
