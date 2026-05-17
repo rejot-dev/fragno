@@ -2,16 +2,16 @@ import { beforeAll, afterAll, beforeEach, describe, expect, test } from "vitest"
 
 import { createServer, type Server } from "node:http";
 
+import {
+  defineWorkflow,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "@fragno-dev/workflows/workflow";
+
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { toNodeHandler } from "@fragno-dev/node";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import {
-  defineWorkflow,
-  workflowsFragmentDefinition,
-  workflowsRoutesFactory,
-  type WorkflowEvent,
-  type WorkflowStep,
-} from "@fragno-dev/workflows";
+import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
 import { createClient } from "./client.js";
 

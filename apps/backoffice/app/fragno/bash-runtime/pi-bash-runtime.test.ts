@@ -15,69 +15,50 @@ import {
 
 const now = new Date("2026-01-01T00:00:00.000Z");
 
-const createTurnResult = (sessionId: string, assistantText = "assistant:hello") => ({
-  id: sessionId,
-  name: "support",
-  status: "waiting" as const,
-  agent: "assistant",
-  steeringMode: "one-at-a-time" as const,
-  metadata: null,
-  tags: [],
-  createdAt: now,
-  updatedAt: now,
-  workflow: {
+const createTurnResult = (sessionId: string, assistantText = "assistant:hello") => {
+  const assistantMessage = {
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text: assistantText }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop" as const,
+    timestamp: now.getTime(),
+  };
+  const state = {
+    messages: [assistantMessage],
+  };
+  return {
+    id: sessionId,
+    name: "support",
     status: "waiting" as const,
-  },
-  messages: [
-    {
-      role: "assistant" as const,
-      content: [{ type: "text" as const, text: assistantText }],
-      api: "openai-responses",
-      provider: "openai",
-      model: "test-model",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop" as const,
-      timestamp: now.getTime(),
+    agentName: "assistant",
+    agent: {
+      state,
+      events: [],
     },
-  ],
-  events: [],
-  trace: [],
-  turns: [],
-  turn: 0,
-  phase: "waiting-for-command" as const,
-  waitingFor: null,
-  assistantText,
-  messageStatus: "active" as const,
-  stream: [
-    {
-      layer: "system" as const,
-      type: "snapshot" as const,
-      turn: 0,
-      phase: "running-agent" as const,
-      waitingFor: null,
-      replayCount: 0,
+    steeringMode: "one-at-a-time" as const,
+    metadata: null,
+    tags: [],
+    createdAt: now,
+    updatedAt: now,
+    workflow: {
+      status: "waiting" as const,
     },
-    {
-      layer: "system" as const,
-      type: "settled" as const,
-      turn: 0,
-      status: "waiting-for-command" as const,
-    },
-  ],
-  terminalFrame: {
-    layer: "system" as const,
-    type: "settled" as const,
-    turn: 0,
-    status: "waiting-for-command" as const,
-  },
-});
+    assistantText,
+    messageStatus: "active" as const,
+    stream: [{ type: "snapshot" as const, state }],
+    terminalState: state,
+  };
+};
 
 const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime => ({
   createSession: async ({ agent, name, metadata, tags, steeringMode }) => {
@@ -106,7 +87,11 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
       id: sessionId,
       name: "support",
       status: "waiting",
-      agent: "assistant",
+      agentName: "assistant",
+      agent: {
+        state: { messages: [] },
+        events: [],
+      },
       steeringMode: "one-at-a-time",
       metadata: null,
       tags: [],
@@ -115,13 +100,6 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
       workflow: {
         status: "waiting",
       },
-      messages: [],
-      events: [],
-      trace: [],
-      turns: [],
-      turn: 0,
-      phase: "waiting-for-command",
-      waitingFor: null,
     };
   },
   listSessions: async (args) => {
@@ -219,6 +197,30 @@ const createNdjsonResponse = (frames: unknown[]) => {
     },
   );
 };
+
+const createLongLivedNdjsonResponse = (frames: unknown[]) => {
+  const encoder = new TextEncoder();
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const frame of frames) {
+          controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
+        }
+      },
+    }),
+    {
+      status: 200,
+      headers: { "content-type": "application/x-ndjson; charset=utf-8" },
+    },
+  );
+};
+
+const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 1_000): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
 
 describe("pi bash command registration", () => {
   it("runs pi.session and automations commands from the pi bash host", async () => {
@@ -365,7 +367,11 @@ describe("pi bash command registration", () => {
             id: args.sessionId,
             name: "support",
             status: "waiting",
-            agent: "assistant",
+            agentName: "assistant",
+            agent: {
+              state: { messages: [] },
+              events: [],
+            },
             steeringMode: "one-at-a-time",
             metadata: null,
             tags: [],
@@ -374,13 +380,6 @@ describe("pi bash command registration", () => {
             workflow: {
               status: "waiting",
             },
-            messages: [],
-            events: [],
-            trace: [],
-            turns: [],
-            turn: 0,
-            phase: "waiting-for-command",
-            waitingFor: null,
           };
         },
         listSessions: async (args) => {
@@ -462,8 +461,8 @@ describe("pi bash command registration", () => {
       workflow: {
         status: "waiting",
       },
-      terminalFrame: {
-        type: "settled",
+      terminalState: {
+        messages: expect.any(Array),
       },
     });
 
@@ -724,7 +723,11 @@ describe("createPiRouteBashRuntime", () => {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
-                  agent: "assistant",
+                  agentName: "assistant",
+                  agent: {
+                    state: { messages: [] },
+                    events: [{ id: "event-1" }],
+                  },
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
@@ -733,13 +736,6 @@ describe("createPiRouteBashRuntime", () => {
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
                   workflow: { status: "waiting" },
-                  messages: [],
-                  events: [{ id: "event-1" }],
-                  trace: [],
-                  turns: [{ text: "summary" }],
-                  turn: 0,
-                  phase: "waiting-for-command",
-                  waitingFor: null,
                 }),
                 {
                   status: 200,
@@ -749,31 +745,15 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/active?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
                 {
-                  layer: "system",
                   type: "snapshot",
-                  turn: 0,
-                  phase: "running-agent",
-                  waitingFor: null,
-                  replayCount: 0,
+                  state: { messages: [] },
                 },
-                {
-                  layer: "pi",
-                  type: "event",
-                  turn: 0,
-                  source: "live",
-                  event: { type: "messageStart", timestamp: now.getTime() },
-                },
-                {
-                  layer: "system",
-                  type: "settled",
-                  turn: 0,
-                  status: "waiting-for-command",
-                },
+                { type: "messageStart", timestamp: now.getTime() },
               ]);
             }
 
@@ -791,7 +771,31 @@ describe("createPiRouteBashRuntime", () => {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
-                  agent: "assistant",
+                  agentName: "assistant",
+                  agent: {
+                    state: {
+                      messages: [
+                        {
+                          role: "assistant",
+                          content: [{ type: "text", text: "assistant:route-turn" }],
+                          api: "openai-responses",
+                          provider: "openai",
+                          model: "test-model",
+                          usage: {
+                            input: 0,
+                            output: 0,
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                            totalTokens: 0,
+                            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                          },
+                          stopReason: "stop",
+                          timestamp: now.getTime(),
+                        },
+                      ],
+                    },
+                    events: [],
+                  },
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
@@ -800,31 +804,6 @@ describe("createPiRouteBashRuntime", () => {
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
                   workflow: { status: "waiting" },
-                  messages: [
-                    {
-                      role: "assistant",
-                      content: [{ type: "text", text: "assistant:route-turn" }],
-                      api: "openai-responses",
-                      provider: "openai",
-                      model: "test-model",
-                      usage: {
-                        input: 0,
-                        output: 0,
-                        cacheRead: 0,
-                        cacheWrite: 0,
-                        totalTokens: 0,
-                        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                      },
-                      stopReason: "stop",
-                      timestamp: now.getTime(),
-                    },
-                  ],
-                  events: [],
-                  trace: [],
-                  turns: [{ turn: 0, assistant: null, summary: "assistant:route-turn" }],
-                  turn: 1,
-                  phase: "waiting-for-command",
-                  waitingFor: null,
                 }),
                 {
                   status: 200,
@@ -898,8 +877,8 @@ describe("createPiRouteBashRuntime", () => {
     expect(loaded).toMatchObject({
       id: "session-2",
       workflow: { status: "waiting" },
-      events: [{ id: "event-1" }],
-      turns: [{ text: "summary" }],
+      agentName: "assistant",
+      agent: { events: [{ id: "event-1" }] },
     });
     expect(sessions).toEqual([
       {
@@ -919,15 +898,18 @@ describe("createPiRouteBashRuntime", () => {
       assistantText: "assistant:route-turn",
       messageStatus: "active",
       workflow: { status: "waiting" },
-      terminalFrame: {
-        type: "settled",
-        status: "waiting-for-command",
+      terminalState: {
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "assistant:route-turn" }],
+          }),
+        ]),
       },
     });
     expect(turned.stream).toEqual([
-      expect.objectContaining({ layer: "system", type: "snapshot" }),
-      expect.objectContaining({ layer: "pi", type: "event" }),
-      expect.objectContaining({ layer: "system", type: "settled" }),
+      expect.objectContaining({ type: "snapshot" }),
+      expect.objectContaining({ type: "messageStart" }),
     ]);
     expect(requests).toEqual([
       {
@@ -952,7 +934,7 @@ describe("createPiRouteBashRuntime", () => {
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2/active?orgId=acme",
+        url: "https://pi.do/api/pi/sessions/session-2/events?orgId=acme",
         method: "GET",
         body: undefined,
       },
@@ -969,6 +951,98 @@ describe("createPiRouteBashRuntime", () => {
         method: "GET",
         body: undefined,
       },
+    ]);
+  });
+
+  it("stops pi.session.turn stream consumption at turn_end", async () => {
+    const requests: Array<{ url: string; method: string }> = [];
+    const assistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "assistant:done" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: now.getTime(),
+    };
+
+    const env = {
+      PI: {
+        idFromName: (orgId: string) => `pi:${orgId}`,
+        get: () => ({
+          fetch: async (request: Request) => {
+            requests.push({ url: request.url, method: request.method });
+            const url = new URL(request.url);
+            const path = `${url.pathname}${url.search}`;
+
+            if (path === "/api/pi/sessions/session-2/events?orgId=acme") {
+              return createLongLivedNdjsonResponse([
+                { type: "snapshot", state: { messages: [] } },
+                { type: "message_end", message: assistantMessage },
+                { type: "turn_end" },
+                { type: "agent_end" },
+              ]);
+            }
+
+            if (path === "/api/pi/sessions/session-2/command?orgId=acme") {
+              return new Response(JSON.stringify({ status: "active" }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            if (path === "/api/pi/sessions/session-2?orgId=acme") {
+              return new Response(
+                JSON.stringify({
+                  id: "session-2",
+                  agentName: "assistant",
+                  agent: { state: { messages: [assistantMessage] }, events: [] },
+                  status: "waiting",
+                  name: "route-session",
+                  steeringMode: "all",
+                  metadata: null,
+                  tags: [],
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  workflow: { status: "waiting" },
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              );
+            }
+
+            return new Response(JSON.stringify({ message: "unexpected request" }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            });
+          },
+        }),
+      },
+    } as unknown as CloudflareEnv;
+
+    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const turned = await withTimeout(
+      runtime.runTurn({ sessionId: "session-2", text: "hello" }),
+      "runTurn should not wait for the live events stream to close",
+    );
+
+    expect(turned.assistantText).toBe("assistant:done");
+    expect(turned.stream).toEqual([
+      expect.objectContaining({ type: "snapshot" }),
+      expect.objectContaining({ type: "message_end" }),
+      expect.objectContaining({ type: "turn_end" }),
+    ]);
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://pi.do/api/pi/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/sessions/session-2?orgId=acme",
     ]);
   });
 
@@ -1023,7 +1097,7 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/active?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return new Response(JSON.stringify({ status: "waiting" }), {
@@ -1044,7 +1118,7 @@ describe("createPiRouteBashRuntime", () => {
     const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "active session route did not return a jsonStream response",
+      "session events route did not return a jsonStream response",
     );
   });
 
@@ -1058,7 +1132,7 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/active?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
@@ -1109,7 +1183,7 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/active?orgId=acme" &&
+              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
@@ -1120,12 +1194,6 @@ describe("createPiRouteBashRuntime", () => {
                   phase: "running-agent",
                   waitingFor: null,
                   replayCount: 0,
-                },
-                {
-                  layer: "system",
-                  type: "settled",
-                  turn: 0,
-                  status: "waiting-for-command",
                 },
               ]);
             }

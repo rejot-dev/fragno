@@ -1,10 +1,10 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
-import { useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { PiSessionEventStreamItem } from "@fragno-dev/pi-fragment";
 
-import { formatTimestamp } from "../shared";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 export type LiveToolExecution = {
   toolCallId: string;
@@ -54,13 +54,19 @@ const formatJson = (value: unknown) => {
 };
 
 export function SessionHeader({
+  exportFilename,
+  exportHref,
   harnessLabel,
   modelLabel,
+  options,
   onBack,
   session,
 }: {
+  exportFilename: string;
+  exportHref: string;
   harnessLabel: string;
   modelLabel: string;
+  options?: ReactNode;
   onBack: () => void;
   session: {
     id: string;
@@ -78,18 +84,21 @@ export function SessionHeader({
         <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
           {session.name || session.id}
         </h3>
-        <p className="text-xs text-[var(--bo-muted-2)]">Session ID: {session.id}</p>
-        <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-          {harnessLabel} · {modelLabel}
-        </p>
-        <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-          Status: {session.status} · Updated{" "}
-          <time suppressHydrationWarning dateTime={new Date(session.updatedAt).toISOString()}>
-            {formatTimestamp(session.updatedAt)}
-          </time>
-        </p>
+        <div className="mt-2 grid gap-2 text-xs text-[var(--bo-muted-2)] sm:grid-cols-[1fr_auto] sm:items-start">
+          <span>
+            {harnessLabel} · {modelLabel}
+          </span>
+          {options}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={exportHref}
+          download={exportFilename}
+          className="inline-flex items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+        >
+          Download JSONL
+        </a>
         <button
           type="button"
           onClick={onBack}
@@ -103,8 +112,6 @@ export function SessionHeader({
 }
 
 export function SessionDisplayOptions({
-  exportFilename,
-  exportHref,
   showThinking,
   showToolCalls,
   showTrace,
@@ -114,8 +121,6 @@ export function SessionDisplayOptions({
   onShowTraceChange,
   onShowUsageChange,
 }: {
-  exportFilename: string;
-  exportHref: string;
   showThinking: boolean;
   showToolCalls: boolean;
   showTrace: boolean;
@@ -128,7 +133,7 @@ export function SessionDisplayOptions({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 sm:min-w-96">
       <div className="flex justify-end">
         <button
           type="button"
@@ -140,8 +145,8 @@ export function SessionDisplayOptions({
       </div>
 
       {expanded ? (
-        <div className="grid gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             <ToggleSwitch
               label="Tool calls"
               checked={showToolCalls}
@@ -155,13 +160,6 @@ export function SessionDisplayOptions({
             <ToggleSwitch label="Trace" checked={showTrace} onCheckedChange={onShowTraceChange} />
             <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
           </div>
-          <a
-            href={exportHref}
-            download={exportFilename}
-            className="inline-flex items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
-            Download JSONL
-          </a>
         </div>
       ) : null}
     </div>
@@ -169,7 +167,6 @@ export function SessionDisplayOptions({
 }
 
 export function SessionConversationPanel({
-  footer,
   messages,
   onJumpToLatest,
   onScroll,
@@ -183,7 +180,6 @@ export function SessionConversationPanel({
   showUsage,
   statusText,
 }: {
-  footer: ReactNode;
   messages: AgentMessage[];
   onJumpToLatest: () => void;
   onScroll: () => void;
@@ -258,14 +254,12 @@ export function SessionConversationPanel({
           </div>
         ) : null}
       </ScrollArea.Root>
-      {footer}
     </div>
   );
 }
 
 export function SessionComposer({
   busy,
-  disabledReason,
   error,
   onSend,
   onStop,
@@ -275,23 +269,29 @@ export function SessionComposer({
   readyForInput: boolean;
   disabledReason?: string | null;
   error: string | null;
-  onSend: (command: { kind: "followUp" | "steer"; text: string }) => boolean;
-  onStop: () => boolean;
+  onSend: (command: { kind: "followUp" | "steer"; text: string }) => Promise<boolean> | boolean;
+  onStop: () => Promise<unknown> | unknown;
 }) {
   const [draftMessage, setDraftMessage] = useState("");
   const [mode, setMode] = useState<"followUp" | "steer">("followUp");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const submitDraft = () => {
-    const didSend = onSend({ kind: mode, text: draftMessage });
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draftMessage]);
+
+  const submitDraft = async () => {
+    const didSend = await onSend({ kind: mode, text: draftMessage });
     if (didSend) {
       setDraftMessage("");
     }
   };
-
-  const modeLabel = mode === "steer" ? "Steer" : "Follow up";
-  const helperText = readyForInput
-    ? "Send a follow-up to start the next turn."
-    : "The model is running — follow up, steer, or stop without waiting.";
 
   return (
     <form
@@ -299,59 +299,13 @@ export function SessionComposer({
         event.preventDefault();
         submitDraft();
       }}
-      className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
+      className="flex-none border border-t-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-0"
     >
       <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] transition-colors duration-150 focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-2">
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-accent)]" />
-            <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              {modeLabel}
-            </p>
-          </div>
-
-          <div className="flex min-h-10 items-center gap-2">
-            <div className="grid grid-cols-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setMode("followUp")}
-                aria-pressed={mode === "followUp"}
-                className={`min-h-8 px-3 text-[10px] font-semibold tracking-[0.18em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
-                  mode === "followUp"
-                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
-                }`}
-              >
-                Follow up
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("steer")}
-                aria-pressed={mode === "steer"}
-                className={`min-h-8 px-3 text-[10px] font-semibold tracking-[0.18em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
-                  mode === "steer"
-                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
-                }`}
-              >
-                Steer
-              </button>
-            </div>
-
-            <button
-              type="button"
-              disabled={busy || readyForInput}
-              onClick={onStop}
-              className="min-h-10 border border-red-400/40 bg-red-500/10 px-3 text-[10px] font-semibold tracking-[0.18em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-            >
-              Stop
-            </button>
-          </div>
-        </div>
-
         <textarea
+          ref={textareaRef}
           name="text"
-          rows={3}
+          rows={1}
           value={draftMessage}
           onChange={(event) => setDraftMessage(event.target.value)}
           onKeyDown={(event) => {
@@ -364,18 +318,53 @@ export function SessionComposer({
             mode === "steer" ? "Steer the running session…" : "Send a follow-up message…"
           }
           disabled={busy}
-          className="block w-full resize-y border-0 bg-transparent px-3 py-3 text-sm leading-6 text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:outline-none disabled:opacity-60"
+          className="block max-h-40 w-full resize-none overflow-y-auto border-0 bg-transparent px-2.5 py-2 text-sm leading-7 text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:outline-none disabled:opacity-60"
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-2">
-          <p className="text-xs text-[var(--bo-muted)]">{disabledReason ?? helperText}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1.5">
           <button
-            type="submit"
-            disabled={busy || !draftMessage.trim()}
-            className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            type="button"
+            disabled={busy || readyForInput}
+            onClick={onStop}
+            className="min-h-8 border border-red-400/40 bg-red-500/10 px-2.5 text-[10px] font-semibold tracking-[0.14em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
           >
-            {busy ? "Sending…" : mode === "steer" ? "Send steer" : "Send follow-up"}
+            Stop
           </button>
+          <div className="flex items-center gap-1.5">
+            <div className="grid grid-cols-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setMode("followUp")}
+                aria-pressed={mode === "followUp"}
+                className={`min-h-8 px-2.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                  mode === "followUp"
+                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                }`}
+              >
+                Follow up
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("steer")}
+                aria-pressed={mode === "steer"}
+                className={`min-h-8 px-2.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
+                  mode === "steer"
+                    ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                    : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
+                }`}
+              >
+                Steer
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={busy || !draftMessage.trim()}
+              className="min-h-8 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            >
+              {busy ? "Sending…" : mode === "steer" ? "Send steer" : "Send follow-up"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -428,7 +417,11 @@ function PendingAssistantCard({
   );
 }
 
-export function SessionTracePanel({ traceEvents }: { traceEvents: AgentEvent[] }) {
+export function SessionTracePanel({
+  traceEvents,
+}: {
+  traceEvents: Array<Exclude<PiSessionEventStreamItem, { type: "snapshot" }>>;
+}) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
       <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
@@ -525,12 +518,7 @@ function MessageCard({
       <div className="flex justify-start">
         <div className="w-full max-w-prose border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold text-[var(--bo-fg)]">Assistant</p>
-              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                {message.provider} · {message.model}
-              </p>
-            </div>
+            <p className="text-xs font-semibold text-[var(--bo-fg)]">Assistant</p>
             <time
               suppressHydrationWarning
               dateTime={message.timestamp ? new Date(message.timestamp).toISOString() : undefined}
@@ -593,36 +581,6 @@ function MessageCard({
               </p>
             </div>
           ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  if (message.role === "toolResult") {
-    const contentBlocks = normalizeContent(message.content);
-    return (
-      <div className="flex justify-start">
-        <div className="w-full max-w-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[var(--bo-fg)]">
-              Tool result · {message.toolName}
-            </p>
-            <time
-              suppressHydrationWarning
-              dateTime={message.timestamp ? new Date(message.timestamp).toISOString() : undefined}
-              className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
-            >
-              {formatMessageTimestamp(message.timestamp)}
-            </time>
-          </div>
-          {message.isError ? (
-            <p className="mt-2 text-xs text-red-500">Tool execution failed.</p>
-          ) : null}
-          <div className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
-            {contentBlocks.map((block, index) => (
-              <ContentBlock key={`${block.type}-${index}`} block={block} />
-            ))}
-          </div>
         </div>
       </div>
     );

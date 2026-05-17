@@ -1,6 +1,8 @@
+import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
+
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
-import type { InstanceStatus, WorkflowsFragmentServices } from "@fragno-dev/workflows";
+import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
@@ -33,11 +35,7 @@ type AutomationWorkflowsServiceBase = WorkflowsFragmentServices;
 export type AutomationWorkflowsInstanceStatus = InstanceStatus;
 export type AutomationWorkflowsService = Pick<
   AutomationWorkflowsServiceBase,
-  | "createInstance"
-  | "getInstanceStatus"
-  | "getLiveInstanceState"
-  | "restoreInstanceState"
-  | "sendEvent"
+  "createInstance" | "getInstanceStatus" | "sendEvent"
 > & {
   getInstanceStatusBatch?: (
     workflowName: string,

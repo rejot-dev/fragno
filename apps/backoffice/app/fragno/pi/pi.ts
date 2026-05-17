@@ -12,7 +12,7 @@ import {
   defineAgent,
   type PiToolRegistry,
 } from "@fragno-dev/pi-fragment";
-import { createWorkflowsFragment, type WorkflowLiveStateStore } from "@fragno-dev/workflows";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
@@ -212,7 +212,7 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
 };
 
 const buildPiRuntime = (config: StoredPiConfig, tools: PiToolRegistry) => {
-  const builder = createPi().tools(tools).defaultSteeringMode("one-at-a-time");
+  const builder = createPi().tools(tools).logging({ enabled: true, level: "debug" });
 
   const harnesses = resolvePiHarnesses(config.harnesses);
   for (const harness of harnesses) {
@@ -283,7 +283,6 @@ export const createPiRuntime = (options: {
   env: CloudflareEnv;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
-  liveStateStore: WorkflowLiveStateStore;
   bashCommandContext: PiBashCommandContext;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
@@ -298,7 +297,6 @@ export const createPiRuntime = (options: {
   const workflowsFragment = createWorkflowsFragment(
     {
       workflows: pi.workflows,
-      liveState: options.liveStateStore,
       runtime: defaultFragnoRuntime,
     },
     {

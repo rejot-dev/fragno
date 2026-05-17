@@ -2,7 +2,6 @@ import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/
 import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
-import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
 
 import type { MasterFileSystem } from "@/files";
 import {
@@ -169,7 +168,6 @@ export class Pi extends DurableObject<CloudflareEnv> {
   private initPromise: Promise<void>;
   #configFingerprint: string | null = null;
   #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
-  #liveWorkflowStates = createWorkflowLiveStateStore();
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
@@ -228,8 +226,6 @@ export class Pi extends DurableObject<CloudflareEnv> {
   }
 
   async #buildRuntime(config: StoredPiConfig) {
-    this.#liveWorkflowStates.clear();
-
     const orgId = config.orgId.trim();
     if (!orgId) {
       throw new Error("Pi runtime requires an organisation id.");
@@ -246,7 +242,6 @@ export class Pi extends DurableObject<CloudflareEnv> {
       env: this.#env,
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
-      liveStateStore: this.#liveWorkflowStates,
       bashCommandContext: createPiBashCommandContext({
         env: this.#env,
         orgId,
@@ -337,7 +332,6 @@ export class Pi extends DurableObject<CloudflareEnv> {
       this.#workflowsFragment = null;
       this.#dispatcher = null;
       this.#configFingerprint = this.#fingerprintConfig(stored);
-      this.#liveWorkflowStates.clear();
     }
 
     return buildConfigState(stored);

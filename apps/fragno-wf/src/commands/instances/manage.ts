@@ -2,7 +2,7 @@ import { define } from "gunshi";
 
 import { baseArgs, createClientFromContext } from "../../utils/options.js";
 
-type ManageAction = "pause" | "resume" | "restart" | "terminate";
+type ManageAction = "pause" | "resume" | "terminate";
 
 export const createManageCommand = (action: ManageAction, description: string) =>
   define({

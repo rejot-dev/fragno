@@ -53,14 +53,15 @@ export default function BackofficeOrganisationPiSessionDetail() {
   });
   const displaySession = liveSession.session ?? session;
 
-  const parsedAgent = parsePiAgentName(displaySession.agent);
+  const agentName = displaySession.agentName;
+  const parsedAgent = parsePiAgentName(agentName);
   const harnessLabel = parsedAgent
     ? (harnesses.find((entry) => entry.id === parsedAgent.harnessId)?.label ??
       parsedAgent.harnessId)
-    : displaySession.agent;
+    : agentName;
   const modelLabel = parsedAgent
     ? (findPiModelOption(parsedAgent.provider, parsedAgent.model)?.label ?? parsedAgent.model)
-    : displaySession.agent;
+    : agentName;
 
   const contentVersion = useMemo(
     () =>
@@ -69,7 +70,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
         sending: liveSession.sending,
         statusText: liveSession.statusText,
         messageCount: liveSession.messages.length,
-        traceCount: liveSession.traceEvents.length,
+        eventCount: liveSession.events.length,
         runningToolIds: liveSession.runningTools.map((tool) => tool.toolCallId),
       }),
     [
@@ -78,7 +79,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
       liveSession.runningTools,
       liveSession.sending,
       liveSession.statusText,
-      liveSession.traceEvents.length,
+      liveSession.events.length,
     ],
   );
   const chatScroll = useChatScroll({
@@ -97,40 +98,39 @@ export default function BackofficeOrganisationPiSessionDetail() {
     }));
   };
 
-  const handleSend = (command: { kind: "followUp" | "steer"; text: string }) => {
-    const didSend = liveSession.sendCommand({
+  const handleSend = async (command: { kind: "followUp" | "steer"; text: string }) => {
+    await liveSession.sendCommand({
       kind: command.kind,
       input: { text: command.text },
     });
-    if (didSend) {
-      chatScroll.jumpToLatest("auto");
-    }
-    return didSend;
+    chatScroll.jumpToLatest("auto");
+    return true;
   };
 
   const handleStop = () =>
     liveSession.sendCommand({ kind: "abort", reason: "Stopped from backoffice UI" });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <SessionHeader
         session={displaySession}
-        harnessLabel={harnessLabel}
-        modelLabel={modelLabel}
-        onBack={() => navigate("..")}
-      />
-
-      <SessionDisplayOptions
         exportHref={`/api/pi/${orgId}/sessions/${displaySession.id}/export/pi-jsonl`}
         exportFilename={`pi-session-${displaySession.id}.jsonl`}
-        showToolCalls={displayOptions.showToolCalls}
-        showThinking={displayOptions.showThinking}
-        showTrace={displayOptions.showTrace}
-        showUsage={displayOptions.showUsage}
-        onShowToolCallsChange={updateDisplayOption("showToolCalls")}
-        onShowThinkingChange={updateDisplayOption("showThinking")}
-        onShowTraceChange={updateDisplayOption("showTrace")}
-        onShowUsageChange={updateDisplayOption("showUsage")}
+        harnessLabel={harnessLabel}
+        modelLabel={modelLabel}
+        options={
+          <SessionDisplayOptions
+            showToolCalls={displayOptions.showToolCalls}
+            showThinking={displayOptions.showThinking}
+            showTrace={displayOptions.showTrace}
+            showUsage={displayOptions.showUsage}
+            onShowToolCallsChange={updateDisplayOption("showToolCalls")}
+            onShowThinkingChange={updateDisplayOption("showThinking")}
+            onShowTraceChange={updateDisplayOption("showTrace")}
+            onShowUsageChange={updateDisplayOption("showUsage")}
+          />
+        }
+        onBack={() => navigate("..")}
       />
 
       {liveSession.error ? (
@@ -152,22 +152,19 @@ export default function BackofficeOrganisationPiSessionDetail() {
         showToolCalls={displayOptions.showToolCalls}
         showUsage={displayOptions.showUsage}
         statusText={liveSession.statusText}
-        footer={
-          <SessionComposer
-            key={session.id}
-            busy={liveSession.sending}
-            readyForInput={liveSession.readyForInput}
-            disabledReason={disabledReason}
-            error={liveSession.sendError}
-            onSend={handleSend}
-            onStop={handleStop}
-          />
-        }
       />
 
-      {displayOptions.showTrace ? (
-        <SessionTracePanel traceEvents={liveSession.traceEvents} />
-      ) : null}
+      <SessionComposer
+        key={session.id}
+        busy={liveSession.sending}
+        readyForInput={liveSession.readyForInput}
+        disabledReason={disabledReason}
+        error={liveSession.sendError}
+        onSend={handleSend}
+        onStop={handleStop}
+      />
+
+      {displayOptions.showTrace ? <SessionTracePanel traceEvents={liveSession.events} /> : null}
     </div>
   );
 }
