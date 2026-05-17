@@ -101,11 +101,14 @@ async function* parseNDJSONStream<T>(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  let completed = false;
+
   try {
     while (true) {
       const { done, value } = await reader.read();
 
       if (done) {
+        completed = true;
         break;
       }
 
@@ -127,6 +130,9 @@ async function* parseNDJSONStream<T>(
       yield JSON.parse(buffer) as T extends unknown[] ? T[number] : T;
     }
   } finally {
+    if (!completed) {
+      await reader.cancel();
+    }
     reader.releaseLock();
   }
 }
