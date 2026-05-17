@@ -15,10 +15,9 @@ const clientConfig: FragnoPublicClientConfig = {
 
 const expectedKeys = [
   "useSessions",
-  "useSession",
   "useSessionDetail",
   "useCreateSession",
-  "useActiveSession",
+  "useSessionEvents",
   "useCommandSession",
 ] as const;
 
@@ -34,16 +33,14 @@ describe("pi-fragment client exports", () => {
     expect(clients.useSessionDetail.route.method).toBe("GET");
     expect(typeof clients.useSessionDetail.store).toBe("function");
 
-    expect(clients.useSession).toBeDefined();
-
     expect(clients.useCreateSession.route.path).toBe("/sessions");
     expect(clients.useCreateSession.route.method).toBe("POST");
     expect(typeof clients.useCreateSession.mutateQuery).toBe("function");
     expect(clients.useCreateSession.mutatorStore).toBeDefined();
 
-    expect(clients.useActiveSession.route.path).toBe("/sessions/:sessionId/active");
-    expect(clients.useActiveSession.route.method).toBe("GET");
-    expect(typeof clients.useActiveSession.store).toBe("function");
+    expect(clients.useSessionEvents.route.path).toBe("/sessions/:sessionId/events");
+    expect(clients.useSessionEvents.route.method).toBe("GET");
+    expect(typeof clients.useSessionEvents.store).toBe("function");
 
     expect(clients.useCommandSession.route.path).toBe("/sessions/:sessionId/command");
     expect(clients.useCommandSession.route.method).toBe("POST");

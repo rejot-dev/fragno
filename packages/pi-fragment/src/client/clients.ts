@@ -2,28 +2,32 @@ import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/
 
 import { piFragmentDefinition } from "../pi/definition";
 import { piRoutesFactory } from "../routes";
-import { createPiSessionControllerStore } from "./session-controller";
-import type { CreatePiSessionStoreDependencies } from "./session-store";
+import {
+  createPiSessionStore,
+  createStorePiSessionTransport,
+  type PiSessionStoreArgs,
+  type PiSessionStoreDeps,
+} from "./session";
+
+export type {
+  PiLiveToolExecution,
+  PiSessionCommandInput,
+  PiSessionConnectionStatus,
+  PiSessionStoreArgs,
+  PiSessionStoreDeps,
+} from "./session";
 
 export type PiFragmentClientConfig = FragnoPublicClientConfig & {
   debugActiveSession?: boolean;
 };
 
-const createActiveSessionLogger = (
-  enabled: boolean | undefined,
-): CreatePiSessionStoreDependencies["activeLogger"] => {
-  if (!enabled) {
-    return undefined;
-  }
-
-  return (event, details) => {
-    console.log(`[pi-active] ${event}`, details ?? {});
-  };
-};
-
-export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig) {
+export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {}) {
   const builder = createClientBuilder(piFragmentDefinition, fragnoConfig, [piRoutesFactory]);
   const useSessionDetail = builder.createHook("/sessions/:sessionId");
+  const useSessionEvents = builder.createHook("/sessions/:sessionId/events", {
+    onErrorRetry: ({ retryCount }) => Math.min(10_000, 500 * 2 ** Math.min(retryCount, 8)),
+  });
+
   const useCommandSession = builder.createMutator(
     "POST",
     "/sessions/:sessionId/command",
@@ -39,36 +43,31 @@ export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig) {
       invalidate("GET", "/sessions", {});
     },
   );
-  const { fetcher, defaultOptions } = builder.getFetcher();
-  const sessionStoreDependencies = {
-    createDetailStore: (sessionId) => useSessionDetail.store({ path: { sessionId } }),
-    sendCommand: ({ sessionId, command }) =>
-      useCommandSession
-        .mutateQuery({
-          path: { sessionId },
-          body: command,
-        })
-        .then((result) => {
-          if (!result) {
-            throw new Error("The command mutation did not return a command response.");
-          }
-          return result;
-        }),
-    buildActiveUrl: (sessionId) =>
-      builder.buildUrl("/sessions/:sessionId/active", {
-        path: { sessionId },
-      }),
-    fetcher,
-    defaultOptions,
-    enableActiveStream: typeof window === "undefined" ? false : undefined,
-    activeLogger: createActiveSessionLogger(fragnoConfig.debugActiveSession),
-  } satisfies CreatePiSessionStoreDependencies;
+
+  const defaultSessionTransport = createStorePiSessionTransport({
+    openEventsStore: ({ sessionId }) => useSessionEvents.store({ path: { sessionId } }),
+    sendCommand: async ({ sessionId, command }) => {
+      const ack = await useCommandSession.mutateQuery({ path: { sessionId }, body: command });
+      if (!ack) {
+        throw new Error("Expected command route to return an acknowledgement.");
+      }
+      return ack;
+    },
+  });
+
   return {
     useSessions: builder.createHook("/sessions"),
     useSessionDetail,
-    useSession: builder.createStore(createPiSessionControllerStore(sessionStoreDependencies)),
     useCreateSession: builder.createMutator("POST", "/sessions"),
-    useActiveSession: builder.createHook("/sessions/:sessionId/active"),
+    useSessionEvents,
     useCommandSession,
+    useSession: builder.createStore(
+      (args: PiSessionStoreArgs, deps?: Partial<PiSessionStoreDeps>) =>
+        createPiSessionStore(args, {
+          transport: deps?.transport ?? defaultSessionTransport,
+          now: deps?.now,
+          retryDelay: deps?.retryDelay,
+        }),
+    ),
   };
 }

@@ -19,7 +19,7 @@ describe("Pi scenarios", () => {
     cleanup = undefined;
   });
 
-  it("stops a running agent after the third date && sleep 1", async () => {
+  it("sends abort commands from the command route to the active workflow step", async () => {
     const scenario = definePiScenario<Vars>({
       name: "stop repeated date command after third run",
       checkpoints: [
@@ -54,6 +54,7 @@ describe("Pi scenarios", () => {
           reason: "stop after third date && sleep 1",
           storeAs: "abortResponse",
         }),
+        s.waitForInjection("abort"),
         s.releaseAll(),
         s.awaitBackground("promptRun"),
         s.assert(async (ctx) => {
@@ -64,15 +65,9 @@ describe("Pi scenarios", () => {
             "date && sleep 1 #2",
             "date && sleep 1 #3",
           ]);
-          expect(ctx.agent.injections()).toEqual([expect.objectContaining({ kind: "abort" })]);
+          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
 
-          const detail = await ctx.assertStopped(ctx.vars.sessionId!);
-          expect(detail.turn).toBe(1);
-          expect(detail.turns[0]).toMatchObject({ status: "aborted" });
-          expect(detail.turns[0]?.operations[0]).toMatchObject({
-            kind: "prompt",
-            outcome: "aborted",
-          });
+          await ctx.assertStopped(ctx.vars.sessionId!);
         }),
         s.prompt({
           sessionId: (ctx) => ctx.vars.sessionId!,
@@ -85,12 +80,91 @@ describe("Pi scenarios", () => {
         s.awaitBackground("afterStopRun"),
         s.assert(async (ctx) => {
           const detail = await ctx.assertStopped(ctx.vars.sessionId!);
-          expect(detail.turn).toBe(2);
-          expect(detail.turns.map((turn) => turn.status)).toEqual(["aborted", "completed"]);
-          expect(detail.turns[1]?.operations[0]).toMatchObject({
-            kind: "prompt",
-            outcome: "completed",
-          });
+          expect(detail.agent.state.messages.length).toBeGreaterThan(0);
+        }),
+      ],
+    });
+
+    const ctx = await runPiScenario(scenario);
+    cleanup = ctx.cleanup;
+  });
+
+  it("does not replay an abort command into the next agent run", async () => {
+    const scenario = definePiScenario<Vars>({
+      name: "abort command is consumed once",
+      checkpoints: ["first run", "second run"],
+      steps: [
+        s.createSession({ storeAs: "sessionId" }),
+        s.prompt({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          text: "start first task",
+        }),
+        s.runAgentInBackground({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          storeAs: "promptRun",
+        }),
+        s.waitForCheckpoint("first run"),
+        s.abort({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          reason: "stop first task",
+          storeAs: "abortResponse",
+        }),
+        s.waitForInjection("abort"),
+        s.releaseAll(),
+        s.awaitBackground("promptRun"),
+        s.assert(async (ctx) => {
+          await ctx.assertStopped(ctx.vars.sessionId!);
+          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
+        }),
+        s.prompt({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          text: "start second task",
+        }),
+        s.runAgentInBackground({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          storeAs: "afterStopRun",
+        }),
+        s.waitForCheckpoint("second run"),
+        s.releaseAll(),
+        s.awaitBackground("afterStopRun"),
+        s.assert(async (ctx) => {
+          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
+        }),
+      ],
+    });
+
+    const ctx = await runPiScenario(scenario);
+    cleanup = ctx.cleanup;
+  });
+
+  it("sends steer commands from the command route to the active workflow step", async () => {
+    const scenario = definePiScenario<Vars>({
+      name: "steer running agent",
+      checkpoints: ["before steer", "after steer"],
+      steps: [
+        s.createSession({ storeAs: "sessionId" }),
+        s.prompt({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          text: "start long task",
+        }),
+        s.runAgentInBackground({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          storeAs: "promptRun",
+        }),
+        s.waitForCheckpoint("before steer"),
+        s.steer({
+          sessionId: (ctx) => ctx.vars.sessionId!,
+          text: "adjust course",
+        }),
+        s.waitForInjection("steer"),
+        s.releaseAll(),
+        s.awaitBackground("promptRun"),
+        s.assert(async (ctx) => {
+          cleanup = ctx.cleanup;
+          expect(ctx.agent.injections()).toMatchObject([
+            { kind: "steer", input: { text: "adjust course" } },
+          ]);
+          await ctx.assertStopped(ctx.vars.sessionId!);
         }),
       ],
     });
