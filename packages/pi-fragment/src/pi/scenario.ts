@@ -1,10 +1,7 @@
-import { createWorkflowLiveStateStore } from "@fragno-dev/workflows";
-
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 import { buildHarness, findWorkflowInstances, mockModel } from "./test-utils";
-import type { PiAgentLoopState, PiFragmentConfig, PiPromptInput, PiSessionDetail } from "./types";
-import { ensurePiActiveSessionState } from "./workflow/active-session";
+import type { PiFragmentConfig, PiPromptInput, PiSessionDetail } from "./types";
 import { PI_WORKFLOW_NAME, type PiAgentRunner } from "./workflow/workflow";
 
 export type PiScenarioVars = Record<string, unknown>;
@@ -40,20 +37,29 @@ const createDeferred = () => {
   return { promise, resolve };
 };
 
-const assistantMessage = (text: string): AgentMessage =>
-  ({
-    role: "assistant",
-    content: [{ type: "text", text }],
-    stopReason: "stop",
-    timestamp: Date.now(),
-  }) as AgentMessage;
+const assistantMessage = (text: string): Extract<AgentMessage, { role: "assistant" }> => ({
+  role: "assistant",
+  content: [{ type: "text", text }],
+  api: "openai-responses",
+  provider: "openai",
+  model: "test-model",
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: "stop",
+  timestamp: Date.now(),
+});
 
-const userMessage = (input: PiPromptInput): AgentMessage =>
-  ({
-    role: "user",
-    content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
-    timestamp: Date.now(),
-  }) as AgentMessage;
+const userMessage = (input: PiPromptInput): Extract<AgentMessage, { role: "user" }> => ({
+  role: "user",
+  content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
+  timestamp: Date.now(),
+});
 
 export const createCheckpointScriptedAgent = (checkpointNames: string[]): ScriptedAgentRuntime => {
   const reached = new Map<string, ReturnType<typeof createDeferred>>();
@@ -105,8 +111,6 @@ export const createCheckpointScriptedAgent = (checkpointNames: string[]): Script
         if (aborted) {
           break;
         }
-        const event = { type: "scripted-checkpoint", checkpoint: name } as unknown as AgentEvent;
-        options.onEvent?.(event);
         checkpointLog.push({ name, reachedAt: new Date() });
         getReached(name).resolve();
         await getRelease(name).promise;
@@ -117,26 +121,20 @@ export const createCheckpointScriptedAgent = (checkpointNames: string[]): Script
 
     if (aborted) {
       return {
-        mode: options.mode,
         outcome: "aborted",
         messages,
-        trace: [],
-        assistant: null,
+        events: [],
         errorMessage: "aborted by scripted agent",
-        toolJournal: [],
       };
     }
 
     const assistant = assistantMessage("scripted agent completed");
     messages.push(assistant);
     return {
-      mode: options.mode,
       outcome: "completed",
       messages,
-      trace: [],
-      assistant,
+      events: [],
       errorMessage: null,
-      toolJournal: [],
     };
   };
 
@@ -170,7 +168,6 @@ export type PiScenarioContext<TVars extends PiScenarioVars = PiScenarioVars> = {
   cleanup: () => Promise<void>;
   detail: (sessionId: string) => Promise<PiSessionDetail>;
   workflowStatus: (sessionId: string) => Promise<unknown>;
-  liveState: (sessionId: string) => unknown;
   assertStopped: (sessionId: string) => Promise<PiSessionDetail>;
 };
 
@@ -196,6 +193,7 @@ export type PiScenarioStep<TVars extends PiScenarioVars> =
     }
   | { type: "runAgentInBackground"; sessionId: ScenarioInput<string, TVars>; storeAs: string }
   | { type: "waitForCheckpoint"; name: string }
+  | { type: "waitForInjection"; kind: ScriptedAgentInjection["kind"] }
   | { type: "releaseCheckpoint"; name: string }
   | { type: "releaseAll" }
   | { type: "awaitBackground"; name: string }
@@ -223,6 +221,8 @@ export const piSteps = <TVars extends PiScenarioVars = PiScenarioVars>() => ({
   ) => ({ type: "runAgentInBackground", ...input }) as PiScenarioStep<TVars>,
   waitForCheckpoint: (name: string) =>
     ({ type: "waitForCheckpoint", name }) as PiScenarioStep<TVars>,
+  waitForInjection: (kind: ScriptedAgentInjection["kind"]) =>
+    ({ type: "waitForInjection", kind }) as PiScenarioStep<TVars>,
   releaseCheckpoint: (name: string) =>
     ({ type: "releaseCheckpoint", name }) as PiScenarioStep<TVars>,
   releaseAll: () => ({ type: "releaseAll" }) as PiScenarioStep<TVars>,
@@ -243,11 +243,21 @@ const resolveInput = async <T, TVars extends PiScenarioVars>(
     ? await (input as (ctx: PiScenarioContext<TVars>) => T | Promise<T>)(ctx)
     : input;
 
+const expectPoll = async (predicate: () => boolean, timeoutMessage: string) => {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(timeoutMessage);
+};
+
 export const runPiScenario = async <TVars extends PiScenarioVars>(
   scenario: PiScenarioDefinition<TVars>,
 ) => {
   const agent = createCheckpointScriptedAgent(scenario.checkpoints);
-  const liveStateStore = createWorkflowLiveStateStore();
   const config: PiFragmentConfig = {
     agents: {
       scripted: {
@@ -260,7 +270,6 @@ export const runPiScenario = async <TVars extends PiScenarioVars>(
   };
   const harness = await buildHarness(config, {
     autoTickHooks: false,
-    liveStateStore,
     agentRunner: agent.runner,
   });
   const ctx: PiScenarioContext<TVars> = {
@@ -281,31 +290,8 @@ export const runPiScenario = async <TVars extends PiScenarioVars>(
     },
     workflowStatus: async (sessionId) =>
       await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId),
-    liveState: (sessionId) =>
-      harness.workflows.fragment.services.getLiveInstanceState(PI_WORKFLOW_NAME, sessionId),
     assertStopped: async (sessionId) => {
       const detail = await ctx.detail(sessionId);
-      if (detail.phase !== "waiting-for-command") {
-        throw new Error(
-          `Expected session ${sessionId} to be waiting-for-command, got ${detail.phase}`,
-        );
-      }
-      if (detail.waitingFor?.type !== "command") {
-        throw new Error(`Expected session ${sessionId} to be waiting for a command.`);
-      }
-      const allowedCommands = detail.waitingFor.allowedCommands;
-      for (const command of ["prompt", "followUp", "complete"] as const) {
-        if (!allowedCommands.includes(command)) {
-          throw new Error(`Expected stopped session to allow ${command}.`);
-        }
-      }
-      const liveState = ctx.liveState(sessionId) as { state?: PiAgentLoopState } | null;
-      if (liveState?.state) {
-        const liveController = ensurePiActiveSessionState(liveState.state).getLiveController();
-        if (liveController) {
-          throw new Error(`Expected session ${sessionId} to have no live agent controller.`);
-        }
-      }
       const status = await ctx.workflowStatus(sessionId);
       const workflowStatus =
         typeof status === "object" && status !== null
@@ -343,7 +329,6 @@ export const runPiScenario = async <TVars extends PiScenarioVars>(
               workflowName: PI_WORKFLOW_NAME,
               instanceId: sessionId,
               instanceRef: String(instance.id),
-              runNumber: instance.runNumber,
               reason: "create",
             },
             { maxTicks: 1 },
@@ -395,7 +380,6 @@ export const runPiScenario = async <TVars extends PiScenarioVars>(
               workflowName: PI_WORKFLOW_NAME,
               instanceId: sessionId,
               instanceRef: String(instance.id),
-              runNumber: instance.runNumber,
               reason: "event",
             }),
           );
@@ -404,6 +388,13 @@ export const runPiScenario = async <TVars extends PiScenarioVars>(
         case "waitForCheckpoint":
           await agent.waitForCheckpoint(step.name);
           break;
+        case "waitForInjection": {
+          await expectPoll(
+            () => agent.injections().some((injection) => injection.kind === step.kind),
+            `Timed out waiting for ${step.kind} injection`,
+          );
+          break;
+        }
         case "releaseCheckpoint":
           agent.releaseCheckpoint(step.name);
           break;

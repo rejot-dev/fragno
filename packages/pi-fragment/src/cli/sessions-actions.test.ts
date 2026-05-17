@@ -107,9 +107,12 @@ describe("sessions actions", () => {
           id: "session-2",
           status: "running",
           workflow: { status: "running" },
-          phase: "running-agent",
-          turn: 3,
-          waitingFor: { type: "assistant", turn: 3, stepKey: "do:assistant-3" },
+          agent: {
+            state: {
+              messages: [{ role: "user", content: "hello" }],
+            },
+            events: [],
+          },
           extra: "ignored",
         }),
         { status: 200 },
@@ -130,10 +133,75 @@ describe("sessions actions", () => {
     expect(JSON.parse(output)).toEqual({
       status: "running",
       workflow: { status: "running" },
-      phase: "running-agent",
-      turn: 3,
-      waitingFor: { type: "assistant", turn: 3, stepKey: "do:assistant-3" },
+      agent: {
+        state: {
+          messages: 1,
+        },
+      },
     });
+  });
+
+  it("follows session event streams via HTTP", async () => {
+    const createStream = (events: unknown[]) =>
+      new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          for (const event of events) {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          }
+          controller.close();
+        },
+      });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          createStream([
+            { type: "snapshot", state: { messages: [] } },
+            { type: "message_end", message: { role: "assistant", content: "hello there" } },
+          ]),
+          {
+            status: 200,
+            headers: { "content-type": "application/x-ndjson; charset=utf-8" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          createStream([
+            {
+              type: "snapshot",
+              state: { messages: [{ role: "assistant" }] },
+            },
+            { type: "message_end", message: { role: "assistant", content: "again" } },
+          ]),
+          {
+            status: 200,
+            headers: { "content-type": "application/x-ndjson; charset=utf-8" },
+          },
+        ),
+      )
+      .mockRejectedValueOnce(new Error("The operation was aborted."));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const logger = createLogger();
+    const exitCode = await run(
+      ["node", "fragno-pi", "--retries", "0", "sessions", "follow", "--session", "session-2"],
+      {
+        logger,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`${BASE_URL}/sessions/session-2/events`);
+    expect(init?.method).toBe("GET");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const output = logger.log.mock.calls.map((call) => call[0]);
+    expect(output.join("\n")).toContain("message_end hello there");
+    expect(output).toContain("--- reconnected ---");
+    expect(output.join("\n")).toContain("[001] -  snapshot messages=1 events=0");
+    expect(output.join("\n")).toContain("[002] -  message_end again");
   });
 
   it("fetches the full current-run session detail by default", async () => {
@@ -143,13 +211,14 @@ describe("sessions actions", () => {
           id: "session-2",
           status: "running",
           workflow: { status: "running" },
-          phase: "running-agent",
-          turn: 1,
-          waitingFor: { type: "assistant", turn: 1, stepKey: "do:assistant-1" },
-          messages: [{ role: "user", content: "hello", timestamp: 1 }],
-          events: [{ type: "command", payload: { kind: "prompt", input: { text: "hello" } } }],
-          trace: [{ type: "llm_start" }],
-          turns: [{ turn: 1, status: "completed", summary: "hello" }],
+          agent: {
+            state: {
+              messages: [{ role: "user", content: "hello", timestamp: 1 }],
+            },
+            events: [
+              { type: "message_end", message: { role: "user", content: "hello", timestamp: 1 } },
+            ],
+          },
         }),
         { status: 200 },
       ),
@@ -169,47 +238,45 @@ describe("sessions actions", () => {
     expect(output).toMatchObject({
       id: "session-2",
       status: "running",
-      phase: "running-agent",
-      turn: 1,
-      events: [{ type: "command", payload: { kind: "prompt", input: { text: "hello" } } }],
-      trace: [{ type: "llm_start" }],
-      turns: [{ turn: 1, status: "completed", summary: "hello" }],
+      agent: {
+        state: { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+        events: [{ type: "message_end" }],
+      },
     });
   });
 
-  it("renders session detail text output with timestamps, trace, and turns", async () => {
+  it("renders session detail text output with Pi messages and events", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           id: "session-2",
           name: "Support",
-          agent: "agent-1",
+          agentName: "agent-1",
           status: "running",
-          phase: "running-agent",
-          turn: 1,
-          waitingFor: { type: "assistant", turn: 1, stepKey: "do:assistant-1" },
           steeringMode: "all",
           createdAt: "2026-03-06T09:00:00.000Z",
           updatedAt: "2026-03-06T09:01:00.000Z",
           workflow: { status: "running" },
-          messages: [
-            { role: "user", content: "hello", timestamp: 1_700_000_000 },
-            {
-              role: "assistant",
-              content: [{ type: "text", text: "hi" }],
-              timestamp: 1_700_000_005,
+          agent: {
+            state: {
+              messages: [
+                { role: "user", content: "hello", timestamp: 1_700_000_000 },
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: "hi" }],
+                  timestamp: 1_700_000_005,
+                },
+              ],
             },
-          ],
-          events: [
-            {
-              type: "command",
-              timestamp: 1_700_000_000,
-              payload: { kind: "prompt", input: { text: "hello" } },
-            },
-            { type: "assistant_reply", timestamp: 1_700_000_005 },
-          ],
-          trace: [{ type: "llm_start" }],
-          turns: [{ turn: 1, status: "completed", summary: "hello" }],
+            events: [
+              {
+                type: "message_start",
+                timestamp: 1_700_000_000,
+                message: { role: "user", content: "hello" },
+              },
+              { type: "message_end", timestamp: 1_700_000_005 },
+            ],
+          },
         }),
         { status: 200 },
       ),
@@ -229,17 +296,16 @@ describe("sessions actions", () => {
     expect(output).toContain("Session");
     expect(output).toContain("Messages (2)");
     expect(output).toContain("Events (2)");
-    expect(output).toContain("Trace (1)");
-    expect(output).toContain("Turns (1)");
+    expect(output).not.toContain("Trace");
+    expect(output).not.toContain("Turns");
     expect(output).toContain("Writer");
     expect(output).toContain("Timestamp");
     expect(output).toContain("Message");
-    expect(output).toContain("Phase");
-    expect(output).toContain("Turn");
-    expect(output).toContain("Waiting");
-    expect(output).toContain("command");
-    expect(output).toContain("assistant_reply");
-    expect(output).toContain("llm_start");
+    expect(output).not.toContain("Phase");
+    expect(output).not.toContain("Turn");
+    expect(output).not.toContain("Waiting");
+    expect(output).toContain("message_start");
+    expect(output).toContain("message_end");
     expect(output).toContain("hello");
     expect(output).toMatch(/\d{2}:\d{2}:\d{2}/);
     expect(output).not.toContain("1700000000");

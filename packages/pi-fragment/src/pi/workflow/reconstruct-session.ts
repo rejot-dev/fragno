@@ -1,13 +1,12 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { z } from "zod";
 
-import { extractAssistantTextFromMessage } from "../mappers";
+import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+
 import type {
-  PiAgentLoopLiveState,
+  PiAgentLoopCursorState,
   PiAgentLoopSerializableState,
-  PiSessionCommandPayload,
-  PiSessionCommandRecord,
+  PiAgentStateSnapshot,
   PiSessionDetailProjection,
-  PiTurnSummary,
 } from "../types";
 
 export type WorkflowHistoryEventRow = {
@@ -19,266 +18,117 @@ export type WorkflowHistoryEventRow = {
 export type WorkflowHistoryStepRow = {
   stepKey: string;
   result: unknown;
+  createdAt?: Date;
 };
 
-type CommandStepResultProjection = {
-  commandId: string;
-  commandStatus: "applied" | "rejected";
-  rejectionReason: string | null;
-  turn: number | null;
-  operationIndex: number | null;
-  stepKey: string;
-  commandCreatedAt: Date;
-  consumedAt: Date;
-  operationCreatedAt?: Date;
-  operationCompletedAt?: Date;
-  outcome?: "completed" | "errored" | "aborted";
+const agentMessageSchema = z.custom<AgentMessage>();
+const agentEventSchema = z.custom<AgentEvent>();
+const agentRunStepResultSchema = z.object({
+  type: z.literal("agent-run").optional(),
+  messages: z.array(agentMessageSchema).optional(),
+  events: z.array(agentEventSchema).optional(),
+});
+
+const parseAgentRunStepResult = (value: unknown) => {
+  const result = agentRunStepResultSchema.safeParse(value);
+  if (!result.success) {
+    return null;
+  }
+  if (result.data.type !== "agent-run" && !result.data.messages && !result.data.events) {
+    return null;
+  }
+  return result.data;
+};
+
+const getStepEvents = (result: z.infer<typeof agentRunStepResultSchema>): AgentEvent[] =>
+  result.events ?? [];
+
+const commandStepOrder = (stepKey: string): number => {
+  const match = /^do:command-(\d+)-/.exec(stepKey);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+};
+
+const compareNullableDates = (left?: Date, right?: Date) => {
+  if (!left && !right) {
+    return 0;
+  }
+  if (!left) {
+    return 1;
+  }
+  if (!right) {
+    return -1;
+  }
+  return left.getTime() - right.getTime();
+};
+
+const sortWorkflowStepsForProjection = (steps: WorkflowHistoryStepRow[]) =>
+  [...steps].sort((left, right) => {
+    const commandOrder = commandStepOrder(left.stepKey) - commandStepOrder(right.stepKey);
+    if (commandOrder !== 0) {
+      return commandOrder;
+    }
+    const createdOrder = compareNullableDates(left.createdAt, right.createdAt);
+    if (createdOrder !== 0) {
+      return createdOrder;
+    }
+    return left.stepKey.localeCompare(right.stepKey);
+  });
+
+const messagesFromEvents = (events: AgentEvent[]): AgentMessage[] =>
+  events.flatMap((event) => (event.type === "message_end" ? [event.message] : []));
+
+export const buildPiAgentStateSnapshot = (options: {
+  messages: AgentMessage[];
   errorMessage?: string | null;
-  messages?: unknown[];
-  trace?: unknown[];
-  assistant?: AgentMessage | null;
-};
-
-export const isCommandPayload = (value: unknown): value is PiSessionCommandPayload => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const payload = value as { commandId?: unknown; kind?: unknown };
-  if (typeof payload.commandId !== "string" || typeof payload.kind !== "string") {
-    return false;
-  }
-  return ["prompt", "continue", "abort", "steer", "followUp", "complete"].includes(payload.kind);
-};
-
-const asDate = (value: unknown): Date | null => {
-  if (value instanceof Date) {
-    return value;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  return null;
-};
-
-const parseCommandStepResult = (value: unknown): CommandStepResultProjection | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const result = value as Record<string, unknown>;
-  const commandId = result["commandId"];
-  const commandStatus = result["commandStatus"];
-  const stepKey = result["stepKey"];
-  const commandCreatedAt = asDate(result["commandCreatedAt"]);
-  const consumedAt = asDate(result["consumedAt"]);
-  if (
-    typeof commandId !== "string" ||
-    (commandStatus !== "applied" && commandStatus !== "rejected") ||
-    typeof stepKey !== "string" ||
-    !commandCreatedAt ||
-    !consumedAt
-  ) {
-    return null;
-  }
-
-  const rawOutcome = result["outcome"];
-  const outcome =
-    rawOutcome === "completed" || rawOutcome === "errored" || rawOutcome === "aborted"
-      ? rawOutcome
-      : undefined;
-  const rejectionReason = result["rejectionReason"];
-  const turn = result["turn"];
-  const operationIndex = result["operationIndex"];
-  const errorMessage = result["errorMessage"];
-  const messages = result["messages"];
-  const trace = result["trace"];
-
-  return {
-    commandId,
-    commandStatus,
-    rejectionReason: typeof rejectionReason === "string" ? rejectionReason : null,
-    turn: typeof turn === "number" ? turn : null,
-    operationIndex: typeof operationIndex === "number" ? operationIndex : null,
-    stepKey,
-    commandCreatedAt,
-    consumedAt,
-    operationCreatedAt: asDate(result["operationCreatedAt"]) ?? undefined,
-    operationCompletedAt: asDate(result["operationCompletedAt"]) ?? undefined,
-    outcome,
-    errorMessage: typeof errorMessage === "string" ? errorMessage : null,
-    messages: Array.isArray(messages) ? messages : undefined,
-    trace: Array.isArray(trace) ? trace : undefined,
-    assistant: result["assistant"] as AgentMessage | null | undefined,
-  };
-};
-
-const upsertTurn = (turns: PiTurnSummary[], next: PiTurnSummary): PiTurnSummary[] => {
-  const index = turns.findIndex((turn) => turn.turn === next.turn);
-  return index >= 0
-    ? [...turns.slice(0, index), next, ...turns.slice(index + 1)]
-    : [...turns, next];
-};
-
-const getTurn = (turns: PiTurnSummary[], turn: number): PiTurnSummary =>
-  turns.find((entry) => entry.turn === turn) ?? {
-    turn,
-    status: "idle",
-    assistant: null,
-    summary: null,
-    operations: [],
-  };
+}): PiAgentStateSnapshot => ({
+  messages: options.messages,
+  ...(options.errorMessage ? { errorMessage: options.errorMessage } : {}),
+});
 
 export const reconstructSessionProjection = (
   initialMessages: AgentMessage[],
-  events: WorkflowHistoryEventRow[],
+  _events: WorkflowHistoryEventRow[],
   steps: WorkflowHistoryStepRow[],
 ): PiSessionDetailProjection => {
-  let messages = initialMessages;
-  let trace: PiSessionDetailProjection["trace"] = [];
-  let turns: PiTurnSummary[] = [];
-  const commandHistory: PiSessionCommandRecord[] = [];
-  const commandsById = new Map<string, PiSessionCommandPayload>();
+  const messages = [...initialMessages];
+  const events: AgentEvent[] = [];
 
-  for (const event of events) {
-    if (isCommandPayload(event.payload)) {
-      commandsById.set(event.payload.commandId, event.payload);
-    }
-  }
-
-  const commandResults = steps
-    .map((step) => parseCommandStepResult(step.result))
-    .filter((result): result is CommandStepResultProjection => result !== null)
-    .sort((left, right) => left.consumedAt.getTime() - right.consumedAt.getTime());
-
-  for (const result of commandResults) {
-    const command = commandsById.get(result.commandId);
-    if (!command) {
+  for (const step of sortWorkflowStepsForProjection(steps)) {
+    const result = parseAgentRunStepResult(step.result);
+    if (!result) {
       continue;
     }
-
-    commandHistory.push({
-      commandId: result.commandId,
-      kind: command.kind,
-      turn: result.turn,
-      stepKey: result.stepKey,
-      commandStatus: result.commandStatus,
-      rejectionReason: result.rejectionReason,
-      createdAt: result.commandCreatedAt,
-      consumedAt: result.consumedAt,
-    });
-
-    if (result.commandStatus === "rejected") {
-      if (result.turn !== null) {
-        turns = upsertTurn(turns, getTurn(turns, result.turn));
-      }
-      continue;
-    }
-    if (command.kind === "complete") {
-      continue;
-    }
-
-    const turn = result.turn ?? 0;
-    const existingTurn = getTurn(turns, turn);
-    const operationIndex = result.operationIndex ?? existingTurn.operations.length;
-    const assistant = result.assistant === undefined ? existingTurn.assistant : result.assistant;
-    const outcome = result.outcome ?? "completed";
-    const status =
-      command.kind === "abort"
-        ? "aborted"
-        : outcome === "completed"
-          ? "completed"
-          : outcome === "aborted"
-            ? "aborted"
-            : "waiting-to-continue";
-
+    events.push(...getStepEvents(result));
     if (result.messages) {
-      messages = result.messages as PiSessionDetailProjection["messages"];
+      messages.push(...result.messages);
     }
-    if (result.trace) {
-      trace = [...trace, ...(result.trace as PiSessionDetailProjection["trace"])];
-    }
-
-    turns = upsertTurn(turns, {
-      ...existingTurn,
-      status,
-      assistant: assistant ?? null,
-      summary: assistant
-        ? extractAssistantTextFromMessage(assistant) || null
-        : existingTurn.summary,
-      operations: [
-        ...existingTurn.operations,
-        {
-          commandId: result.commandId,
-          turn,
-          operationIndex,
-          kind: command.kind as "prompt" | "continue" | "abort" | "steer" | "followUp",
-          stepKey: result.stepKey,
-          outcome,
-          errorMessage: result.errorMessage ?? null,
-          createdAt: result.operationCreatedAt ?? result.consumedAt,
-          completedAt: result.operationCompletedAt ?? result.consumedAt,
-        },
-      ],
-    });
   }
 
-  return { messages, events: [], trace, turns, commandHistory };
-};
-
-export const projectPendingCommandRecords = (
-  events: WorkflowHistoryEventRow[],
-  consumedRecords: PiSessionCommandRecord[],
-): PiSessionCommandRecord[] => {
-  const consumedIds = new Set(consumedRecords.map((record) => record.commandId));
-  const pendingRecords = events.flatMap((event) => {
-    if (event.consumedByStepKey !== null || !isCommandPayload(event.payload)) {
-      return [];
-    }
-    if (consumedIds.has(event.payload.commandId)) {
-      return [];
-    }
-    return [
-      {
-        commandId: event.payload.commandId,
-        kind: event.payload.kind,
-        turn: null,
-        stepKey: null,
-        commandStatus: "accepted" as const,
-        rejectionReason: null,
-        createdAt: event.createdAt,
-        consumedAt: null,
-      },
-    ];
-  });
-
-  return [...consumedRecords, ...pendingRecords].sort(
-    (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
-  );
+  return { messages: messages.length === 0 ? messagesFromEvents(events) : messages, events };
 };
 
 export const projectSessionDetailState = (
-  liveState: PiAgentLoopLiveState,
+  cursorState: PiAgentLoopCursorState,
   projection: PiSessionDetailProjection,
 ): PiAgentLoopSerializableState => ({
   ...projection,
-  turn: liveState.turn,
-  phase: liveState.phase,
-  waitingFor: liveState.waitingFor,
+  turn: cursorState.turn,
+  phase: cursorState.phase,
+  waitingFor: cursorState.waitingFor,
 });
 
 export const projectSessionDetailFromWorkflowHistory = ({
-  liveState,
+  cursorState,
   initialMessages = [],
   events,
   steps,
 }: {
-  liveState: PiAgentLoopLiveState;
+  cursorState: PiAgentLoopCursorState;
   initialMessages?: AgentMessage[];
   events: WorkflowHistoryEventRow[];
   steps: WorkflowHistoryStepRow[];
-}): PiAgentLoopSerializableState => {
-  const projection = reconstructSessionProjection(initialMessages, events, steps);
-  const detailState = projectSessionDetailState(liveState, projection);
-  detailState.commandHistory = projectPendingCommandRecords(events, detailState.commandHistory);
-  return detailState;
-};
+}): PiAgentLoopSerializableState =>
+  projectSessionDetailState(
+    cursorState,
+    reconstructSessionProjection(initialMessages, events, steps),
+  );

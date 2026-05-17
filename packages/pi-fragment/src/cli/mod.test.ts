@@ -6,6 +6,7 @@ const createActions = (handler: Partial<CliActions>): CliActions => ({
   sessionsList: handler.sessionsList ?? (() => ({})),
   sessionsCreate: handler.sessionsCreate ?? (() => ({})),
   sessionsGet: handler.sessionsGet ?? (() => ({})),
+  sessionsFollow: handler.sessionsFollow ?? (() => ({})),
   sessionsSendMessage: handler.sessionsSendMessage ?? (() => ({})),
 });
 
@@ -171,10 +172,9 @@ describe("fragno-pi CLI", () => {
     expect(parsed.action).toBe("get");
   });
 
-  it("documents the current-run sessions get contract in help", () => {
-    expect(__testing.USAGE).toContain("Only output status/workflow/current-run state fields");
+  it("documents the Pi-shaped sessions get contract in help", () => {
     expect(__testing.USAGE).toContain(
-      "Non-JSON output includes current-run messages, events, trace,",
+      "Only output status, workflow, and compact agent state fields",
     );
   });
 });

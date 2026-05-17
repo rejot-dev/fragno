@@ -1,4 +1,4 @@
-import { NonRetryableError } from "@fragno-dev/workflows";
+import { NonRetryableError } from "@fragno-dev/workflows/workflow";
 
 import {
   Agent,
@@ -7,28 +7,16 @@ import {
   type AgentState,
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
 
-import { PiLogger } from "../../debug-log";
 import type {
   PiAgentDefinition,
-  PiPersistedToolCall,
-  PiPersistedToolResult,
   PiPromptInput,
   PiSession,
   PiToolFactory,
   PiToolFactoryContext,
-  PiToolReplayContext,
   PiToolRegistry,
 } from "../types";
-import {
-  buildStableToolCallKey,
-  buildToolErrorResult,
-  clonePersistedToolCall,
-  createPersistedToolCall,
-  extractToolErrorMessage,
-  takeNextReplaySequence,
-} from "./tool-journal";
 
 export type AgentLoopParams = {
   sessionId: string;
@@ -40,13 +28,10 @@ export type AgentLoopParams = {
 export type PiAgentRunMode = "prompt" | "continue";
 
 export type PiAgentRunResult = {
-  mode: PiAgentRunMode;
   outcome: "completed" | "errored" | "aborted";
   messages: AgentMessage[];
-  trace: AgentEvent[];
-  assistant: AgentMessage | null;
+  events: AgentEvent[];
   errorMessage: string | null;
-  toolJournal: PiPersistedToolCall[];
 };
 
 // --- Stream wrapping ---
@@ -54,13 +39,19 @@ export type PiAgentRunResult = {
 type AgentStreamFn = NonNullable<PiAgentDefinition["streamFn"]>;
 type AgentStreamFnArgs = Parameters<AgentStreamFn>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const isAssistantLikeMessage = (value: unknown): value is AssistantMessage =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  (value as { role?: unknown }).role === "assistant" &&
-  Array.isArray((value as { content?: unknown }).content) &&
-  typeof (value as { stopReason?: unknown }).stopReason === "string";
+  isRecord(value) &&
+  value["role"] === "assistant" &&
+  Array.isArray(value["content"]) &&
+  typeof value["stopReason"] === "string";
+
+type AssistantResultStream = AsyncIterable<AssistantMessageEvent> & {
+  result: () => Promise<AssistantMessage>;
+  push?: (event: AssistantMessageEvent) => void;
+};
 
 const buildStreamErrorAssistantMessage = (
   model: AgentStreamFnArgs[0],
@@ -93,12 +84,12 @@ const wrapStreamFn = (streamFn: PiAgentDefinition["streamFn"]) =>
           return stream;
         }
 
-        const response = stream as { result?: unknown };
-        if (typeof response.result !== "function") {
+        if (!("result" in stream) || typeof stream.result !== "function") {
           return stream;
         }
 
-        const originalResult = response.result.bind(stream) as () => Promise<unknown>;
+        const response: AssistantResultStream = stream;
+        const originalResult = response.result.bind(stream);
         let streamResultError: unknown | undefined;
         response.result = async () => {
           if (streamResultError) {
@@ -117,9 +108,7 @@ const wrapStreamFn = (streamFn: PiAgentDefinition["streamFn"]) =>
           }
 
           const errorMessage = buildStreamErrorAssistantMessage(model, streamResultError);
-          if ("push" in stream && typeof stream.push === "function") {
-            stream.push({ type: "error", reason: "error", error: errorMessage });
-          }
+          response.push?.({ type: "error", reason: "error", error: errorMessage });
           return errorMessage;
         };
 
@@ -147,74 +136,12 @@ const resolveTool = async (
   return factory;
 };
 
-const wrapToolWithReplay = (options: {
-  toolName: string;
-  tool: AgentTool;
-  context: PiToolFactoryContext;
-}): AgentTool => ({
-  ...options.tool,
-  execute: async (toolCallId, params, signal, onUpdate) => {
-    const sessionId = options.context.session.id;
-    const toolCallIdValue = String(toolCallId);
-    const key = buildStableToolCallKey(sessionId, options.context.turnId, toolCallIdValue);
-    const replayEntry = options.context.replay.cache.get(key);
-
-    if (replayEntry) {
-      options.context.replay.journal.push(
-        clonePersistedToolCall({
-          ...replayEntry,
-          source: "replay",
-          seq: takeNextReplaySequence(options.context.replay),
-        }),
-      );
-      PiLogger.debug("tool replay hit", {
-        sessionId,
-        turnId: options.context.turnId,
-        toolName: replayEntry.toolName,
-        key,
-      });
-      if (replayEntry.isError) {
-        throw new Error(extractToolErrorMessage(replayEntry.result));
-      }
-      return structuredClone(replayEntry.result);
-    }
-
-    const argsSnapshot = structuredClone(params) as Record<string, unknown>;
-    const recordResult = (result: PiPersistedToolResult, isError: boolean) => {
-      const entry = createPersistedToolCall({
-        sessionId,
-        turnId: options.context.turnId,
-        toolCallId: toolCallIdValue,
-        toolName: options.toolName,
-        args: argsSnapshot,
-        result,
-        isError,
-        source: "executed",
-        seq: takeNextReplaySequence(options.context.replay),
-      });
-      options.context.replay.cache.set(entry.key, clonePersistedToolCall(entry));
-      options.context.replay.journal.push(clonePersistedToolCall(entry));
-      return entry;
-    };
-
-    try {
-      const result = await options.tool.execute(toolCallId, params, signal, onUpdate);
-      recordResult(structuredClone(result) as PiPersistedToolResult, false);
-      return result;
-    } catch (error) {
-      recordResult(buildToolErrorResult(error), true);
-      throw error;
-    }
-  },
-});
-
 const resolveTools = async (options: {
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
   session: PiSession;
   turnId: string;
   messages: AgentMessage[];
-  replay: PiToolReplayContext;
 }): Promise<AgentTool[]> => {
   const toolNames = options.agent.tools ?? [];
   if (toolNames.length === 0) {
@@ -226,13 +153,11 @@ const resolveTools = async (options: {
     turnId: options.turnId,
     toolConfig: options.agent.toolConfig ?? null,
     messages: options.messages,
-    replay: options.replay,
   };
 
   const resolved: AgentTool[] = [];
   for (const name of toolNames) {
-    const tool = await resolveTool(name, options.tools[name], context);
-    resolved.push(wrapToolWithReplay({ toolName: name, tool, context }));
+    resolved.push(await resolveTool(name, options.tools[name], context));
   }
 
   return resolved;
@@ -291,14 +216,12 @@ const createAgent = async (options: {
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
-  replay: PiToolReplayContext;
-  onEvent?: (event: AgentEvent) => void;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
 }): Promise<{
   agent: Agent;
-  trace: AgentEvent[];
-  assistant: AgentMessage | null;
-  toolJournal: PiPersistedToolCall[];
+  events: AgentEvent[];
   unsubscribe: () => void;
+  pendingOnEvent: Promise<unknown>[];
 }> => {
   const now = new Date();
   const session: PiSession = {
@@ -319,7 +242,6 @@ const createAgent = async (options: {
     session,
     turnId: options.turnId,
     messages: options.messages,
-    replay: options.replay,
   });
 
   const initialState: Partial<AgentState> = {
@@ -347,10 +269,11 @@ const createAgent = async (options: {
 
   agent.steeringMode = options.steeringMode;
 
-  const trace: AgentEvent[] = [];
+  const events: AgentEvent[] = [];
+  const pendingOnEvent: Promise<unknown>[] = [];
   const unsubscribe = agent.subscribe((event) => {
-    trace.push(event);
-    options.onEvent?.(event);
+    events.push(event);
+    pendingOnEvent.push(Promise.resolve(options.onEvent?.(event)));
     if (!options.agent.onEvent) {
       return;
     }
@@ -368,10 +291,9 @@ const createAgent = async (options: {
 
   return {
     agent,
-    trace,
-    assistant: null,
-    toolJournal: options.replay.journal.map(clonePersistedToolCall),
+    events,
     unsubscribe,
+    pendingOnEvent,
   };
 };
 
@@ -404,8 +326,7 @@ export const runAgentTurn = async (options: {
   messages: AgentMessage[];
   steeringMode: "all" | "one-at-a-time";
   turnId: string;
-  replay: PiToolReplayContext;
-  onEvent?: (event: AgentEvent) => void;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
   onController?: (controller: {
     abort(): void;
     steer(input: PiPromptInput): void;
@@ -435,6 +356,7 @@ export const runAgentTurn = async (options: {
 
   try {
     await runAgentOperation(result, options.mode, options.promptInput);
+    await Promise.all(result.pendingOnEvent);
   } finally {
     unsubscribeController();
     result.unsubscribe();
@@ -445,12 +367,9 @@ export const runAgentTurn = async (options: {
   const errorMessage = result.agent.state.errorMessage ?? getAssistantErrorMessage(assistant);
 
   return {
-    mode: options.mode,
     outcome,
     messages: result.agent.state.messages,
-    trace: result.trace,
-    assistant: outcome === "completed" ? assistant : null,
+    events: result.events,
     errorMessage: errorMessage ?? null,
-    toolJournal: options.replay.journal.map(clonePersistedToolCall),
   };
 };

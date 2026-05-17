@@ -1,5 +1,7 @@
+import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 import type { TableToInsertValues } from "@fragno-dev/db/query";
 import type { FragnoId } from "@fragno-dev/db/schema";
+import type { WorkflowStepLivePump } from "@fragno-dev/workflows/step-live-pump";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
 import { instantiate } from "@fragno-dev/core";
@@ -7,7 +9,6 @@ import type { DatabaseAdapter } from "@fragno-dev/db";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
 import { workflowsSchema } from "@fragno-dev/workflows";
-import type { WorkflowLiveStateStore } from "@fragno-dev/workflows";
 
 import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 import {
@@ -272,12 +273,16 @@ type PiFragmentInstance = ReturnType<typeof createPiFragment>;
 type WorkflowsHarness = WorkflowsTestHarness<ReturnType<typeof createTestWorkflows>>;
 
 const changedRouteRoundtripGuard = {
+  maxRoundtrips: 100,
   routes: [
-    { method: "GET" as const, path: "/sessions/:sessionId" },
-    { method: "GET" as const, path: "/sessions/:sessionId/export/pi-jsonl" },
-    { method: "GET" as const, path: "/sessions/:sessionId/active" },
-    { method: "POST" as const, path: "/sessions/:sessionId/command" },
+    { method: "GET", path: "/sessions/:sessionId" },
+    { method: "GET", path: "/sessions/:sessionId/export/pi-jsonl" },
+    { method: "GET", path: "/sessions/:sessionId/events" },
+    { method: "POST", path: "/sessions/:sessionId/command" },
   ],
+} satisfies {
+  maxRoundtrips: number;
+  routes: Array<{ method: "GET" | "POST"; path: string }>;
 };
 
 export type DatabaseFragmentsTest = {
@@ -294,18 +299,18 @@ export type DatabaseFragmentsTest = {
     cleanup: () => Promise<void>;
   };
 };
-export const buildHarness = async (
+type BuildHarnessOptions = {
+  adapter?: SupportedAdapter;
+  wrapWorkflowsService?: (service: WorkflowsHarness["fragment"]["services"]) => PiWorkflowsService;
+  autoTickHooks?: boolean;
+  agentRunner?: PiAgentRunner;
+};
+
+export const buildHarness: (
   config: PiFragmentConfig,
-  options: {
-    adapter?: SupportedAdapter;
-    wrapWorkflowsService?: (
-      service: WorkflowsHarness["fragment"]["services"],
-    ) => PiWorkflowsService;
-    autoTickHooks?: boolean;
-    liveStateStore?: WorkflowLiveStateStore;
-    agentRunner?: PiAgentRunner;
-  } = {},
-): Promise<DatabaseFragmentsTest> => {
+  options?: BuildHarnessOptions,
+) => Promise<DatabaseFragmentsTest> = async (config, options = {}) => {
+  const stepEmissions = new BufferedPumpRegistry<WorkflowStepLivePump>();
   const workflows = createTestWorkflows({
     agents: config.agents,
     tools: config.tools,
@@ -317,11 +322,12 @@ export const buildHarness = async (
     adapter: options.adapter ?? { type: "kysely-sqlite" },
     testBuilder: buildDatabaseFragmentsTest(),
     autoTickHooks: options.autoTickHooks ?? false,
-    fragmentConfig: options.liveStateStore
-      ? {
-          liveState: options.liveStateStore,
-        }
-      : undefined,
+    fragmentConfig: {
+      stepEmissions,
+    },
+    fragmentOptions: {
+      dbRoundtripGuard: changedRouteRoundtripGuard,
+    },
   });
 
   const workflowsService = (

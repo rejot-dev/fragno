@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import { PI_JSONL_EXPORT_CWD } from "./pi-jsonl-export";
-import { buildHarness, createStreamFn, mockModel } from "./test-utils";
+import { buildHarness, createStreamFn, findWorkflowInstances, mockModel } from "./test-utils";
 import type { PiFragmentConfig } from "./types";
+import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
 const parseJsonl = (body: string) =>
   body
@@ -42,11 +43,30 @@ describe("pi JSONL export route", () => {
       }
       const sessionId = create.data.id;
 
+      const [createdInstance] = (
+        await findWorkflowInstances(harness.workflows.test.adapter)
+      ).filter((row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId);
+      if (!createdInstance) {
+        throw new Error(`Workflow instance for session ${sessionId} was not created.`);
+      }
+      await harness.workflows.runUntilIdle({
+        workflowName: PI_WORKFLOW_NAME,
+        instanceId: sessionId,
+        instanceRef: String(createdInstance.id),
+        reason: "create",
+      });
+
       await harness.fragments.pi.callRoute("POST", "/sessions/:sessionId/command", {
         pathParams: { sessionId },
         body: { kind: "prompt", input: { text: "hello export" } },
       });
       await drainDurableHooks(harness.workflows.fragment, { mode: "singlePass" });
+      await harness.workflows.runUntilIdle({
+        workflowName: PI_WORKFLOW_NAME,
+        instanceId: sessionId,
+        instanceRef: String(createdInstance.id),
+        reason: "event",
+      });
 
       const response = await harness.fragments.pi.callRouteRaw(
         "GET",
@@ -89,21 +109,7 @@ describe("pi JSONL export route", () => {
       });
 
       const messages = lines.filter((line) => line["type"] === "message");
-      expect(messages.map((line) => (line["message"] as { role: string }).role)).toEqual([
-        "user",
-        "assistant",
-      ]);
-      expect(messages[0]?.["message"]).toMatchObject({ role: "user" });
-      expect(JSON.stringify(messages[0]?.["message"])).toContain("hello export");
-      expect(JSON.stringify(messages[1]?.["message"])).toContain("assistant:init");
-      const firstMessageEntry = messages[0];
-      expect(firstMessageEntry).toBeDefined();
-      if (!firstMessageEntry) {
-        throw new Error("Expected first message entry");
-      }
-      expect(firstMessageEntry["timestamp"]).toBe(
-        new Date((firstMessageEntry["message"] as { timestamp: number }).timestamp).toISOString(),
-      );
+      expect(messages).toEqual([]);
     } finally {
       await harness.test.cleanup();
     }

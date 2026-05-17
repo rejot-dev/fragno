@@ -28,6 +28,10 @@ export type SessionsGetArgs = {
   statusOnly?: boolean;
 };
 
+export type SessionsFollowArgs = {
+  sessionId: string;
+};
+
 export type SessionsSendMessageArgs = {
   sessionId: string;
   text?: string;
@@ -54,6 +58,10 @@ export type CliActions = {
     args: SessionsGetArgs,
     ctx: CliContext,
   ) => Promise<CliActionResult | void> | CliActionResult | void;
+  sessionsFollow: (
+    args: SessionsFollowArgs,
+    ctx: CliContext,
+  ) => Promise<CliActionResult | void> | CliActionResult | void;
   sessionsSendMessage: (
     args: SessionsSendMessageArgs,
     ctx: CliContext,
@@ -71,6 +79,7 @@ Commands:
   sessions list           List pi-fragment sessions
   sessions create         Create a pi-fragment session
   sessions get            Fetch session detail/status
+  sessions follow         Follow live session events until cancelled or idle
   sessions prompt         Send a prompt command to a session
 
 Global options:
@@ -95,9 +104,10 @@ sessions create:
 
 sessions get:
   -s, --session <id>          Session id (or positional)
-  --status-only               Only output status/workflow/current-run state fields
-                               Non-JSON output includes current-run messages, events, trace,
-                               and turns when present
+  --status-only               Only output status, workflow, and compact agent state fields
+
+sessions follow:
+  -s, --session <id>          Session id (or positional)
 
 sessions prompt:
   -s, --session <id>          Session id (or positional)
@@ -411,16 +421,22 @@ const extractEventPayload = (payload: unknown): string => {
   return compactJson(payload);
 };
 
-const extractTraceDetails = (value: unknown): string => {
-  if (!isRecord(value)) {
-    return toDisplayValue(value);
-  }
+const getAgentDetail = (data: Record<string, unknown>) =>
+  isRecord(data["agent"]) ? data["agent"] : null;
 
-  const { type: _type, timestamp: _timestamp, ...rest } = value;
-  if (Object.keys(rest).length === 0) {
-    return "-";
-  }
-  return truncate(toOneLine(compactJson(rest)), 160);
+const getAgentState = (data: Record<string, unknown>) => {
+  const agent = getAgentDetail(data);
+  return isRecord(agent?.["state"]) ? agent["state"] : null;
+};
+
+const getAgentMessages = (data: Record<string, unknown>): unknown[] => {
+  const state = getAgentState(data);
+  return Array.isArray(state?.["messages"]) ? state["messages"] : [];
+};
+
+const getAgentEvents = (data: Record<string, unknown>): unknown[] => {
+  const agent = getAgentDetail(data);
+  return Array.isArray(agent?.["events"]) ? agent["events"] : [];
 };
 
 const buildSessionsGetTextOutput = (data: unknown): string => {
@@ -434,24 +450,13 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
   if (data["id"] !== undefined) {
     lines.push(`ID       ${toDisplayValue(data["id"])}`);
   }
-  if (data["agent"] !== undefined) {
+  if (data["agentName"] !== undefined) {
+    lines.push(`Agent    ${toDisplayValue(data["agentName"])}`);
+  } else if (data["agent"] !== undefined && !isRecord(data["agent"])) {
     lines.push(`Agent    ${toDisplayValue(data["agent"])}`);
   }
   if (data["status"] !== undefined) {
     lines.push(`Status   ${toDisplayValue(data["status"])}`);
-  }
-  if (data["phase"] !== undefined) {
-    lines.push(`Phase    ${toDisplayValue(data["phase"])}`);
-  }
-  if (data["turn"] !== undefined) {
-    lines.push(`Turn     ${toDisplayValue(data["turn"])}`);
-  }
-  if (data["waitingFor"] !== undefined) {
-    lines.push(
-      `Waiting  ${
-        data["waitingFor"] === null ? "-" : truncate(toOneLine(compactJson(data["waitingFor"])))
-      }`,
-    );
   }
   if (data["steeringMode"] !== undefined) {
     lines.push(`Steering ${toDisplayValue(data["steeringMode"])}`);
@@ -468,8 +473,8 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
     lines.push(`Workflow ${toDisplayValue(workflow["status"])}`);
   }
 
-  if ("messages" in data) {
-    const messages = Array.isArray(data["messages"]) ? data["messages"] : [];
+  const messages = getAgentMessages(data);
+  if (messages.length > 0 || getAgentState(data)) {
     lines.push("");
     lines.push(...buildSection(`Messages (${messages.length})`));
     if (messages.length === 0) {
@@ -486,8 +491,8 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
     }
   }
 
-  if ("events" in data) {
-    const events = Array.isArray(data["events"]) ? data["events"] : [];
+  const events = getAgentEvents(data);
+  if (events.length > 0 || getAgentDetail(data)) {
     lines.push("");
     lines.push(...buildSection(`Events (${events.length})`));
     if (events.length === 0) {
@@ -508,45 +513,6 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
     }
   }
 
-  if ("trace" in data) {
-    const trace = Array.isArray(data["trace"]) ? data["trace"] : [];
-    lines.push("");
-    lines.push(...buildSection(`Trace (${trace.length})`));
-    if (trace.length === 0) {
-      lines.push("(none)");
-    } else {
-      const rows = trace.map((event, index) => {
-        const record = isRecord(event) ? event : null;
-        const type = typeof record?.["type"] === "string" ? record["type"] : "unknown";
-        const timestamp = toTimestampLabel(record?.["timestamp"]);
-        const details = extractTraceDetails(event);
-        return [String(index + 1), type, timestamp, details];
-      });
-      lines.push(buildTableText(["#", "Type", "Timestamp", "Details"], rows));
-    }
-  }
-
-  if ("turns" in data) {
-    const turns = Array.isArray(data["turns"]) ? data["turns"] : [];
-    lines.push("");
-    lines.push(...buildSection(`Turns (${turns.length})`));
-    if (turns.length === 0) {
-      lines.push("(none)");
-    } else {
-      const rows = turns.map((entry) => {
-        const record = isRecord(entry) ? entry : null;
-        const turn = toDisplayValue(record?.["turn"]);
-        const status = toDisplayValue(record?.["status"]);
-        const summary =
-          typeof record?.["summary"] === "string" && record["summary"].trim()
-            ? record["summary"]
-            : extractMessageText(record?.["assistant"]);
-        return [turn || "-", status || "-", truncate(toOneLine(summary || "-"), 160)];
-      });
-      lines.push(buildTableText(["Turn", "Status", "Summary"], rows));
-    }
-  }
-
   return lines.join("\n");
 };
 
@@ -556,6 +522,83 @@ const buildSessionsGetOutput = (data: unknown, json: boolean): CliActionResult =
   }
   return { output: { format: "text", text: buildSessionsGetTextOutput(data) } };
 };
+
+const summarizeEvent = (event: unknown): string => {
+  if (!isRecord(event)) {
+    return toOneLine(toDisplayValue(event));
+  }
+
+  const type = typeof event["type"] === "string" ? event["type"] : "unknown";
+  if (type === "snapshot") {
+    const state = isRecord(event["state"]) ? event["state"] : null;
+    const messages = Array.isArray(state?.["messages"]) ? state["messages"].length : 0;
+    const events = Array.isArray(state?.["events"]) ? state["events"].length : 0;
+    return `snapshot messages=${messages} events=${events}`;
+  }
+  if (type === "message_start" || type === "message_update" || type === "message_end") {
+    const text = extractMessageText(event["message"]);
+    return text ? `${type} ${truncate(toOneLine(text), 500)}` : type;
+  }
+  if (type === "tool_call_start" || type === "tool_call_end") {
+    const name = toDisplayValue(event["name"] ?? event["toolName"] ?? event["tool"]);
+    const id = toDisplayValue(event["toolCallId"] ?? event["id"]);
+    const payload = extractEventPayload(event["payload"] ?? event["result"] ?? event["error"]);
+    return [
+      type,
+      name && `name=${name}`,
+      id && `id=${id}`,
+      payload && truncate(toOneLine(payload), 300),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const details = Object.entries(event)
+    .filter(([key]) => key !== "type" && key !== "createdAt" && key !== "timestamp")
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${truncate(toOneLine(toDisplayValue(value)), 180)}`)
+    .join(" ");
+  return details ? `${type} ${details}` : type;
+};
+
+const formatFollowEvent = (event: unknown, index: number): string => {
+  const record = isRecord(event) ? event : null;
+  const timestamp = toTimestampLabel(record?.["createdAt"] ?? record?.["timestamp"]);
+  return `[${String(index).padStart(3, "0")}] ${timestamp}  ${summarizeEvent(event)}`;
+};
+
+const FOLLOW_RECONNECT_DELAY_MS = 500;
+
+async function* readNdjson(response: Response): AsyncGenerator<unknown> {
+  if (!response.body) {
+    throw new Error("Streaming response has no body.");
+  }
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.trim()) {
+          yield JSON.parse(line);
+        }
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      yield JSON.parse(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 const buildSendMessageOutput = (data: unknown, json: boolean): CliActionResult => {
   if (json) {
@@ -658,17 +701,69 @@ const defaultActions: CliActions = {
     if (!response.ok) {
       return response.error;
     }
+    const responseRecord = isRecord(response.data) ? response.data : null;
+    const agentState = responseRecord ? getAgentState(responseRecord) : null;
     const outputData =
-      args.statusOnly && response.data && typeof response.data === "object"
+      args.statusOnly && responseRecord
         ? {
-            status: (response.data as Record<string, unknown>)["status"],
-            workflow: (response.data as Record<string, unknown>)["workflow"],
-            phase: (response.data as Record<string, unknown>)["phase"],
-            turn: (response.data as Record<string, unknown>)["turn"],
-            waitingFor: (response.data as Record<string, unknown>)["waitingFor"],
+            status: responseRecord["status"],
+            workflow: responseRecord["workflow"],
+            agent: {
+              state: agentState
+                ? {
+                    messages: Array.isArray(agentState["messages"])
+                      ? agentState["messages"].length
+                      : 0,
+                    errorMessage: agentState["errorMessage"],
+                  }
+                : null,
+            },
           }
         : response.data;
     return buildSessionsGetOutput(outputData, ctx.config.json);
+  },
+  sessionsFollow: async (args, ctx) => {
+    const baseError = requireBaseUrl(ctx.config);
+    if (baseError) {
+      return baseError;
+    }
+
+    const path = `/sessions/${encodeURIComponent(args.sessionId)}/events`;
+    const client = buildClient(ctx.config);
+    let index = 0;
+
+    try {
+      while (true) {
+        debugLog(ctx.config, ctx.logger, `request GET ${path}`);
+        const response = await client.request({
+          method: "GET",
+          path,
+          timeoutMs: 24 * 60 * 60 * 1000,
+        });
+        debugLog(ctx.config, ctx.logger, `response ${response.status} GET ${path}`);
+        if (!response.ok) {
+          const body = await readResponseBody(response);
+          return { stderr: formatErrorMessage(response.status, body), exitCode: 2 };
+        }
+
+        for await (const event of readNdjson(response)) {
+          index += 1;
+          ctx.logger.log(ctx.config.json ? JSON.stringify(event) : formatFollowEvent(event, index));
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, FOLLOW_RECONNECT_DELAY_MS));
+        index = 0;
+        ctx.logger.log(
+          ctx.config.json ? JSON.stringify({ type: "reconnected" }) : "--- reconnected ---",
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "The operation was aborted." || message.includes("aborted")) {
+        return {};
+      }
+      return { stderr: message, exitCode: 2 };
+    }
   },
   sessionsSendMessage: async (args, ctx) => {
     const resolved = await resolveMessageText(args);
@@ -1064,9 +1159,21 @@ export async function run(
               break;
             }
             result = await actions.sessionsGet(
-              { sessionId, statusOnly: getBooleanOption(opts, "status-only") },
+              {
+                sessionId,
+                statusOnly: getBooleanOption(opts, "status-only"),
+              },
               ctx,
             );
+            break;
+          }
+          case "follow": {
+            const sessionId = getStringOption(opts, "session") ?? parsed.positionals[0];
+            if (!sessionId) {
+              result = buildErrorResult("Missing required option: --session");
+              break;
+            }
+            result = await actions.sessionsFollow({ sessionId }, ctx);
             break;
           }
           case "prompt": {

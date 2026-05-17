@@ -5,7 +5,7 @@ A Fragno fragment that runs Pi agents using workflow-backed sessions with regist
 ## Features
 
 - Session lifecycle (create, list, fetch)
-- Workflow-backed agent turns with restorable current-run inspection state
+- Workflow-backed Pi agent sessions with restorable `AgentMessage[]` transcripts
 - Registry-driven agent + tool configuration
 - Framework-level tools with optional factories and stateful tool config
 - Minimal API surface for sessions + messages
@@ -68,15 +68,20 @@ Workflows are executed via the workflows fragment durable hook dispatcher. For a
 - `POST /sessions`
 - `GET /sessions`
 - `GET /sessions/:sessionId`
-- `GET /sessions/:sessionId/active`
+- `GET /sessions/:sessionId/events`
 - `GET /sessions/:sessionId/export/pi-jsonl`
 - `POST /sessions/:sessionId/command`
 
 `POST /sessions/:sessionId/command` accepts a discriminated command body such as
 `{ kind: "prompt", input: { text: "hello" } }`, `{ kind: "continue" }`, or
 `{ kind: "complete", reason: "done" }`. It returns `202 Accepted` with a status-only ACK payload.
-Fetch `GET /sessions/:sessionId` to read the restored current-run detail payload (messages, events,
-trace, summaries, phase, and waiting markers) once the workflow processes the command.
+Fetch `GET /sessions/:sessionId` to read the Pi-shaped session detail payload:
+`agent.state.messages` plus persisted `agent.events`. Durable resume is based on the agent
+configuration/system prompt and the latest committed `AgentMessage[]` transcript.
+
+Use `GET /sessions/:sessionId/events` with `Accept: application/x-ndjson` to stream live raw Pi
+`AgentEvent` frames. Fragment-owned stream control frames are limited to `snapshot`, `settled`, and
+`inactive`.
 
 Export a session as a Pi-compatible JSONL file:
 

@@ -51,3 +51,9 @@
 - `example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema.sqlite.ts`
   - Conflict: generated Drizzle relation names differed for existing workflow events while the rebased commit added workflow step emission relations.
   - Resolution: preserved the existing `workflow_event_instanceRef` relation name and added the new workflow step emission relation/list entries.
+
+## `feat(pi-fragment): add lifecycle event routes`
+
+- `packages/pi-fragment/src/pi/types.ts`
+  - Conflict: the command-based sessions commit still defined the older layered active-session protocol messages, while the lifecycle event route commit replaces them with flat session event stream frames (`snapshot`, agent events, abort, steer).
+  - Resolution: kept the new `PiSessionEventStreamItem` union and aliased `PiActiveSessionProtocolMessage` to it for compatibility.
