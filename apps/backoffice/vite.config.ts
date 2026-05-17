@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
   return {
     resolve: {
       tsconfigPaths: true,
+      dedupe: ["react", "react-dom", "react-router"],
       alias: {
         "@/components": path.resolve(__dirname, "./app/components"),
         "@/lib": path.resolve(__dirname, "./app/lib"),

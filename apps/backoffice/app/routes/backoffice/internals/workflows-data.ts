@@ -1,7 +1,8 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
+import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import type { RouterContextProvider } from "react-router";
 
-import type { createWorkflowsFragment, InstanceStatus } from "@fragno-dev/workflows";
+import type { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import { getAutomationsDurableObject, getPiDurableObject } from "@/cloudflare/cloudflare-utils";
 
@@ -58,7 +59,6 @@ export type WorkflowInstanceDetails = {
   };
   meta: {
     workflowName: string;
-    runNumber: number;
     params: unknown;
     createdAt: string | Date;
     updatedAt: string | Date;
@@ -79,10 +79,8 @@ export type WorkflowInstanceDetails = {
     };
   };
   history: {
-    runNumber: number;
     steps: Array<{
       id: string;
-      runNumber: number;
       stepKey: string;
       name: string;
       type: string;
@@ -100,12 +98,20 @@ export type WorkflowInstanceDetails = {
     }>;
     events: Array<{
       id: string;
-      runNumber: number;
       type: string;
       payload: unknown | null;
       createdAt: string | Date;
       deliveredAt: string | Date | null;
       consumedByStepKey: string | null;
+    }>;
+    emissions: Array<{
+      id: string;
+      stepKey: string;
+      epoch: string;
+      sequence: number;
+      actor: string;
+      payload: unknown | null;
+      createdAt: string | Date;
     }>;
   };
 };
@@ -338,7 +344,6 @@ export async function loadWorkflowInstanceDetail(options: {
     },
     meta: {
       workflowName: instanceResponse.data.meta.workflowName,
-      runNumber: instanceResponse.data.meta.runNumber,
       params: instanceResponse.data.meta.params,
       createdAt: instanceResponse.data.meta.createdAt,
       updatedAt: instanceResponse.data.meta.updatedAt,
@@ -347,9 +352,9 @@ export async function loadWorkflowInstanceDetail(options: {
       currentStep: instanceResponse.data.meta.currentStep,
     },
     history: {
-      runNumber: historyResponse.data.runNumber,
       steps: historyResponse.data.steps,
       events: historyResponse.data.events,
+      emissions: historyResponse.data.emissions,
     },
   };
 }

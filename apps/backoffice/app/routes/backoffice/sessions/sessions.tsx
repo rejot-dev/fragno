@@ -133,8 +133,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     if (!session) {
       return;
     }
-    const summary = result?.session?.turns?.at(-1)?.summary ?? null;
-    turnSummaries[session.id] = summary;
+    const messages = result?.session?.agent.state.messages ?? [];
+    const assistantMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    turnSummaries[session.id] = assistantMessage ? "Last assistant response available" : null;
   });
 
   return {
@@ -662,32 +665,18 @@ export default function BackofficeOrganisationPiSessionsLayout() {
       </div>
 
       <div
-        className={`${detailVisibility} flex min-h-0 flex-1 flex-col border border-[color:var(--bo-border)] bg-[var(--bo-panel)]`}
+        className={`${detailVisibility} flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
       >
-        <ScrollArea.Root className="relative flex min-h-0 flex-1 overflow-hidden">
-          <ScrollArea.Viewport className="min-h-0 flex-1 p-4">
-            <ScrollArea.Content className="flex min-h-full flex-col">
-              <Outlet
-                context={{
-                  sessions,
-                  turnSummaries,
-                  harnesses,
-                  selectedSessionId,
-                  basePath,
-                  createSessionPanel,
-                }}
-              />
-            </ScrollArea.Content>
-          </ScrollArea.Viewport>
-          <ScrollArea.Scrollbar
-            orientation="vertical"
-            keepMounted
-            className="flex w-2.5 p-[2px] select-none"
-          >
-            <ScrollArea.Thumb className="w-full rounded-full bg-[rgba(var(--bo-grid),0.45)] transition-colors hover:bg-[rgba(var(--bo-grid),0.65)]" />
-          </ScrollArea.Scrollbar>
-          <ScrollArea.Corner className="bg-transparent" />
-        </ScrollArea.Root>
+        <Outlet
+          context={{
+            sessions,
+            turnSummaries,
+            harnesses,
+            selectedSessionId,
+            basePath,
+            createSessionPanel,
+          }}
+        />
       </div>
     </section>
   );

@@ -70,7 +70,6 @@ export const instancesHistoryCommand = define({
     const response = await client.history({
       workflowName,
       instanceId,
-      runNumber: ctx.values["run"] as number | undefined,
       includeLogs: ctx.values["include-logs"] as boolean | undefined,
       logLevel: ctx.values["log-level"] as string | undefined,
       logCategory: ctx.values["log-category"] as string | undefined,
@@ -80,8 +79,6 @@ export const instancesHistoryCommand = define({
       eventsCursor: ctx.values["events-cursor"] as string | undefined,
       logsCursor: ctx.values["logs-cursor"] as string | undefined,
     });
-
-    console.log(`Run number: ${response.runNumber}`);
 
     console.log("Steps:");
     if (!response.steps.length) {

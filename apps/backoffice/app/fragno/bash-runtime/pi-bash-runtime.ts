@@ -1,9 +1,9 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type {
-  PiActiveSessionProtocolMessage,
   PiSession,
   PiSessionDetail,
+  PiSessionEventStreamItem,
   createPiFragment,
 } from "@fragno-dev/pi-fragment";
 
@@ -61,18 +61,33 @@ export type PiSessionTurnArgs = {
   text: string;
 };
 
-export type PiSessionTurnTerminalFrame = Extract<
-  PiActiveSessionProtocolMessage,
-  { layer: "system"; type: "settled" | "inactive" }
->;
-
 export type PiSessionTurnResult = PiSessionDetail & {
   assistantText: string;
   commandStatus?: PiSession["status"];
   /** @deprecated Use commandStatus. */
   messageStatus: PiSession["status"];
-  stream: PiActiveSessionProtocolMessage[];
-  terminalFrame: PiSessionTurnTerminalFrame;
+  stream: PiSessionEventStreamItem[];
+  /** Agent state after the turn (from session detail fetch). */
+  terminalState: PiSessionDetail["agent"]["state"];
+};
+
+const consumeActiveStream = async (
+  stream: AsyncGenerator<PiSessionEventStreamItem>,
+): Promise<{ frames: PiSessionEventStreamItem[] }> => {
+  const frames: PiSessionEventStreamItem[] = [];
+
+  try {
+    for await (const frame of stream) {
+      frames.push(frame);
+      if ("type" in frame && frame.type === "turn_end") {
+        break;
+      }
+    }
+    return { frames };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Pi active session stream failed: ${message}`);
+  }
 };
 
 export type PiParsedCommandByName = {
@@ -443,13 +458,7 @@ const createPiRouteCaller = (env: CloudflareEnv, orgId: string) => {
   });
 };
 
-const isTerminalTurnFrame = (
-  message: PiActiveSessionProtocolMessage,
-): message is PiSessionTurnTerminalFrame => {
-  return message.layer === "system" && (message.type === "settled" || message.type === "inactive");
-};
-
-const extractAssistantText = (messages: PiSessionDetail["messages"]): string => {
+const extractAssistantText = (messages: PiSessionDetail["agent"]["state"]["messages"]): string => {
   const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
   if (!assistantMessage || !Array.isArray(assistantMessage.content)) {
     return "";
@@ -462,7 +471,7 @@ const extractAssistantText = (messages: PiSessionDetail["messages"]): string => 
     .trim();
 };
 
-const closeActiveStream = async (stream: AsyncGenerator<PiActiveSessionProtocolMessage>) => {
+const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem>) => {
   if (typeof stream.return !== "function") {
     return;
   }
@@ -472,34 +481,6 @@ const closeActiveStream = async (stream: AsyncGenerator<PiActiveSessionProtocolM
   } catch {
     // Best-effort cleanup only.
   }
-};
-
-const consumeActiveStreamUntilTerminal = async (
-  stream: AsyncGenerator<PiActiveSessionProtocolMessage>,
-): Promise<{
-  frames: PiActiveSessionProtocolMessage[];
-  terminalFrame: PiSessionTurnTerminalFrame;
-}> => {
-  const frames: PiActiveSessionProtocolMessage[] = [];
-
-  try {
-    for await (const frame of stream) {
-      frames.push(frame);
-      if (!isTerminalTurnFrame(frame)) {
-        continue;
-      }
-
-      return {
-        frames,
-        terminalFrame: frame,
-      };
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Pi active session stream failed: ${message}`);
-  }
-
-  throw new Error("Pi active session stream ended before emitting a settled or inactive frame");
 };
 
 export const createPiRouteBashRuntime = ({
@@ -577,7 +558,7 @@ export const createPiRouteBashRuntime = ({
         throw new Error("pi.session.turn requires non-empty text");
       }
 
-      const activeRoute = await callRoute("GET", "/sessions/:sessionId/active", {
+      const activeRoute = await callRoute("GET", "/sessions/:sessionId/events", {
         pathParams: { sessionId: normalizedSessionId },
       });
       if (!isSuccessStatus(activeRoute.status)) {
@@ -588,7 +569,7 @@ export const createPiRouteBashRuntime = ({
       }
       if (activeRoute.type !== "jsonStream") {
         throw new Error(
-          `Pi fragment returned ${activeRoute.status}: active session route did not return a jsonStream response`,
+          `Pi fragment returned ${activeRoute.status}: session events route did not return a jsonStream response`,
         );
       }
 
@@ -607,9 +588,7 @@ export const createPiRouteBashRuntime = ({
           });
         }
 
-        const { frames, terminalFrame } = await consumeActiveStreamUntilTerminal(
-          activeRoute.stream,
-        );
+        const { frames } = await consumeActiveStream(activeRoute.stream);
 
         const detailResponse = await callRoute("GET", "/sessions/:sessionId", {
           pathParams: { sessionId: normalizedSessionId },
@@ -624,11 +603,11 @@ export const createPiRouteBashRuntime = ({
         const detail = detailResponse.data;
         return {
           ...detail,
-          assistantText: extractAssistantText(detail.messages),
+          assistantText: extractAssistantText(detail.agent.state.messages),
           commandStatus: promptResponse.data.status,
           messageStatus: promptResponse.data.status,
           stream: frames,
-          terminalFrame,
+          terminalState: detail.agent.state,
         };
       } catch (error) {
         await closeActiveStream(activeRoute.stream);

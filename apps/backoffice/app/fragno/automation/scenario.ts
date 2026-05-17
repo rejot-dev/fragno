@@ -898,18 +898,9 @@ const createDefaultPiTurnResult = (
         waitingFor: null,
         replayCount: 0,
       },
-      {
-        layer: "system",
-        type: "settled",
-        turn: existingTurn,
-        status: "waiting-for-command",
-      },
     ],
-    terminalFrame: {
-      layer: "system",
-      type: "settled",
-      turn: existingTurn,
-      status: "waiting-for-command",
+    terminalState: {
+      messages,
     },
   });
 };

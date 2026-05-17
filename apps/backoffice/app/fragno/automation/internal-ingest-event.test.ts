@@ -651,7 +651,8 @@ describe("automation internalIngestEvent", () => {
       id: sessionId,
       name: "Telegram chat-1",
       status: "waiting" as const,
-      agent: "default::openai::gpt-5-mini",
+      agentName: "default::openai::gpt-5-mini",
+      agent: { state: { messages: [] }, events: [] },
       steeringMode: "one-at-a-time" as const,
       metadata: null,
       tags: ["telegram", "auto-session"],
@@ -660,29 +661,15 @@ describe("automation internalIngestEvent", () => {
       workflow: {
         status: "waiting" as const,
       },
-      messages: [],
-      events: [],
-      trace: [],
-      turns: [],
-      turn: 0,
-      phase: "waiting-for-command" as const,
-      waitingFor: null,
       assistantText: `agent:${text}`,
       messageStatus: "active" as const,
       stream: [
         {
-          layer: "system" as const,
-          type: "settled" as const,
-          turn: 0,
-          status: "waiting-for-command" as const,
+          type: "snapshot" as const,
+          state: { messages: [] },
         },
       ],
-      terminalFrame: {
-        layer: "system" as const,
-        type: "settled" as const,
-        turn: 0,
-        status: "waiting-for-command" as const,
-      },
+      terminalState: { messages: [] },
     }));
 
     const createPiAutomationContext = vi.fn(() => ({

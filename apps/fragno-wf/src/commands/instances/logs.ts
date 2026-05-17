@@ -82,7 +82,6 @@ export const instancesLogsCommand = define({
       const response = await client.history({
         workflowName,
         instanceId,
-        runNumber: ctx.values["run"] as number | undefined,
         includeLogs: true,
         logLevel: ctx.values["log-level"] as string | undefined,
         logCategory: ctx.values["log-category"] as string | undefined,

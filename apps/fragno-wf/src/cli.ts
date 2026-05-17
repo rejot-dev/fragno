@@ -49,10 +49,6 @@ instancesSubCommands.set(
   createManageCommand("resume", "Resume a workflow instance") as Command<Args>,
 );
 instancesSubCommands.set(
-  "restart",
-  createManageCommand("restart", "Restart a workflow instance") as Command<Args>,
-);
-instancesSubCommands.set(
   "terminate",
   createManageCommand("terminate", "Terminate a workflow instance") as Command<Args>,
 );
@@ -126,7 +122,6 @@ const printInstancesHelp = () => {
   console.log("  create                Create an instance");
   console.log("  pause                 Pause an instance");
   console.log("  resume                Resume an instance");
-  console.log("  restart               Restart an instance");
   console.log("  terminate             Terminate an instance");
   console.log("  send-event            Send an event to an instance");
   console.log("");

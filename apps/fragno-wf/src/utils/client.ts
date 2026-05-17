@@ -16,7 +16,6 @@ export type ListInstancesParams = {
 export type HistoryParams = {
   workflowName: string;
   instanceId: string;
-  runNumber?: number;
   pageSize?: number;
   stepsCursor?: string;
   eventsCursor?: string;
@@ -207,7 +206,7 @@ export function createClient(config: ClientConfig) {
     manageInstance: (params: {
       workflowName: string;
       instanceId: string;
-      action: "pause" | "resume" | "restart" | "terminate";
+      action: "pause" | "resume" | "terminate";
     }) =>
       requestJson<{ ok: boolean }>(
         config,
@@ -216,7 +215,6 @@ export function createClient(config: ClientConfig) {
       ),
     history: (params: HistoryParams) =>
       requestJson<{
-        runNumber: number;
         steps: Array<Record<string, unknown>>;
         events: Array<Record<string, unknown>>;
         stepsCursor?: string;
@@ -228,7 +226,6 @@ export function createClient(config: ClientConfig) {
         logsHasNextPage?: boolean;
       }>(config, `/${params.workflowName}/instances/${params.instanceId}/history`, {
         query: {
-          runNumber: params.runNumber,
           pageSize: params.pageSize,
           stepsCursor: params.stepsCursor,
           eventsCursor: params.eventsCursor,

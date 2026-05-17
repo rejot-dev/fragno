@@ -1,4 +1,4 @@
-import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from "react-router";
+import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
@@ -102,7 +102,6 @@ export default function BackofficeWorkflowsOrganisation() {
   const { orgId, organisationName, fragment, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
-  const navigate = useNavigate();
   const params = useParams();
 
   const selectedWorkflowName = params.workflowName ?? null;
@@ -132,7 +131,7 @@ export default function BackofficeWorkflowsOrganisation() {
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
@@ -194,9 +193,9 @@ export default function BackofficeWorkflowsOrganisation() {
         })}
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
         <div
-          className={`${listVisibility} border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+          className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -240,103 +239,61 @@ export default function BackofficeWorkflowsOrganisation() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
-                  <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-                    <thead className="bg-[var(--bo-panel-2)] text-left">
-                      <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                        <th scope="col" className="px-3 py-2">
-                          Workflow
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Status
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Created
-                        </th>
-                        <th scope="col" className="px-3 py-2 text-right">
-                          Detail
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                      {instances.map((instance) => {
-                        const isSelected =
-                          selectedWorkflowName === instance.workflowName &&
-                          selectedInstanceId === instance.instanceId;
-                        const detailPath = `${fragmentBasePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
-                        const detailHref = location.search
-                          ? `${detailPath}${location.search}`
-                          : detailPath;
+                <div className="space-y-2">
+                  {instances.map((instance) => {
+                    const isSelected =
+                      selectedWorkflowName === instance.workflowName &&
+                      selectedInstanceId === instance.instanceId;
+                    const detailPath = `${fragmentBasePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
+                    const detailHref = location.search
+                      ? `${detailPath}${location.search}`
+                      : detailPath;
 
-                        return (
-                          <tr
-                            key={`${instance.workflowName}:${instance.instanceId}`}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`View workflow instance ${instance.workflowName} ${instance.instanceId}`}
-                            onClick={() => navigate(detailHref)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                navigate(detailHref);
+                    return (
+                      <Link
+                        key={`${instance.workflowName}:${instance.instanceId}`}
+                        to={detailHref}
+                        aria-label={`View workflow instance ${instance.workflowName} ${instance.instanceId}`}
+                        className={
+                          isSelected
+                            ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-3 text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                            : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                        }
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p
+                              className={
+                                isSelected
+                                  ? "truncate font-semibold text-[var(--bo-accent-fg)]"
+                                  : "truncate font-semibold text-[var(--bo-fg)]"
                               }
-                            }}
-                            className={
-                              isSelected
-                                ? "cursor-pointer bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                                : "cursor-pointer text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                            }
+                            >
+                              {instance.workflowName}
+                            </p>
+                            <p
+                              className={
+                                isSelected
+                                  ? "mt-1 truncate font-mono text-[11px] text-[var(--bo-accent-fg)]/80"
+                                  : "mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]"
+                              }
+                              title={instance.instanceId}
+                            >
+                              {instance.instanceId}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 border px-2 py-1 text-[9px] tracking-[0.16em] uppercase ${getWorkflowStatusBadgeClasses(instance.status)}`}
                           >
-                            <td className="px-3 py-2">
-                              <div>
-                                <p
-                                  className={
-                                    isSelected
-                                      ? "font-semibold text-[var(--bo-accent-fg)]"
-                                      : "font-semibold text-[var(--bo-fg)]"
-                                  }
-                                >
-                                  {instance.workflowName}
-                                </p>
-                                <p
-                                  className={
-                                    isSelected
-                                      ? "text-xs text-[var(--bo-accent-fg)]/80"
-                                      : "text-xs text-[var(--bo-muted-2)]"
-                                  }
-                                >
-                                  Instance: {instance.instanceId}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span
-                                className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getWorkflowStatusBadgeClasses(instance.status)}`}
-                              >
-                                {instance.status}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              {formatTimestamp(instance.createdAt) || "Unknown"}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Link
-                                to={detailHref}
-                                onClick={(event) => event.stopPropagation()}
-                                className={
-                                  isSelected
-                                    ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
-                                    : "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
-                                }
-                              >
-                                View
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            {instance.status}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[11px] text-[var(--bo-muted-2)]">
+                          {formatTimestamp(instance.createdAt) || "Unknown"}
+                        </p>
+                      </Link>
+                    );
+                  })}
                 </div>
 
                 {warnings.length > 0 ? (
@@ -350,7 +307,7 @@ export default function BackofficeWorkflowsOrganisation() {
         </div>
 
         <div
-          className={`${detailVisibility} border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+          className={`${detailVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
         >
           <Outlet />
         </div>
