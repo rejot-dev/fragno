@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
@@ -67,7 +68,7 @@ export default function BackofficeDurableHooksLanding() {
             <div className="mt-auto pt-4">
               <Link
                 to="/backoffice/internals/durable-hooks/singletons"
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                 className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 Auth
@@ -123,56 +124,56 @@ export default function BackofficeDurableHooksLanding() {
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
                     <Link
                       to={cloudflarePath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Workers
                     </Link>
                     <Link
                       to={telegramPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Telegram
                     </Link>
                     <Link
                       to={resendPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Resend
                     </Link>
                     <Link
                       to={githubPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       GitHub
                     </Link>
                     <Link
                       to={uploadPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Upload
                     </Link>
                     <Link
                       to={piPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Pi
                     </Link>
                     <Link
                       to={piWorkflowsPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Pi workflows
                     </Link>
                     <Link
                       to={automationsPath}
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Automations

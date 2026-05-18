@@ -212,7 +212,7 @@ function BackofficeSidebarLink({
     <NavLink
       to={to}
       end={end}
-      className={({ isActive }) =>
+      className={({ isActive }: { isActive: boolean }) =>
         cn(
           "flex items-center justify-between border px-3 py-2 font-semibold transition-colors",
           variant === "sub" ? "text-xs" : "text-sm",
