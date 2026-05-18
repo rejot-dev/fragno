@@ -125,7 +125,11 @@ function CommandSeparator({
   );
 }
 
-function CommandItem({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Item>) {
+type CommandItemProps = Omit<React.ComponentProps<typeof CommandPrimitive.Item>, "onSelect"> & {
+  onSelect?: (value: string) => void;
+};
+
+function CommandItem({ className, ...props }: CommandItemProps) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"

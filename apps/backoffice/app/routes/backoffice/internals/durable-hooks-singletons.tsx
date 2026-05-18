@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useLoaderData, useNavigate, useParams } from "react-router";
 
@@ -306,7 +307,9 @@ export default function BackofficeDurableHooksSingletons() {
                             <td className="px-3 py-2 text-right">
                               <Link
                                 to={detailHref}
-                                onClick={(event) => event.stopPropagation()}
+                                onClick={(event: ReactMouseEvent<HTMLAnchorElement>) =>
+                                  event.stopPropagation()
+                                }
                                 className={
                                   isSelected
                                     ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"

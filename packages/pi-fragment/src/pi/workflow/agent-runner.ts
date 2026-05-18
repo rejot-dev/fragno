@@ -177,11 +177,10 @@ const getAssistantErrorMessage = (assistant: AgentMessage | null): string | null
     : null;
 };
 
-const getAgentStateErrorMessage = (state: AgentState): string | null => {
-  const maybeState = state as unknown as Record<string, unknown>;
-  const error = maybeState["error"] ?? maybeState["errorMessage"];
-  return typeof error === "string" && error.length > 0 ? error : null;
-};
+const getAgentStateErrorMessage = (state: AgentState): string | null =>
+  typeof state.errorMessage === "string" && state.errorMessage.length > 0
+    ? state.errorMessage
+    : null;
 
 const getRunOutcome = (
   agent: Agent,
