@@ -177,6 +177,12 @@ const getAssistantErrorMessage = (assistant: AgentMessage | null): string | null
     : null;
 };
 
+const getAgentStateErrorMessage = (state: AgentState): string | null => {
+  const maybeState = state as unknown as Record<string, unknown>;
+  const error = maybeState["error"] ?? maybeState["errorMessage"];
+  return typeof error === "string" && error.length > 0 ? error : null;
+};
+
 const getRunOutcome = (
   agent: Agent,
   assistant: AgentMessage | null,
@@ -184,11 +190,8 @@ const getRunOutcome = (
   if (assistant?.role === "assistant" && assistant.stopReason === "aborted") {
     return "aborted";
   }
-  if (typeof agent.state.errorMessage === "string" && agent.state.errorMessage.length > 0) {
-    return agent.signal?.aborted ||
-      (assistant?.role === "assistant" && assistant.stopReason === "aborted")
-      ? "aborted"
-      : "errored";
+  if (getAgentStateErrorMessage(agent.state)) {
+    return "errored";
   }
   if (assistant?.role === "assistant" && assistant.stopReason === "error") {
     return "errored";
@@ -260,7 +263,6 @@ const createAgent = async (options: {
     thinkingBudgets: options.agent.thinkingBudgets,
     maxRetryDelayMs: options.agent.maxRetryDelayMs,
     sessionId: options.params.sessionId,
-    toolExecution: "sequential",
   });
 
   const events: AgentEvent[] = [];
@@ -357,7 +359,8 @@ export const runAgentTurn = async (options: {
 
   const assistant = findLastAssistantMessage(result.agent.state.messages);
   const outcome = getRunOutcome(result.agent, assistant);
-  const errorMessage = result.agent.state.errorMessage ?? getAssistantErrorMessage(assistant);
+  const errorMessage =
+    getAgentStateErrorMessage(result.agent.state) ?? getAssistantErrorMessage(assistant);
 
   return {
     outcome,

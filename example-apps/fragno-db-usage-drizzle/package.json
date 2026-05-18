@@ -39,8 +39,7 @@
     "@fragno-dev/workflows": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "gunshi": "^0.26.3",
-    "kysely-pglite": "^0.6.1",
-    "zod": "^4.3.5"
+    "kysely-pglite": "^0.6.1"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

@@ -14,7 +14,7 @@ import { relationsCommand, relationsSubCommands } from "./commands/relations";
 import { userCommand, userSubCommands } from "./commands/user";
 import { pgFolder } from "./database";
 import { adapter } from "./fragno-adapter";
-import { fragment as authFragment } from "./fragno/auth-fragment";
+import { authFragment } from "./fragno/auth-fragment";
 import { createCommentFragmentServer } from "./fragno/comment-fragment";
 import { createRatingFragmentServer } from "./fragno/rating-fragment";
 import { createWorkflowsFragmentServer } from "./fragno/workflows-fragment";

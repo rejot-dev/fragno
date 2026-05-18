@@ -28,10 +28,11 @@ import {
   resolveRouteFactories,
 } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
-import type { FragnoPublicConfig } from "./shared-types";
+import type { FragnoFragmentSharedConfig, FragnoPublicConfig } from "./shared-types";
 
 // Re-export types needed by consumers
 export type { BoundServices };
+export type { FragnoFragmentSharedConfig } from "./shared-types";
 
 type CallRoutePath<TRoutes extends readonly AnyFragnoRouteConfig[], TMethod extends HTTPMethod> = [
   ExtractRoutePath<TRoutes, TMethod>,
@@ -232,20 +233,6 @@ function joinRoutePath(prefix: string, path: string): string {
   }
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${normalizedPrefix}${normalizedPath}`;
-}
-
-export interface FragnoFragmentSharedConfig<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> {
-  name: string;
-  routes: TRoutes;
 }
 
 /**

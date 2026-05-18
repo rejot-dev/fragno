@@ -16,9 +16,9 @@ import { buildQueryTreeWhere } from "./query-tree-where-builder";
 import { buildWhere } from "./where-builder";
 
 // oxlint-disable-next-line no-explicit-any
-export type AnyKysely = Kysely<any>;
+type AnyKysely = Kysely<any>;
 // oxlint-disable-next-line no-explicit-any
-export type AnySelectQueryBuilder<O = any> = SelectQueryBuilder<any, any, O>;
+type AnySelectQueryBuilder<O = any> = SelectQueryBuilder<any, any, O>;
 
 const CHILD_JSON_COLUMN_ALIAS = "_fragno_item";
 

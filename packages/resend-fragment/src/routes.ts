@@ -31,7 +31,7 @@ import {
 import {
   registerReceivedEmailRoutes,
   type ResendListReceivedEmailsOutput,
-  type ResendReceivedEmailAttachment,
+  type ResendReceivedEmailRecordAttachment,
   type ResendReceivedEmailDetail,
   type ResendReceivedEmailSummary,
   resendListReceivedEmailsOutputSchema,
@@ -111,7 +111,7 @@ export type {
 } from "./routes/emails";
 export type {
   ResendListReceivedEmailsOutput,
-  ResendReceivedEmailAttachment,
+  ResendReceivedEmailRecordAttachment,
   ResendReceivedEmailDetail,
   ResendReceivedEmailSummary,
 } from "./routes/received-emails";

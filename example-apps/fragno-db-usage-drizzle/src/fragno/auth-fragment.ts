@@ -8,4 +8,4 @@ export function createAuthFragmentServer(a: DatabaseAdapter<any>) {
   return createAuthFragment({}, { databaseAdapter: a, databaseNamespace: "auth" });
 }
 
-export const fragment = createAuthFragmentServer(adapter);
+export const authFragment = createAuthFragmentServer(adapter);

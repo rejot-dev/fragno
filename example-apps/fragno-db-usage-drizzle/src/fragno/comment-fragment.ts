@@ -8,4 +8,4 @@ export function createCommentFragmentServer(a: DatabaseAdapter<any>) {
   return createCommentFragment({}, { databaseAdapter: a, outbox: { enabled: true } });
 }
 
-export const fragment = createCommentFragmentServer(adapter);
+export const commentFragment = createCommentFragmentServer(adapter);

@@ -13,7 +13,7 @@ import {
   Tag,
 } from "lucide-react";
 
-import type { FieldType, FieldOptions } from "./types";
+import type { FieldType, FieldOptionValues } from "./types";
 
 /**
  * Configuration for a field type in the form builder.
@@ -23,7 +23,7 @@ export interface FieldTypeConfig {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   description: string;
-  defaultOptions?: FieldOptions;
+  defaultOptions?: FieldOptionValues;
 }
 
 /**

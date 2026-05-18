@@ -5,7 +5,7 @@ import type {
   JsonSchemaProperty,
   UiSchemaElement,
   FieldType,
-  FieldOptions,
+  FieldOptionValues,
 } from "./types";
 
 /**
@@ -116,7 +116,7 @@ function parseSchemaProperty(
 ): FormField {
   const uiOptions = uiElement?.options;
   const fieldType = inferFieldType(prop, uiOptions);
-  const options: FieldOptions = {};
+  const options: FieldOptionValues = {};
 
   if (fieldType === "unsupported") {
     options.rawJsonSchema = JSON.stringify(prop, null, 2);

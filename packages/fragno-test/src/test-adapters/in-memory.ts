@@ -2,8 +2,8 @@ import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
 
 import type { FragnoDatabase } from "@fragno-dev/db";
 
-import { createCommonTestContextMethods } from "..";
 import type { AdapterFactoryResult, InMemoryAdapterConfig, SchemaConfig } from "../adapters";
+import { createCommonTestContextMethods } from "../common-test-context";
 
 export async function createInMemoryAdapter(
   config: InMemoryAdapterConfig,

@@ -94,7 +94,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/cli": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
@@ -102,7 +101,6 @@
     "@types/react": "catalog:",
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
-    "kysely-pglite": "^0.6.1",
     "tsdown": "^0.20.3",
     "tsx": "^4.21.0",
     "vitest": "catalog:"

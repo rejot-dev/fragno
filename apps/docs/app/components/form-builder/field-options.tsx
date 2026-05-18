@@ -5,17 +5,17 @@ import { cn } from "@/lib/utils";
 
 import { getFieldTypeConfig } from "./constants";
 import { EnumValuesEditor } from "./enum-values-editor";
-import type { FieldType, FieldOptions as FieldOptionsType } from "./types";
+import type { FieldType, FieldOptionValues } from "./types";
 
 export interface FieldOptionsProps {
   fieldType: FieldType;
-  options: FieldOptionsType | undefined;
-  onChange: (options: FieldOptionsType) => void;
+  options: FieldOptionValues | undefined;
+  onChange: (options: FieldOptionValues) => void;
   className?: string;
 }
 
 export function FieldOptions({ fieldType, options, onChange, className }: FieldOptionsProps) {
-  const updateOption = <K extends keyof FieldOptionsType>(key: K, value: FieldOptionsType[K]) => {
+  const updateOption = <K extends keyof FieldOptionValues>(key: K, value: FieldOptionValues[K]) => {
     onChange({ ...options, [key]: value });
   };
 

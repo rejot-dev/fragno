@@ -20,7 +20,7 @@ export type FieldType =
 /**
  * Type-specific configuration options for a field.
  */
-export interface FieldOptions {
+export interface FieldOptionValues {
   /** Options for select/dropdown fields */
   enumValues?: string[];
   /** Minimum value for number/integer fields */
@@ -54,7 +54,7 @@ export interface FormField {
   /** Whether the field is required */
   required: boolean;
   /** Type-specific options */
-  options?: FieldOptions;
+  options?: FieldOptionValues;
 }
 
 /**

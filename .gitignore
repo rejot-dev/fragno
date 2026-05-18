@@ -86,6 +86,10 @@ lefthook-local.yml
 # .letta directory files
 .letta/
 
+# Fallow caches
+.fallow/cache.bin
+.fallow/churn.bin
+
 .superset/
 
 

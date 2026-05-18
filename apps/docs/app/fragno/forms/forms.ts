@@ -97,4 +97,4 @@ export function createFormsServer(init: FormsInit) {
 
 export type FormsFragment = ReturnType<typeof createFormsServer>;
 
-export const fragment = createFormsServer({ type: "dry-run" });
+export const formsFragment = createFormsServer({ type: "dry-run" });

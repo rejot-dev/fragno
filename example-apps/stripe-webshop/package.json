@@ -47,7 +47,6 @@
     "@tanstack/react-router-devtools": "^1.151.6",
     "@tanstack/react-router-ssr-query": "^1.151.6",
     "@tanstack/react-start": "^1.153.0",
-    "@tanstack/router-plugin": "^1.151.6",
     "better-auth": "^1.4.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -79,7 +78,6 @@
     "jsdom": "^27.4.0",
     "tsx": "^4.21.0",
     "vite": "catalog:",
-    "vitest": "catalog:",
-    "web-vitals": "^5.1.0"
+    "vitest": "catalog:"
   }
 }

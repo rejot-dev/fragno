@@ -63,6 +63,7 @@ export type {
   ResendListThreadMessagesOutput,
   ResendListThreadsOutput,
   ResendReceivedEmailDetail,
+  ResendReceivedEmailRecordAttachment,
   ResendReceivedEmailSummary,
   ResendSendEmailInput,
   ResendThreadDetail,

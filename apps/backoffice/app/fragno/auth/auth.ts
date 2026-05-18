@@ -91,4 +91,4 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
 
 export type AuthFragment = ReturnType<typeof createAuthServer>;
 
-export const fragment = createAuthServer({ type: "dry-run" });
+export const authFragment = createAuthServer({ type: "dry-run" });

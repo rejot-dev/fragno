@@ -1,0 +1,134 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+
+  // Public API: workspace packages publish entrypoints for external consumers.
+  "publicPackages": ["@fragno-dev/*", "@fragno-private/*", "@fragno-example/*"],
+
+  // False positive: docs snippets intentionally reference a fictional package name.
+  "ignoreDependencies": [
+    "my-fragment",
+    "prettier-plugin-astro",
+    "prettier-plugin-sql",
+    "prettier-plugin-svelte",
+    "prettier-plugin-tailwindcss"
+  ],
+
+  // Tooling config: Prettier plugin names are resolved dynamically by Prettier.
+  "ignorePatterns": ["prettier.unsupported.config.mjs"],
+
+  "duplicates": {
+    "ignore": [
+      // Temporary migration debt: test suites still contain intentional setup repetition.
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+
+      // Generated file: workflow smoke artifacts are fixture programs, not maintained source modules.
+      "packages/fragment-workflows/workflows-smoke-artifacts/**/*.js",
+
+      // Generated file: dialect schema snapshots are generated from the same source schema.
+      "example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema*.ts"
+    ]
+  },
+
+  "health": {
+    // Repo policy: the complexity gate starts at clearly severe hotspots.
+    // Apps/docs/examples are excluded from the repo-wide health gate so library/runtime code can be
+    // rolled in first while dead-code + duplication still cover the whole repo.
+    "maxCyclomatic": 70,
+    "maxCognitive": 60,
+    "maxCrap": 150,
+    "ignore": [
+      // Framework convention / non-library surfaces: do not gate app and example code with repo-wide
+      // library complexity policy in this rollout.
+      "apps/**",
+      "example-apps/**",
+      "example-fragments/**",
+      "specs/**",
+
+      // Generated file / tooling fixtures.
+      "packages/fragment-workflows/workflows-smoke-artifacts/**",
+      "packages-private/oxlint-plugins/**",
+
+      // Temporary migration debt: existing severe hotspots in package code, tracked outside the gate
+      // until they are refactored.
+      "packages/auth/src/oauth/oauth-services.ts",
+      "packages/auth/src/organization/invitation-services.ts",
+      "packages/auth/src/organization/member-services.ts",
+      "packages/cloudflare-fragment/src/definition.ts",
+      "packages/fragment-upload/src/cli/commands/uploads/parts-complete.ts",
+      "packages/fragment-upload/src/cli/commands/uploads/parts-urls.ts",
+      "packages/fragment-upload/src/cli/commands/uploads/transfer.ts",
+      "packages/fragment-upload/src/cli/index.ts",
+      "packages/fragment-upload/src/cli/utils/client.ts",
+      "packages/fragment-upload/src/client/helpers.ts",
+      "packages/fragment-upload/src/routes/files.ts",
+      "packages/fragment-workflows/src/runner/step.ts",
+      "packages/fragment-workflows/src/scenario.ts",
+      "packages/fragno-db/src/adapters/generic-sql/query/where-builder.ts",
+      "packages/fragno-db/src/adapters/in-memory/in-memory-uow.ts",
+      "packages/fragno-db/src/adapters/in-memory/query-tree.ts",
+      "packages/fragno-db/src/db-fragment-definition-builder.ts",
+      "packages/fragno-db/src/query/unit-of-work/execute-unit-of-work.ts",
+      "packages/fragno-db/src/schema-output/drizzle.ts",
+      "packages/fragno-db/src/schema-output/prisma.ts",
+      "packages/fragno-db/src/schema/validator.ts",
+      "packages/fragno-db/src/util/deep-equal.ts",
+      "packages/fragno-test/src/db-test.ts",
+      "packages/fragno/src/api/fragment-instantiator.ts",
+      "packages/fragno/src/api/route-caller.ts",
+      "packages/github-app-fragment/src/cli/index.ts",
+      "packages/github-app-fragment/src/cli/utils/client.ts",
+      "packages/github-app-fragment/src/cli/utils/config.ts",
+      "packages/github-app-fragment/src/github/webhook-processing.ts",
+      "packages/github-app-fragment/src/routes.ts",
+      "packages/lofi/src/adapters/in-memory/query.ts",
+      "packages/lofi/src/adapters/stacked/merge.ts",
+      "packages/lofi/src/cli/client.ts",
+      "packages/lofi/src/cli/index.ts",
+      "packages/lofi/src/query/engine.ts",
+      "packages/pi-fragment/src/cli/mod.ts",
+      "packages/resend-fragment/src/routes/threads.ts",
+      "packages/stripe/src/routes/subscriptions.ts",
+      "packages/telegram-fragment/src/services.ts"
+    ]
+  },
+
+  "audit": {
+    // Temporary migration debt baselines: only new dead-code / duplication regressions fail audit.
+    "deadCodeBaseline": ".fallow/dead-code-baseline.json",
+    "dupesBaseline": ".fallow/dupes-baseline.json"
+  },
+
+  "overrides": [
+    {
+      // False positives: these files intentionally reference host-app aliases, scaffolding placeholders,
+      // build-only modules, or cross-workspace example imports that static repo analysis cannot resolve.
+      "files": [
+        "packages/jsonforms-shadcn-renderers/src/**/*.ts",
+        "packages/jsonforms-shadcn-renderers/src/**/*.tsx",
+        "apps/docs/content/**/*.mdx",
+        "specs/**/*.ts",
+        "packages/create/templates/**/*",
+        "**/*.config.ts",
+        "**/*.config.js",
+        "**/*.config.mjs",
+        "**/*.config.cjs",
+        "**/*.css",
+        "example-apps/**/*.ts",
+        "example-apps/**/*.tsx",
+        "example-apps/**/*.astro",
+        "example-fragments/**/*.ts",
+        "example-fragments/**/*.tsx",
+        "packages/fragment-workflows/workflows-smoke-artifacts/**/*.ts",
+        "apps/fragno-cli/bin/dev.js",
+        "packages/ts-trace-cli/bin/run.js",
+        "packages/ts-trace-cli/vitest.config.ts"
+      ],
+      "rules": {
+        "unresolved-imports": "off"
+      }
+    }
+  ]
+}

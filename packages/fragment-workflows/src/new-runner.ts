@@ -6,7 +6,6 @@ import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { createRunnerState } from "./runner/state";
-import { isTerminalStatus } from "./runner/status";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
@@ -28,6 +27,9 @@ function resolveWorkflowsNamespace(uow: IUnitOfWork): string {
   const ns = uow.forSchema(workflowsSchema).namespace;
   return ns ?? workflowsSchema.name;
 }
+
+const isTerminalRunnerStatus = (status: string) =>
+  status === "complete" || status === "terminated" || status === "errored";
 
 type RunnerTickSelection = {
   instance: WorkflowInstanceRecord | null;
@@ -198,7 +200,7 @@ function planPauseOrTerminal(
   instance: WorkflowInstanceRecord,
   pauseEvents: WorkflowEventRecord[],
 ): RunnerTickPlan | null {
-  if (isTerminalStatus(instance.status) || instance.status === "paused") {
+  if (isTerminalRunnerStatus(instance.status) || instance.status === "paused") {
     return planConsumePauseEvents(pauseEvents);
   }
 
@@ -419,7 +421,7 @@ async function markInstanceErrored(
       if (!instance) {
         return;
       }
-      if (isTerminalStatus(instance.status)) {
+      if (isTerminalRunnerStatus(instance.status)) {
         return;
       }
 

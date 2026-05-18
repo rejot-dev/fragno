@@ -33,8 +33,7 @@
     "@prisma/client": "^6.16.1",
     "better-sqlite3": "^12.5.0",
     "gunshi": "^0.26.3",
-    "kysely": "^0.28.8",
-    "zod": "^4.0.5"
+    "kysely": "^0.28.8"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
