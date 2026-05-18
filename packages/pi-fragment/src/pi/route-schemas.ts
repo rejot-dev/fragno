@@ -2,17 +2,22 @@ import { z } from "zod";
 
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
-import { SESSION_STATUSES, STEERING_MODES } from "./constants";
 import type { PiSessionEventStreamItem } from "./types";
+
+const SESSION_STATUSES = [
+  "active",
+  "paused",
+  "errored",
+  "terminated",
+  "complete",
+  "waiting",
+] as const;
 
 const sessionBaseSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
   status: z.enum(SESSION_STATUSES),
   agent: z.string(),
-  steeringMode: z.enum(STEERING_MODES),
-  metadata: z.any().nullable(),
-  tags: z.array(z.string()),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

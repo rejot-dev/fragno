@@ -124,30 +124,6 @@ describe("fragno-pi CLI", () => {
     expect(logger.error.mock.calls[0]?.[0]).toContain("--text");
   });
 
-  it("rejects invalid steering mode values", async () => {
-    const logger = { log: vi.fn(), error: vi.fn() };
-
-    const exitCode = await run(
-      ["node", "fragno-pi", "sessions", "create", "--agent", "agent-1", "--steering-mode", "nope"],
-      { logger },
-    );
-
-    expect(exitCode).toBe(1);
-    expect(logger.error.mock.calls[0]?.[0]).toContain("Invalid --steering-mode");
-  });
-
-  it("rejects invalid JSON for metadata", async () => {
-    const logger = { log: vi.fn(), error: vi.fn() };
-
-    const exitCode = await run(
-      ["node", "fragno-pi", "sessions", "create", "--agent", "agent-1", "--metadata", "{"],
-      { logger },
-    );
-
-    expect(exitCode).toBe(1);
-    expect(logger.error.mock.calls[0]?.[0]).toContain("Invalid JSON for --metadata");
-  });
-
   it("requires a base URL for request execution", async () => {
     const logger = { log: vi.fn(), error: vi.fn() };
     const previousBaseUrl = process.env["FRAGNO_PI_BASE_URL"];

@@ -214,7 +214,6 @@ const createAgent = async (options: {
   tools: PiToolRegistry;
   params: AgentLoopParams;
   messages: AgentMessage[];
-  steeringMode: "all" | "one-at-a-time";
   turnId: string;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
 }): Promise<{
@@ -229,9 +228,6 @@ const createAgent = async (options: {
     name: null,
     status: "active",
     agent: options.params.agentName,
-    steeringMode: options.steeringMode,
-    metadata: null,
-    tags: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -266,8 +262,6 @@ const createAgent = async (options: {
     sessionId: options.params.sessionId,
     toolExecution: "sequential",
   });
-
-  agent.steeringMode = options.steeringMode;
 
   const events: AgentEvent[] = [];
   const pendingOnEvent: Promise<unknown>[] = [];
@@ -324,7 +318,6 @@ export const runAgentTurn = async (options: {
   agent: PiAgentDefinition;
   tools: PiToolRegistry;
   messages: AgentMessage[];
-  steeringMode: "all" | "one-at-a-time";
   turnId: string;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onController?: (controller: {

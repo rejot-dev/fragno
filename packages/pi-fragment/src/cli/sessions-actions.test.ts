@@ -65,24 +65,7 @@ describe("sessions actions", () => {
 
     const logger = createLogger();
     const exitCode = await run(
-      [
-        "node",
-        "fragno-pi",
-        "sessions",
-        "create",
-        "--agent",
-        "agent-1",
-        "--name",
-        "New Session",
-        "--tag",
-        "alpha",
-        "--tag",
-        "beta",
-        "--metadata",
-        '{"priority":2}',
-        "--steering-mode",
-        "all",
-      ],
+      ["node", "fragno-pi", "sessions", "create", "--agent", "agent-1", "--name", "New Session"],
       { logger },
     );
 
@@ -94,9 +77,6 @@ describe("sessions actions", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       agent: "agent-1",
       name: "New Session",
-      tags: ["alpha", "beta"],
-      metadata: { priority: 2 },
-      steeringMode: "all",
     });
   });
 
@@ -253,7 +233,6 @@ describe("sessions actions", () => {
           name: "Support",
           agentName: "agent-1",
           status: "running",
-          steeringMode: "all",
           createdAt: "2026-03-06T09:00:00.000Z",
           updatedAt: "2026-03-06T09:01:00.000Z",
           workflow: { status: "running" },

@@ -10,9 +10,6 @@ export const piSchema = schema("pi-fragment", (s) => {
         .addColumn("agent", column("string"))
         // Possible statuses: active, paused, errored, terminated, complete, waiting.
         .addColumn("status", column("string"))
-        .addColumn("steeringMode", column("string"))
-        .addColumn("metadata", column("json").nullable())
-        .addColumn("tags", column("json").nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),

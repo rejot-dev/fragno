@@ -20,15 +20,12 @@ import type {
   PiAgentRegistry,
   PiSessionEventStreamItem,
 } from "../types";
-import { createInitialPiAgentLoopState, ensurePiActiveSessionState } from "./active-session";
 import {
   runAgentTurn,
   type AgentLoopParams,
   type PiAgentRunMode,
   type PiAgentRunResult,
 } from "./agent-runner";
-
-export { createInitialPiAgentLoopState, ensurePiActiveSessionState };
 
 export const PI_WORKFLOW_NAME = "agent-loop-workflow";
 
@@ -39,7 +36,6 @@ export type PiAgentRunOptions = {
   agent: PiAgentRegistry[string];
   tools: PiToolRegistry;
   messages: AgentMessage[];
-  steeringMode: "all" | "one-at-a-time";
   turnId: string;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onController?: (controller: {
@@ -233,7 +229,6 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
               agent: agentDefinition,
               tools: options.tools,
               messages,
-              steeringMode: "all",
               turnId: `${event.instanceId}:${turn}`,
               onController: (controller) => {
                 tx.onEvent("command", (event) => {

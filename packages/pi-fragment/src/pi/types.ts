@@ -1,11 +1,7 @@
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import type { TxResult } from "@fragno-dev/db";
-import type {
-  WorkflowsFragmentServices,
-  WorkflowsHistory,
-  WorkflowsHistoryStep,
-} from "@fragno-dev/workflows";
+import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type {
   AgentEvent,
@@ -18,31 +14,24 @@ import type {
 import type { Api, Model } from "@mariozechner/pi-ai";
 
 import type { PiLoggerConfig } from "../debug-log";
-import type { PiSessionStatus, PiSteeringMode } from "./constants";
 import type { PiWorkflowsRegistry } from "./workflow/workflow";
 
-export type WorkflowsService = WorkflowsFragmentServices<PiWorkflowsRegistry>;
+export type PiSessionStatus =
+  | "active"
+  | "paused"
+  | "errored"
+  | "terminated"
+  | "complete"
+  | "waiting";
 
 export type PiSession = {
   id: string;
   name: string | null;
   status: PiSessionStatus;
   agent: string;
-  steeringMode: PiSteeringMode;
-  metadata: unknown;
-  tags: string[];
   createdAt: Date;
   updatedAt: Date;
 };
-
-export type PiSessionCommandId = string;
-export type PiSessionCommandType =
-  | "prompt"
-  | "continue"
-  | "abort"
-  | "steer"
-  | "followUp"
-  | "complete";
 
 export type PiPromptInput = {
   text: string;
@@ -50,146 +39,34 @@ export type PiPromptInput = {
 };
 
 export type PiSessionCommandPayload =
-  | { commandId: PiSessionCommandId; kind: "prompt"; input: PiPromptInput }
-  | { commandId: PiSessionCommandId; kind: "continue" }
-  | { commandId: PiSessionCommandId; kind: "abort"; reason?: string }
-  | { commandId: PiSessionCommandId; kind: "steer"; input: PiPromptInput }
-  | { commandId: PiSessionCommandId; kind: "followUp"; input: PiPromptInput }
-  | { commandId: PiSessionCommandId; kind: "complete"; reason?: string };
-
-export type PiSessionDetailEvent = {
-  id: string;
-  type: string;
-  payload: unknown | null;
-  createdAt: Date;
-  deliveredAt: Date | null;
-  consumedByStepKey: string | null;
-};
-
-export type PiAgentLoopPhase = "waiting-for-command" | "running-agent" | "complete";
+  | { commandId: string; kind: "prompt"; input: PiPromptInput }
+  | { commandId: string; kind: "continue" }
+  | { commandId: string; kind: "abort"; reason?: string }
+  | { commandId: string; kind: "steer"; input: PiPromptInput }
+  | { commandId: string; kind: "followUp"; input: PiPromptInput }
+  | { commandId: string; kind: "complete"; reason?: string };
 
 export type PiAgentStateSnapshot = {
   messages: AgentMessage[];
   errorMessage?: string;
 };
 
-export type PiActiveSessionUpdate =
-  | {
-      type: "event";
-      event: AgentEvent;
-    }
-  | {
-      type: "settled";
-      state: PiAgentStateSnapshot;
-    };
-
-export type PiActiveSessionSubscriber = (update: PiActiveSessionUpdate) => void;
-
-export type PiActiveSessionReplayBuffer = PiActiveSessionUpdate[];
-
-export type PiLiveOperationController = {
-  turn: number;
-  operation: "prompt" | "continue";
-  stepKey: string;
-  abort(): void;
-  steer(input: PiPromptInput): void;
-  followUp(input: PiPromptInput): void;
-};
-
-export type PiLiveInjectionRecord = {
-  commandId: PiSessionCommandId;
-  commandKind: Extract<PiSessionCommandType, "abort" | "steer" | "followUp">;
-  attempted: boolean;
-  controllerPresent: boolean;
-  injected: boolean;
-  turn: number | null;
-  stepKey: string | null;
-  createdAt: Date;
-};
-
-export type PiActiveSessionState = {
-  subscribe: (listener: PiActiveSessionSubscriber) => () => void;
-  publishEvent: (event: AgentEvent) => void;
-  settle: (state: PiAgentStateSnapshot) => void;
-  replay: () => PiActiveSessionUpdate[];
-  exportReplayBuffer: () => PiActiveSessionReplayBuffer;
-  importReplayBuffer: (buffer: PiActiveSessionReplayBuffer) => void;
-  listenerCount: () => number;
-  registerLiveController: (controller: PiLiveOperationController) => void;
-  clearLiveController: (stepKey: string) => void;
-  getLiveController: () => PiLiveOperationController | null;
-  recordLiveInjection: (
-    commandId: PiSessionCommandId,
-    commandKind: Extract<PiSessionCommandType, "abort" | "steer" | "followUp">,
-    input?: PiPromptInput,
-  ) => PiLiveInjectionRecord;
-  getLiveInjection: (commandId: PiSessionCommandId) => PiLiveInjectionRecord | null;
-};
-
-export type PiAgentLoopWaitingFor =
-  | {
-      type: "command";
-      turn: number;
-      stepKey: string;
-      allowedCommands: PiSessionCommandType[];
-      timeoutMs: number | null;
-    }
-  | {
-      type: "agent" | "assistant";
-      turn: number;
-      operation?: "prompt" | "continue";
-      stepKey: string;
-    }
-  | null;
-
-export type PiSessionDetailProjection = {
-  messages: AgentMessage[];
-  events: AgentEvent[];
-};
-
-export type PiAgentLoopCursorState = {
-  turn: number;
-  phase: PiAgentLoopPhase;
-  waitingFor: PiAgentLoopWaitingFor;
-};
-
-export type PiAgentLoopSerializableState = PiSessionDetailProjection & PiAgentLoopCursorState;
-
-export type PiAgentLoopPersistedState = PiAgentLoopCursorState;
-
-export type PiSessionWorkflowStatus = {
-  status: PiSessionStatus;
-  error?: { name: string; message: string };
-  output?: unknown;
-};
-
 export type PiSessionDetail = Omit<PiSession, "agent"> & {
   agentName: string;
-  workflow: PiSessionWorkflowStatus;
+  workflow: {
+    status: PiSessionStatus;
+    error?: { name: string; message: string };
+    output?: unknown;
+  };
   agent: {
     state: PiAgentStateSnapshot;
     events: AgentEvent[];
   };
 };
 
-export type PiAgentLoopState = PiAgentLoopPersistedState & {
-  activeSession?: PiActiveSessionState;
-};
-
 export type PiWorkflowsInstanceStatus = InstanceStatus;
-export type PiWorkflowsHistoryPage = WorkflowsHistory;
-export type PiWorkflowHistoryStep = WorkflowsHistoryStep;
 
-export type PiLiveCommandController = {
-  abort(): void;
-  steer(input: PiPromptInput): void;
-};
-
-export type PiStepEmissionState = {
-  events: AgentEvent[];
-  controller?: PiLiveCommandController | null;
-  onEventHandlers?: Array<(event: PiSessionEventStreamItem) => void | Promise<void>>;
-};
+type WorkflowsService = WorkflowsFragmentServices<PiWorkflowsRegistry>;
 
 export type PiWorkflowsService = Pick<
   WorkflowsService,
@@ -226,8 +103,6 @@ export type PiSessionEventStreamItem =
   | { kind: "abort"; commandId: string; reason?: string }
   | { kind: "steer"; commandId: string; input: PiPromptInput };
 
-export type PiActiveSessionProtocolMessage = PiSessionEventStreamItem;
-
 export type PiToolFactoryContext = {
   session: PiSession;
   turnId: string;
@@ -244,7 +119,6 @@ export type PiToolRegistry = Record<string, PiToolFactory>;
 export interface PiFragmentConfig {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-  defaultSteeringMode?: PiSteeringMode;
   /**
    * Optional logging config for internal pi-fragment diagnostics.
    */
