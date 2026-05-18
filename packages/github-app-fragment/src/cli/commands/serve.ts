@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
 import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
+import type BetterSqlite3Module from "better-sqlite3";
 import { define } from "gunshi";
 import { SqliteDialect } from "kysely";
 
@@ -43,7 +44,7 @@ const resolvePollInterval = (ctx: { values: Record<string, unknown> }) => {
 const loadBetterSqlite3 = () => {
   const requireFn = createRequire(import.meta.url);
   const mod = requireFn("better-sqlite3");
-  return (mod.default ?? mod) as typeof import("better-sqlite3");
+  return (mod.default ?? mod) as typeof BetterSqlite3Module;
 };
 
 const ensureDbDir = (dbPath: string) => {

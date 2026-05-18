@@ -11,8 +11,8 @@ import { internalFragmentDef } from "@fragno-dev/db";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import { createCommonTestContextMethods } from "..";
 import type { AdapterFactoryResult, DrizzlePgliteAdapter, SchemaConfig } from "../adapters";
+import { createCommonTestContextMethods } from "../common-test-context";
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,

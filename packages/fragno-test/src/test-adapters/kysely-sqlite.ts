@@ -6,8 +6,8 @@ import { SQLocalKysely } from "sqlocal/kysely";
 import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
-import { createCommonTestContextMethods } from "..";
 import type { KyselySqliteAdapter, AdapterFactoryResult, SchemaConfig } from "../adapters";
+import { createCommonTestContextMethods } from "../common-test-context";
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,

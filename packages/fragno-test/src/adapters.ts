@@ -5,7 +5,7 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 import type { drizzle } from "drizzle-orm/pglite";
 import type { Kysely } from "kysely";
 
-import type { BaseTestContext } from ".";
+import type { BaseTestContext } from "./common-test-context";
 import type { TestDb } from "./test-db";
 
 export interface KyselySqliteAdapter {

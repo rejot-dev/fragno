@@ -11,13 +11,13 @@ import type {
 } from "@fragno-dev/core";
 import type { DatabaseAdapter, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import type { BaseTestContext } from ".";
 import {
   createAdapter,
   type SupportedAdapter,
   type AdapterContext,
   type SchemaConfig,
 } from "./adapters";
+import type { BaseTestContext } from "./common-test-context";
 import { drainDurableHooks } from "./durable-hooks";
 import type { TestDb } from "./test-db";
 

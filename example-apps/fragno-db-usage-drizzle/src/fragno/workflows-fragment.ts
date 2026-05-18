@@ -79,4 +79,4 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
   return { fragment, dispatcher };
 }
 
-export const { fragment, dispatcher } = createWorkflowsFragmentServer(adapter);
+export const { fragment: workflowsFragment, dispatcher } = createWorkflowsFragmentServer(adapter);

@@ -9,4 +9,4 @@ export function createRatingFragmentServer(a: DatabaseAdapter<any>) {
   return createRatingFragment({}, { databaseAdapter: a, outbox: { enabled: true } });
 }
 
-export const fragment = createRatingFragmentServer(adapter);
+export const ratingFragment = createRatingFragmentServer(adapter);

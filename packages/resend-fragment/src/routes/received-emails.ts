@@ -45,7 +45,9 @@ export const resendListReceivedEmailsOutputSchema = z.object({
   hasNextPage: z.boolean(),
 });
 
-export type ResendReceivedEmailAttachment = z.infer<typeof resendReceivedEmailAttachmentSchema>;
+export type ResendReceivedEmailRecordAttachment = z.infer<
+  typeof resendReceivedEmailAttachmentSchema
+>;
 export type ResendReceivedEmailSummary = z.infer<typeof resendReceivedEmailSummarySchema>;
 export type ResendReceivedEmailDetail = z.infer<typeof resendReceivedEmailDetailSchema>;
 export type ResendListReceivedEmailsOutput = z.infer<typeof resendListReceivedEmailsOutputSchema>;

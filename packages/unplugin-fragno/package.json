@@ -89,7 +89,6 @@
     "unplugin": "^2.3.11"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^4.19.0",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@nuxt/kit": "^4.2.2",

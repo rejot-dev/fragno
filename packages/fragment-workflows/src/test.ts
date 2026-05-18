@@ -12,7 +12,19 @@ import type {
   TestDb,
 } from "@fragno-dev/test";
 
+import type {
+  WorkflowsHistory,
+  WorkflowsHistoryEmission,
+  WorkflowsHistoryEvent,
+  WorkflowsHistoryStep,
+} from "./definition";
 import { workflowsFragmentDefinition } from "./definition";
+export type {
+  WorkflowsHistory,
+  WorkflowsHistoryEmission,
+  WorkflowsHistoryEvent,
+  WorkflowsHistoryStep,
+} from "./definition";
 export type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
 import { runWorkflowsTick } from "./new-runner";
@@ -29,51 +41,6 @@ import type {
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
 } from "./workflow";
-
-export type WorkflowsHistoryStep = {
-  id: string;
-  stepKey: string;
-  parentStepKey: string | null;
-  depth: number;
-  name: string;
-  type: string;
-  status: string;
-  attempts: number;
-  maxAttempts: number;
-  timeoutMs: number | null;
-  nextRetryAt: Date | null;
-  wakeAt: Date | null;
-  waitEventType: string | null;
-  result: unknown | null;
-  error?: { name: string; message: string };
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type WorkflowsHistoryEvent = {
-  id: string;
-  type: string;
-  payload: unknown | null;
-  createdAt: Date;
-  deliveredAt: Date | null;
-  consumedByStepKey: string | null;
-};
-
-export type WorkflowsHistoryEmission = {
-  id: string;
-  stepKey: string;
-  epoch: string;
-  sequence: number;
-  actor: string;
-  payload: unknown | null;
-  createdAt: Date;
-};
-
-export type WorkflowsHistory = {
-  steps: WorkflowsHistoryStep[];
-  events: WorkflowsHistoryEvent[];
-  emissions: WorkflowsHistoryEmission[];
-};
 
 export type WorkflowsTestClock = {
   now: () => Date;

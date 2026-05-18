@@ -36,7 +36,6 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "sqlocal": "^0.15.2",
     "zod": "^4.3.5"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ export type { FormBuilderProps } from "./form-builder";
 
 export type {
   FieldType,
-  FieldOptions as FieldOptionsType,
+  FieldOptionValues as FieldOptionsType,
   FormField,
   FormBuilderState,
   GeneratedSchemas,
