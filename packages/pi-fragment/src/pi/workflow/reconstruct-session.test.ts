@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
-import { reconstructSessionProjection, type WorkflowHistoryStepRow } from "./reconstruct-session";
+import { projectSessionDetailFromWorkflowHistory } from "./reconstruct-session";
+
+type WorkflowHistoryStepRow = Parameters<
+  typeof projectSessionDetailFromWorkflowHistory
+>[0]["steps"][number];
 
 const textMessage = (role: "user" | "assistant", text: string): AgentMessage =>
   ({
@@ -67,15 +71,20 @@ const eventMessageTexts = (events: AgentEvent[]) =>
     return contentTexts(event.message.content);
   });
 
-describe("reconstructSessionProjection", () => {
+const project = (steps: WorkflowHistoryStepRow[]) =>
+  projectSessionDetailFromWorkflowHistory({
+    cursorState: { turn: 0, phase: "waiting-for-command", waitingFor: null },
+    events: [],
+    steps,
+  });
+
+describe("projectSessionDetailFromWorkflowHistory", () => {
   it("rebuilds messages from per-step emissions in command step order", () => {
     const first = agentRunStep("do:command-0-prompt", "how are you?", "I am well.");
     const second = agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
     const third = agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
 
-    const projection = reconstructSessionProjection([], [], [third, second, first]);
-
-    expect(messageTexts(projection.messages)).toEqual([
+    expect(messageTexts(project([third, second, first]).messages)).toEqual([
       "how are you?",
       "I am well.",
       "write me a poem",
@@ -90,9 +99,7 @@ describe("reconstructSessionProjection", () => {
     const second = agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
     const third = agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
 
-    const projection = reconstructSessionProjection([], [], [third, second, first]);
-
-    expect(eventMessageTexts(projection.events)).toEqual([
+    expect(eventMessageTexts(project([third, second, first]).events)).toEqual([
       "how are you?",
       "how are you?",
       "I am well.",

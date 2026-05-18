@@ -1,4 +1,3 @@
-import type { PiSteeringMode } from "./constants";
 import type {
   PiAgentDefinition,
   PiAgentRegistry,
@@ -28,56 +27,54 @@ export const defineAgent = (
   };
 };
 
-export const createPi = () => {
-  const agents: PiAgentRegistry = {};
-  const tools: PiToolRegistry = {};
-  let defaultSteeringMode: PiSteeringMode | undefined;
-  let logging: PiFragmentConfig["logging"];
+export class PiBuilder {
+  readonly #agents: PiAgentRegistry = {};
+  readonly #tools: PiToolRegistry = {};
+  #logging: PiFragmentConfig["logging"];
 
-  const builder = {
-    agent(definition: PiAgentDefinition) {
-      agents[definition.name] = definition;
-      return builder;
-    },
-    agents(registry: PiAgentRegistry) {
-      Object.assign(agents, registry);
-      return builder;
-    },
-    tool(name: string, tool: PiToolFactory) {
-      tools[name] = tool;
-      return builder;
-    },
-    tools(registry: PiToolRegistry) {
-      Object.assign(tools, registry);
-      return builder;
-    },
-    defaultSteeringMode(mode: PiSteeringMode) {
-      defaultSteeringMode = mode;
-      return builder;
-    },
-    logging(config: PiFragmentConfig["logging"]) {
-      logging = config;
-      return builder;
-    },
-    build(): PiRuntime {
-      const agentsSnapshot = { ...agents };
-      const toolsSnapshot = { ...tools };
-      const config: PiFragmentConfig = {
-        agents: agentsSnapshot,
-        tools: toolsSnapshot,
-        defaultSteeringMode,
-        logging,
-      };
-      return {
-        config,
-        workflows: createPiWorkflows({
-          agents: agentsSnapshot,
-          tools: toolsSnapshot,
-          logging,
-        }),
-      };
-    },
-  };
+  agent(definition: PiAgentDefinition): this {
+    this.#agents[definition.name] = definition;
+    return this;
+  }
 
-  return builder;
-};
+  agents(registry: PiAgentRegistry): this {
+    Object.assign(this.#agents, registry);
+    return this;
+  }
+
+  tool(name: string, tool: PiToolFactory): this {
+    this.#tools[name] = tool;
+    return this;
+  }
+
+  tools(registry: PiToolRegistry): this {
+    Object.assign(this.#tools, registry);
+    return this;
+  }
+
+  logging(config: PiFragmentConfig["logging"]): this {
+    this.#logging = config;
+    return this;
+  }
+
+  build(): PiRuntime {
+    const agents = { ...this.#agents };
+    const tools = { ...this.#tools };
+    const config: PiFragmentConfig = {
+      agents,
+      tools,
+      logging: this.#logging,
+    };
+
+    return {
+      config,
+      workflows: createPiWorkflows({
+        agents,
+        tools,
+        logging: this.#logging,
+      }),
+    };
+  }
+}
+
+export const createPi = (): PiBuilder => new PiBuilder();

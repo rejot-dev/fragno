@@ -18,9 +18,6 @@ export type SessionsListArgs = {
 export type SessionsCreateArgs = {
   agent: string;
   name?: string;
-  tags?: string[];
-  metadata?: unknown;
-  steeringMode?: "all" | "one-at-a-time";
 };
 
 export type SessionsGetArgs = {
@@ -37,7 +34,6 @@ export type SessionsSendMessageArgs = {
   text?: string;
   file?: string;
   done?: boolean;
-  steeringMode?: "all" | "one-at-a-time";
 };
 
 export type CliContext = {
@@ -98,9 +94,6 @@ sessions list:
 sessions create:
   --agent <name>              Agent name (required)
   --name <label>              Session label
-  --tag <tag>                 Tag (repeatable)
-  --metadata <json>           Metadata JSON string
-  --steering-mode <mode>      all|one-at-a-time
 
 sessions get:
   -s, --session <id>          Session id (or positional)
@@ -458,9 +451,6 @@ const buildSessionsGetTextOutput = (data: unknown): string => {
   if (data["status"] !== undefined) {
     lines.push(`Status   ${toDisplayValue(data["status"])}`);
   }
-  if (data["steeringMode"] !== undefined) {
-    lines.push(`Steering ${toDisplayValue(data["steeringMode"])}`);
-  }
   if (data["createdAt"] !== undefined) {
     lines.push(`Created  ${toTimestampLabel(data["createdAt"])}`);
   }
@@ -675,16 +665,6 @@ const defaultActions: CliActions = {
     if (args.name) {
       body["name"] = args.name;
     }
-    if (args.tags && args.tags.length > 0) {
-      body["tags"] = args.tags;
-    }
-    if (args.metadata !== undefined) {
-      body["metadata"] = args.metadata;
-    }
-    if (args.steeringMode) {
-      body["steeringMode"] = args.steeringMode;
-    }
-
     const response = await requestJson(ctx.config, ctx.logger, {
       method: "POST",
       path: "/sessions",
@@ -798,9 +778,6 @@ const VALUE_OPTIONS = new Set([
   "limit",
   "agent",
   "name",
-  "tag",
-  "metadata",
-  "steering-mode",
   "session",
   "text",
   "file",
@@ -1026,16 +1003,6 @@ const parseNumberOption = (
   return parsed;
 };
 
-const parseSteeringMode = (value?: string): "all" | "one-at-a-time" | undefined => {
-  if (!value) {
-    return undefined;
-  }
-  if (value === "all" || value === "one-at-a-time") {
-    return value;
-  }
-  throw new Error("Invalid --steering-mode. Expected: all|one-at-a-time");
-};
-
 const resolveRunOptions = (
   loggerOrOptions?: Pick<Console, "log" | "error"> | RunOptions,
 ): RunOptions => {
@@ -1129,24 +1096,10 @@ export async function run(
               result = buildErrorResult("Missing required option: --agent");
               break;
             }
-            const steeringMode = parseSteeringMode(getStringOption(opts, "steering-mode"));
-            const metadataRaw = getStringOption(opts, "metadata");
-            let metadata: unknown;
-            if (metadataRaw) {
-              try {
-                metadata = JSON.parse(metadataRaw);
-              } catch {
-                result = buildErrorResult("Invalid JSON for --metadata");
-                break;
-              }
-            }
             result = await actions.sessionsCreate(
               {
                 agent,
                 name: getStringOption(opts, "name"),
-                tags: getStringArrayOption(opts, "tag"),
-                metadata,
-                steeringMode,
               },
               ctx,
             );

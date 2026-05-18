@@ -8,7 +8,6 @@ import { serviceCalls, type DatabaseRequestContext } from "@fragno-dev/db";
 
 import { PiLogger } from "./debug-log";
 import { piFragmentDefinition } from "./pi/definition";
-import { normalizeSteeringMode, toSessionOutput } from "./pi/mappers";
 import { createPiJsonlExport } from "./pi/pi-jsonl-export";
 import {
   commandAckSchema,
@@ -18,17 +17,17 @@ import {
   sessionEventStreamItemSchema,
 } from "./pi/route-schemas";
 import type {
-  PiAgentLoopSerializableState,
   PiSession,
   PiSessionCommandPayload,
   PiSessionEventStreamItem,
   PiWorkflowsInstanceStatus,
 } from "./pi/types";
 import {
-  buildPiAgentStateSnapshot,
   projectSessionDetailFromWorkflowHistory,
+  type PiAgentLoopCursorState,
+  type PiAgentLoopSerializableState,
 } from "./pi/workflow/reconstruct-session";
-import { createInitialPiAgentLoopState, PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
+import { PI_WORKFLOW_NAME } from "./pi/workflow/workflow";
 import { piSchema } from "./schema";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -81,6 +80,19 @@ type PiSessionDetailSnapshot = {
 };
 
 const LIVE_EVENT_STREAM_TIMEOUT_MS = 60_000;
+const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
+
+const createInitialPiAgentLoopCursorState = (): PiAgentLoopCursorState => ({
+  turn: 0,
+  phase: "waiting-for-command",
+  waitingFor: {
+    type: "command",
+    turn: 0,
+    stepKey: "waitForEvent:wait-command-turn-0-command-0",
+    allowedCommands: ["prompt", "followUp", "complete"],
+    timeoutMs: WAIT_FOR_COMMAND_TIMEOUT_MS,
+  },
+});
 
 const parseBooleanQueryValue = (value: string | null): boolean => {
   const normalized = value?.trim().toLowerCase();
@@ -121,7 +133,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           }
 
           const [workflowStatus, history] = serviceResult;
-          const cursorState = createInitialPiAgentLoopState();
+          const cursorState = createInitialPiAgentLoopCursorState();
           const detailState = projectSessionDetailFromWorkflowHistory({
             cursorState,
             events: history.events,
@@ -134,7 +146,14 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           );
 
           return {
-            session: toSessionOutput(sessionRow),
+            session: {
+              id: sessionRow.id.valueOf(),
+              name: sessionRow.name ?? null,
+              status: sessionRow.status as PiSession["status"],
+              agent: sessionRow.agent,
+              createdAt: sessionRow.createdAt,
+              updatedAt: sessionRow.updatedAt,
+            },
             workflowStatus,
             detailState,
             completedStepKeys,
@@ -175,9 +194,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           agent: z.string(),
           name: z.string().optional(),
           systemMessage: z.string().optional(),
-          metadata: z.any().optional(),
-          tags: z.array(z.string()).optional(),
-          steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
         }),
         outputSchema: sessionBaseSchema,
         errorCodes: ["AGENT_NOT_FOUND", "WORKFLOW_CREATE_FAILED"],
@@ -196,9 +212,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           }
 
           const now = new Date();
-          const steeringMode = normalizeSteeringMode(
-            values.steeringMode ?? config.defaultSteeringMode,
-          );
           const sessionId = createId();
 
           try {
@@ -228,9 +241,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   name: values.name ?? null,
                   agent: agentName,
                   status: "active",
-                  steeringMode,
-                  metadata: values.metadata ?? null,
-                  tags: values.tags ?? null,
                   createdAt: now,
                   updatedAt: now,
                 });
@@ -242,9 +252,6 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               name: values.name ?? null,
               status: "active",
               agent: agentName,
-              steeringMode,
-              metadata: values.metadata ?? null,
-              tags: values.tags ?? [],
               createdAt: now,
               updatedAt: now,
             };
@@ -281,8 +288,16 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             })
             .execute();
 
-          const outputs = sessions.map(toSessionOutput);
-          return json(outputs);
+          return json(
+            sessions.map((session) => ({
+              id: session.id.valueOf(),
+              name: session.name ?? null,
+              status: session.status as PiSession["status"],
+              agent: session.agent,
+              createdAt: session.createdAt,
+              updatedAt: session.updatedAt,
+            })),
+          );
         },
       }),
       defineRoute({
@@ -305,9 +320,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 output: result.workflowStatus.output,
               },
               agent: {
-                state: buildPiAgentStateSnapshot({
-                  messages: result.detailState.messages,
-                }),
+                state: { messages: result.detailState.messages },
                 events: agentEvents,
               },
             });
@@ -396,9 +409,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               const initialEmissions: PiSessionEventStreamItem[] = [
                 {
                   type: "snapshot",
-                  state: buildPiAgentStateSnapshot({
-                    messages: initialDetail.detailState.messages,
-                  }),
+                  state: { messages: initialDetail.detailState.messages },
                 },
                 ...inFlightEvents,
               ];
