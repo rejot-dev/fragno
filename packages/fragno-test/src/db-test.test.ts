@@ -1,12 +1,15 @@
 import { assert, describe, expect, it } from "vitest";
 
+import { createClientBuilder } from "@fragno-dev/core/client";
 import { defineRoute } from "@fragno-dev/core/route";
+import { useFragno } from "@fragno-dev/core/vanilla";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
-import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
+import { createFragmentTestClientConfig } from "./client-flow";
 import { buildDatabaseFragmentsTest } from "./db-test";
 
 // Test schema with users table
@@ -258,6 +261,162 @@ describe("buildDatabaseFragmentsTest", () => {
     expect(test.adapter).toBeDefined();
 
     await test.cleanup();
+  });
+
+  it("should create additional runtimes with isolated fragments on the same database", async () => {
+    const userFragmentDef = defineFragment<{}>("user-fragment")
+      .extend(withDatabase(userSchema))
+      .withDependencies(() => ({
+        state: { count: 0 },
+      }))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          createUser: function (data: { name: string; email: string }) {
+            return this.serviceTx(userSchema)
+              .mutate(({ uow }) => uow.create("users", data))
+              .transform(({ mutateResult }) => ({ ...data, id: mutateResult.valueOf() }))
+              .build();
+          },
+          getUsers: function () {
+            return this.serviceTx(userSchema)
+              .retrieve((uow) =>
+                uow.find("users", (b) => b.whereIndex("idx_users_all", (eb) => eb("id", "!=", ""))),
+              )
+              .transformRetrieve(([users]) => users.map((u) => ({ ...u, id: u.id.valueOf() })))
+              .build();
+          },
+        }),
+      )
+      .build();
+
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
+      .build();
+
+    const additionalRuntime = await test.createAdditionalRuntime();
+
+    expect(additionalRuntime.fragments.user.fragment).not.toBe(fragments.user.fragment);
+    expect(additionalRuntime.fragments.user.deps).not.toBe(fragments.user.deps);
+    expect(additionalRuntime.adapter).not.toBe(test.adapter);
+    expect(additionalRuntime.fragments.user.deps.databaseAdapter).toBe(additionalRuntime.adapter);
+    expect(fragments.user.deps.databaseAdapter).toBe(test.adapter);
+
+    fragments.user.deps.state.count += 1;
+    additionalRuntime.fragments.user.deps.state.count += 1;
+    expect(fragments.user.deps.state.count).toBe(1);
+    expect(additionalRuntime.fragments.user.deps.state.count).toBe(1);
+
+    await fragments.user.fragment.callServices(() =>
+      fragments.user.services.createUser({ name: "Shared DB User", email: "shared@example.com" }),
+    );
+    const users = await additionalRuntime.fragments.user.fragment.callServices(() =>
+      additionalRuntime.fragments.user.services.getUsers(),
+    );
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({ name: "Shared DB User", email: "shared@example.com" });
+
+    const originalFragment = fragments.user.fragment;
+    const originalDeps = fragments.user.deps;
+    const originalAdditionalFragment = additionalRuntime.fragments.user.fragment;
+    const originalAdditionalDeps = additionalRuntime.fragments.user.deps;
+
+    await test.recreateFragments();
+    await additionalRuntime.recreateFragments();
+
+    expect(fragments.user.fragment).not.toBe(originalFragment);
+    expect(fragments.user.deps).not.toBe(originalDeps);
+    expect(additionalRuntime.fragments.user.fragment).not.toBe(originalAdditionalFragment);
+    expect(additionalRuntime.fragments.user.deps).not.toBe(originalAdditionalDeps);
+    expect(fragments.user.deps.state.count).toBe(0);
+    expect(additionalRuntime.fragments.user.deps.state.count).toBe(0);
+    expect(fragments.user.deps.databaseAdapter).toBe(test.adapter);
+    expect(additionalRuntime.fragments.user.deps.databaseAdapter).toBe(additionalRuntime.adapter);
+
+    const usersAfterRecreate = await fragments.user.fragment.callServices(() =>
+      fragments.user.services.getUsers(),
+    );
+    expect(usersAfterRecreate).toHaveLength(1);
+    expect(usersAfterRecreate[0]).toMatchObject({
+      name: "Shared DB User",
+      email: "shared@example.com",
+    });
+
+    await test.cleanup();
+  });
+
+  it("should create additional runtimes with isolated fragments on the same database through clients", async () => {
+    const counterFragmentDef = defineFragment<{}>("counter-client-fragment")
+      .extend(withDatabase(postSchema))
+      .withDependencies(() => ({
+        state: { count: 0 },
+      }))
+      .build();
+
+    const counterRoutes = defineRoutes(counterFragmentDef).create(({ defineRoute, deps }) => [
+      defineRoute({
+        method: "POST",
+        path: "/increment",
+        outputSchema: z.object({ count: z.number() }),
+        handler: async (_input, { json }) => {
+          deps.state.count += 1;
+          return json({ count: deps.state.count });
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/decrement",
+        outputSchema: z.object({ count: z.number() }),
+        handler: async (_input, { json }) => {
+          deps.state.count -= 1;
+          return json({ count: deps.state.count });
+        },
+      }),
+    ]);
+
+    const createCounterClient = (config: Parameters<typeof createClientBuilder>[1]) => {
+      const builder = createClientBuilder(counterFragmentDef, config, [counterRoutes]);
+
+      return {
+        useIncrement: builder.createMutator("POST", "/increment"),
+        useDecrement: builder.createMutator("POST", "/decrement"),
+      };
+    };
+
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "counter",
+        instantiate(counterFragmentDef).withConfig({}).withRoutes([counterRoutes]),
+      )
+      .build();
+
+    try {
+      const additionalRuntime = await test.createAdditionalRuntime();
+      const originalClient = useFragno(
+        createCounterClient(createFragmentTestClientConfig(fragments.counter.fragment)),
+      );
+      const additionalClient = useFragno(
+        createCounterClient(
+          createFragmentTestClientConfig(additionalRuntime.fragments.counter.fragment),
+        ),
+      );
+
+      expect(fragments.counter.deps).not.toBe(additionalRuntime.fragments.counter.deps);
+      expect(fragments.counter.deps.state.count).toBe(0);
+      expect(additionalRuntime.fragments.counter.deps.state.count).toBe(0);
+
+      await expect(originalClient.useIncrement().mutate({})).resolves.toEqual({ count: 1 });
+      await expect(originalClient.useIncrement().mutate({})).resolves.toEqual({ count: 2 });
+      await expect(additionalClient.useDecrement().mutate({})).resolves.toEqual({ count: -1 });
+      await expect(additionalClient.useIncrement().mutate({})).resolves.toEqual({ count: 0 });
+      await expect(originalClient.useDecrement().mutate({})).resolves.toEqual({ count: 1 });
+
+      expect(fragments.counter.deps.state.count).toBe(1);
+      expect(additionalRuntime.fragments.counter.deps.state.count).toBe(0);
+    } finally {
+      await test.cleanup();
+    }
   });
 
   it("should support callRoute with database operations", async () => {

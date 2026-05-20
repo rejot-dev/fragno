@@ -81,10 +81,17 @@ export async function createKyselyPgliteAdapter(
       ormMap.set(namespace, orm);
     }
 
-    return { kysely, adapter, kyselyPglite, ormMap };
+    const createAdditionalAdapter = async () =>
+      new SqlAdapter({
+        dialect: kyselyPglite.dialect,
+        driverConfig: new PGLiteDriverConfig(),
+        uowConfig: config.uowConfig,
+      });
+
+    return { kysely, adapter, kyselyPglite, ormMap, createAdditionalAdapter };
   };
 
-  const { kysely, adapter, kyselyPglite, ormMap } = await createDatabase();
+  const { kysely, adapter, kyselyPglite, ormMap, createAdditionalAdapter } = await createDatabase();
 
   const resetDatabase = async () => {
     if (databasePath && databasePath !== ":memory:") {
@@ -134,5 +141,6 @@ export async function createKyselyPgliteAdapter(
     get adapter() {
       return adapter;
     },
+    createAdditionalAdapter,
   };
 }

@@ -25,7 +25,7 @@ import {
   type InMemoryAdapterOptions,
   type ResolvedInMemoryAdapterOptions,
 } from "./options";
-import { createInMemoryStore, ensureNamespaceStore } from "./store";
+import { createInMemoryStore, ensureNamespaceStore, type InMemoryStore } from "./store";
 
 export type InMemoryUowConfig = UnitOfWorkConfig;
 
@@ -38,11 +38,26 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #schemaByNamespace = new Map<string, { schema: AnySchema; namespace: string | null }>();
 
-  constructor(options: InMemoryAdapterOptions = {}) {
+  constructor(options: InMemoryAdapterOptions = {}, internals?: { store?: InMemoryStore }) {
     this.options = resolveInMemoryAdapterOptions(options);
     this.namingStrategy = options.namingStrategy ?? suffixNamingStrategy;
+    this.#store = internals?.store ?? createInMemoryStore();
     this.#contextStorage = new RequestContextStorage();
     this.options.outbox = getOutboxConfigForAdapter(this);
+  }
+
+  fork(): InMemoryAdapter {
+    return new InMemoryAdapter(
+      {
+        clock: this.options.clock,
+        idGenerator: this.options.idGenerator,
+        internalIdGenerator: this.options.internalIdGenerator,
+        enforceConstraints: this.options.enforceConstraints,
+        btreeOrder: this.options.btreeOrder,
+        namingStrategy: this.namingStrategy,
+      },
+      { store: this.#store },
+    );
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {

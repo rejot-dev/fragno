@@ -40,5 +40,6 @@ export async function createInMemoryAdapter(
     get adapter() {
       return adapter;
     },
+    createAdditionalAdapter: async () => adapter.fork(),
   };
 }

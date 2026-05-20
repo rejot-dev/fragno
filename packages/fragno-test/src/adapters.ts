@@ -65,6 +65,8 @@ export interface AdapterFactoryResult<T extends SupportedAdapter> {
   testContext: InternalTestContext & AdapterContext<T>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: DatabaseAdapter<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createAdditionalAdapter: () => Promise<DatabaseAdapter<any>>;
 }
 
 export async function createAdapter<T extends SupportedAdapter>(

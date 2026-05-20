@@ -82,10 +82,17 @@ export async function createDrizzlePgliteAdapter(
     // oxlint-disable-next-line typescript/no-explicit-any
     const db = drizzle(pglite) as any;
 
-    return { drizzle: db, adapter, ormMap };
+    const createAdditionalAdapter = async () =>
+      new SqlAdapter({
+        dialect,
+        driverConfig: new PGLiteDriverConfig(),
+        uowConfig: config.uowConfig,
+      });
+
+    return { drizzle: db, adapter, ormMap, createAdditionalAdapter };
   };
 
-  const { drizzle: drizzleDb, adapter, ormMap } = await createDatabase();
+  const { drizzle: drizzleDb, adapter, ormMap, createAdditionalAdapter } = await createDatabase();
 
   const resetDatabase = async () => {
     if (databasePath && databasePath !== ":memory:") {
@@ -145,5 +152,6 @@ export async function createDrizzlePgliteAdapter(
     get adapter() {
       return adapter;
     },
+    createAdditionalAdapter,
   };
 }
