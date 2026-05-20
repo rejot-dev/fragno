@@ -65,10 +65,17 @@ export async function createKyselySqliteAdapter(
       ormMap.set(namespace, orm);
     }
 
-    return { kysely, adapter, ormMap };
+    const createAdditionalAdapter = async () =>
+      new SqlAdapter({
+        dialect,
+        driverConfig: new SQLocalDriverConfig(),
+        uowConfig: config.uowConfig,
+      });
+
+    return { kysely, adapter, ormMap, createAdditionalAdapter };
   };
 
-  let { kysely, adapter, ormMap } = await createDatabase();
+  let { kysely, adapter, ormMap, createAdditionalAdapter } = await createDatabase();
 
   const resetDatabase = async () => {
     const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
@@ -102,5 +109,6 @@ export async function createKyselySqliteAdapter(
     get adapter() {
       return adapter;
     },
+    createAdditionalAdapter,
   };
 }

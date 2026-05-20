@@ -19,7 +19,7 @@ import {
 } from "./adapters";
 import type { BaseTestContext } from "./common-test-context";
 import { drainDurableHooks } from "./durable-hooks";
-import type { TestDb } from "./test-db";
+import { createTestDb, type TestDb } from "./test-db";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
 // It's used to represent services after they've been bound to a context
@@ -35,6 +35,7 @@ type FragmentFactoryContext = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: DatabaseAdapter<any>;
   test: BaseTestContext & AdapterContext<SupportedAdapter>;
+  fragments: Record<string, AnyFragmentResult>;
 };
 
 const disableAutoSchedule = <TOptions extends FragnoPublicConfig>(options: TOptions) => {
@@ -250,30 +251,6 @@ interface FragmentBuilderConfig<
 }
 
 /**
- * Configuration for a pre-built fragment instance
- */
-interface FragmentInstanceConfig<
-  TDeps,
-  TServices extends Record<string, unknown>,
-  TServiceThisContext extends RequestThisContext,
-  THandlerThisContext extends RequestThisContext,
-  TRequestStorage,
-  TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
-> {
-  kind: "instance";
-  fragment: FragnoInstantiatedFragment<
-    TRoutes,
-    TDeps,
-    TServices,
-    TServiceThisContext,
-    THandlerThisContext,
-    TRequestStorage,
-    FragnoPublicConfig
-  >;
-  migrateToVersion?: number;
-}
-
-/**
  * Configuration for a fragment factory
  */
 interface FragmentFactoryConfig {
@@ -289,13 +266,35 @@ interface FragmentFactoryConfig {
 /**
  * Test context combining base and adapter-specific functionality
  */
+export interface AdditionalFragmentRuntime<
+  TFragments extends Record<string, AnyFragmentResult>,
+  TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
+> {
+  fragments: TFragments;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: DatabaseAdapter<any>;
+  recreateFragments: () => Promise<void>;
+  /**
+   * Execute a callback within this runtime's first fragment request context.
+   */
+  inContext<TResult>(callback: (this: TFirstFragmentThisContext) => TResult): TResult;
+  inContext<TResult>(
+    callback: (this: TFirstFragmentThisContext) => Promise<TResult>,
+  ): Promise<TResult>;
+}
+
 type TestContext<
   T extends SupportedAdapter,
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
 > = BaseTestContext &
   AdapterContext<T> & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     adapter: DatabaseAdapter<any>;
+    createAdditionalRuntime: () => Promise<
+      AdditionalFragmentRuntime<TFragments, TFirstFragmentThisContext>
+    >;
+    recreateFragments: () => Promise<void>;
     /**
      * Execute a callback within the first fragment's request context.
      * This is useful for calling services outside of route handlers in tests.
@@ -315,27 +314,15 @@ interface DatabaseFragmentsTestResult<
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
   fragments: TFragments;
-  test: TestContext<TAdapter, TFirstFragmentThisContext>;
+  test: TestContext<TAdapter, TFirstFragmentThisContext, TFragments>;
 }
 
 /**
  * Internal storage for fragment configurations
  */
-type AnyFragmentInstanceConfig = FragmentInstanceConfig<
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any // eslint-disable-line @typescript-eslint/no-explicit-any
->;
-
 type AnyFragmentFactoryConfig = FragmentFactoryConfig;
 
-type AnyFragmentConfig =
-  | AnyFragmentBuilderConfig
-  | AnyFragmentInstanceConfig
-  | AnyFragmentFactoryConfig;
+type AnyFragmentConfig = AnyFragmentBuilderConfig | AnyFragmentFactoryConfig;
 
 type FragmentConfigMap = Map<string, AnyFragmentConfig>;
 
@@ -437,55 +424,6 @@ export class DatabaseFragmentsTestBuilder<
   }
 
   /**
-   * Add a pre-built fragment instance to the test setup
-   *
-   * @param name - Unique name for the fragment
-   * @param fragment - Already-built fragment instance
-   */
-  withFragmentInstance<
-    TName extends string,
-    TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
-    TDeps,
-    TServices extends Record<string, unknown>,
-    TServiceThisContext extends RequestThisContext,
-    THandlerThisContext extends RequestThisContext,
-    TRequestStorage,
-  >(
-    name: TName,
-    fragment: FragnoInstantiatedFragment<
-      TRoutes,
-      TDeps,
-      TServices,
-      TServiceThisContext,
-      THandlerThisContext,
-      TRequestStorage,
-      FragnoPublicConfig
-    >,
-    options?: { migrateToVersion?: number },
-  ): DatabaseFragmentsTestBuilder<
-    TFragments & {
-      [K in TName]: FragmentResult<
-        TDeps,
-        BoundServices<TServices>,
-        TServiceThisContext,
-        THandlerThisContext,
-        TRequestStorage,
-        TRoutes
-      >;
-    },
-    TAdapter,
-    keyof TFragments extends never ? THandlerThisContext : TFirstFragmentThisContext
-  > {
-    this.#fragments.set(name, {
-      kind: "instance",
-      fragment,
-      migrateToVersion: options?.migrateToVersion,
-    });
-
-    return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  }
-
-  /**
    * Add a fragment factory to the test setup.
    * The factory runs after the adapter is created.
    *
@@ -537,7 +475,7 @@ export class DatabaseFragmentsTestBuilder<
 
     if (this.#fragments.size === 0) {
       throw new Error(
-        "At least one fragment must be added using withFragment(), withFragmentFactory(), or withFragmentInstance().",
+        "At least one fragment must be added using withFragment() or withFragmentFactory().",
       );
     }
 
@@ -551,7 +489,7 @@ export class DatabaseFragmentsTestBuilder<
     const schemaConfigs: SchemaConfig[] = [];
     const fragmentPlans: Array<{
       name: string;
-      kind: "builder" | "instance" | "factory";
+      kind: "builder" | "factory";
       schema: AnySchema;
       namespace: string | null;
       migrateToVersion?: number;
@@ -566,8 +504,6 @@ export class DatabaseFragmentsTestBuilder<
         options: any;
       };
       factory?: FragmentFactoryConfig["factory"];
-      cachedFactoryResult?: FragmentFactoryResult;
-      fragment?: AnyFragnoInstantiatedFragment;
     }> = [];
 
     const extractSchemaFromDefinition = (
@@ -705,39 +641,12 @@ export class DatabaseFragmentsTestBuilder<
 
         continue;
       }
-
-      const fragment = fragmentConfig.fragment;
-      const deps = fragment.$internal?.deps as
-        | {
-            schema?: AnySchema;
-            namespace?: string | null;
-          }
-        | undefined;
-
-      if (!deps?.schema) {
-        throw new Error(
-          `Fragment '${name}' does not have a database schema in deps. ` +
-            `Make sure you're using defineFragment().extend(withDatabase(schema)).`,
-        );
-      }
-
-      schemaConfigs.push({
-        schema: deps.schema,
-        namespace: deps.namespace ?? null,
-        migrateToVersion: fragmentConfig.migrateToVersion,
-      });
-
-      fragmentPlans.push({
-        name,
-        kind: "instance",
-        schema: deps.schema,
-        namespace: deps.namespace ?? null,
-        migrateToVersion: fragmentConfig.migrateToVersion,
-        fragment,
-      });
     }
 
-    const { testContext, adapter } = await createAdapter(adapterConfig, schemaConfigs);
+    const { testContext, adapter, createAdditionalAdapter } = await createAdapter(
+      adapterConfig,
+      schemaConfigs,
+    );
 
     const resolveDbRoundtripGuardOption = (options: unknown) => {
       if (options && typeof options === "object") {
@@ -750,12 +659,16 @@ export class DatabaseFragmentsTestBuilder<
       return this.#dbRoundtripGuard;
     };
 
-    const mergeBuilderOptions = (options: unknown) => {
+    const mergeBuilderOptions = (
+      options: unknown,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runtimeAdapter: DatabaseAdapter<any>,
+    ) => {
       const resolvedOptions = disableAutoSchedule((options ?? {}) as FragnoPublicConfig);
       const resolvedOptionsRecord = resolvedOptions as unknown as Record<string, unknown>;
       const merged = {
         ...resolvedOptionsRecord,
-        databaseAdapter: adapter,
+        databaseAdapter: runtimeAdapter,
       } as Record<string, unknown>;
       const guardOption = resolveDbRoundtripGuardOption(resolvedOptions);
       if (guardOption !== undefined) {
@@ -765,7 +678,25 @@ export class DatabaseFragmentsTestBuilder<
     };
 
     // Helper to create fragments with service wiring
-    const createFragments = () => {
+    const createFragments = (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runtimeAdapter: DatabaseAdapter<any>,
+    ) => {
+      const runtimeDbs = new Map<string | null, TestDb>();
+      const getRuntimeDb = (schema: AnySchema, namespace: string | null) => {
+        const key = namespace;
+        const existing = runtimeDbs.get(key);
+        if (existing) {
+          return existing;
+        }
+        const db = createTestDb(() => runtimeAdapter.createQueryEngine(schema, namespace));
+        runtimeDbs.set(key, db);
+        return db;
+      };
+      const factoryTestContext = {
+        ...testContext,
+        adapter: runtimeAdapter,
+      } as BaseTestContext & AdapterContext<SupportedAdapter>;
       const resolveBuilderConfig = (builder: AnyFragmentBuilderConfig["builder"]) => ({
         builder,
         definition: builder.definition,
@@ -785,23 +716,19 @@ export class DatabaseFragmentsTestBuilder<
       const providedServicesByName: Record<string, { service: any }> = {};
       const instanceResults = new Map<string, any>(); // eslint-disable-line @typescript-eslint/no-explicit-any
       const builderConfigs = new Map<string, ReturnType<typeof resolveBuilderConfig>>();
+      const preliminaryFragments: Record<string, AnyFragmentResult> = {};
 
       for (const plan of fragmentPlans) {
-        const db = testContext.getDb(plan.namespace);
+        const db = getRuntimeDb(plan.schema, plan.namespace);
         let fragment: AnyFragnoInstantiatedFragment | undefined;
         let builderConfig = plan.builderConfig;
 
         if (plan.kind === "factory") {
-          const result =
-            plan.cachedFactoryResult ??
-            plan.factory!({
-              adapter,
-              test: testContext,
-            });
-
-          if (!plan.cachedFactoryResult) {
-            plan.cachedFactoryResult = result;
-          }
+          const result = plan.factory!({
+            adapter: runtimeAdapter,
+            test: factoryTestContext,
+            fragments: preliminaryFragments,
+          });
 
           if (isBuilder(result)) {
             builderConfig = resolveBuilderConfig(result);
@@ -814,20 +741,18 @@ export class DatabaseFragmentsTestBuilder<
 
         if (usesBuilder) {
           const resolvedBuilderConfig = builderConfig ?? plan.builderConfig!;
-          const mergedOptions = mergeBuilderOptions(resolvedBuilderConfig.options);
+          const mergedOptions = mergeBuilderOptions(resolvedBuilderConfig.options, runtimeAdapter);
 
           fragment = resolvedBuilderConfig.builder.withOptions(mergedOptions).build();
           builderConfigs.set(plan.name, resolvedBuilderConfig);
         } else {
-          fragment = fragment ?? plan.fragment!;
-
-          const deps = fragment.$internal?.deps as
+          const deps = fragment?.$internal?.deps as
             | { databaseAdapter?: DatabaseAdapter<unknown> }
             | undefined;
-          if (deps?.databaseAdapter && deps.databaseAdapter !== adapter) {
+          if (deps?.databaseAdapter && deps.databaseAdapter !== runtimeAdapter) {
             throw new Error(
               `Fragment '${plan.name}' was built with a different database adapter instance. ` +
-                `Use withFragment() or ensure the fragment uses the same adapter instance as the test builder.`,
+                `Use the adapter passed to withFragmentFactory() when building additional runtimes.`,
             );
           }
         }
@@ -844,15 +769,17 @@ export class DatabaseFragmentsTestBuilder<
           };
         }
 
+        const preliminaryResult = {
+          fragment,
+          services: fragment.services,
+          deps: fragment.$internal?.deps || {},
+          callRoute: fragment.callRoute.bind(fragment),
+          db,
+        };
+        preliminaryFragments[plan.name] = preliminaryResult;
+
         if (!usesBuilder) {
-          const deps = fragment.$internal?.deps;
-          instanceResults.set(plan.name, {
-            fragment,
-            services: fragment.services,
-            deps: deps || {},
-            callRoute: fragment.callRoute.bind(fragment),
-            db,
-          });
+          instanceResults.set(plan.name, preliminaryResult);
         }
       }
 
@@ -860,7 +787,7 @@ export class DatabaseFragmentsTestBuilder<
       const fragmentResults: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
       for (const plan of fragmentPlans) {
-        const db = testContext.getDb(plan.namespace);
+        const db = getRuntimeDb(plan.schema, plan.namespace);
 
         if (instanceResults.has(plan.name)) {
           fragmentResults.push(instanceResults.get(plan.name));
@@ -889,13 +816,18 @@ export class DatabaseFragmentsTestBuilder<
         }
 
         // Merge builder options with database adapter
-        const mergedOptions = mergeBuilderOptions(builderConfig.options);
+        const mergedOptions = mergeBuilderOptions(builderConfig.options, runtimeAdapter);
 
-        // Rebuild the fragment with service implementations using the builder
-        const fragment = builderConfig.builder
-          .withOptions(mergedOptions)
-          .withServices(serviceImplementations as any) // eslint-disable-line @typescript-eslint/no-explicit-any
-          .build();
+        // Rebuild the fragment with service implementations using the builder.
+        // Avoid calling withServices({}) when no service dependencies were resolved: the builder may
+        // already carry explicit services supplied by a factory.
+        const builderWithOptions = builderConfig.builder.withOptions(mergedOptions);
+        const fragment =
+          Object.keys(serviceImplementations).length > 0
+            ? builderWithOptions
+                .withServices(serviceImplementations as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+                .build()
+            : builderWithOptions.build();
 
         const deps = fragment.$internal?.deps;
 
@@ -911,43 +843,81 @@ export class DatabaseFragmentsTestBuilder<
       return fragmentResults;
     };
 
-    const fragmentResults = createFragments();
+    const runtimes: AdditionalFragmentRuntime<TFragments, TFirstFragmentThisContext>[] = [];
 
-    // Wrap resetDatabase to also recreate all fragments
-    const originalResetDatabase = testContext.resetDatabase;
-    const resetDatabase = async () => {
-      await originalResetDatabase();
-
-      // Recreate all fragments with service wiring
-      const newFragmentResults = createFragments();
-
-      // Update the result objects
-      newFragmentResults.forEach((newResult, index) => {
-        const result = fragmentResults[index]!;
+    const updateFragmentResults = (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      targetResults: any[],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      newResults: any[],
+    ) => {
+      newResults.forEach((newResult, index) => {
+        const result = targetResults[index]!;
         result.fragment = newResult.fragment;
         result.services = newResult.services;
         result.deps = newResult.deps;
         result.callRoute = newResult.callRoute;
+        result._orm = newResult._orm;
       });
     };
 
-    // Get the first fragment's inContext method
-    const firstFragment = fragmentResults[0]?.fragment;
-    if (!firstFragment) {
-      throw new Error("At least one fragment must be added");
-    }
+    const createRuntime = (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      runtimeAdapter: DatabaseAdapter<any>,
+    ): AdditionalFragmentRuntime<TFragments, TFirstFragmentThisContext> => {
+      const fragmentResults = createFragments(runtimeAdapter);
+      const firstFragment = fragmentResults[0]?.fragment;
+      if (!firstFragment) {
+        throw new Error("At least one fragment must be added");
+      }
+
+      const fragmentsObject = Object.fromEntries(
+        fragmentNames.map((name, index) => [name, fragmentResults[index]]),
+      ) as TFragments;
+
+      const runtime: AdditionalFragmentRuntime<TFragments, TFirstFragmentThisContext> = {
+        fragments: fragmentsObject,
+        adapter: runtimeAdapter,
+        async recreateFragments() {
+          updateFragmentResults(fragmentResults, createFragments(runtimeAdapter));
+        },
+        inContext(callback) {
+          const currentFirstFragment = fragmentResults[0]?.fragment;
+          if (!currentFirstFragment) {
+            throw new Error("At least one fragment must be added");
+          }
+          return currentFirstFragment.inContext(callback as never) as never;
+        },
+      };
+
+      runtimes.push(runtime);
+      return runtime;
+    };
+
+    const initialRuntime = createRuntime(adapter);
+
+    // Wrap resetDatabase to also recreate all fragments in all runtimes.
+    const originalResetDatabase = testContext.resetDatabase;
+    const resetDatabase = async () => {
+      await originalResetDatabase();
+      for (const runtime of runtimes) {
+        await runtime.recreateFragments();
+      }
+    };
 
     const originalCleanup = testContext.cleanup;
     const cleanup = async () => {
       let drainError: unknown;
       let cleanupError: unknown;
 
-      for (const result of fragmentResults) {
-        try {
-          await drainDurableHooks(result.fragment);
-        } catch (error) {
-          if (!drainError) {
-            drainError = error;
+      for (const runtime of runtimes) {
+        for (const result of Object.values(runtime.fragments) as AnyFragmentResult[]) {
+          try {
+            await drainDurableHooks(result.fragment);
+          } catch (error) {
+            if (!drainError) {
+              drainError = error;
+            }
           }
         }
       }
@@ -974,37 +944,22 @@ export class DatabaseFragmentsTestBuilder<
       }
     };
 
-    const recreateFragments = async () => {
-      const newFragmentResults = createFragments();
-
-      newFragmentResults.forEach((newResult, index) => {
-        const result = fragmentResults[index]!;
-        result.fragment = newResult.fragment;
-        result.services = newResult.services;
-        result.deps = newResult.deps;
-        result.callRoute = newResult.callRoute;
-        result._orm = newResult._orm;
-      });
-    };
+    const createAdditionalRuntime = async () => createRuntime(await createAdditionalAdapter());
 
     const finalTestContext = {
       ...testContext,
       resetDatabase,
       cleanup,
       adapter,
-      recreateFragments,
-      inContext: firstFragment.inContext.bind(firstFragment),
+      createAdditionalRuntime,
+      recreateFragments: initialRuntime.recreateFragments,
+      inContext: initialRuntime.inContext,
     };
-
-    // Build result object with named fragments
-    const fragmentsObject = Object.fromEntries(
-      fragmentNames.map((name, index) => [name, fragmentResults[index]]),
-    );
 
     // Safe cast: We've already validated that adapterConfig is SupportedAdapter at the beginning of build()
     // TypeScript can't infer this through the conditional return type, so we use 'as any'
     return {
-      fragments: fragmentsObject as TFragments,
+      fragments: initialRuntime.fragments,
       test: finalTestContext,
     } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
