@@ -6,49 +6,39 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import {
   defineFragment,
   instantiate,
-  type AnyFragnoInstantiatedFragment,
   type InstantiatedFragmentFromDefinition,
 } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
+import { createWorkflowsClient } from "./client/vanilla";
 import type { WorkflowStepLivePump } from "./runner/step-live-pump";
-import {
-  createScenarioSteps,
-  defineScenario,
-  runScenario,
-  type WorkflowScenarioEventRow,
-  type WorkflowScenarioHookRow,
-  type WorkflowScenarioInstanceRow,
-  type WorkflowScenarioStepRow,
-} from "./scenario";
+import { defineScenario, runScenario } from "./scenario";
 import { workflowsSchema } from "./schema";
 import { createWorkflowsTestRuntime } from "./test";
-import { defineWorkflow, WaitForEventTimeoutError } from "./workflow";
-
-type RouteResponse = {
-  type: string;
-  data?: unknown;
-  error?: { message: string; code: string };
-};
-
-const assertJsonResponse = <T>(response: RouteResponse) => {
-  expect(response.type).toBe("json");
-  if (response.type !== "json") {
-    const errorDetails =
-      response.type === "error"
-        ? ` (${response.error?.code ?? "UNKNOWN"}: ${response.error?.message ?? "Unknown error"})`
-        : "";
-    throw new Error(`Expected json response, received ${response.type}${errorDetails}`);
-  }
-  return response.data as T;
-};
-
-const assertOkResponse = (response: RouteResponse) => {
-  const data = assertJsonResponse<{ ok: true }>(response);
-  expect(data.ok).toBe(true);
-};
+import { defineWorkflow, WaitForEventTimeoutError, type InstanceStatus } from "./workflow";
 
 describe("Workflows Runner (Scenario DSL)", () => {
+  test("rejects read steps that both store and assert", async () => {
+    const NoopWorkflow = defineWorkflow({ name: "noop-workflow" }, async () => ({ ok: true }));
+    const workflows = { NOOP: NoopWorkflow };
+
+    await expect(
+      runScenario(
+        defineScenario({
+          name: "read-store-and-assert",
+          workflows,
+          steps: ({ workflow }) => [
+            workflow.read({
+              read: () => 1,
+              storeAs: "value",
+              assert: () => {},
+            } as never),
+          ],
+        }),
+      ),
+    ).rejects.toThrow("SCENARIO_READ_STEP_STORE_AS_AND_ASSERT_ARE_MUTUALLY_EXCLUSIVE");
+  });
+
   test("runs a simple workflow to completion", async () => {
     const SimpleWorkflow = defineWorkflow({ name: "simple-workflow" }, async () => {
       return { ok: true };
@@ -56,23 +46,19 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { SIMPLE: SimpleWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: unknown };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "simple-workflow-complete",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SIMPLE", id: "simple-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "SIMPLE", id: "simple-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SIMPLE", "simple-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ ok: true });
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { ok: true },
+            });
+          },
         }),
       ],
     });
@@ -88,35 +74,29 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { STEP: StepWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { value: number } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "completed-step",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "STEP", id: "step-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "STEP", id: "step-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("STEP", "step-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status.status).toBe("complete");
+            expect(status.output).toEqual({ value: 42 });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("STEP", "step-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ value: 42 });
-          expect(ctx.vars.steps).toHaveLength(1);
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            name: "compute",
-            type: "do",
-            status: "completed",
-            stepKey: "do:compute",
-          });
+          assert: (steps) => {
+            expect(steps).toHaveLength(1);
+            expect(steps[0]).toMatchObject({
+              name: "compute",
+              type: "do",
+              status: "completed",
+              stepKey: "do:compute",
+            });
+          },
         }),
       ],
     });
@@ -134,50 +114,44 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { EVENTFUL: EventWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: unknown };
-      steps?: WorkflowScenarioStepRow[];
-      events?: WorkflowScenarioEventRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "eventful-workflow",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "EVENTFUL", id: "eventful-1" }),
-        scenarioSteps.eventAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "EVENTFUL", id: "eventful-1" }),
+        runner.eventAndRunUntilIdle({
           workflow: "EVENTFUL",
           instanceId: "eventful-1",
           event: { type: "ready", payload: { value: 9 } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENTFUL", "eventful-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status.status).toBe("complete");
+            expect(status.output).toEqual({ seed: 3, sum: 12, eventValue: 9 });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("EVENTFUL", "eventful-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps).toHaveLength(3);
+            expect(steps.map((step) => step.stepKey).sort()).toEqual([
+              "do:seed",
+              "do:sum",
+              "waitForEvent:ready",
+            ]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("EVENTFUL", "eventful-1"),
-          storeAs: "events",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ seed: 3, sum: 12, eventValue: 9 });
-          expect(ctx.vars.steps).toHaveLength(3);
-          expect(ctx.vars.steps?.map((step) => step.stepKey).sort()).toEqual([
-            "do:seed",
-            "do:sum",
-            "waitForEvent:ready",
-          ]);
-          expect(ctx.vars.events).toHaveLength(1);
-          expect(ctx.vars.events?.[0]).toMatchObject({
-            type: "ready",
-            consumedByStepKey: "waitForEvent:ready",
-          });
-          expect(ctx.vars.events?.[0].deliveredAt).toBeInstanceOf(Date);
+          assert: (events) => {
+            expect(events).toHaveLength(1);
+            expect(events[0]).toMatchObject({
+              type: "ready",
+              consumedByStepKey: "waitForEvent:ready",
+            });
+            expect(events[0]?.deliveredAt).toBeInstanceOf(Date);
+          },
         }),
       ],
     });
@@ -196,33 +170,24 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { PARALLEL: ParallelWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { alpha: string; beta: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "parallel-steps",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "PARALLEL", id: "parallel-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "PARALLEL", id: "parallel-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PARALLEL", "parallel-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status.status).toBe("complete");
+            expect(status.output).toEqual({ alpha: "A", beta: "B" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("PARALLEL", "parallel-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ alpha: "A", beta: "B" });
-          expect(ctx.vars.steps).toHaveLength(2);
-          expect(ctx.vars.steps?.map((step) => step.stepKey).sort()).toEqual([
-            "do:alpha",
-            "do:beta",
-          ]);
+          assert: (steps) => {
+            expect(steps).toHaveLength(2);
+            expect(steps.map((step) => step.stepKey).sort()).toEqual(["do:alpha", "do:beta"]);
+          },
         }),
       ],
     });
@@ -250,66 +215,60 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RACE: RaceWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { raceReturn: string; cached: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "promise-race-step",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RACE", id: "race-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RACE", id: "race-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE", "race-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status.status).toBe("complete");
+            expect(status.output).toEqual({ raceReturn: "second", cached: "second" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RACE", "race-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ raceReturn: "second", cached: "second" });
-          expect(ctx.vars.steps).toHaveLength(5);
-          expect(ctx.vars.steps).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:Promise step",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "second",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise step>do:Promise first race",
-                parentStepKey: "do:Promise step",
-                depth: 1,
-                status: "waiting",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise step>do:Promise second race",
-                parentStepKey: "do:Promise step",
-                depth: 1,
-                status: "completed",
-                result: "second",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise step>do:Promise first race>sleep:Promise first delay",
-                parentStepKey: "do:Promise step>do:Promise first race",
-                depth: 2,
-                status: "waiting",
-              }),
-              expect.objectContaining({
-                stepKey: "do:After race",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "second",
-              }),
-            ]),
-          );
+          assert: (steps) => {
+            expect(steps).toHaveLength(5);
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:Promise step",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "completed",
+                  result: "second",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise step>do:Promise first race",
+                  parentStepKey: "do:Promise step",
+                  depth: 1,
+                  status: "waiting",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise step>do:Promise second race",
+                  parentStepKey: "do:Promise step",
+                  depth: 1,
+                  status: "completed",
+                  result: "second",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise step>do:Promise first race>sleep:Promise first delay",
+                  parentStepKey: "do:Promise step>do:Promise first race",
+                  depth: 2,
+                  status: "waiting",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:After race",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "completed",
+                  result: "second",
+                }),
+              ]),
+            );
+          },
         }),
       ],
     });
@@ -338,78 +297,72 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RACE_EVENT: RaceEventWorkflow };
 
-    type ScenarioVars = {
-      waitingStatus?: { status: string };
-      finalStatus?: { status: string; output?: { raceReturn: string; cached: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "promise-race-slow-step-event-wait",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RACE_EVENT", id: "race-event-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RACE_EVENT", id: "race-event-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE_EVENT", "race-event-1"),
-          storeAs: "waitingStatus",
+          assert: (status) => {
+            expect(status.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "RACE_EVENT",
           instanceId: "race-event-1",
           event: { type: "ready" },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE_EVENT", "race-event-1"),
-          storeAs: "finalStatus",
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { raceReturn: "event", cached: "event" },
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RACE_EVENT", "race-event-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
-          expect(ctx.vars.finalStatus).toMatchObject({
-            status: "complete",
-            output: { raceReturn: "event", cached: "event" },
-          });
-          expect(ctx.vars.steps).toHaveLength(5);
-          expect(ctx.vars.steps).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:Promise race",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "event",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise race>do:slow branch",
-                parentStepKey: "do:Promise race",
-                depth: 1,
-                status: "waiting",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise race>waitForEvent:event branch",
-                parentStepKey: "do:Promise race",
-                depth: 1,
-                status: "completed",
-              }),
-              expect.objectContaining({
-                stepKey: "do:Promise race>do:slow branch>sleep:slow delay",
-                parentStepKey: "do:Promise race>do:slow branch",
-                depth: 2,
-                status: "waiting",
-              }),
-              expect.objectContaining({
-                stepKey: "do:After race",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "event",
-              }),
-            ]),
-          );
+          assert: (steps) => {
+            expect(steps).toHaveLength(5);
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:Promise race",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "completed",
+                  result: "event",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise race>do:slow branch",
+                  parentStepKey: "do:Promise race",
+                  depth: 1,
+                  status: "waiting",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise race>waitForEvent:event branch",
+                  parentStepKey: "do:Promise race",
+                  depth: 1,
+                  status: "completed",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:Promise race>do:slow branch>sleep:slow delay",
+                  parentStepKey: "do:Promise race>do:slow branch",
+                  depth: 2,
+                  status: "waiting",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:After race",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "completed",
+                  result: "event",
+                }),
+              ]),
+            );
+          },
         }),
       ],
     });
@@ -436,37 +389,31 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { ANY: AnyWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { anyReturn: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "promise-any-step",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "ANY", id: "any-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "ANY", id: "any-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("ANY", "any-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status.status).toBe("complete");
+            expect(status.output).toEqual({ anyReturn: "second" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("ANY", "any-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ anyReturn: "second" });
-          expect(ctx.vars.steps?.map((step) => step.stepKey)).toEqual(
-            expect.arrayContaining([
-              "do:Promise any",
-              "do:Promise any>do:Promise any first",
-              "do:Promise any>do:Promise any second",
-              "do:Promise any>do:Promise any first>sleep:Promise any first delay",
-            ]),
-          );
-          expect(ctx.vars.steps).toHaveLength(4);
+          assert: (steps) => {
+            expect(steps.map((step) => step.stepKey)).toEqual(
+              expect.arrayContaining([
+                "do:Promise any",
+                "do:Promise any>do:Promise any first",
+                "do:Promise any>do:Promise any second",
+                "do:Promise any>do:Promise any first>sleep:Promise any first delay",
+              ]),
+            );
+            expect(steps).toHaveLength(4);
+          },
         }),
       ],
     });
@@ -474,9 +421,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("can resume a waiting workflow after killing the runner", async () => {
+  test("can resume a waiting workflow after restarting the runner runtime", async () => {
     const RestartWorkflow = defineWorkflow(
-      { name: "scenario-kill-runner" },
+      { name: "scenario-restart-runner" },
       async (_event, step) => {
         await step.waitForEvent("ready", { type: "ready" });
         return await step.do("finish", async () => "done");
@@ -485,34 +432,28 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RESTART: RestartWorkflow };
 
-    type ScenarioVars = {
-      waitingStatus?: { status: string };
-      finalStatus?: { status: string; output?: string };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "scenario-kill-runner",
+    const scenario = defineScenario({
+      name: "scenario-restart-runner",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RESTART", id: "restart-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RESTART", id: "restart-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
-          storeAs: "waitingStatus",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.killAndRestartRunner(),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.restart(),
+        runner.eventAndRunUntilIdle({
           workflow: "RESTART",
           instanceId: "restart-1",
           event: { type: "ready" },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
-          storeAs: "finalStatus",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
-          expect(ctx.vars.finalStatus).toMatchObject({ status: "complete", output: "done" });
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "done" });
+          },
         }),
       ],
     });
@@ -544,24 +485,22 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RACE: RaceRunnerWorkflow };
 
-    type ScenarioVars = {
-      createTick?: number;
-      eventTick?: number;
-      status?: { status: string; output?: { raceReturn: string; cached: string } };
-      steps?: WorkflowScenarioStepRow[];
-      events?: WorkflowScenarioEventRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      { createTick?: number; eventTick?: number },
+      undefined,
+      Record<string, never>,
+      ["create", "event"]
+    >({
       name: "scenario-race-event-second-runner-wins",
       workflows,
+      runners: ["create", "event"],
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "RACE", id: "race-runner-1" }),
-        scenarioSteps.withRunners({
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "RACE", id: "race-runner-1" }),
+        concurrent({
           create: [
-            scenarioSteps.tick({
+            runners.create.tick({
               workflow: "RACE",
               instanceId: "race-runner-1",
               reason: "create",
@@ -569,13 +508,13 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
           event: [
-            scenarioSteps.waitForControl({ key: "sleep:started" }),
-            scenarioSteps.event({
+            runners.event.waitForControl({ key: "sleep:started" }),
+            workflow.event({
               workflow: "RACE",
               instanceId: "race-runner-1",
               event: { type: "ready" },
             }),
-            scenarioSteps.tick({
+            runners.event.tick({
               workflow: "RACE",
               instanceId: "race-runner-1",
               reason: "event",
@@ -583,58 +522,61 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE", "race-runner-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { raceReturn: "event", cached: "event" },
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RACE", "race-runner-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps).toMatchObject([
+              {
+                stepKey: "do:Promise race",
+                parentStepKey: null,
+                depth: 0,
+                status: "completed",
+                result: "event",
+              },
+              {
+                stepKey: "do:Promise race>do:promise sleep branch",
+                parentStepKey: "do:Promise race",
+                depth: 1,
+                status: "waiting",
+              },
+              {
+                stepKey: "do:Promise race>waitForEvent:event branch",
+                parentStepKey: "do:Promise race",
+                depth: 1,
+                status: "completed",
+              },
+              {
+                stepKey: "do:After race",
+                parentStepKey: null,
+                depth: 0,
+                status: "completed",
+                result: "event",
+              },
+            ]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("RACE", "race-runner-1"),
-          storeAs: "events",
+          assert: (events) => {
+            expect(events).toHaveLength(1);
+            expect(events?.[0]).toMatchObject({
+              type: "ready",
+              consumedByStepKey: "do:Promise race>waitForEvent:event branch",
+            });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.createTick).toBe(1);
           expect(ctx.vars.eventTick).toBe(1);
-          expect(ctx.vars.status).toMatchObject({
-            status: "complete",
-            output: { raceReturn: "event", cached: "event" },
-          });
-          expect(ctx.vars.steps).toMatchObject([
-            {
-              stepKey: "do:Promise race",
-              parentStepKey: null,
-              depth: 0,
-              status: "completed",
-              result: "event",
-            },
-            {
-              stepKey: "do:Promise race>do:promise sleep branch",
-              parentStepKey: "do:Promise race",
-              depth: 1,
-              status: "waiting",
-            },
-            {
-              stepKey: "do:Promise race>waitForEvent:event branch",
-              parentStepKey: "do:Promise race",
-              depth: 1,
-              status: "completed",
-            },
-            {
-              stepKey: "do:After race",
-              parentStepKey: null,
-              depth: 0,
-              status: "completed",
-              result: "event",
-            },
-          ]);
-          expect(ctx.vars.events).toHaveLength(1);
-          expect(ctx.vars.events?.[0]).toMatchObject({
-            type: "ready",
-            consumedByStepKey: "do:Promise race>waitForEvent:event branch",
-          });
         }),
       ],
     });
@@ -663,58 +605,78 @@ describe("Workflows Runner (Scenario DSL)", () => {
     type ScenarioVars = {
       eventStatus?: { status: string; output?: string };
       createTick?: number;
-      statusAfterCreate?: { status: string; output?: string };
-      eventsAfterCreate?: WorkflowScenarioEventRow[];
-      hooksAfterCreate?: WorkflowScenarioHookRow[];
       finalRun?: { processed: number; ticks: number };
-      finalStatus?: { status: string; output?: string };
-      events?: WorkflowScenarioEventRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      ScenarioVars,
+      undefined,
+      Record<string, never>,
+      ["create", "event"]
+    >({
       name: "scenario-event-before-wait-persisted-enqueues",
       workflows,
+      runners: ["create", "event"],
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "EARLY_EVENT", id: "early-event-1" }),
-        scenarioSteps.withRunners({
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "EARLY_EVENT", id: "early-event-1" }),
+        concurrent({
           create: [
-            scenarioSteps.tick({
+            runners.create.tick({
               workflow: "EARLY_EVENT",
               instanceId: "early-event-1",
               reason: "create",
               storeAs: "createTick",
             }),
-            scenarioSteps.resolveControl({ key: "create:tick:done" }),
+            runners.create.resolveControl({ key: "create:tick:done" }),
           ],
           event: [
-            scenarioSteps.waitForControl({ key: "slow:started" }),
-            scenarioSteps.event({
+            runners.event.waitForControl({ key: "slow:started" }),
+            workflow.event({
               workflow: "EARLY_EVENT",
               instanceId: "early-event-1",
               event: { type: "ready" },
               storeAs: "eventStatus",
             }),
-            scenarioSteps.waitForControl({ key: "create:tick:done" }),
-            scenarioSteps.read({
+            runners.event.waitForControl({ key: "create:tick:done" }),
+            workflow.read({
               read: (ctx) => ctx.state.getStatus("EARLY_EVENT", "early-event-1"),
-              storeAs: "statusAfterCreate",
+              assert: (status) => {
+                expect(status.status).toBe("waiting");
+              },
             }),
-            scenarioSteps.read({
+            workflow.read({
               read: (ctx) => ctx.state.getEvents("EARLY_EVENT", "early-event-1"),
-              storeAs: "eventsAfterCreate",
+              assert: (events) => {
+                expect(events).toHaveLength(1);
+                expect(events?.[0]).toMatchObject({
+                  type: "ready",
+                  consumedByStepKey: null,
+                  deliveredAt: null,
+                });
+              },
             }),
-            scenarioSteps.read({
+            workflow.read({
               read: (ctx) =>
                 ctx.state.internal.getHooks({
                   hookName: "onWorkflowEnqueued",
                   workflowName: "scenario-event-before-wait-persisted",
                   instanceId: "early-event-1",
                 }),
-              storeAs: "hooksAfterCreate",
+              assert: (hooks) => {
+                expect(hooks).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      hookName: "onWorkflowEnqueued",
+                      status: "pending",
+                      payload: expect.objectContaining({ reason: "event" }),
+                    }),
+                  ]),
+                );
+              },
             }),
-            scenarioSteps.runUntilIdle({
+            runners.event.runUntilIdle({
               workflow: "EARLY_EVENT",
               instanceId: "early-event-1",
               reason: "event",
@@ -722,39 +684,25 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EARLY_EVENT", "early-event-1"),
-          storeAs: "finalStatus",
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "done" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("EARLY_EVENT", "early-event-1"),
-          storeAs: "events",
+          assert: (events) => {
+            expect(events?.[0]).toMatchObject({
+              type: "ready",
+              consumedByStepKey: "waitForEvent:ready",
+            });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.eventStatus?.status).toBe("active");
           expect(ctx.vars.createTick).toBe(1);
-          expect(ctx.vars.statusAfterCreate?.status).toBe("waiting");
-          expect(ctx.vars.eventsAfterCreate).toHaveLength(1);
-          expect(ctx.vars.eventsAfterCreate?.[0]).toMatchObject({
-            type: "ready",
-            consumedByStepKey: null,
-            deliveredAt: null,
-          });
-          expect(ctx.vars.hooksAfterCreate).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                hookName: "onWorkflowEnqueued",
-                status: "pending",
-                payload: expect.objectContaining({ reason: "event" }),
-              }),
-            ]),
-          );
           expect(ctx.vars.finalRun).toEqual({ processed: 1, ticks: 2 });
-          expect(ctx.vars.finalStatus).toMatchObject({ status: "complete", output: "done" });
-          expect(ctx.vars.events?.[0]).toMatchObject({
-            type: "ready",
-            consumedByStepKey: "waitForEvent:ready",
-          });
         }),
       ],
     });
@@ -783,23 +731,22 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { OCC: OccWorkflow };
 
-    type ScenarioVars = {
-      firstTick?: number;
-      secondTick?: number;
-      status?: { status: string; output?: { value: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "scenario-stale-runner-occ",
       workflows,
+      vars() {
+        return {
+          firstTick: 0,
+          secondTick: 0,
+        };
+      },
+      runners: ["first", "second"],
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "OCC", id: "occ-1" }),
-        scenarioSteps.withRunners({
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "OCC", id: "occ-1" }),
+        concurrent({
           first: [
-            scenarioSteps.tick({
+            runners.first.tick({
               workflow: "OCC",
               instanceId: "occ-1",
               reason: "create",
@@ -807,37 +754,343 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
           second: [
-            scenarioSteps.waitForControl({ key: "first:started" }),
-            scenarioSteps.tick({
+            runners.second.waitForControl({ key: "first:started" }),
+            runners.second.tick({
               workflow: "OCC",
               instanceId: "occ-1",
               reason: "create",
               storeAs: "secondTick",
             }),
-            scenarioSteps.resolveControl({ key: "first:release" }),
+            runners.second.resolveControl({ key: "first:release" }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("OCC", "occ-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { value: "committed" },
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("OCC", "occ-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps).toHaveLength(1);
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "do:racy work",
+              status: "completed",
+              result: "committed",
+            });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.firstTick).toBe(0);
           expect(ctx.vars.secondTick).toBe(1);
-          expect(ctx.vars.status).toMatchObject({
-            status: "complete",
-            output: { value: "committed" },
-          });
-          expect(ctx.vars.steps).toHaveLength(1);
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "do:racy work",
-            status: "completed",
-            result: "committed",
-          });
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("concurrent clients attached to separate runners observe their runner's racy step emissions", async () => {
+    const runtime = createWorkflowsTestRuntime();
+    let invocationCount = 0;
+
+    const ClientEmissionWorkflow = defineWorkflow(
+      { name: "scenario-client-runner-emission-race" },
+      async (_event, step) => {
+        const value = await step.do("racy client message", async (tx) => {
+          invocationCount += 1;
+          const runner = invocationCount === 1 ? "first" : "second";
+          tx.emit({ runner, message: `${runner}:started` });
+
+          runtime.controls.resolve(`${runner}:started`);
+          await runtime.controls.wait(`${runner}:release`);
+
+          tx.emit({ runner, message: `${runner}:finished` });
+          return runner;
+        });
+
+        const shared = await step.do("shared client message", async (tx) => {
+          tx.emit({ runner: value, message: "shared:started" });
+          runtime.controls.resolve("shared:started");
+          await runtime.controls.wait("shared:release");
+          tx.emit({ runner: value, message: "shared:finished" });
+          return "shared";
+        });
+
+        return { value, shared };
+      },
+    );
+
+    const workflows = { CLIENT_EMIT: ClientEmissionWorkflow };
+
+    const hasPayloadMessage = (
+      messages: readonly { payload: unknown }[] | undefined,
+      runner: string,
+      message: string,
+    ) =>
+      Boolean(
+        messages?.some(
+          (entry) =>
+            typeof entry.payload === "object" &&
+            entry.payload !== null &&
+            "runner" in entry.payload &&
+            "message" in entry.payload &&
+            entry.payload.runner === runner &&
+            entry.payload.message === message,
+        ),
+      );
+
+    const hasStepControl = (
+      messages: readonly { stepKey: string; payload: unknown }[] | undefined,
+      stepKey: string,
+      control: string,
+    ) =>
+      Boolean(
+        messages?.some(
+          (entry) =>
+            entry.stepKey === stepKey &&
+            typeof entry.payload === "object" &&
+            entry.payload !== null &&
+            "control" in entry.payload &&
+            entry.payload.control === control,
+        ),
+      );
+
+    const scenario = defineScenario({
+      name: "scenario-client-runner-emission-race",
+      workflows,
+      vars() {
+        return {
+          firstMessages: undefined as unknown,
+          secondMessages: undefined as unknown,
+          firstSharedMessages: undefined as unknown,
+          secondSharedMessages: undefined as unknown,
+        };
+      },
+      runners: ["first", "second", "observer"],
+      harness: { runtime },
+      clients: ({ clientConfig }) => ({
+        first: createWorkflowsClient(clientConfig("workflows", { runner: "first" })),
+        second: createWorkflowsClient(clientConfig("workflows", { runner: "second" })),
+      }),
+      stores: ({ clients }) => ({
+        firstInstance: () =>
+          clients.first.useInstance({
+            path: {
+              workflowName: "scenario-client-runner-emission-race",
+              instanceId: "client-emission-race-1",
+            },
+          }),
+        secondInstance: () =>
+          clients.second.useInstance({
+            path: {
+              workflowName: "scenario-client-runner-emission-race",
+              instanceId: "client-emission-race-1",
+            },
+          }),
+        firstCurrentStep: () =>
+          clients.first.useCurrentStepEmissions({
+            path: {
+              workflowName: "scenario-client-runner-emission-race",
+              instanceId: "client-emission-race-1",
+            },
+          }),
+        secondCurrentStep: () =>
+          clients.second.useCurrentStepEmissions({
+            path: {
+              workflowName: "scenario-client-runner-emission-race",
+              instanceId: "client-emission-race-1",
+            },
+          }),
+      }),
+      steps: ({ workflow, runners, concurrent, stores }) => [
+        workflow.create({ workflow: "CLIENT_EMIT", id: "client-emission-race-1" }),
+        stores.firstInstance.waitFor(
+          (state) => !state.loading && state.data?.id === "client-emission-race-1",
+        ),
+        stores.secondInstance.waitFor(
+          (state) => !state.loading && state.data?.id === "client-emission-race-1",
+        ),
+        concurrent({
+          first: [
+            runners.first.tick({
+              workflow: "CLIENT_EMIT",
+              instanceId: "client-emission-race-1",
+              reason: "create",
+            }),
+          ],
+          second: [
+            runners.second.waitForControl({ key: "first:started" }),
+            runners.second.tick({
+              workflow: "CLIENT_EMIT",
+              instanceId: "client-emission-race-1",
+              reason: "create",
+            }),
+          ],
+          observer: [
+            runners.observer.waitForControl({ key: "first:started" }),
+            runners.observer.waitForControl({ key: "second:started" }),
+            stores.firstCurrentStep.waitFor(
+              (state) => !state.loading && hasPayloadMessage(state.data, "first", "first:started"),
+              {
+                storeAs: "firstMessages",
+                select: (state) => state.data,
+              },
+            ),
+            stores.secondCurrentStep.waitFor(
+              (state) =>
+                !state.loading && hasPayloadMessage(state.data, "second", "second:started"),
+              {
+                storeAs: "secondMessages",
+                select: (state) => state.data,
+              },
+            ),
+            runners.observer.resolveControl({ key: "second:release" }),
+            runners.observer.waitForControl({ key: "shared:started" }),
+            workflow.read({
+              read: (ctx) => ctx.state.getEmissions("CLIENT_EMIT", "client-emission-race-1"),
+              assert: (emissions) => {
+                expect(emissions).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      stepKey: "do:racy client message",
+                      payload: { runner: "second", message: "second:finished" },
+                    }),
+                  ]),
+                );
+                expect(emissions).not.toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      stepKey: "do:shared client message",
+                    }),
+                  ]),
+                );
+              },
+            }),
+            stores.firstCurrentStep.waitFor(
+              (state) =>
+                !state.loading &&
+                hasStepControl(state.data, "do:shared client message", "step-started") &&
+                hasPayloadMessage(state.data, "second", "shared:started"),
+              {
+                storeAs: "firstSharedMessages",
+                select: (state) => state.data,
+              },
+            ),
+            stores.secondCurrentStep.waitFor(
+              (state) =>
+                !state.loading &&
+                hasStepControl(state.data, "do:shared client message", "step-started") &&
+                hasPayloadMessage(state.data, "second", "shared:started"),
+              {
+                storeAs: "secondSharedMessages",
+                select: (state) => state.data,
+              },
+            ),
+            workflow.assert((ctx) => {
+              expect(ctx.vars.firstSharedMessages).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:racy client message",
+                    payload: { runner: "first", message: "first:started" },
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:shared client message",
+                    actor: "system",
+                    payload: { control: "step-started" },
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:shared client message",
+                    actor: "user",
+                    payload: { runner: "second", message: "shared:started" },
+                  }),
+                ]),
+              );
+              expect(ctx.vars.secondSharedMessages).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:shared client message",
+                    actor: "system",
+                    payload: { control: "step-started" },
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:shared client message",
+                    actor: "user",
+                    payload: { runner: "second", message: "shared:started" },
+                  }),
+                ]),
+              );
+            }),
+            workflow.read({
+              read: (ctx) => ctx.state.getEmissions("CLIENT_EMIT", "client-emission-race-1"),
+              assert: (emissions) => {
+                expect(emissions).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      stepKey: "do:shared client message",
+                      actor: "system",
+                      payload: { control: "step-started" },
+                    }),
+                    expect.objectContaining({
+                      stepKey: "do:shared client message",
+                      actor: "user",
+                      payload: { runner: "second", message: "shared:started" },
+                    }),
+                  ]),
+                );
+              },
+            }),
+            runners.observer.resolveControl({ key: "shared:release" }),
+            runners.observer.resolveControl({ key: "first:release" }),
+          ],
+        }),
+
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("CLIENT_EMIT", "client-emission-race-1"),
+          assert: (steps) => {
+            expect(steps).toHaveLength(2);
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:racy client message",
+                  status: "completed",
+                  result: "second",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:shared client message",
+                  status: "completed",
+                  result: "shared",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert((ctx) => {
+          expect(invocationCount).toBe(2);
+          expect(ctx.vars.firstMessages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                payload: { runner: "first", message: "first:started" },
+              }),
+            ]),
+          );
+          expect(ctx.vars.secondMessages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                payload: { runner: "second", message: "second:started" },
+              }),
+            ]),
+          );
+          expect(ctx.vars.firstMessages).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ payload: { runner: "second" } })]),
+          );
+          expect(ctx.vars.secondMessages).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ payload: { runner: "first" } })]),
+          );
         }),
       ],
     });
@@ -856,30 +1109,33 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RUNNER: RunnerWorkflow };
 
-    type ScenarioVars = {
-      killedRunnerTick?: number;
-      eventRunnerRun?: { processed: number; ticks: number };
-      status?: { status: string; output?: string };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      {
+        restartedRunnerTick?: number;
+        eventRunnerRun?: { processed: number; ticks: number };
+      },
+      undefined,
+      Record<string, never>,
+      ["restarted", "active"]
+    >({
       name: "scenario-independent-runners",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RUNNER", id: "runner-1" }),
-        scenarioSteps.withRunners({
-          killed: [
-            scenarioSteps.killRunner(),
-            scenarioSteps.tick({
+      runners: ["restarted", "active"],
+      steps: ({ workflow, runners, concurrent }) => [
+        runners.active.initializeAndRunUntilIdle({ workflow: "RUNNER", id: "runner-1" }),
+        concurrent({
+          restarted: [
+            runners.restarted.restart(),
+            runners.restarted.tick({
               workflow: "RUNNER",
               instanceId: "runner-1",
               reason: "event",
-              storeAs: "killedRunnerTick",
+              storeAs: "restartedRunnerTick",
             }),
           ],
           active: [
-            scenarioSteps.eventAndRunUntilIdle({
+            runners.active.eventAndRunUntilIdle({
               workflow: "RUNNER",
               instanceId: "runner-1",
               event: { type: "ready" },
@@ -887,14 +1143,16 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RUNNER", "runner-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "done" });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.killedRunnerTick).toBe(0);
-          expect(ctx.vars.eventRunnerRun?.processed).toBeGreaterThan(0);
-          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
+        workflow.assert((ctx) => {
+          expect(
+            (ctx.vars.restartedRunnerTick ?? 0) + (ctx.vars.eventRunnerRun?.processed ?? 0),
+          ).toBeGreaterThan(0);
         }),
       ],
     });
@@ -902,36 +1160,33 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("can resume a sleeping workflow after killing the runner", async () => {
-    const SleepWorkflow = defineWorkflow({ name: "scenario-kill-sleep" }, async (_event, step) => {
-      await step.sleep("pause", 1000);
-      return "awake";
-    });
+  test("can resume a sleeping workflow after restarting the runner runtime", async () => {
+    const SleepWorkflow = defineWorkflow(
+      { name: "scenario-restart-sleep" },
+      async (_event, step) => {
+        await step.sleep("pause", 1000);
+        return "awake";
+      },
+    );
 
     const workflows = { SLEEP: SleepWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: string };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "scenario-kill-sleep",
+    const scenario = defineScenario({
+      name: "scenario-restart-sleep",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-kill-1" }),
-        scenarioSteps.killAndRestartRunner(),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-kill-1" }),
+        runner.restart(),
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "SLEEP",
           instanceId: "sleep-kill-1",
           advanceBy: 1000,
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP", "sleep-kill-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "awake" });
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "awake" });
+          },
         }),
       ],
     });
@@ -939,59 +1194,31 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("does not run workflows while the runner is dead", async () => {
-    const DeadRunnerWorkflow = defineWorkflow(
-      { name: "scenario-dead-runner" },
-      async (_event, step) => {
-        await step.waitForEvent("ready", { type: "ready" });
-        return "done";
-      },
-    );
+  test("restart recreates the workflow fragment runtime", async () => {
+    const RestartWorkflow = defineWorkflow({ name: "scenario-restart-runtime" }, async () => "ok");
 
-    const workflows = { DEAD: DeadRunnerWorkflow };
+    const workflows = { RESTART: RestartWorkflow };
 
-    type ScenarioVars = {
-      deadRun?: { processed: number; ticks: number };
-      statusWhileDead?: { status: string; output?: string };
-      statusAfterRestart?: { status: string; output?: string };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "scenario-dead-runner",
+    const scenario = defineScenario({
+      name: "scenario-restart-runtime",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "DEAD", id: "dead-1" }),
-        scenarioSteps.killRunner(),
-        scenarioSteps.event({
-          workflow: "DEAD",
-          instanceId: "dead-1",
-          event: { type: "ready" },
+      steps: ({ workflow }) => [
+        workflow.read({
+          read: (ctx) => ctx.harness.fragment,
+          assert: (fragmentBeforeRestart, _ctx) => {
+            void _ctx;
+            expect(fragmentBeforeRestart).toBeTruthy();
+          },
         }),
-        scenarioSteps.runUntilIdle({
-          workflow: "DEAD",
-          instanceId: "dead-1",
-          reason: "event",
-          storeAs: "deadRun",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("DEAD", "dead-1"),
-          storeAs: "statusWhileDead",
-        }),
-        scenarioSteps.restartRunner(),
-        scenarioSteps.runUntilIdle({
-          workflow: "DEAD",
-          instanceId: "dead-1",
-          reason: "event",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("DEAD", "dead-1"),
-          storeAs: "statusAfterRestart",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.deadRun).toEqual({ processed: 0, ticks: 1 });
-          expect(ctx.vars.statusWhileDead?.status).toBe("waiting");
-          expect(ctx.vars.statusAfterRestart).toMatchObject({ status: "complete", output: "done" });
+        workflow.read({
+          read: async (ctx) => {
+            const fragmentBeforeRestart = ctx.harness.fragment;
+            await ctx.harness.restart();
+            return ctx.harness.fragment !== fragmentBeforeRestart;
+          },
+          assert: (fragmentWasRecreated) => {
+            expect(fragmentWasRecreated).toBe(true);
+          },
         }),
       ],
     });
@@ -1017,67 +1244,45 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { EMIT_WAIT: EmittingWaitWorkflow };
     type ScenarioVars = {
       messages?: unknown[];
-      emissionsAfterSuspend?: unknown[];
-      emissionsAfterComplete?: unknown[];
-      status?: { status: string; output?: string };
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "scenario-step-emission-wait",
       workflows,
-      steps: [
-        scenarioSteps.captureEmissions({
-          workflow: "EMIT_WAIT",
-          instanceId: "emit-wait-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "EMIT_WAIT", id: "emit-wait-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "EMIT_WAIT", id: "emit-wait-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("EMIT_WAIT", "emit-wait-1"),
-          storeAs: "emissionsAfterSuspend",
+          assert: (emissionsAfterSuspend) => {
+            expect(emissionsAfterSuspend).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ actor: "system", stepKey: "do:approval" }),
+                expect.objectContaining({
+                  actor: "user",
+                  stepKey: "do:approval",
+                  payload: { phase: "waiting", approved: false },
+                }),
+              ]),
+            );
+          },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "EMIT_WAIT",
           instanceId: "emit-wait-1",
           event: { type: "ready" },
         }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("EMIT_WAIT", "emit-wait-1"),
-          storeAs: "emissionsAfterComplete",
+          assert: (emissionsAfterComplete) => {
+            expect(emissionsAfterComplete).toEqual([]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EMIT_WAIT", "emit-wait-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                workflowName: "scenario-step-emission-wait",
-                instanceId: "emit-wait-1",
-                stepKey: "do:approval",
-                payload: { phase: "waiting", approved: false },
-              }),
-              expect.objectContaining({
-                stepKey: "do:approval",
-                payload: { phase: "complete", approved: true },
-              }),
-            ]),
-          );
-          expect(ctx.vars.emissionsAfterSuspend).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ actor: "system", stepKey: "do:approval" }),
-              expect.objectContaining({
-                actor: "user",
-                stepKey: "do:approval",
-                payload: { phase: "waiting", approved: false },
-              }),
-            ]),
-          );
-          expect(ctx.vars.emissionsAfterComplete).toEqual([]);
-          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "done" });
+          },
         }),
       ],
     });
@@ -1116,22 +1321,16 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { CONCURRENT_EMIT: ConcurrentEmissionWorkflow };
     type ScenarioVars = {
-      ticks?: [number, number];
       emissionsWhileBothStarted?: unknown[];
-      emissionsAfterRace?: unknown[];
-      status?: { status: string; output?: { value: string } };
-      steps?: WorkflowScenarioStepRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "scenario-concurrent-step-emissions",
       workflows,
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "CONCURRENT_EMIT", id: "concurrent-emit-1" }),
-        scenarioSteps.read({
-          storeAs: "ticks",
+      steps: ({ workflow }) => [
+        workflow.create({ workflow: "CONCURRENT_EMIT", id: "concurrent-emit-1" }),
+        workflow.read({
           read: async (ctx) => {
             const workflowName = "scenario-concurrent-step-emissions";
             const rows = (
@@ -1169,22 +1368,58 @@ describe("Workflows Runner (Scenario DSL)", () => {
             runtime.controls.resolve("first:release");
             return await Promise.all([first, second]);
           },
+          assert: (ticks) => {
+            expect(ticks).toEqual([0, 1]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("CONCURRENT_EMIT", "concurrent-emit-1"),
-          storeAs: "emissionsAfterRace",
+          assert: (emissionsAfterRace) => {
+            expect(emissionsAfterRace).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ actor: "system", stepKey: "do:racy emitter" }),
+                expect.objectContaining({
+                  actor: "user",
+                  stepKey: "do:racy emitter",
+                  payload: { attempt: 1, phase: "started" },
+                }),
+                expect.objectContaining({
+                  actor: "user",
+                  stepKey: "do:racy emitter",
+                  payload: { attempt: 1, phase: "finished" },
+                }),
+              ]),
+            );
+            const outEmissions = emissionsAfterRace.filter(
+              (emission) => (emission as { actor?: string }).actor === "user",
+            );
+            const epochsByAttempt = new Map<number, Set<string>>();
+            for (const emission of outEmissions) {
+              const { epoch, payload } = emission as {
+                epoch: string;
+                payload: { attempt: number };
+              };
+              const epochs = epochsByAttempt.get(payload.attempt) ?? new Set<string>();
+              epochs.add(epoch);
+              epochsByAttempt.set(payload.attempt, epochs);
+            }
+
+            expect(epochsByAttempt.get(1)?.size).toBe(1);
+            expect(epochsByAttempt.get(2)?.size).toBe(1);
+            expect(epochsByAttempt.get(1)).not.toEqual(epochsByAttempt.get(2));
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("CONCURRENT_EMIT", "concurrent-emit-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { value: "attempt-2" },
+            });
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("CONCURRENT_EMIT", "concurrent-emit-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(invocationCount).toBe(2);
-          expect(ctx.vars.ticks).toEqual([0, 1]);
           expect(ctx.vars.emissionsWhileBothStarted).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
@@ -1199,21 +1434,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
               }),
             ]),
           );
-          expect(ctx.vars.emissionsAfterRace).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ actor: "system", stepKey: "do:racy emitter" }),
-              expect.objectContaining({
-                actor: "user",
-                stepKey: "do:racy emitter",
-                payload: { attempt: 1, phase: "started" },
-              }),
-              expect.objectContaining({
-                actor: "user",
-                stepKey: "do:racy emitter",
-                payload: { attempt: 1, phase: "finished" },
-              }),
-            ]),
-          );
           expect(producedEmissions).toEqual(
             expect.arrayContaining([
               { attempt: 1, phase: "started" },
@@ -1222,24 +1442,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
               { attempt: 2, phase: "finished" },
             ]),
           );
-          const outEmissions = (ctx.vars.emissionsAfterRace ?? []).filter(
-            (emission) => (emission as { actor?: string }).actor === "user",
-          );
-          const epochsByAttempt = new Map<number, Set<string>>();
-          for (const emission of outEmissions) {
-            const { epoch, payload } = emission as { epoch: string; payload: { attempt: number } };
-            const epochs = epochsByAttempt.get(payload.attempt) ?? new Set<string>();
-            epochs.add(epoch);
-            epochsByAttempt.set(payload.attempt, epochs);
-          }
-
-          expect(epochsByAttempt.get(1)?.size).toBe(1);
-          expect(epochsByAttempt.get(2)?.size).toBe(1);
-          expect(epochsByAttempt.get(1)).not.toEqual(epochsByAttempt.get(2));
-          expect(ctx.vars.status).toMatchObject({
-            status: "complete",
-            output: { value: "attempt-2" },
-          });
         }),
       ],
     });
@@ -1266,55 +1468,41 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { STEP_REPLAY: StepReplayWorkflow };
     type ScenarioVars = {
       messages?: unknown[];
-      emissionsAfterFirstRun?: unknown[];
-      emissionsAfterRestart?: unknown[];
-      status?: { status: string; output?: string };
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "scenario-step-emission-replay",
       workflows,
-      steps: [
-        scenarioSteps.captureEmissions({
-          workflow: "STEP_REPLAY",
-          instanceId: "step-replay-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "STEP_REPLAY", id: "step-replay-1" }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "STEP_REPLAY", id: "step-replay-1" }),
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("STEP_REPLAY", "step-replay-1"),
-          storeAs: "emissionsAfterFirstRun",
+          assert: (emissionsAfterFirstRun) => {
+            expect(emissionsAfterFirstRun).toEqual([]);
+          },
         }),
-        scenarioSteps.killAndRestartRunner(),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.restart(),
+        runner.eventAndRunUntilIdle({
           workflow: "STEP_REPLAY",
           instanceId: "step-replay-1",
           event: { type: "ready" },
         }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("STEP_REPLAY", "step-replay-1"),
-          storeAs: "emissionsAfterRestart",
+          assert: (emissionsAfterRestart) => {
+            expect(emissionsAfterRestart).toEqual([]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("STEP_REPLAY", "step-replay-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "done" });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert(() => {
           expect(publishExecutions).toBe(1);
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:publish once",
-                payload: { phase: "inside-step" },
-              }),
-            ]),
-          );
-          expect(ctx.vars.emissionsAfterFirstRun).toEqual([]);
-          expect(ctx.vars.emissionsAfterRestart).toEqual([]);
-          expect(ctx.vars.status).toMatchObject({ status: "complete", output: "done" });
         }),
       ],
     });
@@ -1334,46 +1522,26 @@ describe("Workflows Runner (Scenario DSL)", () => {
     );
 
     const workflows = { ERROR: ErrorWorkflow };
-    type ScenarioVars = {
-      messages?: unknown[];
-      emissionsAfterError?: unknown[];
-      status?: { status: string; error?: { name: string; message: string } };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, { messages?: unknown[] }>({
       name: "scenario-step-emission-error",
       workflows,
-      steps: [
-        scenarioSteps.captureEmissions({
-          workflow: "ERROR",
-          instanceId: "error-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "ERROR", id: "error-1" }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "ERROR", id: "error-1" }),
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("ERROR", "error-1"),
-          storeAs: "emissionsAfterError",
+          assert: (emissionsAfterError) => {
+            expect(emissionsAfterError).toEqual([]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("ERROR", "error-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:fail",
-                payload: { phase: "failing" },
-              }),
-            ]),
-          );
-          expect(ctx.vars.emissionsAfterError).toEqual([]);
-          expect(ctx.vars.status).toMatchObject({
-            status: "errored",
-            error: { name: "Error", message: "boom" },
-          });
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "errored",
+              error: { name: "Error", message: "boom" },
+            });
+          },
         }),
       ],
     });
@@ -1394,43 +1562,23 @@ describe("Workflows Runner (Scenario DSL)", () => {
     );
 
     const workflows = { RETRY: RetryWorkflow };
-    type ScenarioVars = {
-      messages?: unknown[];
-      emissionsAfterRetrySuspend?: unknown[];
-      status?: { status: string };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, { messages?: unknown[] }>({
       name: "scenario-step-emission-retry",
       workflows,
-      steps: [
-        scenarioSteps.captureEmissions({
-          workflow: "RETRY",
-          instanceId: "retry-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RETRY", id: "retry-1" }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RETRY", id: "retry-1" }),
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("RETRY", "retry-1"),
-          storeAs: "emissionsAfterRetrySuspend",
+          assert: (emissionsAfterRetrySuspend) => {
+            expect(emissionsAfterRetrySuspend).toEqual([]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY", "retry-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:retry later",
-                payload: { phase: "retrying" },
-              }),
-            ]),
-          );
-          expect(ctx.vars.emissionsAfterRetrySuspend).toEqual([]);
-          expect(ctx.vars.status?.status).toBe("waiting");
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
       ],
     });
@@ -1451,42 +1599,39 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { CONTROL: ControlWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { value: boolean } };
-      control?: { key: string; status: string; pendingCount: number; value?: unknown };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      { status?: { status: string; output?: { value: boolean } } }
+    >({
       name: "scenario-controls",
       workflows,
       harness: { runtime },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "CONTROL", id: "control-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "CONTROL", id: "control-1" }),
+        workflow.read({
           read: (ctx) => ctx.runtime.controls.get("control:ready"),
-          storeAs: "control",
+          assert: (control) => {
+            expect(control).toMatchObject({
+              key: "control:ready",
+              status: "pending",
+              pendingCount: 0,
+            });
+          },
         }),
-        scenarioSteps.resolveControl({ key: "control:ready", value: false }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.resolveControl({ key: "control:ready", value: false }),
+        runner.eventAndRunUntilIdle({
           workflow: "CONTROL",
           instanceId: "control-1",
           event: { type: "ready" },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("CONTROL", "control-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.control).toMatchObject({
-            key: "control:ready",
-            status: "pending",
-            pendingCount: 0,
-          });
-          expect(ctx.vars.status).toMatchObject({
-            status: "complete",
-            output: { value: false },
-          });
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { value: false },
+            });
+          },
         }),
       ],
     });
@@ -1510,36 +1655,34 @@ describe("Workflows Runner (Scenario DSL)", () => {
         status: string;
         output?: { status: number; json: { ok: boolean; source: string } };
       };
-      steps?: WorkflowScenarioStepRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "fetch-step",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "FETCH", id: "fetch-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "FETCH", id: "fetch-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("FETCH", "fetch-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            expect(status?.output).toEqual({
+              status: 200,
+              json: { ok: true, source: "fake" },
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("FETCH", "fetch-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({
-            status: 200,
-            json: { ok: true, source: "fake" },
-          });
-          expect(ctx.vars.steps).toHaveLength(1);
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            name: "fetch",
-            type: "do",
-            status: "completed",
-            stepKey: "do:fetch",
-          });
+          assert: (steps) => {
+            expect(steps).toHaveLength(1);
+            expect(steps?.[0]).toMatchObject({
+              name: "fetch",
+              type: "do",
+              status: "completed",
+              stepKey: "do:fetch",
+            });
+          },
         }),
       ],
     });
@@ -1555,43 +1698,37 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { WAIT: WaitWorkflow };
 
-    type ScenarioVars = {
-      waitingStatus?: { status: string };
-      finalStatus?: { status: string; output?: { ok: boolean } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "wait-for-event",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "WAIT", id: "wait-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "WAIT", id: "wait-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("WAIT", "wait-1"),
-          storeAs: "waitingStatus",
+          assert: (waitingStatus) => {
+            expect(waitingStatus?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("WAIT", "wait-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+            });
+          },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "WAIT",
           instanceId: "wait-1",
           event: { type: "ready", payload: { ok: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("WAIT", "wait-1"),
-          storeAs: "finalStatus",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-          });
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
-          expect(ctx.vars.finalStatus?.output).toEqual({ ok: true });
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ ok: true });
+          },
         }),
       ],
     });
@@ -1607,32 +1744,26 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { SLEEP: SleepWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "sleep-waiting",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP", "sleep-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SLEEP", "sleep-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("waiting");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "sleep:nap",
-            status: "waiting",
-          });
-          expect(ctx.vars.steps?.[0].wakeAt).toBeInstanceOf(Date);
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "sleep:nap",
+              status: "waiting",
+            });
+            expect(steps?.[0].wakeAt).toBeInstanceOf(Date);
+          },
         }),
       ],
     });
@@ -1647,35 +1778,28 @@ describe("Workflows Runner (Scenario DSL)", () => {
     });
 
     const workflows = { SLEEP_WAKE: SleepWorkflow };
-
-    type ScenarioVars = {
-      waiting?: { status: string };
-      final?: { status: string; output?: { done: boolean } };
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario({
       name: "sleep-wake",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SLEEP_WAKE", id: "sleep-wake-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "SLEEP_WAKE", id: "sleep-wake-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_WAKE", "sleep-wake-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "SLEEP_WAKE",
           instanceId: "sleep-wake-1",
           advanceBy: "10 minutes",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_WAKE", "sleep-wake-1"),
-          storeAs: "final",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.final?.status).toBe("complete");
-          expect(ctx.vars.final?.output).toEqual({ done: true });
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ done: true });
+          },
         }),
       ],
     });
@@ -1696,33 +1820,27 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { SEQUENTIAL_SLEEP: SequentialSleepWorkflow };
 
     type ScenarioVars = {
-      waitingSteps?: WorkflowScenarioStepRow[];
       firstWakeAt?: Date;
-      afterWakeStatus?: { status: string; output?: { done: boolean } };
-      afterWakeSteps?: WorkflowScenarioStepRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "sequential-sleep-wake",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "SEQUENTIAL_SLEEP", id: "sequential-sleep-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "SEQUENTIAL_SLEEP", id: "sequential-sleep-1" }),
+        runner.tick({
           workflow: "SEQUENTIAL_SLEEP",
           instanceId: "sequential-sleep-1",
           reason: "create",
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) =>
-            ctx.vars.waitingSteps?.find((step) => step.stepKey === "sleep:first")?.wakeAt ?? null,
+        workflow.read({
+          read: async (ctx) => {
+            const steps = await ctx.state.getSteps("SEQUENTIAL_SLEEP", "sequential-sleep-1");
+            return steps.find((step) => step.stepKey === "sleep:first")?.wakeAt ?? null;
+          },
           storeAs: "firstWakeAt",
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "SEQUENTIAL_SLEEP",
           instanceId: "sequential-sleep-1",
           reason: "wake",
@@ -1734,25 +1852,25 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return wakeAt;
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
-          storeAs: "afterWakeStatus",
+          assert: (afterWakeStatus) => {
+            expect(afterWakeStatus?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
-          storeAs: "afterWakeSteps",
+          assert: (steps) => {
+            const firstStep = steps.find((step) => step.stepKey === "sleep:first");
+            const secondStep = steps.find((step) => step.stepKey === "sleep:second");
+
+            expect(firstStep).toMatchObject({ status: "completed" });
+            expect(secondStep).toMatchObject({ status: "waiting" });
+            expect(secondStep?.wakeAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.firstWakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.afterWakeStatus?.status).toBe("waiting");
-
-          const steps = ctx.vars.afterWakeSteps ?? [];
-          const firstStep = steps.find((step) => step.stepKey === "sleep:first");
-          const secondStep = steps.find((step) => step.stepKey === "sleep:second");
-
-          expect(firstStep).toMatchObject({ status: "completed" });
-          expect(secondStep).toMatchObject({ status: "waiting" });
-          expect(secondStep?.wakeAt).toBeInstanceOf(Date);
         }),
       ],
     });
@@ -1768,63 +1886,53 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { SLEEP_EARLY: SleepWorkflow };
 
-    type ScenarioVars = {
-      waiting?: { status: string };
-      waitingSteps?: WorkflowScenarioStepRow[];
-      wakeAt?: Date;
-      afterWake?: { status: string };
-      afterSteps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, Record<string, never>>({
       name: "sleep-early-wake",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "SLEEP_EARLY", id: "sleep-early-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "SLEEP_EARLY", id: "sleep-early-1" }),
+        runner.tick({
           workflow: "SLEEP_EARLY",
           instanceId: "sleep-early-1",
           reason: "create",
         }),
         // After the first tick the workflow is waiting with a persisted wakeAt.
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("SLEEP_EARLY", "sleep-early-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
-          storeAs: "wakeAt",
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("SLEEP_EARLY", "sleep-early-1");
+            return waitingSteps[0]?.wakeAt ?? null;
+          },
+          assert: (wakeAt) => {
+            expect(wakeAt).toBeInstanceOf(Date);
+          },
         }),
         // Simulate an early wake hook (or duplicate hook) firing before wakeAt.
         // The runner should suspend again and keep the step waiting.
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "SLEEP_EARLY",
           instanceId: "sleep-early-1",
           reason: "wake",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
-          storeAs: "afterWake",
+          assert: (afterWake) => {
+            expect(afterWake?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SLEEP_EARLY", "sleep-early-1"),
-          storeAs: "afterSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          // If this assertion fails, we are completing sleep early based on the hook
-          // timestamp instead of the persisted wakeAt.
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.afterWake?.status).toBe("waiting");
-          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
-            stepKey: "sleep:nap",
-            status: "waiting",
-          });
+          assert: (afterSteps) => {
+            expect(afterSteps?.[0]).toMatchObject({
+              stepKey: "sleep:nap",
+              status: "waiting",
+            });
+          },
         }),
       ],
     });
@@ -1844,32 +1952,26 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { SLEEP_REPLAY: SleepWorkflow };
 
     type ScenarioVars = {
-      waitingSteps?: WorkflowScenarioStepRow[];
-      wakeAt?: Date;
-      firstWakeHooks?: WorkflowScenarioHookRow[];
-      secondWakeHooks?: WorkflowScenarioHookRow[];
+      firstWakeAt?: Date;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "sleep-replay-no-reschedule",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "SLEEP_REPLAY", id: "sleep-replay-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "SLEEP_REPLAY", id: "sleep-replay-1" }),
+        runner.tick({
           workflow: "SLEEP_REPLAY",
           instanceId: "sleep-replay-1",
           reason: "create",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SLEEP_REPLAY", "sleep-replay-1"),
-          storeAs: "waitingSteps",
+          assert: (waitingSteps) => {
+            expect(waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
-          storeAs: "wakeAt",
-        }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             const hooks = await ctx.state.internal.getHooks({
               hookName: "onWorkflowEnqueued",
@@ -1877,20 +1979,22 @@ describe("Workflows Runner (Scenario DSL)", () => {
               workflowName: "sleep-replay-workflow",
               instanceId: "sleep-replay-1",
             });
-            return hooks.filter((hook) => {
+            const wakeHooks = hooks.filter((hook) => {
               const payload = hook.payload as { reason?: string };
               return payload.reason === "wake";
             });
+            expect(wakeHooks).toHaveLength(1);
+            return wakeHooks[0]?.nextRetryAt ?? undefined;
           },
-          storeAs: "firstWakeHooks",
+          storeAs: "firstWakeAt",
         }),
         // Replay the run before wakeAt. We should NOT enqueue another wake hook.
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "SLEEP_REPLAY",
           instanceId: "sleep-replay-1",
           reason: "create",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             const hooks = await ctx.state.internal.getHooks({
               hookName: "onWorkflowEnqueued",
@@ -1903,15 +2007,12 @@ describe("Workflows Runner (Scenario DSL)", () => {
               return payload.reason === "wake";
             });
           },
-          storeAs: "secondWakeHooks",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.firstWakeHooks).toHaveLength(1);
-          expect(ctx.vars.secondWakeHooks).toHaveLength(1);
-          expect(ctx.vars.secondWakeHooks?.[0].nextRetryAt?.getTime()).toBe(
-            ctx.vars.firstWakeHooks?.[0].nextRetryAt?.getTime(),
-          );
+          assert: (secondWakeHooks, ctx) => {
+            expect(secondWakeHooks).toHaveLength(1);
+            expect(secondWakeHooks[0]?.nextRetryAt?.getTime()).toBe(
+              ctx.vars.firstWakeAt?.getTime(),
+            );
+          },
         }),
       ],
     });
@@ -1935,54 +2036,52 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { SLEEP_UNTIL: SleepUntilWorkflow };
 
-    type ScenarioVars = {
-      wakeAt?: Date;
-      waiting?: { status: string };
-      final?: { status: string; output?: { done: boolean } };
-      steps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, Record<string, never>>({
       name: "sleep-until",
       workflows,
-      steps: [
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        workflow.read({
           read: (ctx) => {
             wakeAt = new Date(ctx.clock.now().getTime() + 5 * 60 * 1000);
             return wakeAt;
           },
-          storeAs: "wakeAt",
+          assert: (scheduledWakeAt) => {
+            expect(scheduledWakeAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SLEEP_UNTIL", id: "sleep-until-1" }),
-        scenarioSteps.read({
+        runner.initializeAndRunUntilIdle({ workflow: "SLEEP_UNTIL", id: "sleep-until-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_UNTIL", "sleep-until-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SLEEP_UNTIL", "sleep-until-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "sleep:alarm",
+              status: "waiting",
+            });
+            expect(steps?.[0].wakeAt?.getTime()).toBe(wakeAt?.getTime());
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "sleep:alarm",
-            status: "waiting",
-          });
-          expect(ctx.vars.steps?.[0].wakeAt?.getTime()).toBe(ctx.vars.wakeAt?.getTime());
-        }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "SLEEP_UNTIL",
           instanceId: "sleep-until-1",
-          setTo: (ctx) => ctx.vars.wakeAt as Date,
+          setTo: () => {
+            if (!wakeAt) {
+              throw new Error("MISSING_WAKE_AT");
+            }
+            return wakeAt;
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_UNTIL", "sleep-until-1"),
-          storeAs: "final",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.final?.status).toBe("complete");
-          expect(ctx.vars.final?.output).toEqual({ done: true });
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ done: true });
+          },
         }),
       ],
     });
@@ -2001,69 +2100,61 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { TIMEOUT_EARLY: TimeoutWorkflow };
 
-    type ScenarioVars = {
-      waiting?: { status: string };
-      waitingSteps?: WorkflowScenarioStepRow[];
-      wakeAt?: Date;
-      afterWake?: { status: string; error?: { message?: string } };
-      afterSteps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, Record<string, never>>({
       name: "wait-timeout-early",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "TIMEOUT_EARLY", id: "timeout-early-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "TIMEOUT_EARLY", id: "timeout-early-1" }),
+        runner.tick({
           workflow: "TIMEOUT_EARLY",
           instanceId: "timeout-early-1",
           reason: "create",
         }),
         // First tick should put the workflow into waiting state with a wakeAt timeout.
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EARLY", "timeout-early-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("TIMEOUT_EARLY", "timeout-early-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
-          storeAs: "wakeAt",
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("TIMEOUT_EARLY", "timeout-early-1");
+            return waitingSteps[0] ?? null;
+          },
+          assert: (waitingStep) => {
+            expect(waitingStep).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+              waitEventType: "ready",
+            });
+            expect(waitingStep?.wakeAt).toBeInstanceOf(Date);
+          },
         }),
         // Simulate a wake hook arriving early (before the timeout deadline).
         // The runner should keep waiting instead of timing out early.
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "TIMEOUT_EARLY",
           instanceId: "timeout-early-1",
           reason: "wake",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EARLY", "timeout-early-1"),
-          storeAs: "afterWake",
+          assert: (afterWake) => {
+            // If this fails, we are using the hook timestamp as "now" and timing out
+            // without checking the persisted wakeAt deadline.
+            expect(afterWake?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("TIMEOUT_EARLY", "timeout-early-1"),
-          storeAs: "afterSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          // If this fails, we are using the hook timestamp as "now" and timing out
-          // without checking the persisted wakeAt deadline.
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.waitingSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-            waitEventType: "ready",
-          });
-          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.afterWake?.status).toBe("waiting");
-          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-            waitEventType: "ready",
-          });
+          assert: (afterSteps) => {
+            expect(afterSteps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+              waitEventType: "ready",
+            });
+          },
         }),
       ],
     });
@@ -2083,59 +2174,54 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { TIMEOUT: TimeoutWorkflow };
 
     type ScenarioVars = {
-      waiting?: { status: string };
-      final?: { status: string; error?: { message?: string } };
-      waitingSteps?: WorkflowScenarioStepRow[];
-      finalSteps?: WorkflowScenarioStepRow[];
       wakeAt?: Date;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "wait-timeout",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "TIMEOUT", id: "timeout-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "TIMEOUT", id: "timeout-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT", "timeout-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("TIMEOUT", "timeout-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("TIMEOUT", "timeout-1");
+            expect(waitingSteps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+              waitEventType: "ready",
+            });
+            expect(waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
+            return waitingSteps[0]?.wakeAt ?? null;
+          },
           storeAs: "wakeAt",
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "TIMEOUT",
           instanceId: "timeout-1",
-          setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
+          setTo: (ctx) => new Date(ctx.vars.wakeAt!.getTime() + 1),
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT", "timeout-1"),
-          storeAs: "final",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("errored");
+            expect(finalStatus?.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("TIMEOUT", "timeout-1"),
-          storeAs: "finalSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.waitingSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-            waitEventType: "ready",
-          });
-          expect(ctx.vars.waitingSteps?.[0].wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.final?.status).toBe("errored");
-          expect(ctx.vars.final?.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
-          expect(ctx.vars.finalSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "errored",
-            errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-          });
+          assert: (finalSteps) => {
+            expect(finalSteps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "errored",
+              errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+            });
+          },
         }),
       ],
     });
@@ -2162,53 +2248,48 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { GRACEFUL: GracefulTimeoutWorkflow };
 
     type ScenarioVars = {
-      waiting?: { status: string };
-      waitingSteps?: WorkflowScenarioStepRow[];
       wakeAt?: Date;
-      final?: { status: string; output?: { ok: boolean; timedOut: boolean } };
-      finalSteps?: WorkflowScenarioStepRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "wait-timeout-graceful",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "GRACEFUL", id: "graceful-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "GRACEFUL", id: "graceful-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("GRACEFUL", "graceful-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("GRACEFUL", "graceful-1");
+            return waitingSteps[0]?.wakeAt ?? null;
+          },
           storeAs: "wakeAt",
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "GRACEFUL",
           instanceId: "graceful-1",
           setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
-          storeAs: "final",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ ok: true, timedOut: true });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("GRACEFUL", "graceful-1"),
-          storeAs: "finalSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.final?.status).toBe("complete");
-          expect(ctx.vars.final?.output).toEqual({ ok: true, timedOut: true });
-          expect(ctx.vars.finalSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "errored",
-            errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-          });
+          assert: (finalSteps) => {
+            expect(finalSteps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "errored",
+              errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+            });
+          },
         }),
       ],
     });
@@ -2276,14 +2357,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { TIMEOUT_MUTATE: TimeoutMutationWorkflow };
 
     type ScenarioVars = {
-      waitingSteps?: WorkflowScenarioStepRow[];
       wakeAt?: Date;
-      final?: { status: string; output?: { finalStatus: string } };
-      finalSteps?: WorkflowScenarioStepRow[];
-      rows?: Array<{ status: string }>;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "timeout-mutation",
       workflows,
@@ -2291,35 +2367,31 @@ describe("Workflows Runner (Scenario DSL)", () => {
         configureBuilder: (builder) =>
           builder.withFragment("timeoutMutation", instantiate(timeoutMutationFragmentDefinition)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "TIMEOUT_MUTATE",
           id: "tm-1",
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("TIMEOUT_MUTATE", "tm-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) =>
-            ctx.vars.waitingSteps?.find((s) => s.stepKey === "waitForEvent:approval")?.wakeAt ??
-            null,
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("TIMEOUT_MUTATE", "tm-1");
+            return waitingSteps.find((s) => s.stepKey === "waitForEvent:approval")?.wakeAt ?? null;
+          },
           storeAs: "wakeAt",
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "TIMEOUT_MUTATE",
           instanceId: "tm-1",
           setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_MUTATE", "tm-1"),
-          storeAs: "final",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ finalStatus: "timed-out" });
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("TIMEOUT_MUTATE", "tm-1"),
-          storeAs: "finalSteps",
-        }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             return (
               await ctx.harness.fragments["timeoutMutation"].db
@@ -2329,17 +2401,13 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .executeRetrieve()
             )[0];
           },
-          storeAs: "rows",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.final?.status).toBe("complete");
-          expect(ctx.vars.final?.output).toEqual({ finalStatus: "timed-out" });
-
-          // The "mark-timed-out" step completed successfully (no terminal error),
-          // so tx.mutate runs and tx.onTerminalError.mutate does NOT.
-          const statuses = (ctx.vars.rows ?? []).map((r) => r.status).sort();
-          expect(statuses).toEqual(["done", "waiting"]);
-          expect(statuses).not.toContain("error-cleanup");
+          assert: (rows) => {
+            // The "mark-timed-out" step completed successfully (no terminal error),
+            // so tx.mutate runs and tx.onTerminalError.mutate does NOT.
+            const statuses = rows.map((r) => r.status).sort();
+            expect(statuses).toEqual(["done", "waiting"]);
+            expect(statuses).not.toContain("error-cleanup");
+          },
         }),
       ],
     });
@@ -2362,54 +2430,59 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { TIMEOUT_EVENT: TimeoutWorkflow };
 
     type ScenarioVars = {
-      waitingSteps?: WorkflowScenarioStepRow[];
       wakeAt?: Date;
-      status?: { status: string; output?: { ok: boolean } };
-      steps?: WorkflowScenarioStepRow[];
-      events?: WorkflowScenarioEventRow[];
       lateTicks?: { processed: number; ticks: number };
-      afterAdvanceStatus?: { status: string; output?: { ok: boolean } };
-      afterAdvanceSteps?: WorkflowScenarioStepRow[];
-      afterAdvanceEvents?: WorkflowScenarioEventRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "wait-timeout-event",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "TIMEOUT_EVENT", id: "timeout-event-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "TIMEOUT_EVENT", id: "timeout-event-1" }),
+        runner.tick({
           workflow: "TIMEOUT_EVENT",
           instanceId: "timeout-event-1",
           reason: "create",
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1");
+            return waitingSteps[0]?.wakeAt ?? null;
+          },
           storeAs: "wakeAt",
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "TIMEOUT_EVENT",
           instanceId: "timeout-event-1",
           event: { type: "ready", payload: { ok: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            expect(status?.output).toEqual({ ok: true });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "completed",
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "events",
+          assert: (events) => {
+            expect(events).toHaveLength(1);
+            expect(events?.[0]).toMatchObject({
+              type: "ready",
+              consumedByStepKey: "waitForEvent:ready",
+            });
+          },
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "TIMEOUT_EVENT",
           instanceId: "timeout-event-1",
           setTo: (ctx) => {
@@ -2421,42 +2494,31 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
           storeAs: "lateTicks",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "afterAdvanceStatus",
+          assert: (afterAdvanceStatus) => {
+            expect(afterAdvanceStatus?.status).toBe("complete");
+            expect(afterAdvanceStatus?.output).toEqual({ ok: true });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "afterAdvanceSteps",
+          assert: (afterAdvanceSteps) => {
+            expect(afterAdvanceSteps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "completed",
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("TIMEOUT_EVENT", "timeout-event-1"),
-          storeAs: "afterAdvanceEvents",
+          assert: (afterAdvanceEvents) => {
+            expect(afterAdvanceEvents).toHaveLength(1);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ ok: true });
-
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "completed",
-          });
-
-          expect(ctx.vars.events).toHaveLength(1);
-          expect(ctx.vars.events?.[0]).toMatchObject({
-            type: "ready",
-            consumedByStepKey: "waitForEvent:ready",
-          });
-
+        workflow.assert((ctx) => {
           expect(ctx.vars.lateTicks?.processed).toBe(0);
           expect(ctx.vars.lateTicks?.ticks).toBe(1);
-          expect(ctx.vars.afterAdvanceStatus?.status).toBe("complete");
-          expect(ctx.vars.afterAdvanceStatus?.output).toEqual({ ok: true });
-          expect(ctx.vars.afterAdvanceSteps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "completed",
-          });
-          expect(ctx.vars.afterAdvanceEvents).toHaveLength(1);
         }),
       ],
     });
@@ -2474,67 +2536,60 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { HISTORY: HistoryWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string };
-      history?: {
-        steps: Array<{ stepKey: string; createdAt: Date | string }>;
-        events: WorkflowScenarioEventRow[];
-      };
-      historyByRun?: { steps: unknown[]; events: unknown[] };
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "history-ordering",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "HISTORY", id: "history-1" }),
-        scenarioSteps.tick({ workflow: "HISTORY", instanceId: "history-1", reason: "create" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "HISTORY", id: "history-1" }),
+        runner.tick({ workflow: "HISTORY", instanceId: "history-1", reason: "create" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("HISTORY", "history-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.event({
+        workflow.event({
           workflow: "HISTORY",
           instanceId: "history-1",
           event: { type: "ready", payload: { ok: true } },
         }),
-        scenarioSteps.tick({ workflow: "HISTORY", instanceId: "history-1", reason: "event" }),
-        scenarioSteps.read({
+        runner.tick({ workflow: "HISTORY", instanceId: "history-1", reason: "event" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("HISTORY", "history-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getHistory("HISTORY", "history-1", { order: "desc" }),
-          storeAs: "history",
+          assert: (history) => {
+            const stepKeys = history.steps.map((step) => step.stepKey).sort();
+            expect(stepKeys).toEqual(["do:result", "do:seed", "waitForEvent:ready"]);
+
+            const stepTimestamps = history.steps.map((step) =>
+              new Date(step.createdAt as Date | string).getTime(),
+            );
+            expect([...stepTimestamps].sort((a, b) => b - a)).toEqual(stepTimestamps);
+
+            expect(history.events).toHaveLength(1);
+            expect(history.events[0]).toMatchObject({
+              type: "ready",
+              payload: { ok: true },
+              consumedByStepKey: "waitForEvent:ready",
+            });
+            const deliveredAt = history.events[0]?.deliveredAt;
+            expect(deliveredAt).toBeTruthy();
+            expect(new Date(deliveredAt as Date | string).toString()).not.toBe("Invalid Date");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getHistory("HISTORY", "history-1", { order: "desc" }),
-          storeAs: "historyByRun",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-
-          const history = ctx.vars.history;
-
-          const stepKeys = history?.steps.map((step) => step.stepKey).sort() ?? [];
-          expect(stepKeys).toEqual(["do:result", "do:seed", "waitForEvent:ready"]);
-
-          const stepTimestamps =
-            history?.steps.map((step) => new Date(step.createdAt as Date | string).getTime()) ?? [];
-          expect([...stepTimestamps].sort((a, b) => b - a)).toEqual(stepTimestamps);
-
-          expect(history?.events).toHaveLength(1);
-          expect(history?.events[0]).toMatchObject({
-            type: "ready",
-            payload: { ok: true },
-            consumedByStepKey: "waitForEvent:ready",
-          });
-          const deliveredAt = history?.events[0].deliveredAt;
-          expect(deliveredAt).toBeTruthy();
-          expect(new Date(deliveredAt as Date | string).toString()).not.toBe("Invalid Date");
-          expect(ctx.vars.historyByRun?.steps).toHaveLength(3);
-          expect(ctx.vars.historyByRun?.events).toHaveLength(1);
+          assert: (historyByRun) => {
+            expect(historyByRun.steps).toHaveLength(3);
+            expect(historyByRun.events).toHaveLength(1);
+          },
         }),
       ],
     });
@@ -2554,72 +2609,64 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { EVENT_ORDER: EventOrderWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { first: number; second: number } };
-      events?: Array<{ id: unknown; payload: unknown; consumedByStepKey: string | null }>;
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "event-order",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "EVENT_ORDER", id: "event-order-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "EVENT_ORDER", id: "event-order-1" }),
+        runner.tick({
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           reason: "create",
         }),
-        scenarioSteps.event({
+        workflow.event({
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           event: { type: "ready", payload: { value: 1 } },
           timestamp: new Date(1000),
         }),
-        scenarioSteps.event({
+        workflow.event({
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           event: { type: "ready", payload: { value: 2 } },
           timestamp: new Date(1001),
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "EVENT_ORDER",
           instanceId: "event-order-1",
           reason: "event",
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getStatus("EVENT_ORDER", "event-order-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
-            return (
+            const status = await ctx.state.getStatus("EVENT_ORDER", "event-order-1");
+            const events = (
               await ctx.harness.db
                 .createUnitOfWork("read")
                 .forSchema(workflowsSchema)
                 .find("workflow_event", (b) => b.whereIndex("primary"))
                 .executeRetrieve()
             )[0];
+            return { status, events };
           },
-          storeAs: "events",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const events = ctx.vars.events ?? [];
-          expect(events).toHaveLength(2);
+          assert: ({ status, events }) => {
+            expect(status?.status).toBe("complete");
+            expect(events).toHaveLength(2);
 
-          const [firstEvent, secondEvent] = events;
+            const [firstEvent, secondEvent] = events;
 
-          expect(ctx.vars.status?.output).toEqual({
-            first: (firstEvent.payload as { value: number }).value,
-            second: (secondEvent.payload as { value: number }).value,
-          });
-          expect(firstEvent).toMatchObject({
-            consumedByStepKey: "waitForEvent:first",
-          });
-          expect(secondEvent).toMatchObject({
-            consumedByStepKey: "waitForEvent:second",
-          });
+            expect(status?.output).toEqual({
+              first: (firstEvent.payload as { value: number }).value,
+              second: (secondEvent.payload as { value: number }).value,
+            });
+            expect(firstEvent).toMatchObject({
+              consumedByStepKey: "waitForEvent:first",
+            });
+            expect(secondEvent).toMatchObject({
+              consumedByStepKey: "waitForEvent:second",
+            });
+          },
         }),
       ],
     });
@@ -2638,48 +2685,44 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { EVENT_REASON: EventReasonWorkflow };
 
-    type ScenarioVars = {
-      statusAfterCreate?: { status: string };
-      statusAfterEventTick?: { status: string };
-      steps?: WorkflowScenarioStepRow[];
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "event-reason-ticks",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "EVENT_REASON", id: "event-reason-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "EVENT_REASON", id: "event-reason-1" }),
+        runner.tick({
           workflow: "EVENT_REASON",
           instanceId: "event-reason-1",
           reason: "create",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENT_REASON", "event-reason-1"),
-          storeAs: "statusAfterCreate",
+          assert: (statusAfterCreate) => {
+            expect(statusAfterCreate?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "EVENT_REASON",
           instanceId: "event-reason-1",
           reason: "event",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENT_REASON", "event-reason-1"),
-          storeAs: "statusAfterEventTick",
+          assert: (statusAfterEventTick) => {
+            expect(statusAfterEventTick?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("EVENT_REASON", "event-reason-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusAfterCreate?.status).toBe("waiting");
-          expect(ctx.vars.statusAfterEventTick?.status).toBe("waiting");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-            waitEventType: "ready",
-          });
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+              waitEventType: "ready",
+            });
+          },
         }),
       ],
     });
@@ -2699,73 +2742,71 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { RESUME_REASON: ResumeReasonWorkflow };
 
     type ScenarioVars = {
-      pauseResponse?: RouteResponse;
-      resumeResponse?: RouteResponse;
-      pausedStatus?: { status: string };
-      activeStatus?: { status: string };
-      finalStatus?: { status: string };
-      steps?: WorkflowScenarioStepRow[];
+      pauseResponse?: InstanceStatus;
+      resumeResponse?: InstanceStatus;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "resume-reason-ticks",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "RESUME_REASON", id: "resume-reason-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "RESUME_REASON", id: "resume-reason-1" }),
+        runner.tick({
           workflow: "RESUME_REASON",
           instanceId: "resume-reason-1",
           reason: "create",
         }),
-        scenarioSteps.pause({
+        workflow.pause({
           workflow: "RESUME_REASON",
           instanceId: "resume-reason-1",
           storeAs: "pauseResponse",
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "RESUME_REASON",
           instanceId: "resume-reason-1",
           reason: "event",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
-          storeAs: "pausedStatus",
+          assert: (pausedStatus) => {
+            expect(pausedStatus?.status).toBe("paused");
+          },
         }),
-        scenarioSteps.resume({
+        workflow.resume({
           workflow: "RESUME_REASON",
           instanceId: "resume-reason-1",
           storeAs: "resumeResponse",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
-          storeAs: "activeStatus",
+          assert: (activeStatus) => {
+            expect(activeStatus?.status).toBe("active");
+          },
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "RESUME_REASON",
           instanceId: "resume-reason-1",
           reason: "resume",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
-          storeAs: "finalStatus",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RESUME_REASON", "resume-reason-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "waitForEvent:ready",
+              status: "waiting",
+              waitEventType: "ready",
+            });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          assertOkResponse(ctx.vars.pauseResponse as RouteResponse);
-          assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
-
-          expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.activeStatus?.status).toBe("active");
-          expect(ctx.vars.finalStatus?.status).toBe("waiting");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "waitForEvent:ready",
-            status: "waiting",
-            waitEventType: "ready",
-          });
+        workflow.assert((ctx) => {
+          expect(ctx.vars.pauseResponse).toBeDefined();
+          expect(ctx.vars.resumeResponse?.status).toBe("active");
         }),
       ],
     });
@@ -2785,96 +2826,95 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { PAUSE_EVENT: PauseEventWorkflow };
 
     type ScenarioVars = {
-      pauseResponse?: RouteResponse;
-      resumeResponse?: RouteResponse;
-      pausedStatus?: { status: string };
-      activeStatus?: { status: string };
-      finalStatus?: { status: string; output?: { ok: boolean } };
-      eventsBefore?: WorkflowScenarioEventRow[];
-      eventsAfter?: WorkflowScenarioEventRow[];
+      pauseResponse?: InstanceStatus;
+      resumeResponse?: InstanceStatus;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pause-event-consumption",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "PAUSE_EVENT", id: "pause-event-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "PAUSE_EVENT", id: "pause-event-1" }),
+        runner.tick({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           reason: "create",
         }),
-        scenarioSteps.pause({
+        workflow.pause({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           storeAs: "pauseResponse",
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           reason: "event",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "pausedStatus",
+          assert: (pausedStatus) => {
+            expect(pausedStatus?.status).toBe("paused");
+          },
         }),
-        scenarioSteps.event({
+        workflow.event({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           event: { type: "ready", payload: { ok: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "pausedStatus",
+          assert: (pausedStatus) => {
+            expect(pausedStatus?.status).toBe("paused");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "eventsBefore",
+          assert: (eventsBefore) => {
+            const readyBefore = eventsBefore.find((event) => event.type === "ready");
+            expect(readyBefore).toMatchObject({
+              type: "ready",
+              consumedByStepKey: null,
+              deliveredAt: null,
+            });
+          },
         }),
-        scenarioSteps.resume({
+        workflow.resume({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           storeAs: "resumeResponse",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "activeStatus",
+          assert: (activeStatus) => {
+            expect(activeStatus?.status).toBe("active");
+          },
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "PAUSE_EVENT",
           instanceId: "pause-event-1",
           reason: "resume",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "finalStatus",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ ok: true });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("PAUSE_EVENT", "pause-event-1"),
-          storeAs: "eventsAfter",
+          assert: (eventsAfter) => {
+            const readyAfter = eventsAfter.find((event) => event.type === "ready");
+            expect(readyAfter).toMatchObject({
+              type: "ready",
+              consumedByStepKey: "waitForEvent:ready",
+            });
+            expect(readyAfter?.deliveredAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          assertOkResponse(ctx.vars.pauseResponse as RouteResponse);
-          assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
-          expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.activeStatus?.status).toBe("active");
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
-          expect(ctx.vars.finalStatus?.output).toEqual({ ok: true });
-
-          const readyBefore = (ctx.vars.eventsBefore ?? []).find((event) => event.type === "ready");
-          expect(readyBefore).toMatchObject({
-            type: "ready",
-            consumedByStepKey: null,
-            deliveredAt: null,
-          });
-
-          const readyAfter = (ctx.vars.eventsAfter ?? []).find((event) => event.type === "ready");
-          expect(readyAfter).toMatchObject({
-            type: "ready",
-            consumedByStepKey: "waitForEvent:ready",
-          });
-          expect(readyAfter?.deliveredAt).toBeInstanceOf(Date);
+        workflow.assert((ctx) => {
+          expect(ctx.vars.pauseResponse).toBeDefined();
+          expect(ctx.vars.resumeResponse?.status).toBe("active");
         }),
       ],
     });
@@ -2913,12 +2953,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { MUTATE: MutateWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { result: string } };
-      mutationRows?: Array<{ note: string }>;
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "step-tx-mutations",
       workflows,
@@ -2926,13 +2962,16 @@ describe("Workflows Runner (Scenario DSL)", () => {
         configureBuilder: (builder) =>
           builder.withFragment("mutations", instantiate(mutationsFragmentDefinition)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "MUTATE", id: "mutate-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "MUTATE", id: "mutate-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("MUTATE", "mutate-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            expect(status?.output).toEqual({ result: "mutated" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             return (
               await ctx.harness.fragments["mutations"].db
@@ -2942,13 +2981,10 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .executeRetrieve()
             )[0];
           },
-          storeAs: "mutationRows",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ result: "mutated" });
-          expect(ctx.vars.mutationRows).toHaveLength(1);
-          expect(ctx.vars.mutationRows?.[0]).toMatchObject({ note: "fromTx-mutate-1" });
+          assert: (mutationRows) => {
+            expect(mutationRows).toHaveLength(1);
+            expect(mutationRows?.[0]).toMatchObject({ note: "fromTx-mutate-1" });
+          },
         }),
       ],
     });
@@ -3000,11 +3036,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { SERVICE_CALL: ServiceCallWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; error?: { message?: string } };
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "step-tx-service-calls",
       workflows,
@@ -3022,15 +3055,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
             },
           ),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "SERVICE_CALL", id: "service-call-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "SERVICE_CALL", id: "service-call-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SERVICE_CALL", "service-call-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("errored");
-          expect(ctx.vars.status?.error?.message).toBe("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
+          assert: (status) => {
+            expect(status?.status).toBe("errored");
+            expect(status?.error?.message).toBe("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
+          },
         }),
       ],
     });
@@ -3057,34 +3089,30 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RETRY: RetryWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string; output?: { result: string } };
-      steps?: WorkflowScenarioStepRow[];
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "retry-success",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "RETRY", id: "retry-1" }),
-        scenarioSteps.retryAndRunUntilIdle({ workflow: "RETRY", instanceId: "retry-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RETRY", id: "retry-1" }),
+        runner.retryAndRunUntilIdle({ workflow: "RETRY", instanceId: "retry-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY", "retry-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            expect(status?.output).toEqual({ result: "ok" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RETRY", "retry-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.status?.output).toEqual({ result: "ok" });
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "do:unstable",
-            status: "completed",
-            attempts: 2,
-          });
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "do:unstable",
+              status: "completed",
+              attempts: 2,
+            });
+          },
         }),
       ],
     });
@@ -3111,69 +3139,61 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { RETRY_EARLY: RetryWorkflow };
 
-    type ScenarioVars = {
-      waiting?: { status: string };
-      waitingSteps?: WorkflowScenarioStepRow[];
-      nextRetryAt?: Date;
-      afterRetry?: { status: string; output?: { result: string } };
-      afterSteps?: WorkflowScenarioStepRow[];
-    };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<typeof workflows, Record<string, never>>({
       name: "retry-early",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "RETRY_EARLY", id: "retry-early-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "RETRY_EARLY", id: "retry-early-1" }),
+        runner.tick({
           workflow: "RETRY_EARLY",
           instanceId: "retry-early-1",
           reason: "create",
         }),
         // First tick should record a failed attempt and a nextRetryAt timestamp.
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY_EARLY", "retry-early-1"),
-          storeAs: "waiting",
+          assert: (waiting) => {
+            expect(waiting?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("RETRY_EARLY", "retry-early-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].nextRetryAt ?? null,
-          storeAs: "nextRetryAt",
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("RETRY_EARLY", "retry-early-1");
+            return waitingSteps[0] ?? null;
+          },
+          assert: (waitingStep) => {
+            expect(waitingStep).toMatchObject({
+              stepKey: "do:unstable",
+              status: "waiting",
+              attempts: 1,
+            });
+            expect(waitingStep?.nextRetryAt).toBeInstanceOf(Date);
+          },
         }),
         // Simulate an early retry hook before nextRetryAt.
         // The runner should suspend again and not execute the retry yet.
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "RETRY_EARLY",
           instanceId: "retry-early-1",
           reason: "retry",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY_EARLY", "retry-early-1"),
-          storeAs: "afterRetry",
+          assert: (afterRetry) => {
+            // If this fails, we are retrying early based on the hook timestamp instead
+            // of honoring the persisted nextRetryAt.
+            expect(afterRetry?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("RETRY_EARLY", "retry-early-1"),
-          storeAs: "afterSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          // If this fails, we are retrying early based on the hook timestamp instead
-          // of honoring the persisted nextRetryAt.
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.waitingSteps?.[0]).toMatchObject({
-            stepKey: "do:unstable",
-            status: "waiting",
-            attempts: 1,
-          });
-          expect(ctx.vars.waitingSteps?.[0].nextRetryAt).toBeInstanceOf(Date);
-          expect(ctx.vars.afterRetry?.status).toBe("waiting");
-          expect(ctx.vars.afterSteps?.[0]).toMatchObject({
-            stepKey: "do:unstable",
-            status: "waiting",
-            attempts: 1,
-          });
+          assert: (afterSteps) => {
+            expect(afterSteps?.[0]).toMatchObject({
+              stepKey: "do:unstable",
+              status: "waiting",
+              attempts: 1,
+            });
+          },
         }),
       ],
     });
@@ -3191,31 +3211,27 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { ERROR: ErrorWorkflow };
 
-    type ScenarioVars = {
-      status?: { status: string };
-      steps?: WorkflowScenarioStepRow[];
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "errored-step",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "ERROR", id: "error-1" }),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "ERROR", id: "error-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("ERROR", "error-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("errored");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("ERROR", "error-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("errored");
-          expect(ctx.vars.steps?.[0]).toMatchObject({
-            stepKey: "do:boom",
-            status: "errored",
-          });
+          assert: (steps) => {
+            expect(steps?.[0]).toMatchObject({
+              stepKey: "do:boom",
+              status: "errored",
+            });
+          },
         }),
       ],
     });
@@ -3239,58 +3255,57 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { PAUSE: PauseWorkflow };
 
     type ScenarioVars = {
-      pauseResponse?: RouteResponse;
-      resumeResponse?: RouteResponse;
-      pausedStatus?: { status: string };
-      activeStatus?: { status: string };
-      finalStatus?: { status: string; output?: { value: number } };
-      instance?: WorkflowScenarioInstanceRow | null;
+      pauseResponse?: InstanceStatus;
+      resumeResponse?: InstanceStatus;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "pause-resume",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "PAUSE", id: "pause-1" }),
-        scenarioSteps.pause({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "PAUSE", id: "pause-1" }),
+        workflow.pause({
           workflow: "PAUSE",
           instanceId: "pause-1",
           storeAs: "pauseResponse",
         }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
-        scenarioSteps.read({
+        runner.runCreateUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
-          storeAs: "pausedStatus",
+          assert: (pausedStatus) => {
+            expect(pausedStatus?.status).toBe("paused");
+          },
         }),
-        scenarioSteps.resume({
+        workflow.resume({
           workflow: "PAUSE",
           instanceId: "pause-1",
           storeAs: "resumeResponse",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
-          storeAs: "activeStatus",
+          assert: (activeStatus) => {
+            expect(activeStatus?.status).toBe("active");
+          },
         }),
-        scenarioSteps.runResumeUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
-        scenarioSteps.read({
+        runner.runResumeUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
-          storeAs: "finalStatus",
+          assert: (finalStatus) => {
+            expect(finalStatus?.status).toBe("complete");
+            expect(finalStatus?.output).toEqual({ value: 1 });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getInstance("PAUSE", "pause-1"),
-          storeAs: "instance",
+          assert: (instance) => {
+            expect(instance).toMatchObject({
+              status: "complete",
+            });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          assertOkResponse(ctx.vars.pauseResponse as RouteResponse);
-          assertOkResponse(ctx.vars.resumeResponse as RouteResponse);
-          expect(ctx.vars.pausedStatus?.status).toBe("paused");
-          expect(ctx.vars.activeStatus?.status).toBe("active");
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
-          expect(ctx.vars.finalStatus?.output).toEqual({ value: 1 });
-          expect(ctx.vars.instance).toMatchObject({
-            status: "complete",
-          });
+        workflow.assert((ctx) => {
+          expect(ctx.vars.pauseResponse).toBeDefined();
+          expect(ctx.vars.resumeResponse?.status).toBe("active");
           expect(runs).toBe(1);
         }),
       ],
@@ -3315,44 +3330,43 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { TERM: TerminateWorkflow };
 
     type ScenarioVars = {
-      terminateResponse?: RouteResponse;
-      status?: { status: string };
-      steps?: WorkflowScenarioStepRow[];
-      instance?: WorkflowScenarioInstanceRow | null;
+      terminateResponse?: InstanceStatus;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "terminate-active",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "TERM", id: "term-1" }),
-        scenarioSteps.terminate({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "TERM", id: "term-1" }),
+        workflow.terminate({
           workflow: "TERM",
           instanceId: "term-1",
           storeAs: "terminateResponse",
         }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "TERM", instanceId: "term-1" }),
-        scenarioSteps.read({
+        runner.runCreateUntilIdle({ workflow: "TERM", instanceId: "term-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("TERM", "term-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("terminated");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("TERM", "term-1"),
-          storeAs: "steps",
+          assert: (steps) => {
+            expect(steps).toHaveLength(0);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getInstance("TERM", "term-1"),
-          storeAs: "instance",
+          assert: (instance) => {
+            expect(instance).toMatchObject({
+              status: "terminated",
+            });
+            expect(instance?.completedAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          assertOkResponse(ctx.vars.terminateResponse as RouteResponse);
-          expect(ctx.vars.status?.status).toBe("terminated");
-          expect(ctx.vars.steps).toHaveLength(0);
-          expect(ctx.vars.instance).toMatchObject({
-            status: "terminated",
-          });
-          expect(ctx.vars.instance?.completedAt).toBeInstanceOf(Date);
+        workflow.assert((ctx) => {
+          expect(ctx.vars.terminateResponse?.status).toBe("terminated");
           expect(runs).toBe(0);
         }),
       ],
@@ -3373,45 +3387,40 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { SLEEP_TERM: SleepWorkflow };
 
     type ScenarioVars = {
-      waitingStatus?: { status: string };
-      waitingSteps?: WorkflowScenarioStepRow[];
       wakeAt?: Date;
-      terminateResponse?: RouteResponse;
+      terminateResponse?: InstanceStatus;
       wakeProcessed?: number;
-      afterWakeStatus?: { status: string };
-      afterWakeSteps?: WorkflowScenarioStepRow[];
-      instance?: WorkflowScenarioInstanceRow | null;
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "terminate-sleep-wake",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "SLEEP_TERM", id: "sleep-term-1" }),
-        scenarioSteps.tick({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "SLEEP_TERM", id: "sleep-term-1" }),
+        runner.tick({
           workflow: "SLEEP_TERM",
           instanceId: "sleep-term-1",
           reason: "create",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
-          storeAs: "waitingStatus",
+          assert: (waitingStatus) => {
+            expect(waitingStatus?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.state.getSteps("SLEEP_TERM", "sleep-term-1"),
-          storeAs: "waitingSteps",
-        }),
-        scenarioSteps.read({
-          read: (ctx) => ctx.vars.waitingSteps?.[0].wakeAt ?? null,
+        workflow.read({
+          read: async (ctx) => {
+            const waitingSteps = await ctx.state.getSteps("SLEEP_TERM", "sleep-term-1");
+            return waitingSteps[0]?.wakeAt ?? null;
+          },
           storeAs: "wakeAt",
         }),
-        scenarioSteps.terminate({
+        workflow.terminate({
           workflow: "SLEEP_TERM",
           instanceId: "sleep-term-1",
           storeAs: "terminateResponse",
         }),
-        scenarioSteps.tick({
+        runner.tick({
           workflow: "SLEEP_TERM",
           instanceId: "sleep-term-1",
           reason: "wake",
@@ -3424,30 +3433,32 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
           storeAs: "wakeProcessed",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
-          storeAs: "afterWakeStatus",
+          assert: (afterWakeStatus) => {
+            expect(afterWakeStatus?.status).toBe("terminated");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("SLEEP_TERM", "sleep-term-1"),
-          storeAs: "afterWakeSteps",
+          assert: (afterWakeSteps) => {
+            expect(afterWakeSteps?.[0]).toMatchObject({
+              stepKey: "sleep:nap",
+              status: "waiting",
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getInstance("SLEEP_TERM", "sleep-term-1"),
-          storeAs: "instance",
+          assert: (instance) => {
+            expect(instance).toMatchObject({ status: "terminated" });
+            expect(instance?.completedAt).toBeInstanceOf(Date);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          assertOkResponse(ctx.vars.terminateResponse as RouteResponse);
-          expect(ctx.vars.waitingStatus?.status).toBe("waiting");
+        workflow.assert((ctx) => {
+          expect(ctx.vars.terminateResponse?.status).toBe("terminated");
           expect(ctx.vars.wakeAt).toBeInstanceOf(Date);
           expect(ctx.vars.wakeProcessed).toBe(0);
-          expect(ctx.vars.afterWakeStatus?.status).toBe("terminated");
-          expect(ctx.vars.instance).toMatchObject({ status: "terminated" });
-          expect(ctx.vars.instance?.completedAt).toBeInstanceOf(Date);
-          expect(ctx.vars.afterWakeSteps?.[0]).toMatchObject({
-            stepKey: "sleep:nap",
-            status: "waiting",
-          });
         }),
       ],
     });
@@ -3467,38 +3478,42 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     type ScenarioVars = {
       created?: Array<{ id: string; details: { status: string } }>;
-      status1?: { status: string; output?: { instanceId: string } };
-      status2?: { status: string; output?: { instanceId: string } };
-      status3?: { status: string; output?: { instanceId: string } };
-      instances?: WorkflowScenarioInstanceRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "batch-create",
       workflows,
-      steps: [
-        scenarioSteps.createBatch({
+      steps: ({ workflow, runner }) => [
+        workflow.createBatch({
           workflow: "BATCH",
           instances: [{ id: "batch-1" }, { id: "batch-2" }, { id: "batch-3" }],
           storeAs: "created",
         }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-1" }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-2" }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-3" }),
-        scenarioSteps.read({
+        runner.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-1" }),
+        runner.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-2" }),
+        runner.runCreateUntilIdle({ workflow: "BATCH", instanceId: "batch-3" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-1"),
-          storeAs: "status1",
+          assert: (status1) => {
+            expect(status1?.status).toBe("complete");
+            expect(status1?.output).toEqual({ instanceId: "batch-1" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-2"),
-          storeAs: "status2",
+          assert: (status2) => {
+            expect(status2?.status).toBe("complete");
+            expect(status2?.output).toEqual({ instanceId: "batch-2" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-3"),
-          storeAs: "status3",
+          assert: (status3) => {
+            expect(status3?.status).toBe("complete");
+            expect(status3?.output).toEqual({ instanceId: "batch-3" });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             return (
               await ctx.harness.db
@@ -3508,9 +3523,11 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .executeRetrieve()
             )[0];
           },
-          storeAs: "instances",
+          assert: (instances) => {
+            expect(instances).toHaveLength(3);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.created).toHaveLength(3);
           expect(ctx.vars.created?.map((entry) => entry.id)).toEqual([
             "batch-1",
@@ -3522,14 +3539,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
             "active",
             "active",
           ]);
-
-          expect(ctx.vars.status1?.status).toBe("complete");
-          expect(ctx.vars.status2?.status).toBe("complete");
-          expect(ctx.vars.status3?.status).toBe("complete");
-          expect(ctx.vars.status1?.output).toEqual({ instanceId: "batch-1" });
-          expect(ctx.vars.status2?.output).toEqual({ instanceId: "batch-2" });
-          expect(ctx.vars.status3?.output).toEqual({ instanceId: "batch-3" });
-          expect(ctx.vars.instances).toHaveLength(3);
         }),
       ],
     });
@@ -3547,22 +3556,19 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     type ScenarioVars = {
       created?: Array<{ id: string; details: { status: string } }>;
-      instances?: WorkflowScenarioInstanceRow[];
-      freshStatus?: { status: string; output?: { value: string } };
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "batch-skip",
       workflows,
-      steps: [
-        scenarioSteps.create({ workflow: "BATCH_SKIP", id: "existing-1" }),
-        scenarioSteps.createBatch({
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "BATCH_SKIP", id: "existing-1" }),
+        workflow.createBatch({
           workflow: "BATCH_SKIP",
           instances: [{ id: "existing-1" }, { id: "dup-1" }, { id: "dup-1" }, { id: "fresh-1" }],
           storeAs: "created",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) => {
             return (
               await ctx.harness.db
@@ -3572,19 +3578,21 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .executeRetrieve()
             )[0];
           },
-          storeAs: "instances",
+          assert: (instances) => {
+            expect(instances).toHaveLength(3);
+          },
         }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "BATCH_SKIP", instanceId: "dup-1" }),
-        scenarioSteps.runCreateUntilIdle({ workflow: "BATCH_SKIP", instanceId: "fresh-1" }),
-        scenarioSteps.read({
+        runner.runCreateUntilIdle({ workflow: "BATCH_SKIP", instanceId: "dup-1" }),
+        runner.runCreateUntilIdle({ workflow: "BATCH_SKIP", instanceId: "fresh-1" }),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH_SKIP", "fresh-1"),
-          storeAs: "freshStatus",
+          assert: (freshStatus) => {
+            expect(freshStatus?.status).toBe("complete");
+            expect(freshStatus?.output).toEqual({ value: "fresh-1" });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.created?.map((entry) => entry.id)).toEqual(["dup-1", "fresh-1"]);
-          expect(ctx.vars.instances).toHaveLength(3);
-          expect(ctx.vars.freshStatus?.status).toBe("complete");
-          expect(ctx.vars.freshStatus?.output).toEqual({ value: "fresh-1" });
         }),
       ],
     });
@@ -3603,52 +3611,39 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
     const workflows = { BATCH_ROUTE: RouteBatchWorkflow };
 
-    type ScenarioVars = {
-      response?: RouteResponse;
-    };
+    type ScenarioVars = Record<string, never>;
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "batch-route-response",
       workflows,
-      steps: [
-        scenarioSteps.read({
-          read: (ctx) =>
-            (ctx.harness.fragment as AnyFragnoInstantiatedFragment).callRoute(
-              "POST",
-              "/:workflowName/instances/batch",
-              {
-                pathParams: { workflowName: RouteBatchWorkflow.name },
-                body: { instances: [{ id: "route-1" }, { id: "route-2" }] },
-              },
-            ),
-          storeAs: "response",
-        }),
-        scenarioSteps.assert((ctx) => {
-          const response = assertJsonResponse<{
-            instances: Array<{ id: string; details: { status: string } }>;
-          }>(ctx.vars.response as RouteResponse);
+      steps: ({ runner }) => [
+        runner.callRoute({
+          method: "POST",
+          path: "/:workflowName/instances/batch",
+          options: {
+            pathParams: { workflowName: RouteBatchWorkflow.name },
+            body: { instances: [{ id: "route-1" }, { id: "route-2" }] },
+          },
+          assert: (routeResponse) => {
+            expect(routeResponse).toMatchObject({ type: "json" });
+            if (routeResponse.type !== "json") {
+              throw new Error(`Expected json response, received ${routeResponse.type}`);
+            }
 
-          expect(response.instances.map((entry) => entry.id)).toEqual(["route-1", "route-2"]);
-          expect(response.instances.map((entry) => entry.details.status)).toEqual([
-            "active",
-            "active",
-          ]);
+            const response = routeResponse.data as {
+              instances: Array<{ id: string; details: { status: string } }>;
+            };
+            expect(response.instances.map((entry) => entry.id)).toEqual(["route-1", "route-2"]);
+            expect(response.instances.map((entry) => entry.details.status)).toEqual([
+              "active",
+              "active",
+            ]);
+          },
         }),
       ],
     });
 
-    const previousDebug = process.env["FRAGNO_DEBUG_BATCH_ROUTE"];
-    process.env["FRAGNO_DEBUG_BATCH_ROUTE"] = "1";
-    try {
-      await runScenario(scenario);
-    } finally {
-      if (previousDebug === undefined) {
-        delete process.env["FRAGNO_DEBUG_BATCH_ROUTE"];
-      } else {
-        process.env["FRAGNO_DEBUG_BATCH_ROUTE"] = previousDebug;
-      }
-    }
+    await runScenario(scenario);
   });
 
   test("step emissions are observable during the callback and cleaned up afterwards", async () => {
@@ -3671,71 +3666,76 @@ describe("Workflows Runner (Scenario DSL)", () => {
     type ScenarioVars = {
       messages?: unknown[];
       started?: unknown;
-      rowsWhileRunning?: unknown[];
-      rowsAfterCleanup?: unknown[];
-      status?: { status: string; output?: { ok: true } };
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      ScenarioVars,
+      undefined,
+      Record<string, never>,
+      ["workflowRunner", "observer"]
+    >({
       name: "scenario-step-emissions",
       workflows,
+      runners: ["workflowRunner", "observer"],
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "EMIT", id: "emit-1" }),
-        scenarioSteps.captureEmissions({
-          workflow: "EMIT",
-          instanceId: "emit-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.withRunners({
-          runner: [scenarioSteps.runCreateUntilIdle({ workflow: "EMIT", instanceId: "emit-1" })],
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "EMIT", id: "emit-1" }),
+        concurrent({
+          workflowRunner: [
+            runners.workflowRunner.runCreateUntilIdle({ workflow: "EMIT", instanceId: "emit-1" }),
+          ],
           observer: [
-            scenarioSteps.waitForEmission({
-              capture: "messages",
+            runners.observer.waitForEmission({
+              workflow: "EMIT",
+              instanceId: "emit-1",
               match: (message) =>
                 (message.payload as { type?: string; phase?: string }).type === "phase" &&
                 (message.payload as { phase?: string }).phase === "started",
               storeAs: "started",
             }),
-            scenarioSteps.read({
+            workflow.read({
               read: (ctx) => ctx.state.getEmissions("EMIT", "emit-1"),
-              storeAs: "rowsWhileRunning",
+              assert: (rowsWhileRunning) => {
+                expect(rowsWhileRunning).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({ actor: "system", stepKey: "do:stream" }),
+                    expect.objectContaining({
+                      actor: "user",
+                      payload: { type: "phase", phase: "started" },
+                    }),
+                  ]),
+                );
+              },
             }),
-            scenarioSteps.resolveControl({ key: "stream:release" }),
+            runners.observer.resolveControl({ key: "stream:release" }),
           ],
         }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+        runners.workflowRunner.waitForEmission({
+          workflow: "EMIT",
+          instanceId: "emit-1",
+          match: (message) =>
+            (message.payload as { type?: string; phase?: string }).type === "phase" &&
+            (message.payload as { phase?: string }).phase === "complete",
+        }),
+        runners.workflowRunner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("EMIT", "emit-1"),
-          storeAs: "rowsAfterCleanup",
+          assert: (rowsAfterCleanup) => {
+            expect(rowsAfterCleanup).toEqual([]);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EMIT", "emit-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: { ok: true } });
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.started).toMatchObject({
             stepKey: "do:stream",
             payload: { type: "phase", phase: "started" },
           });
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ payload: { type: "phase", phase: "started" } }),
-              expect.objectContaining({ payload: { type: "phase", phase: "complete" } }),
-            ]),
-          );
-          expect(ctx.vars.rowsWhileRunning).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ actor: "system", stepKey: "do:stream" }),
-              expect.objectContaining({
-                actor: "user",
-                payload: { type: "phase", phase: "started" },
-              }),
-            ]),
-          );
-          expect(ctx.vars.rowsAfterCleanup).toEqual([]);
-          expect(ctx.vars.status).toMatchObject({ status: "complete", output: { ok: true } });
         }),
       ],
     });
@@ -3765,40 +3765,49 @@ describe("Workflows Runner (Scenario DSL)", () => {
     });
 
     const workflows = { INBOUND: InboundWorkflow };
-    type Vars = { events?: unknown[] };
-    const scenarioSteps = createScenarioSteps<typeof workflows, Vars>();
-    const scenario = defineScenario<typeof workflows, Vars>({
+    const scenario = defineScenario<
+      typeof workflows,
+      Record<string, never>,
+      undefined,
+      Record<string, never>,
+      ["workflowRunner", "sender"]
+    >({
       name: "scenario-step-inbound-emissions",
       workflows,
+      runners: ["workflowRunner", "sender"],
       harness: { runtime },
-      steps: [
-        scenarioSteps.create({ workflow: "INBOUND", id: "inbound-1" }),
-        scenarioSteps.withRunners({
-          runner: [
-            scenarioSteps.runCreateUntilIdle({ workflow: "INBOUND", instanceId: "inbound-1" }),
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "INBOUND", id: "inbound-1" }),
+        concurrent({
+          workflowRunner: [
+            runners.workflowRunner.runCreateUntilIdle({
+              workflow: "INBOUND",
+              instanceId: "inbound-1",
+            }),
           ],
           sender: [
-            scenarioSteps.waitForControl({ key: "step:ready" }),
-            scenarioSteps.event({
+            runners.sender.waitForControl({ key: "step:ready" }),
+            workflow.event({
               workflow: "INBOUND",
               instanceId: "inbound-1",
               event: { type: "command", payload: { command: "continue" } },
             }),
-            scenarioSteps.waitForControl({ key: "message:received" }),
-            scenarioSteps.resolveControl({ key: "step:release" }),
+            runners.sender.waitForControl({ key: "message:received" }),
+            runners.sender.resolveControl({ key: "step:release" }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("INBOUND", "inbound-1"),
-          storeAs: "events",
+          assert: (events) => {
+            expect(events).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ type: "command", payload: { command: "continue" } }),
+              ]),
+            );
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert(() => {
           expect(received).toEqual([{ command: "continue" }]);
-          expect(ctx.vars.events).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ type: "command", payload: { command: "continue" } }),
-            ]),
-          );
         }),
       ],
     });
@@ -3837,43 +3846,47 @@ describe("Workflows Runner (Scenario DSL)", () => {
     });
 
     const workflows = { INBOUND: ConsecutiveInboundWorkflow };
-    const scenarioSteps = createScenarioSteps<typeof workflows, { events?: unknown[] }>();
-    const scenario = defineScenario<typeof workflows, { events?: unknown[] }>({
+    const scenario = defineScenario({
       name: "service-step-message-replay",
       workflows,
+      runners: ["workflowRunner", "sender"],
       harness: {
         runtime,
         fragmentConfig: {
           stepEmissions: new BufferedPumpRegistry<WorkflowStepLivePump>(),
         },
       },
-      steps: [
-        scenarioSteps.create({ workflow: "INBOUND", id: "inbound-1" }),
-        scenarioSteps.withRunners({
-          runner: [
-            scenarioSteps.runCreateUntilIdle({ workflow: "INBOUND", instanceId: "inbound-1" }),
+      steps: ({ workflow, runners, concurrent }) => [
+        workflow.create({ workflow: "INBOUND", id: "inbound-1" }),
+        concurrent({
+          workflowRunner: [
+            runners.workflowRunner.runCreateUntilIdle({
+              workflow: "INBOUND",
+              instanceId: "inbound-1",
+            }),
           ],
           sender: [
-            scenarioSteps.waitForControl({ key: "step:first:ready" }),
-            scenarioSteps.event({
+            runners.sender.waitForControl({ key: "step:first:ready" }),
+            workflow.event({
               workflow: "INBOUND",
               instanceId: "inbound-1",
               event: { type: "command", payload: { command: "continue" } },
             }),
-            scenarioSteps.waitForControl({ key: "message:first:received" }),
-            scenarioSteps.resolveControl({ key: "step:first:release" }),
-            scenarioSteps.waitForControl({ key: "step:second:ready" }),
+            runners.sender.waitForControl({ key: "message:first:received" }),
+            runners.sender.resolveControl({ key: "step:first:release" }),
+            runners.sender.waitForControl({ key: "step:second:ready" }),
           ],
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEvents("INBOUND", "inbound-1"),
-          storeAs: "events",
+          assert: (events) => {
+            expect(events).toEqual([
+              expect.objectContaining({ type: "command", payload: { command: "continue" } }),
+            ]);
+          },
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert(() => {
           expect(received).toEqual([{ step: "first", message: { command: "continue" } }]);
-          expect(ctx.vars.events).toEqual([
-            expect.objectContaining({ type: "command", payload: { command: "continue" } }),
-          ]);
         }),
       ],
     });
@@ -3895,40 +3908,24 @@ describe("Workflows Runner (Scenario DSL)", () => {
     const workflows = { EMIT: EmittingStepWorkflow };
     type ScenarioVars = {
       messages?: unknown[];
-      rowsAfterCleanup?: unknown[];
-      status?: { status: string };
     };
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "step-emissions-clear",
       workflows,
-      steps: [
-        scenarioSteps.captureEmissions({
-          workflow: "EMIT",
-          instanceId: "emit-1",
-          storeAs: "messages",
-        }),
-        scenarioSteps.initializeAndRunUntilIdle({ workflow: "EMIT", id: "emit-1" }),
-        scenarioSteps.drainHooks(),
-        scenarioSteps.read({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "EMIT", id: "emit-1" }),
+        runner.drainHooks(),
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("EMIT", "emit-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getEmissions("EMIT", "emit-1"),
-          storeAs: "rowsAfterCleanup",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          expect(ctx.vars.messages).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                stepKey: "do:stream",
-                payload: { phase: "streaming", count: 1 },
-              }),
-            ]),
-          );
-          expect(ctx.vars.rowsAfterCleanup).toEqual([]);
+          assert: (rowsAfterCleanup) => {
+            expect(rowsAfterCleanup).toEqual([]);
+          },
         }),
       ],
     });

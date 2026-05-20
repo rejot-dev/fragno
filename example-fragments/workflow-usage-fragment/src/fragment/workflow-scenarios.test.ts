@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  createScenarioSteps,
   defineScenario,
   runScenario,
   type WorkflowScenarioStepRow,
@@ -39,16 +38,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       finalStatus?: { status: string; output?: unknown };
       steps?: WorkflowScenarioStepRow[];
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "dsl-input-calc-scenario",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "dsl-scenario-1",
           params: {
@@ -59,11 +56,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "dsl-scenario-1"),
-          storeAs: "initialStatus",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "dsl-scenario-1",
           event: {
@@ -71,36 +70,34 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: 10, y: 20 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "dsl-scenario-1"),
-          storeAs: "finalStatus",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+
+            const output = status?.output as {
+              sessionId?: string;
+              turns?: number;
+              dslState?: Record<string, number>;
+            };
+
+            expect(output?.sessionId).toBe("scenario-session-1");
+            expect(output?.turns).toBe(1);
+            expect(output?.dslState).toEqual({
+              x: 10,
+              y: 20,
+              sum: 30,
+            });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("DSL", "dsl-scenario-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.initialStatus?.status).toBe("waiting");
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
-
-          const output = ctx.vars.finalStatus?.output as {
-            sessionId?: string;
-            turns?: number;
-            dslState?: Record<string, number>;
-          };
-
-          expect(output?.sessionId).toBe("scenario-session-1");
-          expect(output?.turns).toBe(1);
-          expect(output?.dslState).toEqual({
-            x: 10,
-            y: 20,
-            sum: 30,
-          });
-
-          expect(ctx.vars.steps).toHaveLength(7);
-          const calcStep = ctx.vars.steps?.find((s) => s.name === "calculate-sum");
-          expect(calcStep?.type).toBe("do");
-          expect(calcStep?.status).toBe("completed");
+          assert: (steps) => {
+            expect(steps).toHaveLength(7);
+            const calcStep = steps?.find((s) => s.name === "calculate-sum");
+            expect(calcStep?.type).toBe("do");
+            expect(calcStep?.status).toBe("completed");
+          },
         }),
       ],
     });
@@ -116,16 +113,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       finalStatus?: { status: string; output?: unknown };
       steps?: WorkflowScenarioStepRow[];
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "multi-turn-fresh-values",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "multi-turn-1",
           params: {
@@ -135,7 +130,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "multi-turn-1",
           event: {
@@ -143,11 +138,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { x: 10, y: 20 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "multi-turn-1"),
-          storeAs: "statusAfterTurn0",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "multi-turn-1",
           event: {
@@ -155,25 +152,23 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: 100, y: 200 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "multi-turn-1"),
-          storeAs: "finalStatus",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusAfterTurn0?.status).toBe("waiting");
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
 
-          const output = ctx.vars.finalStatus?.output as {
-            turns?: number;
-            dslState?: Record<string, number>;
-          };
+            const output = status?.output as {
+              turns?: number;
+              dslState?: Record<string, number>;
+            };
 
-          expect(output?.turns).toBe(2);
-          expect(output?.dslState).toEqual({
-            x: 100,
-            y: 200,
-            sum: 300,
-          });
+            expect(output?.turns).toBe(2);
+            expect(output?.dslState).toEqual({
+              x: 100,
+              y: 200,
+              sum: 300,
+            });
+          },
         }),
       ],
     });
@@ -193,16 +188,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       statusAfterFalse?: { status: string };
       finalStatus?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "done-false-should-not-terminate",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "done-false-1",
           params: {
@@ -211,7 +204,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             systemPrompt: noDslAgent.systemPrompt,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "done-false-1",
           event: {
@@ -219,14 +212,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: false },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "done-false-1"),
-          storeAs: "statusAfterFalse",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusAfterFalse?.status).toBe("waiting");
-        }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "done-false-1",
           event: {
@@ -234,12 +226,11 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "done-false-1"),
-          storeAs: "finalStatus",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+          },
         }),
       ],
     });
@@ -253,16 +244,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       status?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "no-dsl-plain-events",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "no-dsl-1",
           params: {
@@ -270,29 +259,28 @@ describe("DSL Workflow - Scenario Tests", () => {
             agentName: "plain-agent",
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "no-dsl-1",
           event: { type: "user_message", payload: { msg: "hello" } },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "no-dsl-1",
           event: { type: "user_message", payload: { msg: "world" } },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "no-dsl-1",
           event: { type: "user_message", payload: { done: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "no-dsl-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { turns?: number };
-          expect(output?.turns).toBe(3);
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { turns?: number };
+            expect(output?.turns).toBe(3);
+          },
         }),
       ],
     });
@@ -318,16 +306,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       status?: { status: string };
       persistedSteps?: Array<{ name: string; result: unknown }>;
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "missing-input-then-calc-errors",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "missing-key-1",
           params: {
@@ -337,7 +323,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: missingKeyAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "missing-key-1",
           event: {
@@ -345,11 +331,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, notX: 5 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "missing-key-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("errored");
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: async (ctx) =>
             await (async () => {
               const uow = ctx.harness.fragments["usage"].db
@@ -361,16 +349,13 @@ describe("DSL Workflow - Scenario Tests", () => {
               await uow.executeRetrieve();
               return (await uow.retrievalPhase)[0];
             })(),
-          storeAs: "persistedSteps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("errored");
-
-          const calcStep = ctx.vars.persistedSteps?.find((step) => step.name === "double-x");
-          expect(calcStep?.result).toMatchObject({
-            expression: "$x * 2",
-            terminalError: true,
-          });
+          assert: (persistedSteps) => {
+            const calcStep = persistedSteps?.find((step) => step.name === "double-x");
+            expect(calcStep?.result).toMatchObject({
+              expression: "$x * 2",
+              terminalError: true,
+            });
+          },
         }),
       ],
     });
@@ -384,16 +369,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       status?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "string-numeric-coercion",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "string-num-1",
           params: {
@@ -402,7 +385,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "string-num-1",
           event: {
@@ -410,14 +393,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: "7", y: "3" },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "string-num-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { dslState?: Record<string, number> };
-          expect(output?.dslState).toEqual({ x: 7, y: 3, sum: 10 });
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState).toEqual({ x: 7, y: 3, sum: 10 });
+          },
         }),
       ],
     });
@@ -439,16 +421,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       status?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "empty-string-is-zero",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "empty-str-1",
           params: {
@@ -457,7 +437,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: singleInputAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "empty-str-1",
           event: {
@@ -465,14 +445,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, val: "" },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "empty-str-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { dslState?: Record<string, number> };
-          expect(output?.dslState?.["val"]).toBe(0);
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState?.["val"]).toBe(0);
+          },
         }),
       ],
     });
@@ -497,16 +476,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       status?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "input-defaults-to-key-name",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "no-assign-1",
           params: {
@@ -515,7 +492,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: noAssignAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "no-assign-1",
           event: {
@@ -523,14 +500,13 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, score: 42 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "no-assign-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { dslState?: Record<string, number> };
-          expect(output?.dslState).toEqual({ score: 42, scaled: 420 });
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState).toEqual({ score: 42, scaled: 420 });
+          },
         }),
       ],
     });
@@ -555,16 +531,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       status?: { status: string; output?: unknown };
       steps?: WorkflowScenarioStepRow[];
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "random-step-assigns",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "random-1",
           params: {
@@ -573,31 +547,30 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: randomAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "random-1",
           event: { type: "user_message", payload: { done: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "random-1"),
-          storeAs: "status",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            const roll = output?.dslState?.["roll"];
+            expect(roll).toBeTypeOf("number");
+            expect(roll).toBeGreaterThanOrEqual(1);
+            expect(roll).toBeLessThanOrEqual(100);
+            expect(Number.isInteger(roll)).toBe(true);
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("DSL", "random-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { dslState?: Record<string, number> };
-          const roll = output?.dslState?.["roll"];
-          expect(roll).toBeTypeOf("number");
-          expect(roll).toBeGreaterThanOrEqual(1);
-          expect(roll).toBeLessThanOrEqual(100);
-          expect(Number.isInteger(roll)).toBe(true);
-
-          const rollStep = ctx.vars.steps?.find((s) => s.name === "roll-dice");
-          expect(rollStep?.type).toBe("do");
-          expect(rollStep?.status).toBe("completed");
+          assert: (steps) => {
+            const rollStep = steps?.find((s) => s.name === "roll-dice");
+            expect(rollStep?.type).toBe("do");
+            expect(rollStep?.status).toBe("completed");
+          },
         }),
       ],
     });
@@ -624,16 +597,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       status?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "calc-chain",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "chain-1",
           params: {
@@ -642,7 +613,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: chainAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "chain-1",
           event: {
@@ -650,19 +621,18 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, base: 5 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "chain-1"),
-          storeAs: "status",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
-          const output = ctx.vars.status?.output as { dslState?: Record<string, number> };
-          expect(output?.dslState).toEqual({
-            base: 5,
-            doubled: 10,
-            tripled: 15,
-            squared: 225,
-          });
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState).toEqual({
+              base: 5,
+              doubled: 10,
+              tripled: 15,
+              squared: 225,
+            });
+          },
         }),
       ],
     });
@@ -677,16 +647,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       status?: { status: string; output?: unknown };
       steps?: WorkflowScenarioStepRow[];
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "primitive-payload",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "prim-1",
           params: {
@@ -697,20 +665,19 @@ describe("DSL Workflow - Scenario Tests", () => {
             },
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "prim-1",
           event: { type: "user_message", payload: "just a string" as unknown },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("DSL", "prim-1"),
-          storeAs: "steps",
-        }),
-        scenarioSteps.assert((ctx) => {
-          const inputStep = ctx.vars.steps?.find((s) => s.name === "get-x");
-          expect(inputStep?.status).toBe("completed");
-          const result = inputStep?.result as { skipped?: boolean };
-          expect(result?.skipped).toBe(true);
+          assert: (steps) => {
+            const inputStep = steps?.find((s) => s.name === "get-x");
+            expect(inputStep?.status).toBe("completed");
+            const result = inputStep?.result as { skipped?: boolean };
+            expect(result?.skipped).toBe(true);
+          },
         }),
       ],
     });
@@ -736,16 +703,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       statusBeforeAdvance?: { status: string };
       statusAfterAdvance?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "wait-step-time-advance",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "wait-1",
           params: {
@@ -754,33 +719,31 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: waitAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "wait-1",
           event: { type: "user_message", payload: { done: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "wait-1"),
-          storeAs: "statusBeforeAdvance",
+          assert: (status) => {
+            expect(status?.status).toBe("waiting");
+          },
         }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusBeforeAdvance?.status).toBe("waiting");
-        }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "wait-1",
           advanceBy: "6s",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "wait-1"),
-          storeAs: "statusAfterAdvance",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.statusAfterAdvance?.status).toBe("complete");
-          const output = ctx.vars.statusAfterAdvance?.output as {
-            dslState?: Record<string, number>;
-          };
-          expect(output?.dslState?.["result"]).toBe(2);
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as {
+              dslState?: Record<string, number>;
+            };
+            expect(output?.dslState?.["result"]).toBe(2);
+          },
         }),
       ],
     });
@@ -794,16 +757,14 @@ describe("DSL Workflow - Scenario Tests", () => {
     type ScenarioVars = {
       hooks?: { hookName: string; payload: unknown }[];
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "on-session-completed-hook",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "hook-test-1",
           params: {
@@ -812,7 +773,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "hook-test-1",
           event: {
@@ -820,30 +781,29 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: 3, y: 7 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) =>
             ctx.state.internal.getHooks({
               namespace: "workflow_usage_fragment",
               hookName: "onSessionCompleted",
             }),
-          storeAs: "hooks",
-        }),
-        scenarioSteps.assert((ctx) => {
-          expect(ctx.vars.hooks).toHaveLength(1);
-          const hook = ctx.vars.hooks![0];
-          expect(hook.hookName).toBe("onSessionCompleted");
+          assert: (hooks) => {
+            expect(hooks).toHaveLength(1);
+            const hook = hooks[0];
+            expect(hook?.hookName).toBe("onSessionCompleted");
 
-          const payload = hook.payload as {
-            sessionId: string;
-            agentName: string;
-            turns: number;
-            dslState: Record<string, number>;
-          };
+            const payload = hook?.payload as {
+              sessionId: string;
+              agentName: string;
+              turns: number;
+              dslState: Record<string, number>;
+            };
 
-          expect(payload.sessionId).toBe("hook-session");
-          expect(payload.agentName).toBe("hook-agent");
-          expect(payload.turns).toBe(1);
-          expect(payload.dslState).toEqual({ x: 3, y: 7, sum: 10 });
+            expect(payload.sessionId).toBe("hook-session");
+            expect(payload.agentName).toBe("hook-agent");
+            expect(payload.turns).toBe(1);
+            expect(payload.dslState).toEqual({ x: 3, y: 7, sum: 10 });
+          },
         }),
       ],
     });
@@ -858,16 +818,14 @@ describe("DSL Workflow - Scenario Tests", () => {
       statusA?: { status: string; output?: unknown };
       statusB?: { status: string; output?: unknown };
     };
-
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "concurrent-instances",
       workflows,
       harness: {
         configureBuilder: (builder) => builder.withFragment("usage", instantiate(usageDbFragment)),
       },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "concurrent-a",
           params: {
@@ -876,7 +834,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.initializeAndRunUntilIdle({
+        runner.initializeAndRunUntilIdle({
           workflow: "DSL",
           id: "concurrent-b",
           params: {
@@ -885,7 +843,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             dsl: inputCalcAgent.dsl,
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "concurrent-a",
           event: {
@@ -893,7 +851,7 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: 1, y: 2 },
           },
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "DSL",
           instanceId: "concurrent-b",
           event: {
@@ -901,23 +859,21 @@ describe("DSL Workflow - Scenario Tests", () => {
             payload: { done: true, x: 100, y: 200 },
           },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "concurrent-a"),
-          storeAs: "statusA",
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState).toEqual({ x: 1, y: 2, sum: 3 });
+          },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "concurrent-b"),
-          storeAs: "statusB",
-        }),
-        scenarioSteps.assert((ctx) => {
-          const outputA = ctx.vars.statusA?.output as { dslState?: Record<string, number> };
-          const outputB = ctx.vars.statusB?.output as { dslState?: Record<string, number> };
-
-          expect(ctx.vars.statusA?.status).toBe("complete");
-          expect(ctx.vars.statusB?.status).toBe("complete");
-
-          expect(outputA?.dslState).toEqual({ x: 1, y: 2, sum: 3 });
-          expect(outputB?.dslState).toEqual({ x: 100, y: 200, sum: 300 });
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            const output = status?.output as { dslState?: Record<string, number> };
+            expect(output?.dslState).toEqual({ x: 100, y: 200, sum: 300 });
+          },
         }),
       ],
     });

@@ -1,16 +1,25 @@
-import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-import type { AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import type {
+  AnyFragnoInstantiatedFragment,
+  FragmentDefinition,
+  FragnoInstantiatedFragment,
+} from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
 import {
   buildDatabaseFragmentsTest,
+  createFragmentTestClientConfig,
   drainDurableHooks,
+  waitForStore,
+  type AnyFragmentResult,
   type DatabaseFragmentsTestBuilder,
+  type FragmentTestClientConfigOptions,
   type SupportedAdapter,
+  type SubscribableStore,
+  type TestDb,
 } from "@fragno-dev/test";
 
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
-import type { WorkflowStepLivePump } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
 import {
   createWorkflowsTestHarness,
@@ -32,7 +41,23 @@ export type WorkflowScenarioVars = Record<string, unknown>;
 
 type ScenarioInput<T, TRegistry extends WorkflowsRegistry, TVars extends WorkflowScenarioVars> =
   | T
-  | ((ctx: WorkflowScenarioContext<TRegistry, TVars>) => T | Promise<T>);
+  | ((
+      ctx: WorkflowScenarioContext<TRegistry, TVars, Record<string, AnyFragmentResult>, unknown>,
+    ) => T | Promise<T>);
+
+type WorkflowScenarioFragmentConfiguratorHarness<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+> = Pick<
+  WorkflowsTestHarness<TRegistry, TFragments>,
+  "fragments" | "fragment" | "db" | "services" | "deps" | "callRoute"
+>;
+
+type WorkflowScenarioFragmentConfigurator<TRegistry extends WorkflowsRegistry> = {
+  bivarianceHack(
+    harness: WorkflowScenarioFragmentConfiguratorHarness<TRegistry>,
+  ): Record<string, WorkflowScenarioFragmentBuilder>;
+}["bivarianceHack"];
 
 export type WorkflowScenarioHarnessOptions<TRegistry extends WorkflowsRegistry> = Omit<
   WorkflowsTestHarnessOptions<TRegistry>,
@@ -40,29 +65,408 @@ export type WorkflowScenarioHarnessOptions<TRegistry extends WorkflowsRegistry> 
 > & {
   adapter?: SupportedAdapter;
   testBuilder?: DatabaseFragmentsTestBuilder<{}, undefined>;
+  /**
+   * Register fragments that depend on the workflows fragment. The returned builders are registered
+   * with @fragno-dev/test, so additional runtimes recreate them normally.
+   */
+  configureFragments?: WorkflowScenarioFragmentConfigurator<TRegistry>;
 };
+
+type WorkflowScenarioFragmentBuilder = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  definition: FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withOptions?: (options: any) => WorkflowScenarioFragmentBuilder;
+  build: () => AnyFragnoInstantiatedFragment;
+};
+
+export type WorkflowScenarioFragmentInput =
+  | AnyFragnoInstantiatedFragment
+  | WorkflowScenarioFragmentBuilder;
+
+type BuiltScenarioFragment<TFragment extends WorkflowScenarioFragmentInput> = TFragment extends {
+  build: () => infer TBuilt;
+}
+  ? TBuilt
+  : TFragment;
+
+export type WorkflowScenarioFragmentResult<TFragment> =
+  TFragment extends FragnoInstantiatedFragment<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    infer TDeps,
+    infer TServices,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any
+  >
+    ? {
+        fragment: TFragment;
+        services: TServices;
+        deps: TDeps;
+        callRoute: TFragment["callRoute"];
+        db: TestDb;
+      }
+    : AnyFragmentResult;
+
+export type WorkflowScenarioFragmentResults<
+  TFragments extends Record<string, WorkflowScenarioFragmentInput>,
+> = {
+  [K in keyof TFragments]: WorkflowScenarioFragmentResult<BuiltScenarioFragment<TFragments[K]>>;
+};
+
+type WorkflowScenarioRuntimeFragments<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult>,
+> = WorkflowsTestHarness<TRegistry, TFragments>["fragments"];
+
+type WorkflowScenarioRunnerName<TRunners extends readonly string[] | undefined> =
+  TRunners extends readonly string[] ? TRunners[number] : "scenario";
+
+export type WorkflowScenarioClientConfigOptions<TRunnerName extends string = string> =
+  FragmentTestClientConfigOptions & {
+    runner?: TRunnerName;
+  };
+
+export type WorkflowScenarioClientConfig<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TRunnerName extends string = string,
+> = <K extends keyof WorkflowScenarioRuntimeFragments<TRegistry, TFragments> & string>(
+  fragmentName: K,
+  options?: WorkflowScenarioClientConfigOptions<TRunnerName>,
+) => FragnoPublicClientConfig;
+
+export type WorkflowScenarioClientsFactoryContext<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TRunnerName extends string = string,
+> = {
+  fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
+  createFragmentTestClientConfig: typeof createFragmentTestClientConfig;
+  clientConfig: WorkflowScenarioClientConfig<TRegistry, TFragments, TRunnerName>;
+};
+
+export type WorkflowScenarioClientsFactory<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TRunnerName extends string = string,
+> = (
+  context: WorkflowScenarioClientsFactoryContext<TRegistry, TFragments, TRunnerName>,
+) => TClients;
+
+export type WorkflowScenarioClientRuntime<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+> = {
+  fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
+  clients: TClients;
+  recreateFragments: () => Promise<void>;
+};
+
+type WorkflowScenarioStoreFactory<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStore extends SubscribableStore<unknown> = SubscribableStore<unknown>,
+> = (ctx: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients>) => TStore;
+
+type WorkflowScenarioStoreDefinitions<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+> = Record<string, WorkflowScenarioStoreFactory<TRegistry, TVars, TFragments, TClients>>;
+
+export type WorkflowScenarioStoresFactoryContext<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+> = {
+  fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
+  clients: TClients;
+  store: <TStore extends SubscribableStore<unknown>>(
+    factory: WorkflowScenarioStoreFactory<TRegistry, TVars, TFragments, TClients, TStore>,
+  ) => WorkflowScenarioStoreFactory<TRegistry, TVars, TFragments, TClients, TStore>;
+};
+
+export type WorkflowScenarioStoresFactory<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients> =
+    WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+> = (
+  context: WorkflowScenarioStoresFactoryContext<TRegistry, TVars, TFragments, TClients>,
+) => TStores & WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>;
+
+type WorkflowScenarioStoreValue<TStore> =
+  TStore extends SubscribableStore<infer TValue> ? TValue : never;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WorkflowScenarioStoreFromFactory<TFactory> = TFactory extends (...args: any[]) => infer TStore
+  ? TStore
+  : never;
 
 export type WorkflowScenarioDefinition<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TRunners extends readonly string[] | undefined = undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients> = Record<
+    string,
+    never
+  >,
 > = {
   name: string;
   workflows: TRegistry;
+  runners?: TRunners;
+  vars?: () => TVars;
   harness?: WorkflowScenarioHarnessOptions<TRegistry>;
-  steps: WorkflowScenarioStep<TRegistry, TVars>[];
+  clients?: WorkflowScenarioClientsFactory<
+    TRegistry,
+    TFragments,
+    TClients,
+    WorkflowScenarioRunnerName<TRunners>
+  >;
+  stores?: WorkflowScenarioStoresFactory<TRegistry, TVars, TFragments, TClients, TStores>;
+  steps: WorkflowScenarioStepsInput<TRegistry, TVars, TFragments, TClients, TRunners, TStores>;
+};
+
+type WorkflowScenarioFragmentsForConfigurator<TConfigureFragments> =
+  TConfigureFragments extends WorkflowScenarioFragmentConfigurator<WorkflowsRegistry>
+    ? WorkflowScenarioFragmentResults<ReturnType<TConfigureFragments>>
+    : Record<string, AnyFragmentResult>;
+
+type WorkflowScenarioInferredHarnessOptions<
+  TRegistry extends WorkflowsRegistry,
+  TConfigureFragments extends WorkflowScenarioFragmentConfigurator<TRegistry> | undefined,
+> = Omit<WorkflowScenarioHarnessOptions<TRegistry>, "configureFragments"> & {
+  configureFragments?: TConfigureFragments;
+};
+
+type WorkflowScenarioWorkflowStepBuilder<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+> = ReturnType<typeof createScenarioWorkflowSteps<TRegistry, TVars, TFragments, TClients>>;
+
+type WorkflowScenarioRunnerStepBuilder<
+  TRunnerName extends string,
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+> = ReturnType<
+  typeof createScenarioRunnerSteps<TRunnerName, TRegistry, TVars, TFragments, TClients>
+>;
+
+type WorkflowScenarioStoreWaitForOptions<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TValue,
+> = {
+  storeAs?: (keyof TVars & string) | undefined;
+  select?: (value: TValue) => unknown;
+  assert?: (
+    value: WorkflowScenarioReadonlyValue<TValue>,
+    ctx: WorkflowScenarioReadonlyContext<TRegistry, TVars, TFragments, TClients>,
+  ) => void | Promise<void>;
+};
+
+type WorkflowScenarioStoreHandle<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStore extends SubscribableStore<unknown>,
+> = {
+  waitFor: (
+    predicate: (value: WorkflowScenarioStoreValue<TStore>) => boolean,
+    options?: WorkflowScenarioStoreWaitForOptions<
+      TRegistry,
+      TVars,
+      TFragments,
+      TClients,
+      WorkflowScenarioStoreValue<TStore>
+    >,
+  ) => WorkflowScenarioWaitForStoreStep<
+    TRegistry,
+    TVars,
+    TFragments,
+    TClients,
+    WorkflowScenarioStoreValue<TStore>
+  >;
+  read: <TValue>(
+    read: (
+      store: TStore,
+      ctx: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients>,
+    ) => TValue | Promise<TValue>,
+    options?: { storeAs?: (keyof TVars & string) | undefined },
+  ) => WorkflowScenarioReadStoreStep<TRegistry, TVars, TFragments, TClients, TStore, TValue>;
+};
+
+type WorkflowScenarioStoreHandles<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+> = {
+  [K in keyof TStores]: WorkflowScenarioStoreHandle<
+    TRegistry,
+    TVars,
+    TFragments,
+    TClients,
+    WorkflowScenarioStoreFromFactory<TStores[K]>
+  >;
+};
+
+type WorkflowScenarioDefaultStepsContext<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+> = {
+  workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
+  runner: WorkflowScenarioRunnerStepBuilder<"scenario", TRegistry, TVars, TFragments, TClients>;
+  clients: TClients;
+  stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
+};
+
+type WorkflowScenarioNamedStepsContext<
+  TRunnerName extends string,
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+> = {
+  workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
+  clients: TClients;
+  stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
+  runners: {
+    [K in TRunnerName]: WorkflowScenarioRunnerStepBuilder<
+      K,
+      TRegistry,
+      TVars,
+      TFragments,
+      TClients
+    >;
+  };
+  concurrent: (
+    branches: Partial<
+      Record<TRunnerName, WorkflowScenarioStep<TRegistry, TVars, TFragments, TClients>[]>
+    >,
+  ) => WorkflowScenarioConcurrentStep<TRunnerName, TRegistry, TVars, TFragments, TClients>;
+};
+
+type WorkflowScenarioStepsInput<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TRunners extends readonly string[] | undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+> = (
+  steps: TRunners extends readonly string[]
+    ? WorkflowScenarioNamedStepsContext<
+        TRunners[number],
+        TRegistry,
+        TVars,
+        TFragments,
+        TClients,
+        TStores
+      >
+    : WorkflowScenarioDefaultStepsContext<TRegistry, TVars, TFragments, TClients, TStores>,
+) => WorkflowScenarioStep<TRegistry, TVars, TFragments, TClients>[];
+
+export type WorkflowScenarioDefinitionInput<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TConfigureFragments extends WorkflowScenarioFragmentConfigurator<TRegistry> | undefined =
+    | WorkflowScenarioFragmentConfigurator<TRegistry>
+    | undefined,
+  TClients = Record<string, never>,
+  TRunners extends readonly string[] | undefined = undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<
+    TRegistry,
+    TVars,
+    WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+    TClients
+  > = Record<string, never>,
+> = {
+  name: string;
+  workflows: TRegistry;
+  runners?: TRunners;
+  vars?: () => TVars;
+  harness?: WorkflowScenarioInferredHarnessOptions<TRegistry, TConfigureFragments>;
+  clients?: WorkflowScenarioClientsFactory<
+    TRegistry,
+    WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+    TClients,
+    WorkflowScenarioRunnerName<TRunners>
+  >;
+  stores?: WorkflowScenarioStoresFactory<
+    TRegistry,
+    TVars,
+    WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+    TClients,
+    TStores
+  >;
+  steps: WorkflowScenarioStepsInput<
+    TRegistry,
+    TVars,
+    WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+    TClients,
+    TRunners,
+    TStores
+  >;
 };
 
 export type WorkflowScenarioContext<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
 > = {
   name: string;
-  harness: WorkflowsTestHarness<TRegistry>;
+  harness: WorkflowsTestHarness<TRegistry, TFragments>;
   runtime: WorkflowsTestRuntime;
   clock: WorkflowsTestClock;
   vars: Partial<TVars>;
   state: WorkflowScenarioState<TRegistry>;
+  clients: TClients;
+  createClientRuntime: () => Promise<
+    WorkflowScenarioClientRuntime<TRegistry, TFragments, TClients>
+  >;
+  mountStore: <TStore extends SubscribableStore<unknown>>(store: TStore) => TStore;
+  waitForStore: typeof waitForStore;
   cleanup: () => Promise<void>;
+};
+
+export type WorkflowScenarioReadonlyContext<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+> = Omit<WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients>, "vars"> & {
+  readonly vars: Readonly<Partial<TVars>>;
 };
 
 export type WorkflowScenarioResult<TVars extends WorkflowScenarioVars = WorkflowScenarioVars> = {
@@ -226,6 +630,8 @@ export type WorkflowScenarioStateInternalUtils = {
 export type WorkflowScenarioStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
 > =
   | WorkflowScenarioCreateStep<TRegistry, TVars>
   | WorkflowScenarioInitializeAndRunUntilIdleStep<TRegistry, TVars>
@@ -245,18 +651,17 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioWaitForControlStep<TRegistry, TVars>
   | WorkflowScenarioResolveControlStep<TRegistry, TVars>
   | WorkflowScenarioRejectControlStep<TRegistry, TVars>
-  | WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars>
-  | WorkflowScenarioFlushEmissionsStep<TRegistry, TVars>
-  | WorkflowScenarioWaitForEmissionStep<TRegistry, TVars>
-  | WorkflowScenarioStopEmissionCaptureStep<TVars>
+  | WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments>
   | WorkflowScenarioDrainHooksStep
-  | WorkflowScenarioKillRunnerStep
-  | WorkflowScenarioRestartRunnerStep
-  | WorkflowScenarioKillAndRestartRunnerStep
-  | WorkflowScenarioWithRunnerStep<TRegistry, TVars>
-  | WorkflowScenarioWithRunnersStep<TRegistry, TVars>
-  | WorkflowScenarioReadStep<TRegistry, TVars>
-  | WorkflowScenarioAssertStep<TRegistry, TVars>;
+  | WorkflowScenarioRestartStep
+  | WorkflowScenarioCallRouteStep<TVars>
+  | WorkflowScenarioConcurrentStep<string, TRegistry, TVars, TFragments, TClients>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | WorkflowScenarioWaitForStoreStep<TRegistry, TVars, TFragments, TClients, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | WorkflowScenarioReadStoreStep<TRegistry, TVars, TFragments, TClients, any, unknown>
+  | WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients, unknown>
+  | WorkflowScenarioAssertStep<TRegistry, TVars, TFragments, TClients>;
 
 export type WorkflowScenarioCreateStep<
   TRegistry extends WorkflowsRegistry,
@@ -372,16 +777,6 @@ export type WorkflowScenarioTerminateStep<
   storeAs?: (keyof TVars & string) | undefined;
 };
 
-export type WorkflowScenarioRestartStep<
-  TRegistry extends WorkflowsRegistry,
-  TVars extends WorkflowScenarioVars,
-> = {
-  type: "restart";
-  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
-  instanceId: ScenarioInput<string, TRegistry, TVars>;
-  storeAs?: (keyof TVars & string) | undefined;
-};
-
 export type WorkflowScenarioRunCreateUntilIdleStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
@@ -485,107 +880,388 @@ export type WorkflowScenarioRejectControlStep<
   error?: ScenarioInput<unknown, TRegistry, TVars>;
 };
 
-export type WorkflowScenarioCaptureEmissionsStep<
-  TRegistry extends WorkflowsRegistry,
-  TVars extends WorkflowScenarioVars,
-> = {
-  type: "captureEmissions";
-  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
-  instanceId: ScenarioInput<string, TRegistry, TVars>;
-  storeAs: keyof TVars & string;
-};
-
-export type WorkflowScenarioFlushEmissionsStep<
-  TRegistry extends WorkflowsRegistry,
-  TVars extends WorkflowScenarioVars,
-> = {
-  type: "flushEmissions";
-  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
-  instanceId: ScenarioInput<string, TRegistry, TVars>;
-};
-
 export type WorkflowScenarioWaitForEmissionStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
 > = {
   type: "waitForEmission";
-  capture: keyof TVars & string;
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
   match?: (
     message: WorkflowScenarioObservedEmission,
-    ctx: WorkflowScenarioContext<TRegistry, TVars>,
+    ctx: WorkflowScenarioContext<TRegistry, TVars, TFragments, unknown>,
   ) => boolean;
   timeoutMs?: ScenarioInput<number, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
-};
-
-export type WorkflowScenarioStopEmissionCaptureStep<TVars extends WorkflowScenarioVars> = {
-  type: "stopEmissionCapture";
-  capture: keyof TVars & string;
 };
 
 export type WorkflowScenarioDrainHooksStep = {
   type: "drainHooks";
 };
 
-export type WorkflowScenarioKillRunnerStep = {
-  type: "killRunner";
+export type WorkflowScenarioRestartStep = {
+  type: "restart";
+  runner?: string;
 };
 
-export type WorkflowScenarioRestartRunnerStep = {
-  type: "restartRunner";
+export type WorkflowScenarioCallRouteStep<TVars extends WorkflowScenarioVars> = {
+  type: "callRoute";
+  runner?: string;
+  method: Parameters<WorkflowsTestRunner["callRoute"]>[0];
+  path: string;
+  options?: {
+    pathParams?: Record<string, string>;
+    body?: unknown;
+  };
+  storeAs?: (keyof TVars & string) | undefined;
+  assert?: (response: WorkflowScenarioRouteResponse) => void | Promise<void>;
 };
 
-export type WorkflowScenarioKillAndRestartRunnerStep = {
-  type: "killAndRestartRunner";
-};
-
-export type WorkflowScenarioWithRunnerStep<
+export type WorkflowScenarioConcurrentStep<
+  TRunnerName extends string,
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
 > = {
-  type: "withRunner";
-  steps: WorkflowScenarioStep<TRegistry, TVars>[];
+  type: "concurrent";
+  branches: Partial<
+    Record<TRunnerName, WorkflowScenarioStep<TRegistry, TVars, TFragments, TClients>[]>
+  >;
 };
 
-export type WorkflowScenarioWithRunnersStep<
+export type WorkflowScenarioWaitForStoreStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TValue = unknown,
 > = {
-  type: "withRunners";
-  runners: Record<string, WorkflowScenarioStep<TRegistry, TVars>[]>;
+  type: "waitForStore";
+  store: string;
+  predicate: (value: TValue) => boolean;
+  select?: (value: TValue) => unknown;
+  storeAs?: (keyof TVars & string) | undefined;
+  assert?: (
+    value: WorkflowScenarioReadonlyValue<TValue>,
+    ctx: WorkflowScenarioReadonlyContext<TRegistry, TVars, TFragments, TClients>,
+  ) => void | Promise<void>;
 };
+
+export type WorkflowScenarioReadStoreStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TStore extends SubscribableStore<unknown> = SubscribableStore<unknown>,
+  TValue = unknown,
+> = {
+  type: "readStore";
+  store: string;
+  read: (
+    store: TStore,
+    ctx: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients>,
+  ) => TValue | Promise<TValue>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+type WorkflowScenarioReadBaseStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TValue = unknown,
+> = {
+  type: "read";
+  read: (
+    ctx: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients>,
+  ) => TValue | Promise<TValue>;
+};
+
+type WorkflowScenarioReadonlyValue<TValue> = unknown extends TValue
+  ? TValue
+  : TValue extends object
+    ? Readonly<TValue>
+    : TValue;
+
+type WorkflowScenarioReadAssert<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TValue,
+> = {
+  assert(
+    value: WorkflowScenarioReadonlyValue<TValue>,
+    ctx: WorkflowScenarioReadonlyContext<TRegistry, TVars, TFragments, TClients>,
+  ): void | Promise<void>;
+}["assert"];
 
 export type WorkflowScenarioReadStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
-> = {
-  type: "read";
-  read: (ctx: WorkflowScenarioContext<TRegistry, TVars>) => unknown | Promise<unknown>;
-  storeAs?: (keyof TVars & string) | undefined;
-};
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TValue = unknown,
+> = WorkflowScenarioReadBaseStep<TRegistry, TVars, TFragments, TClients, TValue> &
+  (
+    | {
+        storeAs: keyof TVars & string;
+        assert?: never;
+      }
+    | {
+        storeAs?: undefined;
+        assert: WorkflowScenarioReadAssert<TRegistry, TVars, TFragments, TClients, TValue>;
+      }
+    | {
+        storeAs?: undefined;
+        assert?: undefined;
+      }
+  );
 
 export type WorkflowScenarioAssertStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
 > = {
   type: "assert";
-  assert: (ctx: WorkflowScenarioContext<TRegistry, TVars>) => void | Promise<void>;
+  assert: (
+    ctx: WorkflowScenarioReadonlyContext<TRegistry, TVars, TFragments, TClients>,
+  ) => void | Promise<void>;
 };
 
 export function defineScenario<
   TRegistry extends WorkflowsRegistry,
-  TVars extends WorkflowScenarioVars,
+  TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
+  TConfigureFragments extends WorkflowScenarioFragmentConfigurator<TRegistry> | undefined =
+    | WorkflowScenarioFragmentConfigurator<TRegistry>
+    | undefined,
+  TClients = Record<string, never>,
+  const TRunners extends readonly string[] | undefined = undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<
+    TRegistry,
+    TVars,
+    WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+    TClients
+  > = Record<string, never>,
 >(
-  scenario: WorkflowScenarioDefinition<TRegistry, TVars>,
-): WorkflowScenarioDefinition<TRegistry, TVars> {
+  scenario: WorkflowScenarioDefinitionInput<
+    TRegistry,
+    TVars,
+    TConfigureFragments,
+    TClients,
+    TRunners,
+    TStores
+  >,
+): WorkflowScenarioDefinition<
+  TRegistry,
+  TVars,
+  WorkflowScenarioFragmentsForConfigurator<TConfigureFragments>,
+  TClients,
+  TRunners,
+  TStores
+> {
   return scenario;
 }
 
 type StepInput<TStep extends { type: string }> = Omit<TStep, "type">;
 
-export const createScenarioSteps = <
+type RunnerNamedStep<TStep extends { type: string }, TRunnerName extends string> = TStep & {
+  runner: TRunnerName;
+};
+
+const createScenarioWorkflowSteps = <
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+>() => {
+  const raw = createRawScenarioStepBuilders<TRegistry, TVars, TFragments, TClients>();
+  return {
+    create: raw.create,
+    createBatch: raw.createBatch,
+    event: raw.event,
+    pause: raw.pause,
+    resume: raw.resume,
+    terminate: raw.terminate,
+    read: raw.read,
+    assert: raw.assert,
+  };
+};
+
+const createScenarioRunnerSteps = <
+  TRunnerName extends string,
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+>(
+  runnerName: TRunnerName,
+) => {
+  const stampRunner = <TStep extends { type: string }>(
+    step: TStep,
+  ): RunnerNamedStep<TStep, TRunnerName> =>
+    ({ ...step, runner: runnerName }) as RunnerNamedStep<TStep, TRunnerName>;
+  const raw = createRawScenarioStepBuilders<TRegistry, TVars, TFragments, TClients>();
+  return {
+    initializeAndRunUntilIdle: (
+      input: StepInput<WorkflowScenarioInitializeAndRunUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.initializeAndRunUntilIdle(input)),
+    eventAndRunUntilIdle: (
+      input: StepInput<WorkflowScenarioEventAndRunUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.eventAndRunUntilIdle(input)),
+    resumeAndRunUntilIdle: (
+      input: StepInput<WorkflowScenarioResumeAndRunUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.resumeAndRunUntilIdle(input)),
+    runCreateUntilIdle: (
+      input: StepInput<WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.runCreateUntilIdle(input)),
+    runResumeUntilIdle: (
+      input: StepInput<WorkflowScenarioRunResumeUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.runResumeUntilIdle(input)),
+    retryAndRunUntilIdle: (
+      input: StepInput<WorkflowScenarioRetryAndRunUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.retryAndRunUntilIdle(input)),
+    runUntilIdle: (input: StepInput<WorkflowScenarioRunUntilIdleStep<TRegistry, TVars>>) =>
+      stampRunner(raw.runUntilIdle(input)),
+    tick: (input: StepInput<WorkflowScenarioTickStep<TRegistry, TVars>>) =>
+      stampRunner(raw.tick(input)),
+    advanceTimeAndRunUntilIdle: (
+      input: StepInput<WorkflowScenarioAdvanceTimeAndRunUntilIdleStep<TRegistry, TVars>>,
+    ) => stampRunner(raw.advanceTimeAndRunUntilIdle(input)),
+    drainHooks: () => stampRunner(raw.drainHooks()),
+    restart: () => stampRunner(raw.restart()),
+    waitForEmission: (
+      input: StepInput<WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments>>,
+    ) => stampRunner(raw.waitForEmission(input)),
+    waitForControl: (input: StepInput<WorkflowScenarioWaitForControlStep<TRegistry, TVars>>) =>
+      stampRunner(raw.waitForControl(input)),
+    resolveControl: (input: StepInput<WorkflowScenarioResolveControlStep<TRegistry, TVars>>) =>
+      stampRunner(raw.resolveControl(input)),
+    rejectControl: (input: StepInput<WorkflowScenarioRejectControlStep<TRegistry, TVars>>) =>
+      stampRunner(raw.rejectControl(input)),
+    callRoute: (input: StepInput<WorkflowScenarioCallRouteStep<TVars>>) =>
+      stampRunner({ type: "callRoute" as const, ...input }),
+  };
+};
+
+const createScenarioStepsContext = <
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TRunners extends readonly string[] | undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+>(
+  runners: TRunners,
+  clients: TClients,
+  stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>,
+): TRunners extends readonly string[]
+  ? WorkflowScenarioNamedStepsContext<
+      TRunners[number],
+      TRegistry,
+      TVars,
+      TFragments,
+      TClients,
+      TStores
+    >
+  : WorkflowScenarioDefaultStepsContext<TRegistry, TVars, TFragments, TClients, TStores> => {
+  const workflow = createScenarioWorkflowSteps<TRegistry, TVars, TFragments, TClients>();
+  if (runners) {
+    const namedRunners = Object.fromEntries(
+      runners.map((runnerName) => [
+        runnerName,
+        createScenarioRunnerSteps<typeof runnerName, TRegistry, TVars, TFragments, TClients>(
+          runnerName,
+        ),
+      ]),
+    );
+    return {
+      workflow,
+      clients,
+      stores,
+      runners: namedRunners,
+      concurrent: (branches) => ({ type: "concurrent", branches }),
+    } as TRunners extends readonly string[]
+      ? WorkflowScenarioNamedStepsContext<
+          TRunners[number],
+          TRegistry,
+          TVars,
+          TFragments,
+          TClients,
+          TStores
+        >
+      : WorkflowScenarioDefaultStepsContext<TRegistry, TVars, TFragments, TClients, TStores>;
+  }
+
+  return {
+    workflow,
+    runner: createScenarioRunnerSteps<"scenario", TRegistry, TVars, TFragments, TClients>(
+      "scenario",
+    ),
+    clients,
+    stores,
+  } as TRunners extends readonly string[]
+    ? WorkflowScenarioNamedStepsContext<
+        TRunners[number],
+        TRegistry,
+        TVars,
+        TFragments,
+        TClients,
+        TStores
+      >
+    : WorkflowScenarioDefaultStepsContext<TRegistry, TVars, TFragments, TClients, TStores>;
+};
+
+const createScenarioStoreHandles = <
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
+>(
+  storeDefinitions: TStores,
+): WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores> => {
+  return Object.fromEntries(
+    Object.keys(storeDefinitions).map((storeName) => [
+      storeName,
+      {
+        waitFor: (
+          predicate: (value: unknown) => boolean,
+          options: WorkflowScenarioStoreWaitForOptions<
+            TRegistry,
+            TVars,
+            TFragments,
+            TClients,
+            unknown
+          > = {},
+        ) => ({
+          type: "waitForStore" as const,
+          store: storeName,
+          predicate,
+          ...options,
+        }),
+        read: (
+          read: (store: SubscribableStore<unknown>, ctx: WorkflowScenarioContext) => unknown,
+          options: { storeAs?: keyof TVars & string } = {},
+        ) => ({
+          type: "readStore" as const,
+          store: storeName,
+          read,
+          ...options,
+        }),
+      },
+    ]),
+  ) as unknown as WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
+};
+
+const createRawScenarioStepBuilders = <
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
 >() => ({
   create: (
     input: StepInput<WorkflowScenarioCreateStep<TRegistry, TVars>>,
@@ -695,69 +1371,32 @@ export const createScenarioSteps = <
     type: "rejectControl",
     ...input,
   }),
-  captureEmissions: (
-    input: StepInput<WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars>>,
-  ): WorkflowScenarioCaptureEmissionsStep<TRegistry, TVars> => ({
-    type: "captureEmissions",
-    ...input,
-  }),
-  flushEmissions: (
-    input: StepInput<WorkflowScenarioFlushEmissionsStep<TRegistry, TVars>>,
-  ): WorkflowScenarioFlushEmissionsStep<TRegistry, TVars> => ({
-    type: "flushEmissions",
-    ...input,
-  }),
   waitForEmission: (
-    input: StepInput<WorkflowScenarioWaitForEmissionStep<TRegistry, TVars>>,
-  ): WorkflowScenarioWaitForEmissionStep<TRegistry, TVars> => ({
+    input: StepInput<WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments>>,
+  ): WorkflowScenarioWaitForEmissionStep<TRegistry, TVars, TFragments> => ({
     type: "waitForEmission",
-    ...input,
-  }),
-  stopEmissionCapture: (
-    input: StepInput<WorkflowScenarioStopEmissionCaptureStep<TVars>>,
-  ): WorkflowScenarioStopEmissionCaptureStep<TVars> => ({
-    type: "stopEmissionCapture",
     ...input,
   }),
   drainHooks: (): WorkflowScenarioDrainHooksStep => ({
     type: "drainHooks",
   }),
-  killRunner: (): WorkflowScenarioKillRunnerStep => ({
-    type: "killRunner",
+  restart: (): WorkflowScenarioRestartStep => ({
+    type: "restart",
   }),
-  restartRunner: (): WorkflowScenarioRestartRunnerStep => ({
-    type: "restartRunner",
-  }),
-  killAndRestartRunner: (): WorkflowScenarioKillAndRestartRunnerStep => ({
-    type: "killAndRestartRunner",
-  }),
-  withRunner: (
-    steps: WorkflowScenarioStep<TRegistry, TVars>[],
-  ): WorkflowScenarioWithRunnerStep<TRegistry, TVars> => ({
-    type: "withRunner",
-    steps,
-  }),
-  withRunners: (
-    runners: Record<string, WorkflowScenarioStep<TRegistry, TVars>[]>,
-  ): WorkflowScenarioWithRunnersStep<TRegistry, TVars> => ({
-    type: "withRunners",
-    runners,
-  }),
-  read: (
-    input: StepInput<WorkflowScenarioReadStep<TRegistry, TVars>>,
-  ): WorkflowScenarioReadStep<TRegistry, TVars> => ({
-    type: "read",
-    ...input,
-  }),
+  read: <TValue>(
+    input: StepInput<WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients, TValue>>,
+  ): WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients, TValue> =>
+    ({
+      type: "read",
+      ...input,
+    }) as WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients, TValue>,
   assert: (
-    assert: WorkflowScenarioAssertStep<TRegistry, TVars>["assert"],
-  ): WorkflowScenarioAssertStep<TRegistry, TVars> => ({
+    assert: WorkflowScenarioAssertStep<TRegistry, TVars, TFragments, TClients>["assert"],
+  ): WorkflowScenarioAssertStep<TRegistry, TVars, TFragments, TClients> => ({
     type: "assert",
     assert,
   }),
 });
-
-export const steps = createScenarioSteps();
 
 const resolveScenarioInput = async <
   T,
@@ -765,12 +1404,19 @@ const resolveScenarioInput = async <
   TVars extends WorkflowScenarioVars,
 >(
   input: ScenarioInput<T, TRegistry, TVars>,
-  ctx: WorkflowScenarioContext<TRegistry, TVars>,
+  ctx: WorkflowScenarioContext<TRegistry, TVars, Record<string, AnyFragmentResult>, unknown>,
 ): Promise<T> => {
   if (typeof input === "function") {
-    return await (input as (context: WorkflowScenarioContext<TRegistry, TVars>) => T | Promise<T>)(
-      ctx,
-    );
+    return await (
+      input as (
+        context: WorkflowScenarioContext<
+          TRegistry,
+          TVars,
+          Record<string, AnyFragmentResult>,
+          unknown
+        >,
+      ) => T | Promise<T>
+    )(ctx);
   }
   return input;
 };
@@ -1340,33 +1986,89 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   };
 };
 
+const resolveScenarioRunnerNames = (runners: readonly string[] | undefined): string[] => {
+  if (!runners) {
+    return ["scenario"];
+  }
+  if (runners.length === 0) {
+    throw new Error("SCENARIO_RUNNERS_EMPTY");
+  }
+  const reservedNames = new Set(["workflow", "concurrent", "runner", "runners"]);
+  const seen = new Set<string>();
+  for (const runnerName of runners) {
+    if (typeof runnerName !== "string" || runnerName.trim() === "") {
+      throw new Error("SCENARIO_RUNNER_NAME_EMPTY");
+    }
+    if (reservedNames.has(runnerName)) {
+      throw new Error(`SCENARIO_RUNNER_NAME_RESERVED: ${runnerName}`);
+    }
+    if (seen.has(runnerName)) {
+      throw new Error(`SCENARIO_RUNNER_NAME_DUPLICATE: ${runnerName}`);
+    }
+    seen.add(runnerName);
+  }
+  return [...runners];
+};
+
 export async function runScenario<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
->(scenario: WorkflowScenarioDefinition<TRegistry, TVars>): Promise<WorkflowScenarioResult<TVars>> {
-  const { adapter, testBuilder, autoTickHooks, fragmentConfig, ...harnessOptions } =
-    scenario.harness ?? {};
-  const scenarioUsesEmissions = (steps: WorkflowScenarioStep<TRegistry, TVars>[]): boolean =>
-    steps.some((step) => {
-      switch (step.type) {
-        case "captureEmissions":
-        case "flushEmissions":
-        case "waitForEmission":
-          return true;
-        case "withRunner":
-          return scenarioUsesEmissions(step.steps);
-        case "withRunners":
-          return Object.values(step.runners).some((runnerSteps) =>
-            scenarioUsesEmissions(runnerSteps),
-          );
-        default:
-          return false;
-      }
-    });
-  const stepEmissions =
-    fragmentConfig?.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
-  const shouldInjectStepEmissions =
-    !!fragmentConfig?.stepEmissions || scenarioUsesEmissions(scenario.steps);
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+  TRunners extends readonly string[] | undefined = undefined,
+  TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients> = Record<
+    string,
+    never
+  >,
+>(
+  scenario: WorkflowScenarioDefinition<TRegistry, TVars, TFragments, TClients, TRunners, TStores>,
+): Promise<WorkflowScenarioResult<TVars>> {
+  const {
+    adapter,
+    testBuilder,
+    autoTickHooks,
+    fragmentConfig,
+    configureFragments,
+    ...harnessOptions
+  } = scenario.harness ?? {};
+  const createFragmentConfiguratorHarness = (
+    fragments: Record<string, AnyFragmentResult>,
+  ): WorkflowScenarioFragmentConfiguratorHarness<TRegistry> => {
+    const workflowsResult = fragments["workflows"];
+    if (!workflowsResult) {
+      throw new Error("SCENARIO_WORKFLOWS_FRAGMENT_NOT_AVAILABLE");
+    }
+
+    return {
+      fragments: fragments as WorkflowsTestHarness<TRegistry>["fragments"],
+      fragment: workflowsResult.fragment as WorkflowsTestHarness<TRegistry>["fragment"],
+      db: workflowsResult.db,
+      services: workflowsResult.services as WorkflowsTestHarness<TRegistry>["services"],
+      deps: workflowsResult.deps as WorkflowsTestHarness<TRegistry>["deps"],
+      callRoute: workflowsResult.callRoute as WorkflowsTestHarness<TRegistry>["callRoute"],
+    };
+  };
+
+  const createProbeWorkflowsResult = (): AnyFragmentResult => {
+    const workflowServices = new Proxy({}, { get: () => () => undefined });
+    return {
+      fragment: { services: workflowServices } as AnyFragnoInstantiatedFragment,
+      services: workflowServices,
+      deps: {},
+      callRoute: (() => {
+        throw new Error("SCENARIO_CONFIGURE_FRAGMENTS_PROBE_ROUTE_CALLED");
+      }) as AnyFragmentResult["callRoute"],
+      db: undefined as unknown as TestDb,
+    };
+  };
+
+  const configuredFragmentEntries = configureFragments
+    ? Object.entries(
+        configureFragments(
+          createFragmentConfiguratorHarness({ workflows: createProbeWorkflowsResult() }),
+        ),
+      )
+    : [];
 
   const harness = await createWorkflowsTestHarness({
     workflows: scenario.workflows,
@@ -1374,45 +2076,182 @@ export async function runScenario<
     testBuilder: testBuilder ?? buildDatabaseFragmentsTest(),
     autoTickHooks: autoTickHooks ?? false,
     ...harnessOptions,
-    fragmentConfig: shouldInjectStepEmissions
-      ? { ...fragmentConfig, stepEmissions }
-      : fragmentConfig,
+    fragmentConfig,
+    configureBuilderAfterWorkflows:
+      configuredFragmentEntries.length > 0
+        ? (builder) => {
+            let nextBuilder = builder;
+            for (const [name, probeBuilder] of configuredFragmentEntries) {
+              nextBuilder = nextBuilder.withFragmentFactory(
+                name,
+                probeBuilder.definition,
+                ({ fragments }) => {
+                  const configured = configureFragments!(
+                    createFragmentConfiguratorHarness(fragments),
+                  );
+                  const fragmentOrBuilder = configured[name];
+                  if (!fragmentOrBuilder || !("build" in fragmentOrBuilder)) {
+                    throw new Error(`SCENARIO_CONFIGURED_FRAGMENT_BUILDER_NOT_FOUND: ${name}`);
+                  }
+                  return fragmentOrBuilder as never;
+                },
+              ) as never;
+            }
+            return nextBuilder;
+          }
+        : undefined,
   });
 
+  const typedHarness = harness as unknown as WorkflowsTestHarness<TRegistry, TFragments>;
   const resolver = createWorkflowResolver(scenario.workflows);
-  const context: WorkflowScenarioContext<TRegistry, TVars> = {
+  const mountedStoreCleanups: Array<() => void> = [];
+  const mountedScenarioStores = new Map<string, SubscribableStore<unknown>>();
+
+  const runnerNames = resolveScenarioRunnerNames(scenario.runners);
+  const runnerInstances = new Map<string, WorkflowsTestRunner<TRegistry, TFragments>>(
+    runnerNames.map((runnerName) => [runnerName, typedHarness.createRunner()]),
+  );
+  const getRunnerByName = (runnerName: string) => {
+    const runner = runnerInstances.get(runnerName);
+    if (!runner) {
+      throw new Error(`SCENARIO_UNKNOWN_RUNNER: ${runnerName}`);
+    }
+    return runner;
+  };
+  const getRunnerForStep = (step: { runner?: string; type: string }) => {
+    const runnerName = step.runner ?? "scenario";
+    const runner = runnerInstances.get(runnerName);
+    if (!runner) {
+      throw new Error(`SCENARIO_UNKNOWN_RUNNER: ${runnerName} for ${step.type}`);
+    }
+    return runner;
+  };
+  const createRequest = (
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    baseUrl: string,
+  ) => {
+    if (input instanceof Request) {
+      return init ? new Request(input, init) : input;
+    }
+
+    const url = input instanceof URL ? input : new URL(String(input), baseUrl);
+    return new Request(url, init);
+  };
+  const createClientConfig = (
+    fallbackFragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
+    resolveFallbackFragments: () =>
+      | WorkflowScenarioRuntimeFragments<TRegistry, TFragments>
+      | Promise<WorkflowScenarioRuntimeFragments<TRegistry, TFragments>>,
+  ): WorkflowScenarioClientConfig<TRegistry, TFragments, WorkflowScenarioRunnerName<TRunners>> => {
+    return ((fragmentName, options = {}) => {
+      const fallbackFragment = fallbackFragments[fragmentName];
+      if (!fallbackFragment) {
+        throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${String(fragmentName)}`);
+      }
+
+      const baseUrl = options.baseUrl ?? "http://fragno.test";
+      const runnerName = options.runner;
+      return {
+        baseUrl,
+        mountRoute: options.mountRoute ?? fallbackFragment.fragment.mountRoute,
+        fetcherConfig: {
+          type: "function",
+          useOnServer: true,
+          fetcher: async (input, init) => {
+            const fragments = runnerName
+              ? await getRunnerByName(String(runnerName)).getFragments()
+              : await resolveFallbackFragments();
+            const fragment = fragments[fragmentName]?.fragment;
+            if (!fragment) {
+              throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${String(fragmentName)}`);
+            }
+            return fragment.handler(createRequest(input, init, baseUrl), options.lifecycleContext);
+          },
+        },
+      };
+    }) as WorkflowScenarioClientConfig<TRegistry, TFragments, WorkflowScenarioRunnerName<TRunners>>;
+  };
+  const createClients = (
+    fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
+    resolveFragments: () =>
+      | WorkflowScenarioRuntimeFragments<TRegistry, TFragments>
+      | Promise<WorkflowScenarioRuntimeFragments<TRegistry, TFragments>> = () => fragments,
+  ): TClients =>
+    scenario.clients?.({
+      fragments,
+      createFragmentTestClientConfig,
+      clientConfig: createClientConfig(fragments, resolveFragments),
+    }) ?? ({} as TClients);
+  const createClientRuntime = async (): Promise<
+    WorkflowScenarioClientRuntime<TRegistry, TFragments, TClients>
+  > => {
+    const runtime = await typedHarness.test.createAdditionalRuntime();
+    const fragments = runtime.fragments as WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
+
+    return {
+      fragments,
+      clients: createClients(
+        fragments,
+        () => runtime.fragments as WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
+      ),
+      recreateFragments: runtime.recreateFragments,
+    };
+  };
+  const clients = createClients(typedHarness.fragments);
+  const storeDefinitions =
+    scenario.stores?.({
+      fragments: typedHarness.fragments,
+      clients,
+      store: (factory) => factory,
+    }) ?? ({} as TStores);
+  const stores = createScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>(
+    storeDefinitions,
+  );
+  const resolvedSteps = scenario.steps(
+    createScenarioStepsContext<TRegistry, TVars, TFragments, TClients, TRunners, TStores>(
+      scenario.runners as TRunners,
+      clients,
+      stores,
+    ),
+  );
+  const context: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients> = {
     name: scenario.name,
-    harness,
+    harness: typedHarness,
     runtime: harness.runtime,
     clock: harness.clock,
-    vars: {},
+    vars: scenario.vars?.() ?? {},
     state: createScenarioState(harness, resolver),
+    clients,
+    createClientRuntime,
+    mountStore: (store) => {
+      mountedStoreCleanups.push(store.subscribe(() => {}));
+      return store;
+    },
+    waitForStore,
     cleanup: async () => {
-      while (emissionCaptureCleanups.length > 0) {
-        await emissionCaptureCleanups.pop()?.();
+      while (mountedStoreCleanups.length > 0) {
+        mountedStoreCleanups.pop()?.();
       }
+      mountedScenarioStores.clear();
       await harness.test.cleanup();
     },
   };
 
-  const fragment = context.harness.fragment as AnyFragnoInstantiatedFragment;
-  const callRoute = fragment.callRoute.bind(fragment) as (
-    method: string,
-    path: string,
-    options?: { pathParams?: Record<string, string>; body?: unknown },
-  ) => Promise<WorkflowScenarioRouteResponse>;
-
-  const callInstanceRoute = async (path: string, workflowName: string, instanceId: string) =>
-    await callRoute("POST", path, { pathParams: { workflowName, instanceId } });
-
-  const emissionCaptureCleanups: Array<() => void | Promise<void>> = [];
-  const emissionCaptureWaiters = new Map<string, Array<() => void>>();
-
-  const notifyEmissionCaptureWaiters = (capture: string) => {
-    const waiters = emissionCaptureWaiters.get(capture)?.splice(0) ?? [];
-    for (const resolve of waiters) {
-      resolve();
+  const getMountedScenarioStore = (storeName: string): SubscribableStore<unknown> => {
+    const existing = mountedScenarioStores.get(storeName);
+    if (existing) {
+      return existing;
     }
+
+    const createStore = storeDefinitions[storeName];
+    if (!createStore) {
+      throw new Error(`SCENARIO_STORE_NOT_FOUND: ${storeName}`);
+    }
+
+    const mountedStore = context.mountStore(createStore(context));
+    mountedScenarioStores.set(storeName, mountedStore);
+    return mountedStore;
   };
 
   const buildPayload = async (options: {
@@ -1439,41 +2278,17 @@ export async function runScenario<
     };
   };
 
-  let hasUsedExplicitRunnerScope = false;
-  const isTopLevelObservationStepAfterExplicitRunners = (
-    step: WorkflowScenarioStep<TRegistry, TVars>,
-  ): boolean => {
-    switch (step.type) {
-      case "read":
-      case "captureEmissions":
-      case "flushEmissions":
-      case "waitForEmission":
-      case "stopEmissionCapture":
-      case "drainHooks":
-      case "assert":
-        return true;
-      default:
-        return false;
-    }
-  };
-
   const executeSteps = async (
-    scenarioSteps: WorkflowScenarioStep<TRegistry, TVars>[],
-    runner: WorkflowsTestRunner,
-    options?: { topLevel?: boolean },
+    scenarioSteps: WorkflowScenarioStep<TRegistry, TVars, TFragments, TClients>[],
   ) => {
     for (const step of scenarioSteps) {
-      if (
-        options?.topLevel &&
-        hasUsedExplicitRunnerScope &&
-        !isTopLevelObservationStepAfterExplicitRunners(step)
-      ) {
-        throw new Error(
-          `TOP_LEVEL_SCENARIO_STEP_AFTER_EXPLICIT_RUNNER: ${step.type}. ` +
-            "All runner-affecting work must be part of the first withRunner(...) or withRunners(...) block.",
-        );
+      const stepRunnerName = (step as { runner?: string }).runner;
+      const currentRunner = stepRunnerName
+        ? getRunnerForStep({ runner: stepRunnerName, type: step.type })
+        : (runnerInstances.get("scenario") ?? runnerInstances.values().next().value);
+      if (!currentRunner) {
+        throw new Error(`SCENARIO_NO_RUNNER_AVAILABLE: ${step.type}`);
       }
-
       switch (step.type) {
         case "create": {
           const workflowName = resolver.resolveName(
@@ -1516,7 +2331,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1583,7 +2398,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1597,13 +2412,9 @@ export async function runScenario<
             String(await resolveScenarioInput(step.workflow, context)),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const response = await callInstanceRoute(
-            "/:workflowName/instances/:instanceId/pause",
-            workflowName,
-            instanceId,
-          );
+          const status = await context.harness.pauseInstance(workflowName, instanceId);
           if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = response;
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
           break;
         }
@@ -1612,13 +2423,9 @@ export async function runScenario<
             String(await resolveScenarioInput(step.workflow, context)),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const response = await callInstanceRoute(
-            "/:workflowName/instances/:instanceId/resume",
-            workflowName,
-            instanceId,
-          );
+          const status = await context.harness.resumeInstance(workflowName, instanceId);
           if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = response;
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
           break;
         }
@@ -1627,13 +2434,9 @@ export async function runScenario<
             String(await resolveScenarioInput(step.workflow, context)),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const response = await callInstanceRoute(
-            "/:workflowName/instances/:instanceId/resume",
-            workflowName,
-            instanceId,
-          );
+          const status = await context.harness.resumeInstance(workflowName, instanceId);
           if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = response;
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
 
           const timestamp = step.timestamp
@@ -1648,7 +2451,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1662,13 +2465,9 @@ export async function runScenario<
             String(await resolveScenarioInput(step.workflow, context)),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const response = await callInstanceRoute(
-            "/:workflowName/instances/:instanceId/terminate",
-            workflowName,
-            instanceId,
-          );
+          const status = await context.harness.terminateInstance(workflowName, instanceId);
           if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = response;
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
           break;
         }
@@ -1689,7 +2488,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1715,7 +2514,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1775,7 +2574,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1813,7 +2612,7 @@ export async function runScenario<
             });
           }
 
-          const processed = await runner.tick(payload);
+          const processed = await currentRunner.tick(payload);
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = processed;
           }
@@ -1852,7 +2651,7 @@ export async function runScenario<
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
 
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1931,7 +2730,7 @@ export async function runScenario<
           const maxTicks = step.maxTicks
             ? await resolveScenarioInput(step.maxTicks, context)
             : undefined;
-          const resultTicks = await runner.runUntilIdle(
+          const resultTicks = await currentRunner.runUntilIdle(
             payload,
             maxTicks ? { maxTicks } : undefined,
           );
@@ -1962,136 +2761,146 @@ export async function runScenario<
           context.runtime.controls.reject(key, error);
           break;
         }
-        case "captureEmissions": {
-          const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
-          );
-          const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const messages: WorkflowScenarioObservedEmission[] = [];
-          (context.vars as Record<string, unknown>)[step.storeAs] = messages;
-          const { busHandle, unsubscribe } = await context.harness.fragment.inContext(function () {
-            const handle = stepEmissions.getOrCreate(
-              workflowStepLivePumpKey(workflowName, instanceId),
-              () =>
-                createWorkflowStepLivePump({
-                  handlerTx: this.handlerTx,
-                  workflowName,
-                  instanceId,
-                }),
-            );
-            handle.pump.setHandlerTx(this.handlerTx);
-            const unsubscribe = handle.pump.observe((message) => {
-              messages.push({ workflowName, instanceId, ...message });
-              notifyEmissionCaptureWaiters(step.storeAs);
-            });
-            return { busHandle: handle, unsubscribe };
-          });
-          emissionCaptureCleanups.push(async () => {
-            unsubscribe();
-            await busHandle.close();
-          });
-          break;
-        }
-        case "flushEmissions": {
-          const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
-          );
-          const instanceId = await resolveScenarioInput(step.instanceId, context);
-          await context.harness.fragment.inContext(async function () {
-            const handle = stepEmissions.getOrCreate(
-              workflowStepLivePumpKey(workflowName, instanceId),
-              () =>
-                createWorkflowStepLivePump({
-                  handlerTx: this.handlerTx,
-                  workflowName,
-                  instanceId,
-                }),
-            );
-            handle.pump.setHandlerTx(this.handlerTx);
-            await handle.waitForNextFlushAndClose();
-          });
-          break;
-        }
         case "waitForEmission": {
-          const capture = String(step.capture);
+          const workflowKey = String(await resolveScenarioInput(step.workflow, context));
+          const workflowName = resolver.resolveName(workflowKey);
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
           const timeoutMs = step.timeoutMs
             ? await resolveScenarioInput(step.timeoutMs, context)
             : 2_000;
-          const findMatch = () => {
-            const messages = ((context.vars as Record<string, unknown>)[capture] ?? []) as
-              | WorkflowScenarioObservedEmission[]
-              | unknown[];
-            return (messages as WorkflowScenarioObservedEmission[]).find((message) =>
-              step.match ? step.match(message, context) : true,
-            );
+          const findPersistedMatch = async () => {
+            const persisted = await context.state.getEmissions(workflowKey, instanceId);
+            return persisted
+              .map((message) => ({
+                ...message,
+                id: String(message.id),
+                workflowName,
+                instanceId,
+              }))
+              .find((message) => (step.match ? step.match(message, context) : true));
           };
-
-          let matched = findMatch();
-          if (!matched) {
-            const deadline = Date.now() + timeoutMs;
-            while (!matched && Date.now() < deadline) {
-              await new Promise<void>((resolve) => {
-                const waiters = emissionCaptureWaiters.get(capture) ?? [];
-                waiters.push(resolve);
-                emissionCaptureWaiters.set(capture, waiters);
-                setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))).unref?.();
-              });
-              matched = findMatch();
+          const alreadyMatched = await findPersistedMatch();
+          if (alreadyMatched) {
+            if (step.storeAs) {
+              (context.vars as Record<string, unknown>)[step.storeAs] = alreadyMatched;
             }
+            break;
           }
-          if (!matched) {
-            throw new Error(`EMISSION_NOT_OBSERVED: ${capture}`);
+          const workflowFragment = (await currentRunner.getFragments()).workflows.fragment;
+          const matched = await workflowFragment.inContext(async function () {
+            const handle = workflowFragment.$internal.deps.stepEmissions.getOrCreate(
+              workflowStepLivePumpKey(workflowName, instanceId),
+              () =>
+                createWorkflowStepLivePump({
+                  handlerTx: this.handlerTx,
+                  workflowName,
+                  instanceId,
+                }),
+            );
+            handle.pump.setHandlerTx(this.handlerTx);
+            return await new Promise<WorkflowScenarioObservedEmission | undefined>((resolve) => {
+              let unsubscribe: () => void = () => {};
+              const timeout = setTimeout(() => {
+                unsubscribe();
+                void handle.close();
+                resolve(undefined);
+              }, timeoutMs);
+              timeout.unref?.();
+              unsubscribe = handle.pump.observe((message) => {
+                const observed = { workflowName, instanceId, ...message };
+                if (step.match && !step.match(observed, context)) {
+                  return;
+                }
+                clearTimeout(timeout);
+                unsubscribe();
+                void handle.close();
+                resolve(observed);
+              });
+            });
+          });
+          const persistedAfterTimeout = matched ?? (await findPersistedMatch());
+          if (!persistedAfterTimeout) {
+            throw new Error(`EMISSION_NOT_OBSERVED: ${workflowName}/${instanceId}`);
           }
           if (step.storeAs) {
-            (context.vars as Record<string, unknown>)[step.storeAs] = matched;
+            (context.vars as Record<string, unknown>)[step.storeAs] = persistedAfterTimeout;
           }
-          break;
-        }
-        case "stopEmissionCapture": {
-          const capture = String(step.capture);
-          notifyEmissionCaptureWaiters(capture);
-          const cleanup = emissionCaptureCleanups.pop();
-          await cleanup?.();
           break;
         }
         case "drainHooks": {
           await drainDurableHooks(context.harness.fragment);
           break;
         }
-        case "killRunner": {
-          await runner.kill();
+        case "restart": {
+          await currentRunner.restart();
           break;
         }
-        case "restartRunner": {
-          await runner.restart();
-          break;
-        }
-        case "killAndRestartRunner": {
-          await runner.killAndRestart();
-          break;
-        }
-        case "withRunner": {
-          if (options?.topLevel) {
-            hasUsedExplicitRunnerScope = true;
-          }
-          await executeSteps(step.steps, context.harness.createRunner());
-          break;
-        }
-        case "withRunners": {
-          if (options?.topLevel) {
-            hasUsedExplicitRunnerScope = true;
-          }
-          await Promise.all(
-            Object.values(step.runners).map((runnerSteps) =>
-              executeSteps(runnerSteps, context.harness.createRunner()),
-            ),
+        case "callRoute": {
+          const response = await currentRunner.callRoute(
+            step.method,
+            step.path,
+            step.options as Parameters<WorkflowsTestRunner["callRoute"]>[2],
           );
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = response;
+          }
+          if (step.assert) {
+            await step.assert(response as WorkflowScenarioRouteResponse);
+          }
+          break;
+        }
+        case "concurrent": {
+          await Promise.all(
+            Object.entries(step.branches).map(async ([branchName, branchSteps]) => {
+              if (!runnerInstances.has(branchName)) {
+                throw new Error(`SCENARIO_UNKNOWN_RUNNER: ${branchName} for concurrent`);
+              }
+              if (!branchSteps || branchSteps.length === 0) {
+                throw new Error(`SCENARIO_CONCURRENT_BRANCH_EMPTY: ${branchName}`);
+              }
+              for (const branchStep of branchSteps) {
+                const runnerOwnedStep = branchStep as { runner?: string; type: string };
+                if (runnerOwnedStep.runner && runnerOwnedStep.runner !== branchName) {
+                  throw new Error(
+                    `SCENARIO_CONCURRENT_BRANCH_RUNNER_MISMATCH: ${branchName} contains ${runnerOwnedStep.runner}`,
+                  );
+                }
+              }
+              await executeSteps(branchSteps);
+            }),
+          );
+          break;
+        }
+        case "waitForStore": {
+          const store = getMountedScenarioStore(step.store);
+          const value = await waitForStore(store, step.predicate as (value: unknown) => boolean);
+          const selectedValue = step.select ? step.select(value) : value;
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = selectedValue;
+          }
+          if (step.assert) {
+            await step.assert(value, context);
+          }
+          break;
+        }
+        case "readStore": {
+          const store = getMountedScenarioStore(step.store);
+          const value = await step.read(store, context);
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = value;
+          }
           break;
         }
         case "read": {
           const value = await step.read(context);
+          if (step.storeAs && step.assert) {
+            throw new Error("SCENARIO_READ_STEP_STORE_AS_AND_ASSERT_ARE_MUTUALLY_EXCLUSIVE");
+          }
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = value;
+          }
+          if (step.assert) {
+            await step.assert(value, context);
           }
           break;
         }
@@ -2111,7 +2920,7 @@ export async function runScenario<
   let scenarioError: unknown;
 
   try {
-    await executeSteps(scenario.steps, context.harness.createRunner(), { topLevel: true });
+    await executeSteps(resolvedSteps);
 
     result = {
       name: context.name,

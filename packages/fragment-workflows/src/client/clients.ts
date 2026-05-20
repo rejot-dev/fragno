@@ -40,6 +40,9 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
       },
     ),
     useInstance: builder.createHook("/:workflowName/instances/:instanceId"),
+    useCurrentStepEmissions: builder.createHook(
+      "/:workflowName/instances/:instanceId/current-step/emissions",
+    ),
     useInstanceHistory: builder.createHook("/:workflowName/instances/:instanceId/history"),
     usePauseInstance: builder.createMutator(
       "POST",

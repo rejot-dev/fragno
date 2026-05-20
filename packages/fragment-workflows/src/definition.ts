@@ -591,12 +591,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               );
           })
           .mutate(({ retrieveResult }) => {
-            const [instance, steps, events, emissions] = retrieveResult as [
-              WorkflowInstanceRecord | undefined,
-              WorkflowStepRecord[],
-              WorkflowEventRecord[],
-              WorkflowStepEmissionRecord[],
-            ];
+            const [instance, steps, events, emissions] = retrieveResult;
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }

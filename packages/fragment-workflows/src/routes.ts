@@ -5,6 +5,7 @@ import { decodeCursor } from "@fragno-dev/db";
 
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsSchema } from "./schema";
+import { streamWorkflowStepEmissions } from "./stream-step-emissions";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
 
 const identifierSchema = z
@@ -133,6 +134,33 @@ const historyEmissionSchema = z.object({
   actor: z.string(),
   payload: z.unknown().nullable(),
   createdAt: z.date(),
+});
+
+const LIVE_STEP_EMISSION_STREAM_TIMEOUT_MS = 60_000;
+
+const parseBooleanQueryValue = (value: string | null): boolean => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+};
+
+type WorkflowStepEmissionOutput = z.infer<typeof historyEmissionSchema>;
+
+const mapStepEmissionOutput = (emission: {
+  id: string | { toString(): string };
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  actor: string;
+  payload: unknown;
+  createdAt: Date;
+}): WorkflowStepEmissionOutput => ({
+  id: emission.id.toString(),
+  stepKey: emission.stepKey,
+  epoch: emission.epoch,
+  sequence: emission.sequence,
+  actor: emission.actor,
+  payload: emission.payload ?? null,
+  createdAt: emission.createdAt,
 });
 
 type ErrorResponder<Code extends string = string> = (
@@ -469,6 +497,95 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               .execute();
 
             return json({ id: instanceId, details, meta: { ...meta, currentStep } });
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/:workflowName/instances/:instanceId/current-step/emissions",
+        queryParameters: ["once"],
+        outputSchema: z.array(historyEmissionSchema),
+        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+        handler: async function (context, { jsonStream, error }) {
+          const { pathParams, query } = context;
+          const errorResponder = error as ErrorResponder;
+          const workflowName = pathParams.workflowName;
+          const once = parseBooleanQueryValue(query.get("once"));
+
+          if (!getWorkflowNames(config.workflows).includes(workflowName)) {
+            return errorResponder(
+              { message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" },
+              404,
+            );
+          }
+
+          const instanceId = pathParams.instanceId;
+          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
+          if (idError) {
+            return idError;
+          }
+
+          try {
+            await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                    eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+                  ),
+                ),
+              )
+              .transformRetrieve(([instance]) => {
+                if (!instance) {
+                  throw new Error("INSTANCE_NOT_FOUND");
+                }
+              })
+              .execute();
+
+            return jsonStream(async (stream) => {
+              const emissionBusHandle = services.observeStepEmissions<WorkflowStepEmissionOutput>({
+                workflowName,
+                instanceId,
+                handlerTx: this.handlerTx,
+              });
+
+              try {
+                const emissionBus = emissionBusHandle.pump;
+                const snapshot = await emissionBus.snapshot();
+                const initialEmissions = snapshot.map(mapStepEmissionOutput);
+
+                if (once) {
+                  for (const emission of initialEmissions) {
+                    await stream.write(emission);
+                  }
+                  return;
+                }
+
+                await streamWorkflowStepEmissions({
+                  stream,
+                  emissionBus: {
+                    observe: (handler) => {
+                      const unsubscribe = emissionBus.observe(
+                        (message) => {
+                          const mapped = mapStepEmissionOutput(message);
+                          return handler({
+                            ...message,
+                            payload: mapped,
+                          });
+                        },
+                        { after: snapshot },
+                      );
+                      return unsubscribe;
+                    },
+                  },
+                  initialEmissions,
+                  timeoutMs: LIVE_STEP_EMISSION_STREAM_TIMEOUT_MS,
+                });
+              } finally {
+                await emissionBusHandle.close();
+              }
+            });
           } catch (err) {
             return handleServiceError(err, errorResponder);
           }

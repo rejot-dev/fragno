@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  createScenarioSteps,
   defineScenario,
   runScenario,
   type WorkflowScenarioHookRow,
@@ -26,6 +25,30 @@ const EventWorkflow = defineWorkflow(
 );
 
 describe("workflows scenario DSL", () => {
+  test("types read assert values and vars as readonly", () => {
+    const workflows = { sleep: SleepWorkflow };
+
+    defineScenario<typeof workflows, { saved?: number[] }>({
+      name: "readonly-assert-types",
+      workflows,
+      steps: ({ workflow }) => [
+        workflow.read({
+          read: () => [1, 2, 3],
+          assert: (value, ctx) => {
+            // @ts-expect-error read assert values are readonly
+            value.push(4);
+            // @ts-expect-error assert contexts cannot mutate scenario vars
+            ctx.vars.saved = value;
+          },
+        }),
+        workflow.assert((ctx) => {
+          // @ts-expect-error scenario assert contexts cannot mutate scenario vars
+          ctx.vars.saved = [1];
+        }),
+      ],
+    });
+  });
+
   test("drives sleep + event flows and captures history", async () => {
     const workflows = {
       sleep: SleepWorkflow,
@@ -41,51 +64,50 @@ describe("workflows scenario DSL", () => {
       hooks?: WorkflowScenarioHookRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, ScenarioVars>();
     const scenario = defineScenario<typeof workflows, ScenarioVars>({
       name: "sleep-and-event",
       workflows,
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "sleep",
           id: "sleep-1",
           params: { note: "alpha" },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("sleep", "sleep-1"),
           storeAs: "sleepStatus",
         }),
-        scenarioSteps.advanceTimeAndRunUntilIdle({
+        runner.advanceTimeAndRunUntilIdle({
           workflow: "sleep",
           instanceId: "sleep-1",
           advanceBy: "1 hour",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("sleep", "sleep-1"),
           storeAs: "sleepFinal",
         }),
-        scenarioSteps.initializeAndRunUntilIdle({
+        runner.initializeAndRunUntilIdle({
           workflow: "events",
           id: "event-1",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("events", "event-1"),
           storeAs: "eventStatus",
         }),
-        scenarioSteps.eventAndRunUntilIdle({
+        runner.eventAndRunUntilIdle({
           workflow: "events",
           instanceId: "event-1",
           event: { type: "ready", payload: { ok: true } },
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getStatus("events", "event-1"),
           storeAs: "eventFinal",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getHistory("sleep", "sleep-1", { order: "asc", pageSize: 50 }),
           storeAs: "sleepHistory",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) =>
             ctx.state.internal.getHooks({
               hookName: "onWorkflowEnqueued",
@@ -94,7 +116,7 @@ describe("workflows scenario DSL", () => {
             }),
           storeAs: "hooks",
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           expect(ctx.vars.sleepStatus?.status).toBe("waiting");
           expect(ctx.vars.sleepFinal?.status).toBe("complete");
           expect(ctx.vars.eventStatus?.status).toBe("waiting");
@@ -141,21 +163,20 @@ describe("workflows scenario DSL", () => {
       steps?: WorkflowScenarioStepRow[];
     };
 
-    const scenarioSteps = createScenarioSteps<typeof workflows, RetryVars>();
     const scenario = defineScenario<typeof workflows, RetryVars>({
       name: "retry-delay",
       workflows,
       harness: { runtime, adapter: { type: "in-memory" } },
-      steps: [
-        scenarioSteps.initializeAndRunUntilIdle({
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
           workflow: "retry",
           id: "retry-1",
         }),
-        scenarioSteps.read({
+        workflow.read({
           read: (ctx) => ctx.state.getSteps("retry", "retry-1"),
           storeAs: "steps",
         }),
-        scenarioSteps.assert((ctx) => {
+        workflow.assert((ctx) => {
           const rows = ctx.vars.steps ?? [];
           const retryStep = rows.find((row) => row.stepKey === "do:maybe-fail") ?? rows[0];
 
