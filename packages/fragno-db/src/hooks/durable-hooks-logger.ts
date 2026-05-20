@@ -10,9 +10,19 @@ const LOG_LEVEL_PRIORITY: Record<DurableHooksLogLevel, number> = {
   debug: 4,
 };
 
+function isTestExecution(): boolean {
+  if (typeof process !== "object") {
+    return false;
+  }
+
+  return Boolean(
+    process.env["NODE_ENV"] === "test" || process.env["VITEST"] || process.env["JEST_WORKER_ID"],
+  );
+}
+
 const DEFAULT_SCOPE: Required<DurableHooksLoggerConfig> = {
   enabled: true,
-  level: "warn",
+  level: isTestExecution() ? "error" : "warn",
 };
 
 export type DurableHooksLogLevel = "off" | "error" | "warn" | "info" | "debug";
