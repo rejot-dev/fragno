@@ -6,7 +6,7 @@
  * @vitest-environment node
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { z } from "zod";
 
@@ -48,6 +48,25 @@ describe("server side rendering", () => {
     const data = await useUsers.query({});
 
     expect(data).toEqual([{ id: 1, name: "John" }]);
+  });
+
+  test("should use a custom fetcher server side when requested", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json([{ id: 2, name: "Jane" }]),
+    ) satisfies typeof fetch;
+    const client = createClientBuilder(
+      testFragmentDefinition,
+      {
+        ...clientConfig,
+        fetcherConfig: { type: "function", fetcher, useOnServer: true },
+      },
+      testRoutes,
+    );
+
+    const data = await client.createHook("/users").query({});
+
+    expect(data).toEqual([{ id: 2, name: "Jane" }]);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   test("should be able to use the store server side", async () => {

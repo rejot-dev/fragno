@@ -1743,6 +1743,66 @@ describe("computed", () => {
     vi.restoreAllMocks();
   });
 
+  test("duplicate streaming stores for the same key should receive the same live data", async () => {
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/events-stream",
+        outputSchema: z.array(z.object({ id: z.number() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
+    const useEventsStream = client.createHook("/events-stream");
+
+    const firstItemWritten = Promise.withResolvers<void>();
+    const releaseRestOfStream = Promise.withResolvers<void>();
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1 });
+        firstItemWritten.resolve();
+        await releaseRestOfStream.promise;
+        await stream.write({ id: 2 });
+        await stream.sleep(0);
+        await stream.write({ id: 3 });
+      });
+    });
+
+    const first = useEventsStream.store({});
+    const unsubscribeFirst = first.subscribe(() => {});
+    let unsubscribeSecond: (() => void) | undefined;
+
+    try {
+      await firstItemWritten.promise;
+      await vi.waitFor(() => {
+        expect(first.get().data).toEqual([{ id: 1 }]);
+      });
+
+      const second = useEventsStream.store({});
+      unsubscribeSecond = second.subscribe(() => {});
+
+      await vi.waitFor(() => {
+        expect(second.get().data).toEqual([{ id: 1 }]);
+      });
+
+      releaseRestOfStream.resolve();
+
+      await vi.waitFor(() => {
+        expect(first.get().data).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      expect(second.get().data).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    } finally {
+      unsubscribeSecond?.();
+      unsubscribeFirst();
+    }
+  });
+
   test("Derived from streaming route", async () => {
     const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [

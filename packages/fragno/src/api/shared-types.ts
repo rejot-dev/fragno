@@ -14,7 +14,15 @@ export interface FragnoPublicConfig {
  */
 export type FetcherConfig =
   | { type: "options"; options: RequestInit }
-  | { type: "function"; fetcher: typeof fetch };
+  | {
+      type: "function";
+      fetcher: typeof fetch;
+      /**
+       * Use this fetcher even when `window` is undefined.
+       * By default, server-side clients call route handlers directly for SSR.
+       */
+      useOnServer?: boolean;
+    };
 
 /**
  * Public configuration for Fragno fragments on the client side.
