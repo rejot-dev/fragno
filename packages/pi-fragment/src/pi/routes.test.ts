@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
-import { buildHarness, createStreamFn, findWorkflowInstances, mockModel } from "./test-utils";
+import { buildHarness, createStreamFn, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { PI_WORKFLOW_NAME } from "./workflow/workflow";
 
@@ -61,16 +61,11 @@ describe("pi-fragment Pi-shaped routes", () => {
   };
 
   const runSessionUntilIdle = async (sessionId: string) => {
-    const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-      (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-    );
-    if (!instance) {
-      throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-    }
+    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
     await harness.workflows.runUntilIdle({
       workflowName: PI_WORKFLOW_NAME,
       instanceId: sessionId,
-      instanceRef: String(instance.id),
+      instanceRef: sessionId,
       reason: "event",
     });
   };

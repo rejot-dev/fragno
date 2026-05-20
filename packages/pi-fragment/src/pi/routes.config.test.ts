@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { PiLogger } from "../debug-log";
-import { buildHarness, createStreamFn, mockModel } from "./test-utils";
+import { buildHarness, createStreamFn, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig, PiWorkflowsService } from "./types";
 
 describe("pi-fragment config requirements", () => {

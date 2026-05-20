@@ -69,6 +69,7 @@ type EventsStoreState = {
 type EventsStore = {
   get(): EventsStoreState;
   listen(listener: (state: EventsStoreState) => void): () => void;
+  subscribe?: (listener: (state: EventsStoreState) => void) => () => void;
 };
 
 type StoreTransportOptions = {
@@ -239,7 +240,7 @@ async function* eventsStoreToAsyncIterable(
     }
   };
 
-  const unsubscribe = store.listen(pushState);
+  const unsubscribe = (store.subscribe ?? store.listen).call(store, pushState);
   const onAbort = () => {
     error = abortError();
     wake();
