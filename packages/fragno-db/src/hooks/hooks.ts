@@ -227,7 +227,7 @@ export type DurableHooksProcessingOptions = {
   onStuckProcessingHooks?: (info: StuckHookProcessingInfo) => void;
   /**
    * Durable hooks logging controls.
-   * Defaults: enabled=true, level="warn".
+   * Defaults: enabled=true, level="warn" (level="error" during test execution).
    */
   logging?: DurableHooksLoggerConfig;
 };
