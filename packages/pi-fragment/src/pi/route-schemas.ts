@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import type { PiSessionEventStreamItem } from "./types";
 

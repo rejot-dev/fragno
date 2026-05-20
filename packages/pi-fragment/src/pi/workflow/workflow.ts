@@ -8,7 +8,7 @@ import {
 } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import { PiLogger } from "../../debug-log";
 import { piSchema } from "../../schema";
@@ -60,7 +60,7 @@ const WAIT_FOR_COMMAND_TIMEOUT = "1 hour" as const;
 type TurnStatus = "idle" | "waiting-to-continue";
 
 const getMessageText = (message: AgentMessage | undefined): string | undefined => {
-  const content = message?.content;
+  const content = message && "content" in message ? message.content : undefined;
   if (typeof content === "string") {
     return content;
   }

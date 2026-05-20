@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
       devtoolsJson(),
     ],
     ssr: {
-      noExternal: ["@mariozechner/pi-ai"],
+      noExternal: ["@earendil-works/pi-ai"],
     },
     environments: isDev
       ? {

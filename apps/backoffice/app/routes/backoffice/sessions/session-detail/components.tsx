@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 
 import type { PiSessionEventStreamItem } from "@fragno-dev/pi-fragment";
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 export type LiveToolExecution = {
   toolCallId: string;
@@ -32,7 +32,7 @@ const formatMessageTimestamp = (timestamp?: number) => {
   }).format(date);
 };
 
-const normalizeContent = (content: AgentMessage["content"]): ContentBlock[] => {
+const normalizeContent = (content: unknown): ContentBlock[] => {
   if (typeof content === "string") {
     return [{ type: "text", text: content }];
   }
@@ -477,7 +477,7 @@ function MessageCard({
   toolResultsByCallId: Map<string, ToolResultMessage>;
 }) {
   if (message.role === "user") {
-    const contentBlocks = normalizeContent(message.content);
+    const contentBlocks = normalizeContent("content" in message ? message.content : undefined);
     return (
       <div className="flex justify-end">
         <div className="w-full max-w-prose border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
@@ -502,7 +502,7 @@ function MessageCard({
   }
 
   if (message.role === "assistant") {
-    const contentBlocks = normalizeContent(message.content);
+    const contentBlocks = normalizeContent("content" in message ? message.content : undefined);
     const toolCalls = contentBlocks.filter((block) => block.type === "toolCall");
     const visibleBlocks = contentBlocks.filter((block) => {
       if (block.type === "toolCall") {

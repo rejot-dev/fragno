@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import { projectSessionDetailFromWorkflowHistory } from "./reconstruct-session";
 
@@ -45,19 +45,22 @@ const agentRunStep = (
   };
 };
 
-const contentTexts = (content: AgentMessage["content"]) => {
+const contentTexts = (content: unknown) => {
   if (typeof content === "string") {
     return [content];
   }
-  return content.flatMap((block) =>
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.flatMap((block: unknown) =>
     block && typeof block === "object" && "type" in block && block.type === "text"
-      ? [String(block.text)]
+      ? [String((block as { text?: unknown }).text)]
       : [],
   );
 };
 
 const messageTexts = (messages: AgentMessage[]) =>
-  messages.flatMap((message) => contentTexts(message.content));
+  messages.flatMap((message) => contentTexts("content" in message ? message.content : undefined));
 
 const eventMessageTexts = (events: AgentEvent[]) =>
   events.flatMap((event) => {
@@ -68,7 +71,7 @@ const eventMessageTexts = (events: AgentEvent[]) =>
     ) {
       return [];
     }
-    return contentTexts(event.message.content);
+    return contentTexts("content" in event.message ? event.message.content : undefined);
   });
 
 const project = (steps: WorkflowHistoryStepRow[]) =>

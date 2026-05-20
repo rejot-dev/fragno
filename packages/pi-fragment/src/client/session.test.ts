@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FragnoClientApiError } from "@fragno-dev/core/client";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import type { PiSessionEventStreamItem } from "../pi/types";
 import {

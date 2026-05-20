@@ -10,8 +10,8 @@ import type {
   AgentTool,
   StreamFn,
   ThinkingLevel,
-} from "@mariozechner/pi-agent-core";
-import type { Api, Model } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-agent-core";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 import type { PiLoggerConfig } from "../debug-log";
 import type { PiWorkflowsRegistry } from "./workflow/workflow";

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { workflowsSchema } from "@fragno-dev/workflows";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import { buildHarness, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";

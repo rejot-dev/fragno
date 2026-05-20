@@ -15,6 +15,28 @@ catalog:
   typescript: ^5.9.3
   vite: ^8.0.0
   vitest: ^4.1.4
-
-onlyBuiltDependencies:
-  - better-sqlite3
+overrides:
+  esbuild@<=0.24.2: ">=0.25.0"
+  unicorn-magic: 0.4.0
+  zod@^4.0.0: 4.3.5
+patchedDependencies:
+  "@earendil-works/pi-ai": patches/@earendil-works__pi-ai.patch
+allowBuilds:
+  "@mongodb-js/zstd": false
+  "@parcel/watcher": false
+  "@prisma/client": false
+  "@prisma/engines": false
+  better-sqlite3: false
+  core-js: false
+  esbuild: false
+  fallow: false
+  "@google/genai": false
+  lefthook: false
+  node-liblzma: false
+  prisma: false
+  protobufjs: false
+  sharp: false
+  workerd: false
+minimumReleaseAgeExclude:
+  - "@earendil-works/pi-agent-core@0.75.4"
+  - "@earendil-works/pi-ai@0.75.4"

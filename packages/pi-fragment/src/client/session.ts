@@ -2,7 +2,7 @@ import { FragnoClientApiError, FragnoClientFetchAbortError } from "@fragno-dev/c
 import { atom, computed, onMount, type ReadableAtom } from "nanostores";
 import type { z } from "zod";
 
-import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import type { commandAckSchema, commandInputSchema } from "../pi/route-schemas";
 import type { PiAgentStateSnapshot, PiSessionDetail, PiSessionEventStreamItem } from "../pi/types";

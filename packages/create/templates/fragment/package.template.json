@@ -56,5 +56,6 @@
     "types:check": "tsc --noEmit"
   },
   "type": "module",
-  "private": true
+  "private": true,
+  "packageManager": "pnpm@11.1.3"
 }

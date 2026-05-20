@@ -61,15 +61,5 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.28.1",
-  "pnpm": {
-    "overrides": {
-      "esbuild@<=0.24.2": ">=0.25.0",
-      "unicorn-magic": "0.4.0",
-      "zod@^4.0.0": "4.3.5"
-    },
-    "patchedDependencies": {
-      "@mariozechner/pi-ai": "patches/@mariozechner__pi-ai.patch"
-    }
-  }
+  "packageManager": "pnpm@11.1.3"
 }

@@ -8,8 +8,8 @@ import {
 
 import { instantiate } from "@fragno-dev/core";
 
-import type { StreamFn } from "@mariozechner/pi-agent-core";
-import { createAssistantMessageEventStream, type AssistantMessage } from "@mariozechner/pi-ai";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
+import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import { createPiFragmentClient } from "../client/vanilla";
 import { piRoutesFactory } from "../routes";

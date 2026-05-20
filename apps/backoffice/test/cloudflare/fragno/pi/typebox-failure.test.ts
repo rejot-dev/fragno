@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import AjvModule from "ajv";
 import { env } from "cloudflare:workers";
 
-import { validateToolArguments } from "@mariozechner/pi-ai";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 
 import { bashParametersSchema } from "@/fragno/pi/pi-schema";
 

@@ -14,8 +14,8 @@ import {
 } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { getModel } from "@mariozechner/pi-ai";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { getModel } from "@earendil-works/pi-ai";
 
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 

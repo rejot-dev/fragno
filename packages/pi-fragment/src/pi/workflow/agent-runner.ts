@@ -6,8 +6,8 @@ import {
   type AgentMessage,
   type AgentState,
   type AgentTool,
-} from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, AssistantMessageEvent } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, AssistantMessageEvent } from "@earendil-works/pi-ai";
 
 import type {
   PiAgentDefinition,

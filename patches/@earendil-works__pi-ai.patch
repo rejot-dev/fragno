@@ -1,7 +1,7 @@
 diff --git a/dist/env-api-keys.js b/dist/env-api-keys.js
 --- a/dist/env-api-keys.js
 +++ b/dist/env-api-keys.js
-@@ -6,8 +6,12 @@
+@@ -14,8 +14,12 @@ const dynamicImport = (specifier) => import(__rewriteRelativeImportExtension(spe
  const NODE_FS_SPECIFIER = "node:" + "fs";
  const NODE_OS_SPECIFIER = "node:" + "os";
  const NODE_PATH_SPECIFIER = "node:" + "path";
@@ -19,9 +19,9 @@ diff --git a/dist/env-api-keys.js b/dist/env-api-keys.js
 diff --git a/dist/providers/openai-codex-responses.js b/dist/providers/openai-codex-responses.js
 --- a/dist/providers/openai-codex-responses.js
 +++ b/dist/providers/openai-codex-responses.js
-@@ -2,7 +2,12 @@
+@@ -10,7 +10,12 @@ var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExte
  let _os = null;
- const dynamicImport = (specifier) => import(specifier);
+ const dynamicImport = (specifier) => import(__rewriteRelativeImportExtension(specifier));
  const NODE_OS_SPECIFIER = "node:" + "os";
 -if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
 +const isWorkersRuntime = typeof WebSocketPair !== "undefined" ||
@@ -43,7 +43,7 @@ diff --git a/dist/utils/json-parse.js b/dist/utils/json-parse.js
  const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
  function isControlCharacter(char) {
      const codePoint = char.codePointAt(0);
-@@ -95,19 +96,8 @@
+@@ -95,19 +96,8 @@ export function parseStreamingJson(partialJson) {
          return parseJsonWithRepair(partialJson);
      }
      catch {

@@ -24,7 +24,7 @@ export default mergeConfig(
       deps: {
         optimizer: {
           ssr: {
-            include: ["just-bash", "@mariozechner/pi-ai", "@cloudflare/sandbox"],
+            include: ["just-bash", "@earendil-works/pi-ai", "@cloudflare/sandbox"],
           },
         },
       },

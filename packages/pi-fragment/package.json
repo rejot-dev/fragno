@@ -84,11 +84,11 @@
     "cli": "tsx src/cli/cli.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.75.4",
+    "@earendil-works/pi-ai": "^0.75.4",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
-    "@mariozechner/pi-agent-core": "^0.73.1",
-    "@mariozechner/pi-ai": "^0.73.1",
     "@standard-schema/spec": "^1.1.0",
     "nanostores": "^1.2.0",
     "zod": "^4.3.6"

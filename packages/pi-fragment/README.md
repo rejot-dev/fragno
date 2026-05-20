@@ -16,7 +16,7 @@ A Fragno fragment that runs Pi agents using workflow-backed sessions with regist
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel } from "@earendil-works/pi-ai";
 import { createPi, createPiFragment, defineAgent } from "@fragno-dev/pi-fragment";
 
 const pi = createPi()
