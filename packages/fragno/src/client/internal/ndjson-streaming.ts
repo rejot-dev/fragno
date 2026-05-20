@@ -30,6 +30,7 @@ function createAbortPromise(abortSignal: AbortSignal): Promise<never> {
  */
 export interface NdjsonStreamingResult<T> {
   firstItem: T;
+  items: T[];
   streamingPromise: Promise<T[]>;
 }
 
@@ -170,6 +171,7 @@ export async function handleNdjsonStreamingFirstItem<
         );
         return {
           firstItem,
+          items,
           streamingPromise,
         };
       }

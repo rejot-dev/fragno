@@ -846,6 +846,7 @@ export class ClientBuilder<
 
     const [createFetcherStore, createMutatorStore, { invalidateKeys }] = nanoquery({
       cache: this.#cache,
+      cacheLifetime: Infinity,
     });
     this.#createFetcherStore = createFetcherStore;
     this.#createMutatorStore = createMutatorStore;
@@ -1025,6 +1026,8 @@ export class ClientBuilder<
     });
     const fetcher = this.#getFetcher();
     const fetcherOptions = this.#getFetcherOptions();
+    const useFetcherOnServer =
+      this.#fetcherConfig?.type === "function" && this.#fetcherConfig.useOnServer;
 
     async function callServerSideHandler(params: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
@@ -1061,7 +1064,7 @@ export class ClientBuilder<
     }): Promise<Response> {
       const { pathParams, queryParams } = params ?? {};
 
-      if (typeof window === "undefined") {
+      if (typeof window === "undefined" && !useFetcherOnServer) {
         return task(async () => callServerSideHandler({ pathParams, queryParams }));
       }
 
@@ -1113,18 +1116,18 @@ export class ClientBuilder<
               return response.json() as Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
             }
 
-            if (typeof window === "undefined") {
+            if (typeof window === "undefined" && !useFetcherOnServer) {
+              if (response.body) {
+                await response.body.getReader().cancel();
+              }
+
               return [];
             }
 
             if (isStreaming === "ndjson") {
-              const storeAdapter: NdjsonStreamingStore<TOutputSchema, TErrorCode> = {
+              const storeAdapter = {
                 setData: (value) => {
-                  store.set({
-                    ...store.get(),
-                    loading: !(Array.isArray(value) && value.length > 0),
-                    data: value as InferOr<TOutputSchema, undefined>,
-                  });
+                  store.mutate(value as StandardSchemaV1.InferOutput<TOutputSchema>);
                 },
                 setError: (value) => {
                   store.set({
@@ -1132,11 +1135,14 @@ export class ClientBuilder<
                     error: value,
                   });
                 },
-              };
+              } satisfies NdjsonStreamingStore<TOutputSchema, TErrorCode>;
 
-              // Start streaming in background and return first item
-              const { firstItem } = await handleNdjsonStreamingFirstItem(response, storeAdapter);
-              return [firstItem];
+              // Start streaming in background and return the shared items array. The streaming
+              // continuation mutates this array before publishing copies to nanoquery, so returning
+              // the same array avoids an initial stale cache write if the first network chunk
+              // already contained multiple NDJSON records.
+              const { items } = await handleNdjsonStreamingFirstItem(response, storeAdapter);
+              return items;
             }
 
             if (isStreaming === "octet-stream") {
@@ -1219,6 +1225,8 @@ export class ClientBuilder<
     });
     const fetcher = this.#getFetcher();
     const fetcherOptions = this.#getFetcherOptions();
+    const useFetcherOnServer =
+      this.#fetcherConfig?.type === "function" && this.#fetcherConfig.useOnServer;
 
     async function executeMutateQuery({
       body,
@@ -1229,7 +1237,7 @@ export class ClientBuilder<
       path?: ExtractPathParamsOrWiden<TPath, string>;
       query?: Record<string, string>;
     }): Promise<Response> {
-      if (typeof window === "undefined") {
+      if (typeof window === "undefined" && !useFetcherOnServer) {
         return task(async () =>
           route.handler(
             RequestInputContext.fromSSRContext({
