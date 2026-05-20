@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { workflowsSchema } from "@fragno-dev/workflows";
+
 import type { AgentEvent, AgentMessage } from "@mariozechner/pi-agent-core";
 
-import {
-  buildHarness,
-  createWorkflowsUnitOfWork,
-  findWorkflowInstances,
-  mockModel,
-} from "./test-utils";
+import { buildHarness, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { PI_WORKFLOW_NAME, type PiAgentRunner } from "./workflow/workflow";
 
@@ -148,24 +145,19 @@ describe("pi-fragment /events route", () => {
     }
 
     const sessionId = response.data.id;
-    const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-      (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-    );
-    if (!instance) {
-      throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-    }
+    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
 
     await harness.workflows.runUntilIdle(
       {
         workflowName: PI_WORKFLOW_NAME,
         instanceId: sessionId,
-        instanceRef: String(instance.id),
+        instanceRef: sessionId,
         reason: "create",
       },
       { maxTicks: 1 },
     );
 
-    return { sessionId, instanceRef: String(instance.id) };
+    return { sessionId, instanceRef: sessionId };
   };
 
   it("streams every event through message_end across consecutive turns", async () => {
@@ -214,17 +206,12 @@ describe("pi-fragment /events route", () => {
       }
       const sessionId = response.data.id;
       const runNextTick = async (reason: "create" | "event") => {
-        const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-          (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-        );
-        if (!instance) {
-          throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-        }
+        await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
         await harness.workflows.runUntilIdle(
           {
             workflowName: PI_WORKFLOW_NAME,
             instanceId: sessionId,
-            instanceRef: String(instance.id),
+            instanceRef: sessionId,
             reason,
           },
           { maxTicks: 1 },
@@ -292,12 +279,7 @@ describe("pi-fragment /events route", () => {
 
   it("replays waiting-step emissions after the completed-state snapshot", async () => {
     const { sessionId } = await createSessionAndStartWorkflow();
-    const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-      (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-    );
-    if (!instance) {
-      throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-    }
+    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
 
     const stepKey = "do:command-0-prompt";
     const inFlightEvent = {
@@ -305,12 +287,11 @@ describe("pi-fragment /events route", () => {
       message: assistantMessage("partial while waiting"),
     } as AgentEvent;
 
-    const uow = createWorkflowsUnitOfWork(
-      harness.workflows.test.adapter,
-      "seed-waiting-step-emission",
-    );
+    const uow = harness.workflows.db
+      .createUnitOfWork("seed-waiting-step-emission")
+      .forSchema(workflowsSchema);
     uow.create("workflow_step", {
-      instanceRef: instance.id,
+      instanceRef: sessionId,
       stepKey,
       parentStepKey: null,
       depth: 0,
@@ -328,7 +309,7 @@ describe("pi-fragment /events route", () => {
       errorMessage: null,
     });
     uow.create("workflow_step_emission", {
-      instanceRef: instance.id,
+      instanceRef: sessionId,
       stepKey,
       epoch: "epoch-waiting-step",
       sequence: 0,
@@ -392,13 +373,8 @@ describe("pi-fragment /events route", () => {
       throw new Error("expected json response");
     }
     const sessionId = sessionResponse.data.id;
-    const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-      (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-    );
-    if (!instance) {
-      throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-    }
-    const instanceRef = String(instance.id);
+    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    const instanceRef = sessionId;
 
     await harness.workflows.runUntilIdle(
       { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "create" },
@@ -496,13 +472,8 @@ describe("pi-fragment /events route", () => {
       throw new Error("expected json response");
     }
     const sessionId = sessionResponse.data.id;
-    const [instance] = (await findWorkflowInstances(harness.workflows.test.adapter)).filter(
-      (row) => row.workflowName === PI_WORKFLOW_NAME && row.id.toString() === sessionId,
-    );
-    if (!instance) {
-      throw new Error(`Workflow instance for session ${sessionId} was not created.`);
-    }
-    const instanceRef = String(instance.id);
+    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    const instanceRef = sessionId;
 
     await harness.workflows.runUntilIdle(
       { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "create" },

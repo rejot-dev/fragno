@@ -1,175 +1,181 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
-import { definePiScenario, piSteps, runPiScenario } from "./scenario";
+import {
+  defineScenario,
+  runScenario,
+  type WorkflowScenarioStepRow,
+} from "@fragno-dev/workflows/scenario";
 
-type Vars = {
-  sessionId: string;
-  promptRun: unknown;
-  abortResponse: unknown;
-  afterStopRun: unknown;
-};
+import { instantiate } from "@fragno-dev/core";
 
-const s = piSteps<Vars>();
+import type { StreamFn } from "@mariozechner/pi-agent-core";
+import { createAssistantMessageEventStream, type AssistantMessage } from "@mariozechner/pi-ai";
 
-describe("Pi scenarios", () => {
-  let cleanup: (() => Promise<void>) | undefined;
+import { createPiFragmentClient } from "../client/vanilla";
+import { piRoutesFactory } from "../routes";
+import { piFragmentDefinition } from "./definition";
+import { mockModel } from "./pi-test-utils";
+import type { PiFragmentConfig } from "./types";
+import { createPiWorkflows } from "./workflow/workflow";
 
-  afterEach(async () => {
-    await cleanup?.();
-    cleanup = undefined;
-  });
+const createAssistantMessage = (stopReason: AssistantMessage["stopReason"]): AssistantMessage => ({
+  role: "assistant",
+  content: [{ type: "text", text: stopReason }],
+  api: mockModel.api,
+  provider: mockModel.provider,
+  model: mockModel.id,
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason,
+  timestamp: Date.now(),
+});
 
-  it("sends abort commands from the command route to the active workflow step", async () => {
-    const scenario = definePiScenario<Vars>({
-      name: "stop repeated date command after third run",
-      checkpoints: [
-        "date && sleep 1 #1",
-        "date && sleep 1 #2",
-        "date && sleep 1 #3",
-        "date && sleep 1 #4",
-        "date && sleep 1 #5",
-        "date && sleep 1 #6",
-        "date && sleep 1 #7",
-        "date && sleep 1 #8",
-        "date && sleep 1 #9",
-        "date && sleep 1 #10",
-      ],
-      steps: [
-        s.createSession({ storeAs: "sessionId" }),
-        s.prompt({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "run `date && sleep 1` 10 times",
-        }),
-        s.runAgentInBackground({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          storeAs: "promptRun",
-        }),
-        s.waitForCheckpoint("date && sleep 1 #1"),
-        s.releaseCheckpoint("date && sleep 1 #1"),
-        s.waitForCheckpoint("date && sleep 1 #2"),
-        s.releaseCheckpoint("date && sleep 1 #2"),
-        s.waitForCheckpoint("date && sleep 1 #3"),
-        s.abort({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          reason: "stop after third date && sleep 1",
-          storeAs: "abortResponse",
-        }),
-        s.waitForInjection("abort"),
-        s.releaseAll(),
-        s.awaitBackground("promptRun"),
-        s.assert(async (ctx) => {
-          cleanup = ctx.cleanup;
-
-          expect(ctx.agent.checkpoints().map((checkpoint) => checkpoint.name)).toEqual([
-            "date && sleep 1 #1",
-            "date && sleep 1 #2",
-            "date && sleep 1 #3",
-          ]);
-          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
-
-          await ctx.assertStopped(ctx.vars.sessionId!);
-        }),
-        s.prompt({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "run one more command after stop",
-        }),
-        s.runAgentInBackground({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          storeAs: "afterStopRun",
-        }),
-        s.awaitBackground("afterStopRun"),
-        s.assert(async (ctx) => {
-          const detail = await ctx.assertStopped(ctx.vars.sessionId!);
-          expect(detail.agent.state.messages.length).toBeGreaterThan(0);
-        }),
-      ],
+describe("Pi workflow scenarios", () => {
+  test("aborts an in-flight agent stream", async () => {
+    let markStreamStarted!: () => void;
+    const streamStarted = new Promise<void>((resolve) => {
+      markStreamStarted = resolve;
     });
+    const abortObserved = vi.fn();
 
-    const ctx = await runPiScenario(scenario);
-    cleanup = ctx.cleanup;
-  });
+    const streamFn: StreamFn = (_model, _context, options) => {
+      const stream = createAssistantMessageEventStream();
+      markStreamStarted();
 
-  it("does not replay an abort command into the next agent run", async () => {
-    const scenario = definePiScenario<Vars>({
-      name: "abort command is consumed once",
-      checkpoints: ["first run", "second run"],
-      steps: [
-        s.createSession({ storeAs: "sessionId" }),
-        s.prompt({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "start first task",
-        }),
-        s.runAgentInBackground({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          storeAs: "promptRun",
-        }),
-        s.waitForCheckpoint("first run"),
-        s.abort({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          reason: "stop first task",
-          storeAs: "abortResponse",
-        }),
-        s.waitForInjection("abort"),
-        s.releaseAll(),
-        s.awaitBackground("promptRun"),
-        s.assert(async (ctx) => {
-          await ctx.assertStopped(ctx.vars.sessionId!);
-          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
-        }),
-        s.prompt({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "start second task",
-        }),
-        s.runAgentInBackground({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          storeAs: "afterStopRun",
-        }),
-        s.waitForCheckpoint("second run"),
-        s.releaseAll(),
-        s.awaitBackground("afterStopRun"),
-        s.assert(async (ctx) => {
-          expect(ctx.agent.injections()).toMatchObject([{ kind: "abort" }]);
-        }),
-      ],
-    });
+      const completeAsAborted = () => {
+        abortObserved();
+        const message = createAssistantMessage("aborted");
+        stream.push({ type: "done", reason: "stop", message });
+      };
 
-    const ctx = await runPiScenario(scenario);
-    cleanup = ctx.cleanup;
-  });
+      if (options?.signal?.aborted) {
+        completeAsAborted();
+      } else {
+        options?.signal?.addEventListener("abort", completeAsAborted, { once: true });
+      }
 
-  it("sends steer commands from the command route to the active workflow step", async () => {
-    const scenario = definePiScenario<Vars>({
-      name: "steer running agent",
-      checkpoints: ["before steer", "after steer"],
-      steps: [
-        s.createSession({ storeAs: "sessionId" }),
-        s.prompt({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "start long task",
-        }),
-        s.runAgentInBackground({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          storeAs: "promptRun",
-        }),
-        s.waitForCheckpoint("before steer"),
-        s.steer({
-          sessionId: (ctx) => ctx.vars.sessionId!,
-          text: "adjust course",
-        }),
-        s.waitForInjection("steer"),
-        s.releaseAll(),
-        s.awaitBackground("promptRun"),
-        s.assert(async (ctx) => {
-          cleanup = ctx.cleanup;
-          expect(ctx.agent.injections()).toMatchObject([
-            { kind: "steer", input: { text: "adjust course" } },
-          ]);
-          await ctx.assertStopped(ctx.vars.sessionId!);
-        }),
-      ],
-    });
+      return stream;
+    };
 
-    const ctx = await runPiScenario(scenario);
-    cleanup = ctx.cleanup;
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          streamFn,
+        },
+      },
+      tools: {},
+    };
+    await runScenario(
+      defineScenario({
+        name: "pi-agent-abort",
+        workflows: createPiWorkflows({ agents: config.agents, tools: config.tools }),
+        vars: () => ({
+          sessionId: undefined as string | undefined,
+          steps: undefined as WorkflowScenarioStepRow[] | undefined,
+        }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          agent: createPiFragmentClient(clientConfig("pi", { runner: "agent" })),
+          user: createPiFragmentClient(clientConfig("pi", { runner: "user" })),
+        }),
+        stores: ({ clients, store }) => ({
+          agentSession: store((ctx) =>
+            clients.agent.useSession({ path: { sessionId: ctx.vars.sessionId! } }),
+          ),
+          userSession: store((ctx) =>
+            clients.user.useSession({ path: { sessionId: ctx.vars.sessionId! } }),
+          ),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, concurrent, clients, stores }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession().mutate({
+                body: { agent: "default", name: "Scenario Session" },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: "agentLoop",
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          stores.agentSession.waitFor(
+            (state) => state.connectionStatus === "open" && state.agent !== null,
+          ),
+          stores.userSession.waitFor(
+            (state) => state.connectionStatus === "open" && state.agent !== null,
+          ),
+          concurrent({
+            agent: [
+              stores.agentSession.read(async (session) => {
+                await session.sendCommand({
+                  kind: "prompt",
+                  input: { text: "hello" },
+                });
+              }),
+              runners.agent.runUntilIdle({
+                workflow: "agentLoop",
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                reason: "event",
+              }),
+            ],
+            user: [
+              workflow.read({ read: () => streamStarted }),
+              stores.userSession.read(async (session) => {
+                await session.sendCommand({ kind: "abort", reason: "test" });
+              }),
+            ],
+          }),
+          workflow.read({
+            read: (ctx) => ctx.state.getSteps("agentLoop", ctx.vars.sessionId ?? ""),
+            storeAs: "steps",
+          }),
+          stores.userSession.waitFor(
+            (state) =>
+              state.agent?.messages.some(
+                (message) => message.role === "assistant" && message.stopReason === "aborted",
+              ) ?? false,
+            {
+              assert: (sessionState) => {
+                expect(sessionState.agent?.messages).toContainEqual(
+                  expect.objectContaining({ role: "assistant", stopReason: "aborted" }),
+                );
+              },
+            },
+          ),
+          workflow.assert((ctx) => {
+            assert(ctx.vars.sessionId, "sessionId should be set");
+            expect(abortObserved).toHaveBeenCalledTimes(1);
+            expect(ctx.vars.steps).toContainEqual(
+              expect.objectContaining({
+                name: "command-0-prompt",
+                status: "completed",
+                result: expect.objectContaining({ outcome: "aborted" }),
+              }),
+            );
+          }),
+        ],
+      }),
+    );
   });
 });

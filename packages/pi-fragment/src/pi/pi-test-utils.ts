@@ -1,16 +1,12 @@
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
-import type { TableToInsertValues } from "@fragno-dev/db/query";
-import type { FragnoId } from "@fragno-dev/db/schema";
 import type { WorkflowStepLivePump } from "@fragno-dev/workflows/step-live-pump";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
 import { instantiate } from "@fragno-dev/core";
-import type { DatabaseAdapter } from "@fragno-dev/db";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
-import { workflowsSchema } from "@fragno-dev/workflows";
 
-import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
+import type { StreamFn } from "@mariozechner/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -19,7 +15,6 @@ import {
 } from "@mariozechner/pi-ai";
 
 import { piRoutesFactory } from "../routes";
-import { piSchema } from "../schema";
 import { piFragmentDefinition } from "./definition";
 import type { createPiFragment } from "./factory";
 import type {
@@ -29,56 +24,6 @@ import type {
   PiWorkflowsService,
 } from "./types";
 import { createPiWorkflows, type PiAgentRunner } from "./workflow/workflow";
-
-/** Matches `withDatabase(piSchema)` default namespace (sanitized schema name). */
-export const PI_DB_NAMESPACE = "pi_fragment";
-
-/** Workflows fragment default namespace. */
-export const WORKFLOWS_DB_NAMESPACE = "workflows";
-
-/** Typed UOW for the pi fragment schema (query engine is not exposed). */
-export function createPiUnitOfWork(adapter: DatabaseAdapter, name: string) {
-  return adapter.createQueryEngine(piSchema, PI_DB_NAMESPACE).createUnitOfWork(name);
-}
-
-/** Typed UOW for the workflows schema (query engine is not exposed). */
-export function createWorkflowsUnitOfWork(adapter: DatabaseAdapter, name: string) {
-  return adapter.createQueryEngine(workflowsSchema, WORKFLOWS_DB_NAMESPACE).createUnitOfWork(name);
-}
-
-export async function findPiSessions(adapter: DatabaseAdapter) {
-  const [rows] = await createPiUnitOfWork(adapter, "find-sessions")
-    .find("session", (b) => b.whereIndex("primary"))
-    .executeRetrieve();
-  return rows;
-}
-
-export async function createPiSessionRow(
-  adapter: DatabaseAdapter,
-  values: TableToInsertValues<(typeof piSchema)["tables"]["session"]>,
-): Promise<FragnoId> {
-  const uow = createPiUnitOfWork(adapter, "create-session");
-  const id = uow.create("session", values);
-  const { success } = await uow.executeMutations();
-  if (!success) {
-    throw new Error("Failed to create session row");
-  }
-  return id;
-}
-
-export async function findWorkflowInstances(adapter: DatabaseAdapter) {
-  const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-instances")
-    .find("workflow_instance", (b) => b.whereIndex("primary"))
-    .executeRetrieve();
-  return rows;
-}
-
-export async function findWorkflowSteps(adapter: DatabaseAdapter) {
-  const [rows] = await createWorkflowsUnitOfWork(adapter, "find-workflow-steps")
-    .find("workflow_step", (b) => b.whereIndex("primary"))
-    .executeRetrieve();
-  return rows;
-}
 
 export const mockModel: Model<Api> = {
   id: "test-model",
@@ -111,35 +56,12 @@ const buildAssistantMessage = (text: string): AssistantMessage => ({
   timestamp: Date.now(),
 });
 
-const extractMessageText = (messages: AgentMessage[]): string => {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    if (!message || typeof message !== "object" || message.role !== "user") {
-      continue;
-    }
-    const content = message.content;
-    if (!Array.isArray(content)) {
-      continue;
-    }
-    const textBlock = content.find((block) => {
-      if (!block || typeof block !== "object") {
-        return false;
-      }
-      return (block as { type?: string }).type === "text";
-    }) as { text?: string } | undefined;
-    if (textBlock?.text) {
-      return textBlock.text;
-    }
-  }
-  return "";
-};
-
 type StreamFnScriptOptions = {
   result?: AssistantMessage;
   resultError?: Error;
 };
 
-export const createStreamFnScript = (
+const createStreamFnScript = (
   events: Array<{ type: string; [key: string]: unknown }>,
   options: StreamFnScriptOptions = {},
 ): StreamFn => {
@@ -193,69 +115,7 @@ export const createStreamFn = (text: string): StreamFn => {
   );
 };
 
-export const createFailingStreamFn = (options: { failOnceForText?: string } = {}): StreamFn => {
-  let failedOnce = false;
-
-  return (model, input, ctx) => {
-    const userText = extractMessageText(input.messages);
-    const message = buildAssistantMessage(`assistant:${userText}`);
-    const shouldFail =
-      !failedOnce &&
-      typeof options.failOnceForText === "string" &&
-      options.failOnceForText === userText;
-
-    if (shouldFail) {
-      failedOnce = true;
-    }
-
-    const streamFn = createStreamFnScript(
-      [
-        { type: "start", partial: message },
-        { type: "done", reason: "stop", message },
-      ],
-      { result: message, resultError: shouldFail ? new Error("STREAM_FAIL") : undefined },
-    );
-
-    return streamFn(model, input, ctx as never);
-  };
-};
-
-export const createInvalidResultStreamFn = (): StreamFn => {
-  return (_model, input) => {
-    const userText = extractMessageText(input.messages);
-    const message = buildAssistantMessage(`assistant:${userText}`);
-    const stream = createAssistantMessageEventStream();
-
-    stream.push({ type: "start", partial: message });
-    stream.push({ type: "done", reason: "stop", message });
-
-    return Object.assign(stream, {
-      result: async () => ({ invalid: true }),
-    });
-  };
-};
-
-export const createDelayedStreamFn = (delayMs = 25): StreamFn => {
-  return (_model, input) => {
-    const stream = createAssistantMessageEventStream();
-    const userText = extractMessageText(input.messages);
-    const message = buildAssistantMessage(`assistant:${userText}`);
-
-    setTimeout(() => {
-      stream.push({ type: "start", partial: message });
-      stream.push({ type: "done", reason: "stop", message });
-    }, delayMs);
-
-    return Object.assign(stream, {
-      result: async () => {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        return message;
-      },
-    });
-  };
-};
-
-export const createTestWorkflows = (options: {
+const createTestWorkflows = (options: {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
   logging?: PiFragmentConfig["logging"];
@@ -285,7 +145,7 @@ const changedRouteRoundtripGuard = {
   routes: Array<{ method: "GET" | "POST"; path: string }>;
 };
 
-export type DatabaseFragmentsTest = {
+type DatabaseFragmentsTest = {
   fragments: {
     pi: {
       callRoute: PiFragmentInstance["callRoute"];

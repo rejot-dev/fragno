@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PiLogger } from "../debug-log";
 import { createPi, defineAgent } from "./dsl";
-import { mockModel } from "./test-utils";
+import { mockModel } from "./pi-test-utils";
 
 describe("createPi builder", () => {
   it("propagates logging config to runtime config and workflow initialization", () => {
