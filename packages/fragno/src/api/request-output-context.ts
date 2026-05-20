@@ -42,7 +42,21 @@ function mergeHeaders(...headerSources: (HeadersInit | undefined)[]): HeadersIni
   return mergedHeaders;
 }
 
+export type JsonStreamCallbackRunner = (
+  callback: () => void | Promise<void>,
+) => void | Promise<void>;
+
+export type OutputContextOptions = {
+  runJsonStreamCallback?: JsonStreamCallbackRunner;
+};
+
 export abstract class OutputContext<const TOutput, const TErrorCode extends string> {
+  #runJsonStreamCallback?: JsonStreamCallbackRunner;
+
+  constructor(options: OutputContextOptions = {}) {
+    this.#runJsonStreamCallback = options.runJsonStreamCallback;
+  }
+
   /**
    * Creates an error response.
    *
@@ -143,7 +157,7 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
     const { readable, writable } = new TransformStream();
     const stream = new ResponseStream(writable, readable);
 
-    (async () => {
+    const runStreamCallback = async () => {
       try {
         await cb(stream);
       } catch (e) {
@@ -159,7 +173,21 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       } finally {
         stream.close();
       }
-    })();
+    };
+
+    try {
+      void Promise.resolve(
+        this.#runJsonStreamCallback
+          ? this.#runJsonStreamCallback(runStreamCallback)
+          : runStreamCallback(),
+      ).catch((error: unknown) => {
+        console.error(error);
+        stream.close();
+      });
+    } catch (error) {
+      console.error(error);
+      stream.close();
+    }
 
     return new Response(stream.responseReadable, {
       status: 200,
@@ -175,8 +203,8 @@ export class RequestOutputContext<
   // eslint-disable-next-line no-unused-private-class-members
   #outputSchema?: TOutputSchema;
 
-  constructor(outputSchema?: TOutputSchema) {
-    super();
+  constructor(outputSchema?: TOutputSchema, options?: OutputContextOptions) {
+    super(options);
     this.#outputSchema = outputSchema;
   }
 }

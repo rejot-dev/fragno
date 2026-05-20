@@ -176,6 +176,60 @@ describe("dbRoundtripGuard", () => {
     await test.cleanup();
   });
 
+  it("does not enforce the guard inside jsonStream callbacks", async () => {
+    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+      .extend(withDatabase(userSchema))
+      .providesBaseService(() => ({}))
+      .build();
+
+    const streamRoute = defineRoute({
+      method: "GET",
+      path: "/stream",
+      outputSchema: z.array(z.object({ count: z.number() })),
+      handler: async function (this: DatabaseRequestContext, _input, { jsonStream }) {
+        await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+          )
+          .execute();
+
+        return jsonStream(async (stream) => {
+          await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+            )
+            .execute();
+          await stream.write({ count: 1 });
+
+          await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(userSchema).find("users", (b) => b.whereIndex("primary")),
+            )
+            .execute();
+          await stream.write({ count: 2 });
+        });
+      },
+    });
+
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([streamRoute]))
+      .build();
+
+    const response = await fragments.user.callRoute("GET", "/stream");
+
+    expect(response.type).toBe("jsonStream");
+    const frames: unknown[] = [];
+    if (response.type === "jsonStream") {
+      for await (const frame of response.stream) {
+        frames.push(frame);
+      }
+    }
+    expect(frames).toEqual([{ count: 1 }, { count: 2 }]);
+
+    await test.cleanup();
+  });
+
   it("does not enforce the guard inside inContext", async () => {
     const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))

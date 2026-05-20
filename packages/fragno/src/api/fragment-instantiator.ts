@@ -58,7 +58,7 @@ type RequestRouteInfo = {
   mountRoute?: string;
   fullPath?: string;
 };
-type RequestSource = "route" | "context";
+type RequestSource = "route" | "context" | "stream";
 
 export type FragnoRequestLifecycleContext = {
   waitUntil?: (promise: Promise<unknown>) => void;
@@ -677,7 +677,7 @@ export class FragnoInstantiatedFragment<
       }
 
       // Handler execution
-      return this.#executeHandler(req, route, requestState, rawBody);
+      return this.#executeHandler(req, route, requestState, rawBody, lifecycleContext);
     };
 
     // Wrap with request storage context if provided
@@ -755,9 +755,6 @@ export class FragnoInstantiatedFragment<
       shouldValidateInput: true, // Enable validation for production use
     });
 
-    // Construct RequestOutputContext
-    const outputContext = new RequestOutputContext(route.outputSchema);
-
     const fullRoutePath =
       this.#mountRoute && this.#mountRoute !== "/"
         ? `${this.#mountRoute}${route.path}`
@@ -768,6 +765,11 @@ export class FragnoInstantiatedFragment<
       mountRoute: this.#mountRoute,
       fullPath: fullRoutePath,
     };
+
+    // Construct RequestOutputContext
+    const outputContext = new RequestOutputContext(route.outputSchema, {
+      runJsonStreamCallback: (callback) => this.#withRequestStorage(callback, "stream", routeInfo),
+    });
 
     // Execute handler
     const executeHandler = async (): Promise<Response> => {
@@ -876,12 +878,13 @@ export class FragnoInstantiatedFragment<
     route: ReturnType<typeof findRoute>,
     requestState: MutableRequestState,
     rawBody?: string,
+    lifecycleContext?: FragnoRequestLifecycleContext,
   ): Promise<Response> {
     if (!route) {
       return Response.json({ error: "Route not found", code: "ROUTE_NOT_FOUND" }, { status: 404 });
     }
 
-    const { handler, inputSchema, outputSchema, path } = route.data as AnyFragnoRouteConfig;
+    const { handler, inputSchema, outputSchema, method, path } = route.data as AnyFragnoRouteConfig;
 
     const inputContext = await RequestInputContext.fromRequest({
       request: req,
@@ -893,7 +896,19 @@ export class FragnoInstantiatedFragment<
       rawBody,
     });
 
-    const outputContext = new RequestOutputContext(outputSchema);
+    const fullRoutePath =
+      this.#mountRoute && this.#mountRoute !== "/" ? `${this.#mountRoute}${path}` : path;
+    const routeInfo: RequestRouteInfo = {
+      method,
+      path,
+      mountRoute: this.#mountRoute,
+      fullPath: fullRoutePath,
+    };
+
+    const outputContext = new RequestOutputContext(outputSchema, {
+      runJsonStreamCallback: (callback) =>
+        this.#withRequestStorage(callback, "stream", routeInfo, lifecycleContext),
+    });
 
     try {
       // Note: We don't call .run() here because the storage should already be initialized
