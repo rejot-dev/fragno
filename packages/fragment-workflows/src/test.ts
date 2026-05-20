@@ -1,10 +1,12 @@
 import {
   instantiate,
-  type AnyFragnoInstantiatedFragment,
+  type FragnoRequestLifecycleContext,
   type FragnoRuntime,
 } from "@fragno-dev/core";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import type { DatabaseHandlerTx, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { drainDurableHooks } from "@fragno-dev/test";
 import type {
+  AdditionalFragmentRuntime,
   AnyFragmentResult,
   DatabaseFragmentsTestBuilder,
   SupportedAdapter,
@@ -82,6 +84,19 @@ type WorkflowsTestHarnessFragments<
   workflows: WorkflowsTestHarnessFragment<TRegistry>;
 };
 
+type WorkflowsDatabaseTestContext<
+  TFragments extends Record<string, AnyFragmentResult>,
+  TRegistry extends WorkflowsRegistry,
+> = TestContext<SupportedAdapter> & {
+  createAdditionalRuntime: () => Promise<
+    AdditionalFragmentRuntime<WorkflowsTestHarnessFragments<TRegistry, TFragments>>
+  >;
+  recreateFragments: () => Promise<void>;
+  inContext: AdditionalFragmentRuntime<
+    WorkflowsTestHarnessFragments<TRegistry, TFragments>
+  >["inContext"];
+};
+
 export type WorkflowsTestHarnessOptions<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
@@ -96,6 +111,15 @@ export type WorkflowsTestHarnessOptions<
   configureBuilder?: (
     builder: DatabaseFragmentsTestBuilder<TFragments, SupportedAdapter>,
   ) => DatabaseFragmentsTestBuilder<TConfiguredFragments, SupportedAdapter>;
+  configureBuilderAfterWorkflows?: (
+    builder: DatabaseFragmentsTestBuilder<
+      TConfiguredFragments & { workflows: WorkflowsTestHarnessFragment<TRegistry> },
+      SupportedAdapter
+    >,
+  ) => DatabaseFragmentsTestBuilder<
+    TConfiguredFragments & { workflows: WorkflowsTestHarnessFragment<TRegistry> },
+    SupportedAdapter
+  >;
   clockStartAt?: Date | number;
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
@@ -104,15 +128,25 @@ export type WorkflowsTestHarnessOptions<
   fragmentOptions?: FragnoPublicConfigWithDatabase;
 };
 
-export type WorkflowsTestRunner = {
+export type WorkflowsTestRunner<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+> = {
   tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
   runUntilIdle: (
     payload: WorkflowEnqueuedHookPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
-  kill: () => Promise<void>;
+  callRoute: WorkflowsFragment<TRegistry>["callRoute"];
+  getFragments: () => Promise<WorkflowsTestHarnessFragments<TRegistry, TFragments>>;
+  inContext: {
+    <TResult>(callback: (this: FragnoRequestLifecycleContext) => TResult): Promise<TResult>;
+    <TResult>(
+      callback: (this: FragnoRequestLifecycleContext) => Promise<TResult>,
+    ): Promise<TResult>;
+  };
+  drainHooks: () => Promise<void>;
   restart: () => Promise<void>;
-  killAndRestart: () => Promise<void>;
 };
 
 export type WorkflowsTestHarness<
@@ -127,7 +161,7 @@ export type WorkflowsTestHarness<
   callRoute: WorkflowsFragment<TRegistry>["callRoute"];
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
-  test: TestContext<SupportedAdapter>;
+  test: WorkflowsDatabaseTestContext<TFragments, TRegistry>;
   createInstance: {
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
@@ -170,15 +204,34 @@ export type WorkflowsTestHarness<
     workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
   ) => Promise<WorkflowsHistory>;
+  pauseInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
+  resumeInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
+  terminateInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
   tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
   runUntilIdle: (
     payload: WorkflowEnqueuedHookPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
-  createRunner: () => WorkflowsTestRunner;
-  killRunner: () => Promise<void>;
-  restartRunner: () => Promise<void>;
-  killAndRestartRunner: () => Promise<void>;
+  createRunner: () => WorkflowsTestRunner<TRegistry, TFragments>;
+  restart: () => Promise<void>;
 };
 
 export type RunUntilIdleOptions = {
@@ -364,21 +417,6 @@ const resolveWorkflowName = (
   return lookup?.name ?? String(workflowNameOrKey);
 };
 
-const assertJsonResponse = <T>(response: {
-  type: string;
-  data?: unknown;
-  error?: { message: string; code: string };
-}) => {
-  if (response.type !== "json") {
-    const errorDetails =
-      response.type === "error"
-        ? ` (${response.error?.code ?? "UNKNOWN"}: ${response.error?.message ?? "Unknown error"})`
-        : "";
-    throw new Error(`Expected json response, received ${response.type}${errorDetails}`);
-  }
-  return response.data as T;
-};
-
 export async function createWorkflowsTestHarness<
   TRegistry extends WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
@@ -414,15 +452,18 @@ export async function createWorkflowsTestHarness<
   const workflowsBuilder = instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes([workflowsRoutesFactory]);
-  const { fragments, test } = await configuredBuilder
-    .withFragment(
-      "workflows",
-      options.fragmentOptions
-        ? workflowsBuilder.withOptions(options.fragmentOptions)
-        : workflowsBuilder,
-    )
-    .build();
+  const builderWithWorkflows = configuredBuilder.withFragment(
+    "workflows",
+    options.fragmentOptions
+      ? workflowsBuilder.withOptions(options.fragmentOptions)
+      : workflowsBuilder,
+  );
+  const finalBuilder = options.configureBuilderAfterWorkflows
+    ? options.configureBuilderAfterWorkflows(builderWithWorkflows as never)
+    : builderWithWorkflows;
+  const { fragments, test: databaseTest } = await finalBuilder.build();
 
+  const test = databaseTest as WorkflowsDatabaseTestContext<TConfiguredFragments, TRegistry>;
   const fragmentsWithWorkflows = fragments as unknown as WorkflowsTestHarnessFragments<
     TRegistry,
     TConfiguredFragments
@@ -430,110 +471,77 @@ export async function createWorkflowsTestHarness<
   const getWorkflowFragment = () => fragmentsWithWorkflows.workflows;
   const getFragment = () => getWorkflowFragment().fragment;
   const getDb = () => getWorkflowFragment().db;
-  const callRoute: AnyFragnoInstantiatedFragment["callRoute"] = (...args) =>
-    getWorkflowFragment().callRoute(...args);
   const workflowsByName = new Map<string, WorkflowRegistryEntry>();
   for (const entry of Object.values(workflows)) {
     workflowsByName.set(entry.name, entry);
   }
 
-  const createInstance = async (
-    workflowNameOrKey: (keyof TRegistry & string) | string,
-    instanceOptions?: { id?: string; params?: unknown },
-  ) => {
-    const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await callRoute("POST", "/:workflowName/instances", {
-      pathParams: { workflowName },
-      body: instanceOptions ?? {},
+  const runWorkflowService = async <T>(createServiceCall: () => unknown) =>
+    await getFragment().inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [createServiceCall() as never])
+        .transform(({ serviceResult: [result] }) => result as T)
+        .execute();
     });
-    const data = assertJsonResponse<{ id: string }>(response);
-    return data.id;
-  };
 
-  const createBatch = async (
-    workflowNameOrKey: (keyof TRegistry & string) | string,
-    instances: { id: string; params?: unknown }[],
+  type RunnerRuntime = Pick<
+    AdditionalFragmentRuntime<WorkflowsTestHarnessFragments<TRegistry, TConfiguredFragments>>,
+    "fragments" | "recreateFragments" | "inContext"
+  >;
+
+  const getWorkflowFragmentFromRuntime = (runnerRuntime: RunnerRuntime) =>
+    runnerRuntime.fragments.workflows.fragment;
+
+  const runTick = async (
+    runnerRuntime: RunnerRuntime,
+    payload: WorkflowEnqueuedHookPayload,
+    stepEmissions: WorkflowsFragmentConfig<TRegistry>["stepEmissions"],
   ) => {
-    const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await callRoute("POST", "/:workflowName/instances/batch", {
-      pathParams: { workflowName },
-      body: { instances },
-    });
-    const data = assertJsonResponse<{ instances: { id: string; details: InstanceStatus }[] }>(
-      response,
-    );
-    return data.instances;
-  };
+    const workflowFragment = getWorkflowFragmentFromRuntime(runnerRuntime);
+    return await workflowFragment.inContext(function () {
+      const handlerTx = ((...args: Parameters<DatabaseHandlerTx>) =>
+        workflowFragment.inContext(function (this: { handlerTx: DatabaseHandlerTx }) {
+          return this.handlerTx(...args);
+        })) as DatabaseHandlerTx;
 
-  const sendEvent = async (
-    workflowNameOrKey: (keyof TRegistry & string) | string,
-    instanceId: string,
-    eventOptions: { type: string; payload?: unknown; createdAt?: Date },
-  ) => {
-    const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    if (eventOptions.createdAt !== undefined) {
-      return await getFragment().inContext(async function () {
-        const status = await this.handlerTx()
-          .withServiceCalls(() => [
-            getFragment().services.sendEvent(workflowName, instanceId, eventOptions),
-          ])
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-        return status;
-      });
-    }
-    const response = await callRoute("POST", "/:workflowName/instances/:instanceId/events", {
-      pathParams: { workflowName, instanceId },
-      body: { type: eventOptions.type, payload: eventOptions.payload },
-    });
-    const data = assertJsonResponse<{ status: InstanceStatus }>(response);
-    return data.status;
-  };
-
-  const getStatus = async (
-    workflowNameOrKey: (keyof TRegistry & string) | string,
-    instanceId: string,
-  ) => {
-    const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await callRoute("GET", "/:workflowName/instances/:instanceId", {
-      pathParams: { workflowName, instanceId },
-    });
-    const data = assertJsonResponse<{ details: InstanceStatus }>(response);
-    return data.details;
-  };
-
-  const getHistory = async (
-    workflowNameOrKey: (keyof TRegistry & string) | string,
-    instanceId: string,
-  ) => {
-    const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history", {
-      pathParams: { workflowName, instanceId },
-    });
-    return assertJsonResponse<WorkflowsHistory>(response);
-  };
-
-  const runTick = async (payload: WorkflowEnqueuedHookPayload) => {
-    return await getFragment().inContext(function () {
       return runWorkflowsTick({
-        handlerTx: this.handlerTx,
-        busHandlerTx: this.handlerTx,
+        handlerTx,
+        busHandlerTx: handlerTx,
         workflows,
         workflowsByName,
-        stepEmissions: config.stepEmissions,
+        stepEmissions,
         payload: { ...payload, timestamp: clock.now() },
       });
     });
   };
 
-  const createRunner = (): WorkflowsTestRunner => {
-    let isAlive = true;
+  const mainRunnerRuntime: RunnerRuntime = {
+    fragments: fragmentsWithWorkflows,
+    recreateFragments: test.recreateFragments,
+    inContext: test.inContext,
+  };
+
+  const createRunner = (
+    initialRuntime?: RunnerRuntime,
+  ): WorkflowsTestRunner<TRegistry, TConfiguredFragments> => {
+    let runtimePromise: Promise<RunnerRuntime> | undefined = initialRuntime
+      ? Promise.resolve(initialRuntime)
+      : undefined;
+
+    const getRunnerRuntime = () => {
+      runtimePromise ??= test.createAdditionalRuntime();
+      return runtimePromise;
+    };
+
+    const getWorkflowResult = async () => (await getRunnerRuntime()).fragments.workflows;
 
     const tick = async (payload: WorkflowEnqueuedHookPayload) => {
-      if (!isAlive) {
-        return 0;
-      }
-      return await runTick(payload);
+      const runnerRuntime = await getRunnerRuntime();
+      return await runTick(
+        runnerRuntime,
+        payload,
+        runnerRuntime.fragments.workflows.fragment.$internal.deps.stepEmissions,
+      );
     };
 
     const runUntilIdle = async (
@@ -560,22 +568,46 @@ export async function createWorkflowsTestHarness<
     return {
       tick,
       runUntilIdle,
-      async kill() {
-        isAlive = false;
+      async callRoute(...args) {
+        return await (await getWorkflowResult()).callRoute(...args);
+      },
+      async getFragments() {
+        return (await getRunnerRuntime()).fragments;
+      },
+      async inContext(callback) {
+        return await (await getRunnerRuntime()).inContext(callback as never);
+      },
+      async drainHooks() {
+        await drainDurableHooks((await getWorkflowResult()).fragment);
       },
       async restart() {
-        isAlive = true;
-      },
-      async killAndRestart() {
-        isAlive = false;
-        isAlive = true;
+        await (await getRunnerRuntime()).recreateFragments();
       },
     };
   };
 
-  const defaultRunner = createRunner();
-  const tick = defaultRunner.tick;
-  const runUntilIdle = defaultRunner.runUntilIdle;
+  const defaultRunner = createRunner(mainRunnerRuntime);
+  const tick = async (payload: WorkflowEnqueuedHookPayload) =>
+    await runTick(mainRunnerRuntime, payload, config.stepEmissions);
+  const runUntilIdle = async (
+    payload: WorkflowEnqueuedHookPayload,
+    options?: RunUntilIdleOptions,
+  ) => {
+    const maxTicks = options?.maxTicks ?? 25;
+    let ticks = 0;
+    let processed = 0;
+
+    while (ticks < maxTicks) {
+      const result = await tick(payload);
+      ticks += 1;
+      processed += result;
+      if (result === 0) {
+        break;
+      }
+    }
+
+    return { processed, ticks };
+  };
 
   return {
     fragments: fragmentsWithWorkflows,
@@ -597,30 +629,81 @@ export async function createWorkflowsTestHarness<
     clock,
     runtime,
     test,
-    createInstance: createInstance as WorkflowsTestHarness<
-      TRegistry,
-      TConfiguredFragments
-    >["createInstance"],
-    createBatch: createBatch as WorkflowsTestHarness<
-      TRegistry,
-      TConfiguredFragments
-    >["createBatch"],
-    sendEvent: sendEvent as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["sendEvent"],
-    getStatus: getStatus as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["getStatus"],
-    getHistory,
+    createInstance: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceOptions?: { id?: string; params?: unknown },
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      const result = await runWorkflowService<{ id: string }>(() =>
+        getFragment().services.createInstance(workflowName, instanceOptions),
+      );
+      return result.id;
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["createInstance"],
+    createBatch: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instances: { id: string; params?: unknown }[],
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<{ id: string; details: InstanceStatus }[]>(() =>
+        getFragment().services.createBatch(workflowName, instances),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["createBatch"],
+    sendEvent: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+      eventOptions: { type: string; payload?: unknown; createdAt?: Date },
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.sendEvent(workflowName, instanceId, eventOptions),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["sendEvent"],
+    getStatus: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.getInstanceStatus(workflowName, instanceId),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["getStatus"],
+    async getHistory(workflowNameOrKey: (keyof TRegistry & string) | string, instanceId: string) {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<WorkflowsHistory>(() =>
+        getFragment().services.listHistory({ workflowName, instanceId }),
+      );
+    },
+    pauseInstance: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.pauseInstance(workflowName, instanceId),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["pauseInstance"],
+    resumeInstance: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.resumeInstance(workflowName, instanceId),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["resumeInstance"],
+    terminateInstance: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.terminateInstance(workflowName, instanceId),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["terminateInstance"],
     tick,
     runUntilIdle,
     createRunner,
-    async killRunner() {
-      await defaultRunner.kill();
-    },
-    async restartRunner() {
-      await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
-      await defaultRunner.restart();
-    },
-    async killAndRestartRunner() {
-      await defaultRunner.kill();
-      await (test as unknown as { recreateFragments: () => Promise<void> }).recreateFragments();
+    async restart() {
       await defaultRunner.restart();
     },
   };

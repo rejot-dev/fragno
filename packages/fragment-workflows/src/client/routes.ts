@@ -202,6 +202,14 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   }),
   defineRoute({
     method: "GET",
+    path: "/:workflowName/instances/:instanceId/current-step/emissions",
+    queryParameters: ["once"],
+    outputSchema: z.array(historyEmissionSchema),
+    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+    handler: stubHandler,
+  }),
+  defineRoute({
+    method: "GET",
     path: "/:workflowName/instances/:instanceId/history",
     outputSchema: historyOutputSchema,
     errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
