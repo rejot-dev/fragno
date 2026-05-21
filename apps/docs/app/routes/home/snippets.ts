@@ -62,20 +62,18 @@ export const showcaseTabs: ShowcaseTab[] = [
       {
         label: "Define the agent runtime",
         lang: "ts",
-        code: `import { createPi, createPiFragment, defineAgent } from "@fragno-dev/pi-fragment";
+        code: `import { createPi, createPiFragment } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 const pi = createPi()
-  .agent(
-    defineAgent("support-agent", {
-      systemPrompt: "You are a helpful support agent.",
-      model,
-      tools: ["bash"],
-    }),
-  )
-  .tool("bash", async ({ session }) => {
+  .withTool("bash", async ({ session }) => {
     const fs = await getSessionFs(session.id);
     return createBashTool(fs, session.id);
+  })
+  .withAgent("support-agent", {
+    systemPrompt: "You are a helpful support agent.",
+    model,
+    tools: ["bash"],
   })
   .build();
 

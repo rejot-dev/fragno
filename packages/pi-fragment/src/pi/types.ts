@@ -83,7 +83,7 @@ export type PiAgentDefinition = {
   systemPrompt: string;
   model: Model<Api>;
   thinkingLevel?: ThinkingLevel;
-  tools?: string[];
+  tools?: readonly string[];
   toolConfig?: unknown;
   maxTraceEvents?: number;
   streamFn?: StreamFn;
