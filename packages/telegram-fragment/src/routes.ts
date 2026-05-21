@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
-import { ExponentialBackoffRetryPolicy } from "@fragno-dev/db";
+import { ExponentialBackoffRetryPolicy, isUniqueConstraintError } from "@fragno-dev/db";
 
 import { telegramFragmentDefinition } from "./definition";
 import { telegramSchema } from "./schema";
@@ -137,18 +137,6 @@ const webhookOutputSchema = z.object({
   duplicate: z.boolean().optional(),
 });
 
-const isDuplicateHookError = (error: unknown): boolean => {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const code = "code" in error ? String(error.code) : "";
-  const message = "message" in error ? String(error.message) : "";
-  if (code === "SQLITE_CONSTRAINT" || code === "23505") {
-    return message.includes("fragno_hooks") || message.includes("hook");
-  }
-  return message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique");
-};
-
 const filterUndefined = (payload: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 
@@ -192,7 +180,7 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
             return json({ ok: true });
           } catch (err) {
             console.error("telegram webhook hook insert error", err);
-            if (isDuplicateHookError(err)) {
+            if (isUniqueConstraintError(err)) {
               return json({ ok: true, duplicate: true });
             }
             throw err;

@@ -22,6 +22,18 @@ export type { DatabaseAdapter, CursorResult };
 export { Cursor };
 export { dbNow, dbInterval };
 export type { DbNow, DbInterval, DbIntervalInput };
+export {
+  DatabaseError,
+  DatabaseConstraintError,
+  DatabaseTransactionError,
+  isDatabaseError,
+  isRetryableDatabaseError,
+  isDatabaseConstraintError,
+  isUniqueConstraintError,
+  type DatabaseConstraintKind,
+  type DatabaseConstraintErrorOptions,
+  type DatabaseTransactionErrorOptions,
+} from "./errors";
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
 export { getInternalFragment } from "./internal/adapter-registry";

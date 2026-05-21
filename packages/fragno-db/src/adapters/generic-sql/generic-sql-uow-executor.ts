@@ -1,5 +1,6 @@
 import superjson from "superjson";
 
+import { isRetryableDatabaseError } from "../../errors";
 import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment.schema";
 import { createId } from "../../id";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
@@ -30,6 +31,13 @@ export interface ExecutorOptions {
   dialect: Dialect;
   outbox?: OutboxConfig;
   namingStrategy?: SqlNamingStrategy;
+}
+
+class SqlVersionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SqlVersionConflictError";
+  }
 }
 
 export async function executeRetrieval(
@@ -116,7 +124,7 @@ export async function executeMutation(
           if (affectedRows !== compiledMutation.expectedAffectedRows) {
             // Version conflict detected - the UPDATE/DELETE didn't affect the expected number of rows
             // This means either the row doesn't exist or the version has changed
-            throw new Error(
+            throw new SqlVersionConflictError(
               `Version conflict: expected ${compiledMutation.expectedAffectedRows} rows affected, but got ${affectedRows}`,
             );
           }
@@ -130,7 +138,7 @@ export async function executeMutation(
           if (returnedRowCount !== BigInt(compiledMutation.expectedReturnedRows)) {
             // Version conflict detected - the SELECT didn't return the expected number of rows
             // This means either the row doesn't exist or the version has changed
-            throw new Error(
+            throw new SqlVersionConflictError(
               `Version conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${returnedRowCount}`,
             );
           }
@@ -172,21 +180,17 @@ export async function executeMutation(
   } catch (error) {
     // Transaction failed - could be version conflict or other constraint violation
     // Return success=false to indicate the UOW should be retried
-    if (error instanceof Error && error.message.includes("Version conflict")) {
+    if (error instanceof SqlVersionConflictError) {
       return { success: false };
     }
 
-    const errorCode =
-      typeof error === "object" && error !== null && "code" in error
-        ? (error as { code?: unknown }).code
-        : undefined;
-
-    if (errorCode === "40001" || errorCode === "40P01") {
+    const normalizedError = driverConfig.normalizeError(error);
+    if (isRetryableDatabaseError(normalizedError)) {
       return { success: false };
     }
 
-    // Other database errors should be thrown
-    throw error;
+    // Other database errors should be normalized and thrown for callers to map.
+    throw normalizedError;
   }
 }
 
