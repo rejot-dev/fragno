@@ -37,7 +37,7 @@ const agentRunStep = (
     stepKey,
     result: {
       type: "agent-run",
-      outcome: "completed",
+      stopReason: "stop",
       messages: [user, assistant],
       events,
       errorMessage: null,

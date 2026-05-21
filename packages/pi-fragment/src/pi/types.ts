@@ -92,7 +92,6 @@ export type PiAgentDefinition = {
   getApiKey?: AgentOptions["getApiKey"];
   thinkingBudgets?: AgentOptions["thinkingBudgets"];
   maxRetryDelayMs?: AgentOptions["maxRetryDelayMs"];
-  onEvent?: (event: AgentEvent, ctx: { sessionId: string; turnId: string }) => void;
 };
 
 export type PiAgentRegistry = Record<string, PiAgentDefinition>;
