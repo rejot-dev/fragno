@@ -170,7 +170,7 @@ describe("Pi workflow scenarios", () => {
               expect.objectContaining({
                 name: "command-0-prompt",
                 status: "completed",
-                result: expect.objectContaining({ outcome: "aborted" }),
+                result: expect.objectContaining({ stopReason: "aborted" }),
               }),
             );
           }),

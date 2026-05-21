@@ -25,28 +25,27 @@ import {
   type AgentLoopParams,
   type PiAgentRunMode,
   type PiAgentRunResult,
+  type AgentTurnContext,
+  type AgentTurnSessionContext,
+  type PiAgentTurnLifecycle,
+  type PiAgentTurnOperation,
 } from "./agent-runner";
 
 export const PI_WORKFLOW_NAME = "agent-loop-workflow";
 
-export type PiAgentRunOptions = {
-  mode: PiAgentRunMode;
-  promptInput?: PiPromptInput;
-  params: AgentLoopParams;
+export type PiAgentRunOperation = PiAgentTurnOperation;
+export type PiAgentRunRuntime = {
   agent: PiAgentRegistry[string];
-  tools: PiToolRegistry;
-  messages: AgentMessage[];
-  turnId: string;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
-  onController?: (controller: {
-    abort(): void;
-    steer(input: PiPromptInput): void;
-    followUp(input: PiPromptInput): void;
-  }) => void;
-  onControllerClear?: () => void;
+  session: AgentTurnSessionContext;
+  turn: AgentTurnContext;
 };
+export type PiAgentRunLifecycle = PiAgentTurnLifecycle;
 
-export type PiAgentRunner = (options: PiAgentRunOptions) => Promise<PiAgentRunResult>;
+export type PiAgentRunner = (
+  operation: PiAgentRunOperation,
+  runtime: PiAgentRunRuntime,
+  lifecycle?: PiAgentRunLifecycle,
+) => Promise<PiAgentRunResult>;
 
 type WorkflowsOptions = {
   agents: PiAgentRegistry;
@@ -121,7 +120,7 @@ const commandPayloadSchema: z.ZodType<PiSessionCommandPayload> = z.discriminated
 
 type AgentRunStepResult = {
   type: "agent-run";
-  outcome: PiAgentRunResult["outcome"];
+  stopReason: PiAgentRunResult["stopReason"];
   messages: AgentMessage[];
   events: AgentEvent[];
   errorMessage: string | null;
@@ -157,11 +156,7 @@ const toPromptInput = (command: PiSessionCommandPayload): PiPromptInput | undefi
   command.kind === "prompt" || command.kind === "followUp" ? command.input : undefined;
 
 const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
-  defineWorkflow<
-    typeof PI_WORKFLOW_NAME,
-    typeof agentLoopParamsSchema,
-    { messages: AgentMessage[] }
-  >(
+  defineWorkflow(
     {
       name: PI_WORKFLOW_NAME,
       schema: agentLoopParamsSchema,
@@ -222,36 +217,45 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
             const mode = toRunMode(command);
             const runAgent = options.agentRunner ?? runAgentTurn;
             const messagesBeforeStep = messages.length;
-            const result = await runAgent({
-              mode,
-              promptInput: toPromptInput(command),
-              params,
-              agent: agentDefinition,
-              tools: options.tools,
-              messages,
-              turnId: `${event.instanceId}:${turn}`,
-              onController: (controller) => {
-                tx.onEvent("command", (event) => {
-                  const message = commandPayloadSchema.parse(event.payload ?? {});
-                  if (message.kind === "abort") {
-                    controller.abort();
-                    event.consume();
-                  }
-                  if (message.kind === "steer") {
-                    controller.steer(message.input);
-                    event.consume();
-                  }
-                });
-              },
-              onEvent: async (agentEvent) => {
-                PiLogger.debug("agent event observed before workflow tx.emit", {
+            const result = await runAgent(
+              { mode, promptInput: toPromptInput(command) },
+              {
+                agent: agentDefinition,
+                session: {
                   sessionId: params.sessionId,
-                  turn,
-                  ...describeAgentEvent(agentEvent),
-                });
-                tx.emit(agentEvent);
+                  agentName: params.agentName,
+                  systemPrompt: params.systemPrompt,
+                },
+                turn: {
+                  tools: options.tools,
+                  messages,
+                  turnId: `${event.instanceId}:${turn}`,
+                },
               },
-            });
+              {
+                onController: (controller) => {
+                  tx.onEvent("command", (event) => {
+                    const message = commandPayloadSchema.parse(event.payload ?? {});
+                    if (message.kind === "abort") {
+                      controller.abort();
+                      event.consume();
+                    }
+                    if (message.kind === "steer") {
+                      controller.steer(message.input);
+                      event.consume();
+                    }
+                  });
+                },
+                onEvent: async (agentEvent) => {
+                  PiLogger.debug("agent event observed before workflow tx.emit", {
+                    sessionId: params.sessionId,
+                    turn,
+                    ...describeAgentEvent(agentEvent),
+                  });
+                  tx.emit(agentEvent);
+                },
+              },
+            );
 
             tx.mutate(({ forSchema }) => {
               // This overwrites the earlier tx.mutate call
@@ -263,7 +267,7 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
 
             return {
               type: "agent-run",
-              outcome: result.outcome,
+              stopReason: result.stopReason,
               messages: result.messages.slice(messagesBeforeStep),
               events: result.events.filter((agentEvent) => !isEphemeralAgentEvent(agentEvent)),
               errorMessage: result.errorMessage,
@@ -280,7 +284,7 @@ const createPiAgentLoopWorkflow = (options: WorkflowsOptions) =>
         }
 
         messages = [...messages, ...result.messages];
-        status = result.outcome === "errored" ? "waiting-to-continue" : "idle";
+        status = result.stopReason === "error" ? "waiting-to-continue" : "idle";
         if (status === "idle") {
           turn += 1;
         }

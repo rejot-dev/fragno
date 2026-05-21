@@ -46,17 +46,17 @@ const createControlledRunner = () => {
   const finishRun = createDeferred();
   const liveEvent: AgentEvent = { type: "agent_start" };
 
-  const runner: PiAgentRunner = async (options) => {
+  const runner: PiAgentRunner = async (operation, runtime, lifecycle) => {
     enteredRun.resolve();
     await emitEvent.promise;
-    await options.onEvent?.(liveEvent);
+    await lifecycle?.onEvent?.(liveEvent);
     await finishRun.promise;
 
     return {
-      outcome: "completed",
+      stopReason: "stop",
       messages: [
-        ...options.messages,
-        ...(options.promptInput ? [userMessage(options.promptInput.text)] : []),
+        ...runtime.turn.messages,
+        ...(operation.promptInput ? [userMessage(operation.promptInput.text)] : []),
         assistantMessage("done"),
       ],
       events: [liveEvent],
@@ -162,8 +162,8 @@ describe("pi-fragment /events route", () => {
 
   it("streams every event through message_end across consecutive turns", async () => {
     const turnEvents: AgentEvent[][] = [];
-    const runner: PiAgentRunner = async (options) => {
-      const text = options.promptInput?.text ?? "continue";
+    const runner: PiAgentRunner = async (operation, runtime, lifecycle) => {
+      const text = operation.promptInput?.text ?? "continue";
       const events = [
         { type: "agent_start" },
         { type: "turn_start" },
@@ -177,13 +177,13 @@ describe("pi-fragment /events route", () => {
       ] as AgentEvent[];
       turnEvents.push(events);
       for (const event of events) {
-        void options.onEvent?.(event);
+        void lifecycle?.onEvent?.(event);
       }
       return {
-        outcome: "completed",
+        stopReason: "stop",
         messages: [
-          ...options.messages,
-          ...(options.promptInput ? [userMessage(options.promptInput.text)] : []),
+          ...runtime.turn.messages,
+          ...(operation.promptInput ? [userMessage(operation.promptInput.text)] : []),
           assistantMessage(`${text} final`),
         ],
         events,
@@ -340,18 +340,21 @@ describe("pi-fragment /events route", () => {
     const enteredRun = createDeferred();
     const releaseRunner = createDeferred();
     const assistantPartial = assistantMessage("partial poem");
-    const customRunner: PiAgentRunner = async (options) => {
-      const promptMessage = userMessage(options.promptInput?.text ?? "");
+    const customRunner: PiAgentRunner = async (operation, runtime, lifecycle) => {
+      const promptMessage = userMessage(operation.promptInput?.text ?? "");
       enteredRun.resolve();
-      await options.onEvent?.({ type: "message_start", message: promptMessage } as AgentEvent);
-      await options.onEvent?.({ type: "message_end", message: promptMessage } as AgentEvent);
-      await options.onEvent?.({ type: "message_update", message: assistantPartial } as AgentEvent);
+      await lifecycle?.onEvent?.({ type: "message_start", message: promptMessage } as AgentEvent);
+      await lifecycle?.onEvent?.({ type: "message_end", message: promptMessage } as AgentEvent);
+      await lifecycle?.onEvent?.({
+        type: "message_update",
+        message: assistantPartial,
+      } as AgentEvent);
       await releaseRunner.promise;
       return {
-        outcome: "completed",
+        stopReason: "stop",
         messages: [
-          ...options.messages,
-          ...(options.promptInput ? [userMessage(options.promptInput.text)] : []),
+          ...runtime.turn.messages,
+          ...(operation.promptInput ? [userMessage(operation.promptInput.text)] : []),
           assistantMessage("done"),
         ],
         events: [{ type: "message_update", message: assistantPartial } as AgentEvent],
@@ -440,17 +443,17 @@ describe("pi-fragment /events route", () => {
       toolCallId: "tool-1",
     } as AgentEvent;
 
-    const customRunner: PiAgentRunner = async (options) => {
+    const customRunner: PiAgentRunner = async (operation, runtime, lifecycle) => {
       enteredRun.resolve();
-      await options.onEvent?.(earlyEvent);
+      await lifecycle?.onEvent?.(earlyEvent);
       await releaseRunner.promise;
-      await options.onEvent?.(lateEvent);
+      await lifecycle?.onEvent?.(lateEvent);
       await finishRunner.promise;
       return {
-        outcome: "completed",
+        stopReason: "stop",
         messages: [
-          ...options.messages,
-          ...(options.promptInput ? [userMessage(options.promptInput.text)] : []),
+          ...runtime.turn.messages,
+          ...(operation.promptInput ? [userMessage(operation.promptInput.text)] : []),
           assistantMessage("done"),
         ],
         events: [earlyEvent, lateEvent],
