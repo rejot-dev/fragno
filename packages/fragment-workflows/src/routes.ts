@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import { decodeCursor } from "@fragno-dev/db";
+import { decodeCursor, isUniqueConstraintError } from "@fragno-dev/db";
 
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsSchema } from "./schema";
@@ -217,7 +217,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         return error({ message: "Instance is terminal", code: "INSTANCE_TERMINAL" as Code }, 409);
       }
 
-      if (err.message === "INSTANCE_ID_ALREADY_EXISTS") {
+      if (isUniqueConstraintError(err)) {
         return error(
           { message: "Instance already exists", code: "INSTANCE_ID_ALREADY_EXISTS" as Code },
           409,

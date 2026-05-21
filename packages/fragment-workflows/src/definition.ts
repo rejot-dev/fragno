@@ -338,18 +338,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         const params = options?.params ?? {};
 
         return this.serviceTx(workflowsSchema)
-          .retrieve((uow) =>
-            uow.findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
-              ),
-            ),
-          )
-          .mutate(({ uow, retrieveResult: [existing] }) => {
-            if (existing) {
-              throw new Error("INSTANCE_ID_ALREADY_EXISTS");
-            }
-
+          .mutate(({ uow }) => {
             const instanceRef = uow.create("workflow_instance", {
               id: instanceId,
               workflowName,
