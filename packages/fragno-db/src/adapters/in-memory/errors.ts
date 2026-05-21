@@ -1,13 +1,15 @@
-export class UniqueConstraintError extends Error {
+import { DatabaseConstraintError } from "../../errors";
+
+export class UniqueConstraintError extends DatabaseConstraintError {
   constructor(message: string) {
-    super(message);
+    super({ kind: "unique", message });
     this.name = "UniqueConstraintError";
   }
 }
 
-export class ForeignKeyConstraintError extends Error {
+export class ForeignKeyConstraintError extends DatabaseConstraintError {
   constructor(message: string) {
-    super(message);
+    super({ kind: "foreign-key", message });
     this.name = "ForeignKeyConstraintError";
   }
 }
