@@ -17,22 +17,20 @@ import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import { getModel } from "@earendil-works/pi-ai";
-import { createPi, createPiFragment, defineAgent } from "@fragno-dev/pi-fragment";
+import { createPi, createPiFragment } from "@fragno-dev/pi-fragment";
 
 const pi = createPi()
-  .agent(
-    defineAgent("support-agent", {
-      systemPrompt: "You are a helpful support agent.",
-      model: getModel("openai", "gpt-4.1"),
-      tools: ["search"],
-    }),
-  )
-  .tool("search", async () => ({
+  .withTool("search", async () => ({
     name: "search",
     description: "Lookup references",
     inputSchema: { type: "object", properties: { query: { type: "string" } } },
     handler: async ({ query }: { query: string }) => `Result for ${query}`,
   }))
+  .withAgent("support-agent", {
+    systemPrompt: "You are a helpful support agent.",
+    model: getModel("openai", "gpt-4.1"),
+    tools: ["search"],
+  })
   .build();
 
 const workflowsFragment = createWorkflowsFragment(

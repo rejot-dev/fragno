@@ -1,9 +1,9 @@
 export { createPiFragmentClients } from "./client/clients";
 export {
   createPi,
-  defineAgent,
   PiBuilder,
   type PiAgentDefinitionInput,
+  type PiNamedAgentDefinition,
   type PiRuntime,
 } from "./pi/dsl";
 export { piFragmentDefinition } from "./pi/definition";

@@ -9,8 +9,7 @@ import {
   createPi,
   createPiFragment,
   createPiWorkflows,
-  defineAgent,
-  type PiToolRegistry,
+  type PiToolFactory,
 } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
@@ -38,6 +37,7 @@ import {
   createPiAgentName,
   resolvePiHarnesses,
   type PiHarnessConfig,
+  type PiToolId,
   type StoredPiConfig,
 } from "./pi-shared";
 
@@ -185,7 +185,7 @@ export const createPiToolRegistry = ({
   sessionFileSystemContext: PiSessionFileSystemContext;
   env: CloudflareEnv;
   bashCommandContext: PiBashCommandContext;
-}): PiToolRegistry => ({
+}): Record<PiToolId, PiToolFactory> => ({
   bash: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
     return createBashTool(
@@ -211,8 +211,13 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
   }
 };
 
-const buildPiRuntime = (config: StoredPiConfig, tools: PiToolRegistry) => {
-  const builder = createPi().tools(tools).logging({ enabled: true, level: "debug" });
+const createBackofficePiBuilder = (tools: Record<PiToolId, PiToolFactory>) =>
+  createPi().withTool("bash", tools.bash).logging({ enabled: true, level: "debug" });
+
+type BackofficePiBuilder = ReturnType<typeof createBackofficePiBuilder>;
+
+const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiToolFactory>) => {
+  const builder = createBackofficePiBuilder(tools);
 
   const harnesses = resolvePiHarnesses(config.harnesses);
   for (const harness of harnesses) {
@@ -232,7 +237,7 @@ const buildPiRuntime = (config: StoredPiConfig, tools: PiToolRegistry) => {
 };
 
 const registerHarnessAgents = (
-  builder: ReturnType<typeof createPi>,
+  builder: BackofficePiBuilder,
   harness: PiHarnessConfig,
   config: StoredPiConfig,
 ) => {
@@ -253,16 +258,14 @@ const registerHarnessAgents = (
       model: option.name,
     });
 
-    builder.agent(
-      defineAgent(agentName, {
-        systemPrompt: harness.systemPrompt,
-        model,
-        tools: harness.tools,
-        toolConfig: harness.toolConfig,
-        thinkingLevel: harness.thinkingLevel,
-        getApiKey: (provider) => resolveApiKey(config, provider),
-      }),
-    );
+    builder.withAgent(agentName, {
+      systemPrompt: harness.systemPrompt,
+      model,
+      tools: harness.tools.filter(isValidPiToolId),
+      toolConfig: harness.toolConfig,
+      thinkingLevel: harness.thinkingLevel,
+      getApiKey: (provider) => resolveApiKey(config, provider),
+    });
   }
 };
 
