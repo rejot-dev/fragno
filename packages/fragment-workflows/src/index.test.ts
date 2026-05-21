@@ -322,6 +322,25 @@ describe("Workflows Fragment", () => {
       expect(instance?.id.toString()).toBe("route-1");
     });
 
+    test("POST /:workflowName/instances should return conflict for duplicate instance id", async () => {
+      const first = await fragment.callRoute("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        body: { id: "route-duplicate" },
+      });
+      assert(first.type === "json");
+
+      const second = await fragment.callRoute("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        body: { id: "route-duplicate" },
+      });
+
+      expect(second.type).toBe("error");
+      if (second.type === "error") {
+        expect(second.status).toBe(409);
+        expect(second.error.code).toBe("INSTANCE_ID_ALREADY_EXISTS");
+      }
+    });
+
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
       const instanceRef = await (async () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);

@@ -7,9 +7,6 @@ import { z } from "zod";
 
 import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
 import { withDatabase, type DatabaseRequestContext } from "@fragno-dev/db";
-// TODO: Missing coverage areas for the runner test suite:
-// 1. Instance status fields beyond status/output (error shape, currentStep)
-// 2. Concurrency conflict handling / idempotency of duplicate ticks
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
@@ -1025,6 +1022,87 @@ describe("Workflows Runner", () => {
         .executeRetrieve()
     )[0];
     expect(rows).toHaveLength(0);
+  });
+
+  test("can create a new workflow instance from a step using serviceCalls", async () => {
+    const ChildWorkflow = defineWorkflow({ name: "service-call-child-workflow" }, async () => {
+      return { createdByParent: true };
+    });
+
+    let services: WorkflowsTestHarness["services"] | undefined;
+    const ParentWorkflow = defineWorkflow(
+      { name: "service-call-parent-workflow" },
+      async (event, step) => {
+        const childId = `child-${event.instanceId}`;
+        await step.do("create child", (tx) => {
+          const workflowServices = services;
+          if (!workflowServices) {
+            throw new Error("MISSING_WORKFLOW_SERVICES");
+          }
+          tx.serviceCalls(() => [
+            workflowServices.createInstance("service-call-child-workflow", {
+              id: childId,
+            }),
+          ]);
+          return childId;
+        });
+        return { childId };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARENT: ParentWorkflow, CHILD: ChildWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+    services = harness.services;
+
+    const parentId = await harness.createInstance("PARENT");
+    const [parentInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(
+              eb("workflowName", "=", "service-call-parent-workflow"),
+              eb("id", "=", parentId),
+            ),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
+    expect(parentInstance).toBeTruthy();
+
+    await harness.tick(buildPayload(parentInstance!, "create"));
+
+    const childId = `child-${parentId}`;
+    expect(await harness.getStatus("PARENT", parentId)).toMatchObject({
+      status: "complete",
+      output: { childId },
+    });
+    expect(await harness.getStatus("CHILD", childId)).toMatchObject({ status: "active" });
+
+    const [childInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+            eb.and(eb("workflowName", "=", "service-call-child-workflow"), eb("id", "=", childId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
+    expect(childInstance).toBeTruthy();
+
+    await harness.tick(buildPayload(childInstance!, "create"));
+
+    expect(await harness.getStatus("CHILD", childId)).toMatchObject({
+      status: "complete",
+      output: { createdByParent: true },
+    });
   });
 
   test("marks workflow errored when a step throws a falsy value", async () => {
