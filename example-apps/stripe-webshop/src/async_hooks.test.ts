@@ -2,6 +2,7 @@ import { test, expect, afterAll, beforeAll, describe } from "vitest";
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
 import { resolve } from "node:path";
 
 import { config } from "dotenv";
@@ -20,16 +21,34 @@ if (isCI) {
 // developement build using `vite build -m development`.
 // Feel free to remove this down the line when we are more certain this issue won't pop up again.
 // Skip if no .env or .env.local file is available outside CI
+const getAvailablePort = () =>
+  new Promise<number>((resolvePromise, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Could not allocate a TCP port.")));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolvePromise(port));
+    });
+  });
+
 describe.skipIf(!isCI && !hasEnvFile)("development server integration", () => {
   let devServer: ChildProcess;
   let serverLogs: string[] = [];
-  const PORT = 3000;
-  const BASE_URL = `http://localhost:${PORT}`;
-  const CHECK_URL = `${BASE_URL}/check`;
+  let baseUrl: string;
+  let checkUrl: string;
 
   beforeAll(async () => {
+    const port = await getAvailablePort();
+    baseUrl = `http://localhost:${port}`;
+    checkUrl = `${baseUrl}/check`;
+
     // Start the dev server
-    devServer = spawn("pnpm", ["run", "dev", "--port", PORT.toString()], {
+    devServer = spawn("pnpm", ["run", "dev", "--port", port.toString(), "--strictPort"], {
       cwd: process.cwd(),
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
@@ -52,7 +71,7 @@ describe.skipIf(!isCI && !hasEnvFile)("development server integration", () => {
 
     while (Date.now() - startTime < timeout) {
       try {
-        const response = await fetch(BASE_URL);
+        const response = await fetch(baseUrl);
         if (response.ok) {
           return;
         }
@@ -81,7 +100,7 @@ describe.skipIf(!isCI && !hasEnvFile)("development server integration", () => {
   test("should not throw async_hooks externalization error", async () => {
     let response: Response;
     try {
-      response = await fetch(CHECK_URL);
+      response = await fetch(checkUrl);
     } catch (error) {
       console.error("Failed to fetch from dev server. Server logs:");
       console.error(serverLogs.join("\n"));
