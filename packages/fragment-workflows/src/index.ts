@@ -32,7 +32,7 @@ export function createWorkflowsFragment<TRegistry extends WorkflowsRegistry = Wo
   return fragment as WorkflowsFragment<TRegistry>;
 }
 
-export { workflowsFragmentDefinition };
+export { validateWorkflowParams, workflowsFragmentDefinition } from "./definition";
 export { workflowsRoutesFactory };
 export { workflowsSchema };
 export type {

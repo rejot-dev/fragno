@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor, isUniqueConstraintError } from "@fragno-dev/db";
 
-import { workflowsFragmentDefinition } from "./definition";
+import { validateWorkflowParams, workflowsFragmentDefinition } from "./definition";
 import { workflowsSchema } from "./schema";
 import { streamWorkflowStepEmissions } from "./stream-step-emissions";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
@@ -331,7 +331,13 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const params = await services.validateWorkflowParams(workflowName, payload.params);
+            const params = await validateWorkflowParams(
+              new Map(
+                Object.values(config.workflows ?? {}).map((workflow) => [workflow.name, workflow]),
+              ),
+              workflowName,
+              payload.params,
+            );
             const result = await this.handlerTx()
               .withServiceCalls(() => [
                 services.createInstance(workflowName, {
@@ -382,7 +388,16 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             const validatedInstances = await Promise.all(
               payload.instances.map(async (instance) => ({
                 id: instance.id,
-                params: await services.validateWorkflowParams(workflowName, instance.params),
+                params: await validateWorkflowParams(
+                  new Map(
+                    Object.values(config.workflows ?? {}).map((workflow) => [
+                      workflow.name,
+                      workflow,
+                    ]),
+                  ),
+                  workflowName,
+                  instance.params,
+                ),
               })),
             );
             const result = await this.handlerTx()

@@ -195,6 +195,346 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("Promise.all short-circuits before a sibling step result is persisted", async () => {
+    let betaRuns = 0;
+
+    // This is intentionally a weird workflow shape. In durable workflow code,
+    // waitForEvent is a suspension point, not a long-lived JS promise waiting in memory.
+    // We keep this test because it demonstrates what raw Promise.all does when one
+    // branch suspends before a sibling branch has durably committed its result.
+    const ParallelShortCircuitWorkflow = defineWorkflow(
+      { name: "parallel-short-circuit-workflow" },
+      async (_event, step) => {
+        const [alpha, beta] = await Promise.all([
+          step.waitForEvent("alpha", { type: "alpha" }).then(() => "A"),
+          step.do("beta", async () => {
+            betaRuns += 1;
+            return "B";
+          }),
+        ]);
+        return { alpha, beta };
+      },
+    );
+
+    const workflows = { PARALLEL_SHORT_CIRCUIT: ParallelShortCircuitWorkflow };
+
+    const scenario = defineScenario({
+      name: "parallel-short-circuit-steps",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "PARALLEL_SHORT_CIRCUIT", id: "parallel-short-circuit-1" }),
+        runner.tick({
+          workflow: "PARALLEL_SHORT_CIRCUIT",
+          instanceId: "parallel-short-circuit-1",
+          reason: "create",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARALLEL_SHORT_CIRCUIT", "parallel-short-circuit-1"),
+          assert: (status) => {
+            expect(status.status).toBe("waiting");
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("PARALLEL_SHORT_CIRCUIT", "parallel-short-circuit-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "waitForEvent:alpha",
+                  status: "waiting",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  status: "waiting",
+                  attempts: 1,
+                  result: null,
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(betaRuns).toBe(1);
+        }),
+        runner.restart(),
+        runner.eventAndRunUntilIdle({
+          workflow: "PARALLEL_SHORT_CIRCUIT",
+          instanceId: "parallel-short-circuit-1",
+          event: { type: "alpha" },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARALLEL_SHORT_CIRCUIT", "parallel-short-circuit-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { alpha: "A", beta: "B" },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("PARALLEL_SHORT_CIRCUIT", "parallel-short-circuit-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "waitForEvent:alpha",
+                  status: "completed",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  status: "completed",
+                  attempts: 2,
+                  result: "B",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(betaRuns).toBe(2);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("Promise.all short-circuits between two do steps before a sibling result is persisted", async () => {
+    let alphaRuns = 0;
+    let betaRuns = 0;
+
+    const ParallelDoShortCircuitWorkflow = defineWorkflow(
+      { name: "parallel-do-short-circuit-workflow" },
+      async (_event, step) => {
+        const [alpha, beta] = await Promise.all([
+          step.do("alpha", { retries: { limit: 1, delay: 0, backoff: "constant" } }, async () => {
+            alphaRuns += 1;
+            if (alphaRuns === 1) {
+              throw new Error("RETRY_ALPHA");
+            }
+            return "A";
+          }),
+          step.do("beta", async () => {
+            betaRuns += 1;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return "B";
+          }),
+        ]);
+        return { alpha, beta };
+      },
+    );
+
+    const workflows = { PARALLEL_DO_SHORT_CIRCUIT: ParallelDoShortCircuitWorkflow };
+
+    const scenario = defineScenario({
+      name: "parallel-do-short-circuit-steps",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        workflow.create({
+          workflow: "PARALLEL_DO_SHORT_CIRCUIT",
+          id: "parallel-do-short-circuit-1",
+        }),
+        runner.tick({
+          workflow: "PARALLEL_DO_SHORT_CIRCUIT",
+          instanceId: "parallel-do-short-circuit-1",
+          reason: "create",
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.getStatus("PARALLEL_DO_SHORT_CIRCUIT", "parallel-do-short-circuit-1"),
+          assert: (status) => {
+            expect(status.status).toBe("waiting");
+          },
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.getSteps("PARALLEL_DO_SHORT_CIRCUIT", "parallel-do-short-circuit-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:alpha",
+                  status: "waiting",
+                  attempts: 1,
+                  result: null,
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  status: "waiting",
+                  attempts: 1,
+                  result: null,
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(alphaRuns).toBe(1);
+          expect(betaRuns).toBe(1);
+        }),
+        runner.restart(),
+        runner.retryAndRunUntilIdle({
+          workflow: "PARALLEL_DO_SHORT_CIRCUIT",
+          instanceId: "parallel-do-short-circuit-1",
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.getStatus("PARALLEL_DO_SHORT_CIRCUIT", "parallel-do-short-circuit-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { alpha: "A", beta: "B" },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.getSteps("PARALLEL_DO_SHORT_CIRCUIT", "parallel-do-short-circuit-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:alpha",
+                  status: "completed",
+                  attempts: 2,
+                  result: "A",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  status: "completed",
+                  attempts: 2,
+                  result: "B",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(alphaRuns).toBe(2);
+          expect(betaRuns).toBe(2);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("reuses a completed parallel do step after the runner restarts", async () => {
+    let alphaRuns = 0;
+    let betaRuns = 0;
+
+    const ParallelRestartWorkflow = defineWorkflow(
+      { name: "parallel-restart-workflow" },
+      async (_event, step) => {
+        const [alpha, beta] = await Promise.all([
+          step.do("alpha", { retries: { limit: 1, delay: 0, backoff: "constant" } }, async () => {
+            alphaRuns += 1;
+            if (alphaRuns === 1) {
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              throw new Error("RETRY_ALPHA");
+            }
+            return "A";
+          }),
+          step.do("beta", async () => {
+            betaRuns += 1;
+            return "B";
+          }),
+        ]);
+        return { alpha, beta };
+      },
+    );
+
+    const workflows = { PARALLEL_RESTART: ParallelRestartWorkflow };
+
+    const scenario = defineScenario({
+      name: "parallel-restart-steps",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "PARALLEL_RESTART", id: "parallel-restart-1" }),
+        runner.tick({
+          workflow: "PARALLEL_RESTART",
+          instanceId: "parallel-restart-1",
+          reason: "create",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARALLEL_RESTART", "parallel-restart-1"),
+          assert: (status) => {
+            expect(status.status).toBe("waiting");
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("PARALLEL_RESTART", "parallel-restart-1"),
+          assert: (steps) => {
+            expect(steps).toHaveLength(2);
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:alpha",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "waiting",
+                  attempts: 1,
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  parentStepKey: null,
+                  depth: 0,
+                  status: "completed",
+                  result: "B",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(alphaRuns).toBe(1);
+          expect(betaRuns).toBe(1);
+        }),
+        runner.restart(),
+        runner.retryAndRunUntilIdle({
+          workflow: "PARALLEL_RESTART",
+          instanceId: "parallel-restart-1",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARALLEL_RESTART", "parallel-restart-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { alpha: "A", beta: "B" },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("PARALLEL_RESTART", "parallel-restart-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:alpha",
+                  status: "completed",
+                  attempts: 2,
+                  result: "A",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:beta",
+                  status: "completed",
+                  attempts: 1,
+                  result: "B",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert(() => {
+          expect(alphaRuns).toBe(2);
+          expect(betaRuns).toBe(1);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("supports nested Promise.race with stable nested identity after a fast winner", async () => {
     const RaceWorkflow = defineWorkflow({ name: "race-workflow" }, async (_event, step) => {
       const raceReturn = await step.do("Promise step", async () => {

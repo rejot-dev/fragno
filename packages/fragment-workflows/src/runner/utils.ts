@@ -38,7 +38,7 @@ export function isNonRetryableError(error: unknown): boolean {
 }
 
 /**
- * Check that a TxResult is mutate-only (no retrieve phase, no nested service calls).
+ * Check that a TxResult and any nested service calls are mutate-only.
  * Bigger picture: the runner does a single retrieve, so extra retrieve phases are forbidden.
  */
 export function isMutateOnlyTx(tx: AnyTxResult): boolean {
@@ -46,8 +46,5 @@ export function isMutateOnlyTx(tx: AnyTxResult): boolean {
   if (callbacks.retrieve || callbacks.retrieveSuccess) {
     return false;
   }
-  if (serviceCalls && serviceCalls.length > 0) {
-    return false;
-  }
-  return true;
+  return !serviceCalls || serviceCalls.every(isMutateOnlyTx);
 }
