@@ -29,20 +29,28 @@ export type PiAgentLoopSerializableState = PiAgentLoopCursorState & {
 
 type WorkflowHistoryStepRow = {
   stepKey: string;
+  status?: string;
   result: unknown;
 };
 
-const commandStepOrder = (stepKey: string) => Number(/^do:command-(\d+)-/.exec(stepKey)?.[1] ?? 0);
+type AgentRunStepResult = { type: "agent-run"; messages?: AgentMessage[]; events?: AgentEvent[] };
 
-const isAgentRunStepResult = (
-  result: unknown,
-): result is { messages?: AgentMessage[]; events?: AgentEvent[] } =>
+type WorkflowHistoryAgentRunStepRow = WorkflowHistoryStepRow & {
+  agentRunResult: AgentRunStepResult;
+};
+
+const isAgentRunStepResult = (result: unknown): result is AgentRunStepResult =>
   typeof result === "object" &&
   result !== null &&
   (result as { type?: unknown }).type === "agent-run";
 
 const messagesFromEvents = (events: AgentEvent[]): AgentMessage[] =>
   events.flatMap((event) => (event.type === "message_end" ? [event.message] : []));
+
+const isCompletedAgentRunStep = (
+  step: WorkflowHistoryStepRow & { agentRunResult: AgentRunStepResult | null },
+): step is WorkflowHistoryAgentRunStepRow =>
+  (step.status === undefined || step.status === "completed") && step.agentRunResult !== null;
 
 export const projectSessionDetailFromWorkflowHistory = ({
   cursorState,
@@ -57,14 +65,16 @@ export const projectSessionDetailFromWorkflowHistory = ({
   const messages = [...initialMessages];
   const events: AgentEvent[] = [];
 
-  for (const step of [...steps].sort(
-    (left, right) => commandStepOrder(left.stepKey) - commandStepOrder(right.stepKey),
-  )) {
-    if (!isAgentRunStepResult(step.result)) {
-      continue;
-    }
-    events.push(...(step.result.events ?? []));
-    messages.push(...(step.result.messages ?? []));
+  const agentRunSteps = steps
+    .map((step) => ({
+      ...step,
+      agentRunResult: isAgentRunStepResult(step.result) ? step.result : null,
+    }))
+    .filter(isCompletedAgentRunStep);
+
+  for (const step of agentRunSteps) {
+    events.push(...(step.agentRunResult.events ?? []));
+    messages.push(...(step.agentRunResult.messages ?? []));
   }
 
   return {

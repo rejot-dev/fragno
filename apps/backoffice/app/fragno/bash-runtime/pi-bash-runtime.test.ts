@@ -41,6 +41,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
     name: "support",
     status: "waiting" as const,
     agentName: "assistant",
+    workflowName: "interactive-chat-workflow",
     agent: {
       state,
       events: [],
@@ -71,6 +72,7 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
       name: name ?? null,
       status: "waiting",
       agent,
+      workflowName: "interactive-chat-workflow",
       steeringMode: steeringMode ?? "one-at-a-time",
       metadata: metadata ?? null,
       tags: tags ?? [],
@@ -88,6 +90,7 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
       name: "support",
       status: "waiting",
       agentName: "assistant",
+      workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [] },
         events: [],
@@ -109,6 +112,7 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
         name: null,
         status: "waiting" as const,
         agent: "assistant",
+        workflowName: "interactive-chat-workflow",
         steeringMode: "one-at-a-time" as const,
         metadata: null,
         tags: [] as string[],
@@ -120,6 +124,7 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
         name: null,
         status: "waiting" as const,
         agent: "assistant",
+        workflowName: "interactive-chat-workflow",
         steeringMode: "one-at-a-time" as const,
         metadata: null,
         tags: [] as string[],
@@ -354,6 +359,7 @@ describe("pi bash command registration", () => {
             name: args.name ?? null,
             status: "waiting",
             agent: args.agent,
+            workflowName: "interactive-chat-workflow",
             steeringMode: args.steeringMode ?? "one-at-a-time",
             metadata: args.metadata ?? null,
             tags: args.tags ?? [],
@@ -368,6 +374,7 @@ describe("pi bash command registration", () => {
             name: "support",
             status: "waiting",
             agentName: "assistant",
+            workflowName: "interactive-chat-workflow",
             agent: {
               state: { messages: [] },
               events: [],
@@ -390,6 +397,7 @@ describe("pi bash command registration", () => {
               name: "support",
               status: "waiting",
               agent: "assistant",
+              workflowName: "interactive-chat-workflow",
               steeringMode: "one-at-a-time",
               metadata: { source: "test" },
               tags: ["alpha"],
@@ -436,6 +444,7 @@ describe("pi bash command registration", () => {
         name: "support",
         status: "waiting",
         agent: "assistant",
+        workflowName: "interactive-chat-workflow",
         steeringMode: "one-at-a-time",
         metadata: { source: "test" },
         tags: ["alpha"],
@@ -446,6 +455,7 @@ describe("pi bash command registration", () => {
     expect(JSON.parse(jsonLine ?? "null")).toMatchObject({
       id: "session-1",
       agent: "assistant",
+      workflowName: "interactive-chat-workflow",
       name: "support",
       steeringMode: "one-at-a-time",
       metadata: {
@@ -480,6 +490,7 @@ describe("pi bash command registration", () => {
         metadata: { team: "alpha" },
         tags: ["urgent"],
         steeringMode: "one-at-a-time",
+        systemMessage: undefined,
       },
       {
         agent: "assistant",
@@ -487,6 +498,7 @@ describe("pi bash command registration", () => {
         metadata: { team: "alpha" },
         tags: ["urgent"],
         steeringMode: "one-at-a-time",
+        systemMessage: undefined,
       },
       {
         agent: "assistant",
@@ -494,6 +506,7 @@ describe("pi bash command registration", () => {
         metadata: undefined,
         tags: undefined,
         steeringMode: "one-at-a-time",
+        systemMessage: undefined,
       },
     ]);
     expect(getCalls).toEqual([
@@ -701,6 +714,7 @@ describe("createPiRouteBashRuntime", () => {
                 JSON.stringify({
                   id: "session-2",
                   agent: "assistant",
+                  workflowName: "interactive-chat-workflow",
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
@@ -724,6 +738,7 @@ describe("createPiRouteBashRuntime", () => {
                 JSON.stringify({
                   id: "session-2",
                   agentName: "assistant",
+                  workflowName: "interactive-chat-workflow",
                   agent: {
                     state: { messages: [] },
                     events: [{ id: "event-1" }],
@@ -772,6 +787,7 @@ describe("createPiRouteBashRuntime", () => {
                 JSON.stringify({
                   id: "session-2",
                   agentName: "assistant",
+                  workflowName: "interactive-chat-workflow",
                   agent: {
                     state: {
                       messages: [
@@ -818,6 +834,7 @@ describe("createPiRouteBashRuntime", () => {
                   {
                     id: "session-2",
                     agent: "assistant",
+                    workflowName: "interactive-chat-workflow",
                     status: "waiting",
                     name: "route-session",
                     steeringMode: "all",
@@ -870,6 +887,7 @@ describe("createPiRouteBashRuntime", () => {
       id: "session-2",
       name: "route-session",
       agent: "assistant",
+      workflowName: "interactive-chat-workflow",
       steeringMode: "all",
       metadata: { team: "beta" },
       tags: ["priority"],
@@ -878,12 +896,14 @@ describe("createPiRouteBashRuntime", () => {
       id: "session-2",
       workflow: { status: "waiting" },
       agentName: "assistant",
+      workflowName: "interactive-chat-workflow",
       agent: { events: [{ id: "event-1" }] },
     });
     expect(sessions).toEqual([
       {
         id: "session-2",
         agent: "assistant",
+        workflowName: "interactive-chat-workflow",
         status: "waiting",
         name: "route-session",
         steeringMode: "all",
@@ -916,11 +936,9 @@ describe("createPiRouteBashRuntime", () => {
         url: "https://pi.do/api/pi/sessions?orgId=acme",
         method: "POST",
         body: {
-          agent: "assistant",
+          workflow: "interactive-chat-workflow",
           name: "route-session",
-          metadata: { team: "beta" },
-          tags: ["priority"],
-          steeringMode: "all",
+          input: { agentName: "assistant" },
         },
       },
       {
@@ -1004,6 +1022,7 @@ describe("createPiRouteBashRuntime", () => {
                 JSON.stringify({
                   id: "session-2",
                   agentName: "assistant",
+                  workflowName: "interactive-chat-workflow",
                   agent: { state: { messages: [assistantMessage] }, events: [] },
                   status: "waiting",
                   name: "route-session",

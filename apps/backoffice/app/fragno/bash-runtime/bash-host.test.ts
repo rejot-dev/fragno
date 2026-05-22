@@ -135,6 +135,7 @@ const createPiRuntime = (): PiBashRuntime => ({
   createSession: async () => ({
     id: "session-1",
     agent: "assistant",
+    workflowName: "interactive-chat-workflow",
     status: "waiting" as const,
     name: null,
     steeringMode: "one-at-a-time" as const,
@@ -146,6 +147,7 @@ const createPiRuntime = (): PiBashRuntime => ({
   getSession: async ({ sessionId }) => ({
     id: sessionId,
     agentName: "assistant",
+    workflowName: "interactive-chat-workflow",
     agent: { state: { messages: [] }, events: [] },
     status: "waiting" as const,
     name: null,
@@ -162,6 +164,7 @@ const createPiRuntime = (): PiBashRuntime => ({
       name: null,
       status: "waiting" as const,
       agent: "assistant",
+      workflowName: "interactive-chat-workflow",
       steeringMode: "one-at-a-time" as const,
       metadata: null,
       tags: [],
@@ -172,6 +175,7 @@ const createPiRuntime = (): PiBashRuntime => ({
   runTurn: async ({ sessionId, text }) => ({
     id: sessionId,
     agentName: "assistant",
+    workflowName: "interactive-chat-workflow",
     agent: {
       state: {
         messages: [

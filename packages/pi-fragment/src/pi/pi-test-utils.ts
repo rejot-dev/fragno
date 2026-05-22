@@ -5,6 +5,7 @@ import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-d
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
+import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -12,18 +13,16 @@ import {
   type Api,
   type AssistantMessage,
   type Model,
+  type StopReason,
+  type ToolCall,
 } from "@earendil-works/pi-ai";
 
 import { piRoutesFactory } from "../routes";
 import { piFragmentDefinition } from "./definition";
+import type { PiWorkflowDefinition } from "./dsl";
 import type { createPiFragment } from "./factory";
-import type {
-  PiFragmentConfig,
-  PiAgentRegistry,
-  PiToolRegistry,
-  PiWorkflowsService,
-} from "./types";
-import { createPiWorkflows, type PiAgentRunner } from "./workflow/workflow";
+import { createPiWorkflows, type PiAgentRunner } from "./factory";
+import type { PiFragmentConfig, PiAgentRegistry, PiToolRegistry } from "./types";
 
 export const mockModel: Model<Api> = {
   id: "test-model",
@@ -38,9 +37,12 @@ export const mockModel: Model<Api> = {
   maxTokens: 2048,
 };
 
-const buildAssistantMessage = (text: string): AssistantMessage => ({
+const buildAssistantMessage = (
+  content: AssistantMessage["content"],
+  stopReason: AssistantMessage["stopReason"] = "stop",
+): AssistantMessage => ({
   role: "assistant",
-  content: [{ type: "text", text }],
+  content,
   api: "openai-responses",
   provider: "openai",
   model: "test-model",
@@ -52,9 +54,81 @@ const buildAssistantMessage = (text: string): AssistantMessage => ({
     totalTokens: 0,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   },
-  stopReason: "stop",
+  stopReason,
   timestamp: Date.now(),
 });
+
+type ScriptedAssistantTurn =
+  | { type: "text"; text: string; stopReason?: Extract<StopReason, "stop" | "length"> }
+  | { type: "toolCall"; toolCall: ToolCall };
+
+export const createAssistantStreamScript = () => {
+  const turns: ScriptedAssistantTurn[] = [];
+  const builder = {
+    text(text: string, options: { stopReason?: Extract<StopReason, "stop" | "length"> } = {}) {
+      turns.push({ type: "text", text, stopReason: options.stopReason });
+      return builder;
+    },
+    toolCall(name: string, options: { id: string; args: Record<string, unknown> }) {
+      turns.push({
+        type: "toolCall",
+        toolCall: { type: "toolCall", id: options.id, name, arguments: options.args },
+      });
+      return builder;
+    },
+    build(): { streamFn: StreamFn } {
+      let nextTurnIndex = 0;
+      return {
+        streamFn: () => {
+          const turn = turns[nextTurnIndex];
+          if (!turn) {
+            throw new Error(`No scripted assistant turn available at index ${nextTurnIndex}.`);
+          }
+          nextTurnIndex += 1;
+
+          const stream = createAssistantMessageEventStream();
+          const message =
+            turn.type === "toolCall"
+              ? buildAssistantMessage([turn.toolCall], "toolUse")
+              : buildAssistantMessage(
+                  [{ type: "text", text: turn.text }],
+                  turn.stopReason ?? "stop",
+                );
+
+          stream.push({ type: "start", partial: message });
+          if (turn.type === "toolCall") {
+            stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
+            stream.push({
+              type: "toolcall_end",
+              contentIndex: 0,
+              toolCall: turn.toolCall,
+              partial: message,
+            });
+            stream.push({ type: "done", reason: "toolUse", message });
+          } else {
+            stream.push({ type: "text_start", contentIndex: 0, partial: message });
+            stream.push({
+              type: "text_delta",
+              contentIndex: 0,
+              delta: turn.text,
+              partial: message,
+            });
+            stream.push({
+              type: "text_end",
+              contentIndex: 0,
+              content: turn.text,
+              partial: message,
+            });
+            stream.push({ type: "done", reason: turn.stopReason ?? "stop", message });
+          }
+
+          return Object.assign(stream, { result: async () => message });
+        },
+      };
+    },
+  };
+  return builder;
+};
 
 type StreamFnScriptOptions = {
   result?: AssistantMessage;
@@ -102,7 +176,7 @@ const createStreamFnScript = (
 };
 
 export const createStreamFn = (text: string): StreamFn => {
-  const message = buildAssistantMessage(text);
+  const message = buildAssistantMessage([{ type: "text", text }]);
   return createStreamFnScript(
     [
       { type: "start", partial: message },
@@ -120,30 +194,19 @@ const createTestWorkflows = (options: {
   tools: PiToolRegistry;
   logging?: PiFragmentConfig["logging"];
   agentRunner?: PiAgentRunner;
+  workflows?: PiWorkflowDefinition[];
 }) =>
   createPiWorkflows({
     agents: options.agents,
     tools: options.tools,
     logging: options.logging,
     agentRunner: options.agentRunner,
+    workflows: options.workflows,
   });
 
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;
 
 type WorkflowsHarness = WorkflowsTestHarness<ReturnType<typeof createTestWorkflows>>;
-
-const changedRouteRoundtripGuard = {
-  maxRoundtrips: 100,
-  routes: [
-    { method: "GET", path: "/sessions/:sessionId" },
-    { method: "GET", path: "/sessions/:sessionId/export/pi-jsonl" },
-    { method: "GET", path: "/sessions/:sessionId/events" },
-    { method: "POST", path: "/sessions/:sessionId/command" },
-  ],
-} satisfies {
-  maxRoundtrips: number;
-  routes: Array<{ method: "GET" | "POST"; path: string }>;
-};
 
 type DatabaseFragmentsTest = {
   fragments: {
@@ -161,9 +224,12 @@ type DatabaseFragmentsTest = {
 };
 type BuildHarnessOptions = {
   adapter?: SupportedAdapter;
-  wrapWorkflowsService?: (service: WorkflowsHarness["fragment"]["services"]) => PiWorkflowsService;
+  wrapWorkflowsService?: (
+    service: WorkflowsHarness["fragment"]["services"],
+  ) => WorkflowsFragmentServices;
   autoTickHooks?: boolean;
   agentRunner?: PiAgentRunner;
+  workflows?: PiWorkflowDefinition[];
 };
 
 export const buildHarness: (
@@ -176,6 +242,7 @@ export const buildHarness: (
     tools: config.tools,
     logging: config.logging,
     agentRunner: options.agentRunner,
+    workflows: options.workflows ?? config.workflows,
   });
   const workflowsHarness = await createWorkflowsTestHarness({
     workflows,
@@ -185,23 +252,19 @@ export const buildHarness: (
     fragmentConfig: {
       stepEmissions,
     },
-    fragmentOptions: {
-      dbRoundtripGuard: changedRouteRoundtripGuard,
-    },
   });
 
   const workflowsService = (
     options.wrapWorkflowsService
       ? options.wrapWorkflowsService(workflowsHarness.fragment.services)
       : workflowsHarness.fragment.services
-  ) as PiWorkflowsService;
+  ) as WorkflowsFragmentServices;
 
   const fragment = instantiate(piFragmentDefinition)
-    .withConfig(config)
+    .withConfig({ ...config, workflows: options.workflows ?? config.workflows })
     .withRoutes([piRoutesFactory])
     .withOptions({
       databaseAdapter: workflowsHarness.test.adapter,
-      dbRoundtripGuard: changedRouteRoundtripGuard,
     })
     .withServices({ workflows: workflowsService })
     .build();

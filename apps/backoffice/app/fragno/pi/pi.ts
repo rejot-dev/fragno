@@ -9,7 +9,8 @@ import {
   createPi,
   createPiFragment,
   createPiWorkflows,
-  type PiToolFactory,
+  interactiveChatWorkflow,
+  type PiTool,
 } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
@@ -185,7 +186,7 @@ export const createPiToolRegistry = ({
   sessionFileSystemContext: PiSessionFileSystemContext;
   env: CloudflareEnv;
   bashCommandContext: PiBashCommandContext;
-}): Record<PiToolId, PiToolFactory> => ({
+}): Record<PiToolId, PiTool> => ({
   bash: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
     return createBashTool(
@@ -211,12 +212,15 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
   }
 };
 
-const createBackofficePiBuilder = (tools: Record<PiToolId, PiToolFactory>) =>
-  createPi().withTool("bash", tools.bash).logging({ enabled: true, level: "debug" });
+const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
+  createPi()
+    .withTool("bash", tools.bash)
+    .withWorkflow(interactiveChatWorkflow)
+    .logging({ enabled: true, level: "debug" });
 
 type BackofficePiBuilder = ReturnType<typeof createBackofficePiBuilder>;
 
-const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiToolFactory>) => {
+const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiTool>) => {
   const builder = createBackofficePiBuilder(tools);
 
   const harnesses = resolvePiHarnesses(config.harnesses);
@@ -231,6 +235,7 @@ const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiToolFa
     workflows: createPiWorkflows({
       agents: runtime.config.agents,
       tools: runtime.config.tools,
+      workflows: runtime.config.workflows,
       logging: runtime.config.logging,
     }),
   };

@@ -5,7 +5,7 @@ import { drainDurableHooks } from "@fragno-dev/test";
 import { PI_JSONL_EXPORT_CWD } from "./pi-jsonl-export";
 import { buildHarness, createStreamFn, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
-import { PI_WORKFLOW_NAME } from "./workflow/workflow";
+import { interactiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
 const parseJsonl = (body: string) =>
   body
@@ -26,6 +26,7 @@ describe("pi JSONL export route", () => {
         },
       },
       tools: {},
+      workflows: [interactiveChatWorkflow],
     };
 
     return buildHarness(config, { autoTickHooks: true });
@@ -35,7 +36,11 @@ describe("pi JSONL export route", () => {
     const harness = await startHarness();
     try {
       const create = await harness.fragments.pi.callRoute("POST", "/sessions", {
-        body: { agent: "default", name: "Command Session" },
+        body: {
+          workflow: interactiveChatWorkflow.name,
+          name: "Command Session",
+          input: { agentName: "default" },
+        },
       });
       expect(create.type).toBe("json");
       if (create.type !== "json") {
@@ -43,9 +48,9 @@ describe("pi JSONL export route", () => {
       }
       const sessionId = create.data.id;
 
-      await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+      await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
       await harness.workflows.runUntilIdle({
-        workflowName: PI_WORKFLOW_NAME,
+        workflowName: interactiveChatWorkflow.name,
         instanceId: sessionId,
         instanceRef: sessionId,
         reason: "create",
@@ -57,7 +62,7 @@ describe("pi JSONL export route", () => {
       });
       await drainDurableHooks(harness.workflows.fragment, { mode: "singlePass" });
       await harness.workflows.runUntilIdle({
-        workflowName: PI_WORKFLOW_NAME,
+        workflowName: interactiveChatWorkflow.name,
         instanceId: sessionId,
         instanceRef: sessionId,
         reason: "event",

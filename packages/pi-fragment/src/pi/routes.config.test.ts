@@ -2,22 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PiLogger } from "../debug-log";
 import { buildHarness, createStreamFn, mockModel } from "./pi-test-utils";
-import type { PiFragmentConfig, PiWorkflowsService } from "./types";
+import type { PiFragmentConfig } from "./types";
 
 describe("pi-fragment config requirements", () => {
-  it("requires workflows service at instantiation", async () => {
-    const config = {
-      agents: {},
-      tools: {},
-    } as PiFragmentConfig;
-
-    await expect(
-      buildHarness(config, {
-        wrapWorkflowsService: () => undefined as unknown as PiWorkflowsService,
-      }),
-    ).rejects.toThrow("requires service 'workflows'");
-  });
-
   it("resets logger state when logging config is omitted", async () => {
     PiLogger.enable();
     PiLogger.setLogLevel("debug");

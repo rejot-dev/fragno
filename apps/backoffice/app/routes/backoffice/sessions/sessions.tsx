@@ -13,7 +13,11 @@ import {
   useSearchParams,
 } from "react-router";
 
-import type { PiSession, PiSessionStatus } from "@fragno-dev/pi-fragment";
+import {
+  interactiveChatWorkflow,
+  type PiSession,
+  type PiSessionStatus,
+} from "@fragno-dev/pi-fragment";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
@@ -332,7 +336,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const tags = tagsRaw ? parseTags(tagsRaw) : undefined;
 
   const result = await createPiSession(request, context, params.orgId, {
-    agent,
+    workflow: interactiveChatWorkflow.name,
+    input: { agentName: agent },
     name: name || undefined,
     steeringMode,
     tags,

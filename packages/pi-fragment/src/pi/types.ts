@@ -1,20 +1,19 @@
-import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
-
-import type { TxResult } from "@fragno-dev/db";
-import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
+import type { StandardSchemaV1 } from "@fragno-dev/core/api";
+import type { TSchema as TypeBoxSchema } from "typebox";
 
 import type {
   AgentEvent,
   AgentMessage,
   AgentOptions,
   AgentTool,
+  AgentToolResult,
   StreamFn,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
 import type { PiLoggerConfig } from "../debug-log";
-import type { PiWorkflowsRegistry } from "./workflow/workflow";
+import type { PiWorkflowDefinition } from "./dsl";
 
 export type PiSessionStatus =
   | "active"
@@ -29,6 +28,7 @@ export type PiSession = {
   name: string | null;
   status: PiSessionStatus;
   agent: string;
+  workflowName: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -64,20 +64,6 @@ export type PiSessionDetail = Omit<PiSession, "agent"> & {
   };
 };
 
-export type PiWorkflowsInstanceStatus = InstanceStatus;
-
-type WorkflowsService = WorkflowsFragmentServices<PiWorkflowsRegistry>;
-
-export type PiWorkflowsService = Pick<
-  WorkflowsService,
-  "createInstance" | "getInstanceStatus" | "listHistory" | "sendEvent" | "observeStepEmissions"
-> & {
-  getInstanceStatusBatch?: (
-    workflowName: string,
-    instanceIds: string[],
-  ) => TxResult<PiWorkflowsInstanceStatus[], PiWorkflowsInstanceStatus[]>;
-};
-
 export type PiAgentDefinition = {
   name: string;
   systemPrompt: string;
@@ -102,22 +88,49 @@ export type PiSessionEventStreamItem =
   | { kind: "abort"; commandId: string; reason?: string }
   | { kind: "steer"; commandId: string; input: PiPromptInput };
 
-export type PiToolFactoryContext = {
+export type PiToolContext = {
   session: PiSession;
   turnId: string;
   toolConfig: unknown;
   messages: AgentMessage[];
 };
 
-export type PiToolFactory =
-  | AgentTool
-  | ((ctx: PiToolFactoryContext) => AgentTool | Promise<AgentTool>);
+export type PiToolResultSchema<TDetails> = StandardSchemaV1<unknown, TDetails> | TypeBoxSchema;
 
-export type PiToolRegistry = Record<string, PiToolFactory>;
+export type PiToolDefinition<
+  TParameters extends TypeBoxSchema = TypeBoxSchema,
+  TDetails = unknown,
+> = AgentTool<TParameters, TDetails> & {
+  name: string;
+  resultSchema?: PiToolResultSchema<TDetails>;
+  handoff?: boolean;
+};
+
+export type AnyPiToolDefinition = Omit<AgentTool<TypeBoxSchema, unknown>, "execute"> & {
+  name: string;
+  resultSchema?: PiToolResultSchema<unknown>;
+  handoff?: boolean;
+  execute: (
+    toolCallId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    params: any,
+    signal?: AbortSignal,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onUpdate?: (partialResult: AgentToolResult<any>) => void,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) => Promise<AgentToolResult<any>>;
+};
+
+export type PiTool =
+  | AnyPiToolDefinition
+  | ((ctx: PiToolContext) => AnyPiToolDefinition | Promise<AnyPiToolDefinition>);
+
+export type PiToolRegistry = Record<string, PiTool>;
 
 export interface PiFragmentConfig {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
+  workflows?: PiWorkflowDefinition[];
   /**
    * Optional logging config for internal pi-fragment diagnostics.
    */

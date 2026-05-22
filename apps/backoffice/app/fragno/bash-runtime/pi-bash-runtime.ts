@@ -45,6 +45,8 @@ export type PiSessionCreateArgs = {
   steeringMode?: "all" | "one-at-a-time";
 };
 
+const INTERACTIVE_CHAT_WORKFLOW_NAME = "interactive-chat-workflow";
+
 export type PiSessionGetArgs = {
   sessionId: string;
   events?: boolean;
@@ -499,7 +501,16 @@ export const createPiRouteBashRuntime = ({
 
   return {
     createSession: async (args) => {
-      const response = await callRoute("POST", "/sessions", { body: args });
+      const response = await callRoute("POST", "/sessions", {
+        body: {
+          workflow: INTERACTIVE_CHAT_WORKFLOW_NAME,
+          name: args.name,
+          input: {
+            agentName: args.agent,
+            systemPrompt: args.systemMessage,
+          },
+        },
+      });
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
