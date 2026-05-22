@@ -24,6 +24,9 @@ Format:
 - [Pi Fragment Pi-Compatible JSONL Export — Spec](./spec-pi-fragment-pi-jsonl-export.md) — Add a
   server-side route that exports existing pi-fragment sessions as Pi v3-compatible JSONL snapshots
   with a fixed `/workspace` cwd.
+- [Pi Fragment Custom LLM Workflows — Spec and Implementation Plan](./spec-pi-fragment-custom-workflows.md)
+  — Add a Pi-specific workflow DSL/API over `@fragno-dev/workflows`, including multi-step agent
+  orchestration, parallel/racing steps, typed tool-call results, and decision/handoff tools.
 - [Database Adapter Simplification — Spec](./spec-db-adapter-simplification.md) — Unify SQL runtime
   adapters, make schema output formats explicit, and replace ORM-specific adapters with a single SQL
   adapter plus explicit schema outputs.

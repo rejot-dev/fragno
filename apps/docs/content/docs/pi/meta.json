@@ -1,0 +1,7 @@
+{
+  "title": "Pi",
+  "description": "Workflow-backed Pi agent sessions",
+  "icon": "Workflow",
+  "root": true,
+  "pages": ["index", "custom-workflows"]
+}

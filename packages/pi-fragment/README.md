@@ -58,8 +58,170 @@ Workflows are executed via the workflows fragment durable hook dispatcher. For a
 
 - `agents`: registry of agent definitions (name, system prompt, model, tools)
 - `tools`: registry of tool factories
-- `toolConfig`: optional config shared with tool factories at runtime
-- `defaultSteeringMode`: optional default for agent steering mode
+- `workflows`: custom Pi workflow definitions registered with `.withWorkflow(...)`
+
+## Custom Pi workflows
+
+Pi workflows are durable TypeScript workflows over the workflows fragment. Use stable step names,
+pass message history explicitly between agent runs, and wrap concurrent branches in a named parent
+`ctx.step.do(...)` step so replay can recover the same step tree.
+
+### Sequential research → write → approve
+
+```ts
+import { z } from "zod";
+import { definePiWorkflow } from "@fragno-dev/pi-fragment";
+
+const researchWriteApprove = definePiWorkflow(
+  {
+    name: "research-write-approve",
+    schema: z.object({ topic: z.string() }),
+  },
+  async (ctx) => {
+    const research = await ctx.agent("researcher").prompt("research", {
+      input: { text: `Research ${ctx.params.topic}.` },
+    });
+
+    const draft = await ctx.agent("writer").prompt("draft", {
+      input: { text: "Write a concise answer using the research." },
+      messages: research.messages,
+    });
+
+    const approval = await ctx.waitForEvent("approval", {
+      allowed: ["prompt", "complete"],
+    });
+
+    if (approval.kind === "prompt") {
+      const revision = await ctx.agent("writer").prompt("revise", {
+        input: approval.input,
+        messages: draft.messages,
+      });
+      return { messages: revision.messages };
+    }
+
+    return { messages: draft.messages };
+  },
+);
+```
+
+Register it with the same builder used for agents and tools:
+
+```ts
+const pi = createPi()
+  .withAgent("researcher", researcher)
+  .withAgent("writer", writer)
+  .withWorkflow(researchWriteApprove)
+  .build();
+```
+
+Create a session by selecting the workflow and passing schema-validated input:
+
+```json
+{
+  "workflow": "research-write-approve",
+  "input": { "topic": "durable LLM workflows" }
+}
+```
+
+### Decision tool → branch to an agent
+
+Use `definePiTool(...)` to type structured tool details. Passing the tool to `stopOnTools` makes the
+agent run stop after that handoff tool result, so workflow code can branch on `details`.
+
+```ts
+import { Type } from "typebox";
+import { z } from "zod";
+import { definePiTool, definePiWorkflow } from "@fragno-dev/pi-fragment";
+
+const classifyRequest = definePiTool({
+  name: "classify_request",
+  description: "Classify an incoming support request",
+  parameters: Type.Object({ request: Type.String() }),
+  handoff: true,
+  resultSchema: z.object({
+    kind: z.enum(["bug", "feature", "question"]),
+    confidence: z.number(),
+  }),
+  async execute(_toolCallId, params) {
+    return {
+      content: [{ type: "text", text: "Request classified." }],
+      details: { kind: "question", confidence: 0.9 },
+      terminate: true,
+    };
+  },
+});
+
+const triageWorkflow = definePiWorkflow(
+  { name: "triage-request", schema: z.object({ request: z.string() }) },
+  async (ctx) => {
+    const triage = await ctx.agent("triage").prompt("triage", {
+      input: { text: ctx.params.request },
+      stopOnTools: [classifyRequest],
+    });
+
+    const classification = triage.toolCalls(classifyRequest).latest();
+
+    switch (classification.details.kind) {
+      case "bug":
+        return ctx.agent("debugger").prompt("debug", {
+          input: { text: ctx.params.request },
+          messages: triage.messages,
+        });
+      case "feature":
+        return ctx.agent("planner").prompt("plan", {
+          input: { text: ctx.params.request },
+          messages: triage.messages,
+        });
+      case "question":
+        return ctx.agent("support").prompt("answer", {
+          input: { text: ctx.params.request },
+          messages: triage.messages,
+        });
+    }
+  },
+);
+```
+
+### Parallel reviewers → merge
+
+Put `Promise.all`, `Promise.race`, or `Promise.any` inside a named parent step. Each branch still
+uses its own stable child step name.
+
+```ts
+const parallelReviewWorkflow = definePiWorkflow(
+  { name: "parallel-review", schema: z.object({ draft: z.string() }) },
+  async (ctx) => {
+    const [security, clarity, correctness] = await ctx.step.do("parallel-reviews", async () =>
+      Promise.all([
+        ctx.agent("security-reviewer").prompt("security-review", {
+          input: { text: ctx.params.draft },
+        }),
+        ctx.agent("clarity-reviewer").prompt("clarity-review", {
+          input: { text: ctx.params.draft },
+        }),
+        ctx.agent("correctness-reviewer").prompt("correctness-review", {
+          input: { text: ctx.params.draft },
+        }),
+      ]),
+    );
+
+    return ctx.agent("editor").prompt("merge-reviews", {
+      input: { text: "Merge reviewer feedback into a final answer." },
+      messages: [...security.messages, ...clarity.messages, ...correctness.messages],
+    });
+  },
+);
+```
+
+### Replay and step naming rules
+
+- Step names must be deterministic string literals or derived from already completed durable data.
+  Do not use random IDs, current time, or partial streamed LLM output in step names.
+- Agent calls do not mutate shared workflow-level message state. Pass `messages` into each step and
+  use the returned `messages` when composing later steps.
+- Concurrent combinators must be nested under a parent `ctx.step.do("stable-name", ...)` step.
+- Handoff/decision tools should set `handoff: true` and normally return `terminate: true`; pass them
+  through `stopOnTools` when a workflow branch needs the first structured tool result.
 
 ## Routes
 
