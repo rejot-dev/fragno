@@ -149,7 +149,11 @@ export async function createPiSession(
   context: Readonly<RouterContextProvider>,
   orgId: string,
   payload: {
-    agent: string;
+    workflow: string;
+    input: {
+      agentName: string;
+      systemPrompt?: string;
+    };
     name?: string;
     steeringMode: "all" | "one-at-a-time";
     tags?: string[];

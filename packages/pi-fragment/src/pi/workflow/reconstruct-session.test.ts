@@ -2,46 +2,45 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
+import { createAssistantStreamScript, mockModel } from "../pi-test-utils";
+import type { PiAgentDefinition } from "../types";
+import { runAgentTurn } from "./agent-runner";
+import { createPiAgentStepResult } from "./pi-agent-step";
 import { projectSessionDetailFromWorkflowHistory } from "./reconstruct-session";
 
 type WorkflowHistoryStepRow = Parameters<
   typeof projectSessionDetailFromWorkflowHistory
 >[0]["steps"][number];
 
-const textMessage = (role: "user" | "assistant", text: string): AgentMessage =>
-  ({
-    role,
-    content: [{ type: "text", text }],
-    timestamp: 1,
-  }) as AgentMessage;
-
-const agentRunStep = (
+const agentRunStep = async (
   stepKey: string,
   userText: string,
   assistantText: string,
-): WorkflowHistoryStepRow => {
-  const user = textMessage("user", userText);
-  const assistant = textMessage("assistant", assistantText);
-  const events: AgentEvent[] = [
-    { type: "agent_start" },
-    { type: "turn_start" },
-    { type: "message_start", message: user },
-    { type: "message_end", message: user },
-    { type: "message_start", message: assistant },
-    { type: "message_end", message: assistant },
-    { type: "turn_end", message: assistant, toolResults: [] },
-    { type: "agent_end", messages: [user, assistant] },
-  ];
+  options: { status?: string } = {},
+): Promise<WorkflowHistoryStepRow> => {
+  const { streamFn } = createAssistantStreamScript().text(assistantText).build();
+  const agent: PiAgentDefinition = {
+    name: "default",
+    systemPrompt: "You are helpful.",
+    model: mockModel,
+    tools: [],
+    streamFn,
+  };
 
   return {
     stepKey,
-    result: {
-      type: "agent-run",
-      stopReason: "stop",
-      messages: [user, assistant],
-      events,
-      errorMessage: null,
-    },
+    status: options.status,
+    result: createPiAgentStepResult(
+      await runAgentTurn(
+        { mode: "prompt", promptInput: { text: userText } },
+        {
+          agent,
+          session: { sessionId: "session-1", agentName: "default", workflowName: "test" },
+          turn: { tools: {}, messages: [], turnId: stepKey },
+        },
+        {},
+      ),
+    ),
   };
 };
 
@@ -62,17 +61,12 @@ const contentTexts = (content: unknown) => {
 const messageTexts = (messages: AgentMessage[]) =>
   messages.flatMap((message) => contentTexts("content" in message ? message.content : undefined));
 
-const eventMessageTexts = (events: AgentEvent[]) =>
-  events.flatMap((event) => {
-    if (
-      event.type !== "message_start" &&
-      event.type !== "message_end" &&
-      event.type !== "message_update"
-    ) {
-      return [];
-    }
-    return contentTexts("content" in event.message ? event.message.content : undefined);
-  });
+const eventMessageEndTexts = (events: AgentEvent[]) =>
+  events.flatMap((event) =>
+    event.type === "message_end"
+      ? contentTexts("content" in event.message ? event.message.content : undefined)
+      : [],
+  );
 
 const project = (steps: WorkflowHistoryStepRow[]) =>
   projectSessionDetailFromWorkflowHistory({
@@ -82,12 +76,12 @@ const project = (steps: WorkflowHistoryStepRow[]) =>
   });
 
 describe("projectSessionDetailFromWorkflowHistory", () => {
-  it("rebuilds messages from per-step emissions in command step order", () => {
-    const first = agentRunStep("do:command-0-prompt", "how are you?", "I am well.");
-    const second = agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
-    const third = agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
+  it("rebuilds messages from per-step emissions in history order", async () => {
+    const first = await agentRunStep("do:command-0-prompt", "how are you?", "I am well.");
+    const second = await agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
+    const third = await agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
 
-    expect(messageTexts(project([third, second, first]).messages)).toEqual([
+    expect(messageTexts(project([first, second, third]).messages)).toEqual([
       "how are you?",
       "I am well.",
       "write me a poem",
@@ -97,24 +91,68 @@ describe("projectSessionDetailFromWorkflowHistory", () => {
     ]);
   });
 
-  it("uses command step order instead of database row order for events", () => {
-    const first = agentRunStep("do:command-0-prompt", "how are you?", "I am well.");
-    const second = agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
-    const third = agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
+  it("rebuilds events from per-step emissions in history order", async () => {
+    const first = await agentRunStep("do:command-0-prompt", "how are you?", "I am well.");
+    const second = await agentRunStep("do:command-1-prompt", "write me a poem", "A tiny poem.");
+    const third = await agentRunStep("do:command-2-prompt", "blablba", "Looks like a test.");
 
-    expect(eventMessageTexts(project([third, second, first]).events)).toEqual([
-      "how are you?",
+    expect(eventMessageEndTexts(project([first, second, third]).events)).toEqual([
       "how are you?",
       "I am well.",
-      "I am well.",
-      "write me a poem",
       "write me a poem",
       "A tiny poem.",
-      "A tiny poem.",
-      "blablba",
       "blablba",
       "Looks like a test.",
-      "Looks like a test.",
+    ]);
+  });
+
+  it("reconstructs a custom sequential workflow from completed agent-run results", async () => {
+    const research = await agentRunStep("do:research", "research cats", "cat facts", {
+      status: "completed",
+    });
+    const write = await agentRunStep("do:write", "draft from facts", "final cat answer", {
+      status: "completed",
+    });
+
+    expect(messageTexts(project([research, write]).messages)).toEqual([
+      "research cats",
+      "cat facts",
+      "draft from facts",
+      "final cat answer",
+    ]);
+  });
+
+  it("reconstructs a custom parallel workflow from completed nested agent-run results", async () => {
+    const security = await agentRunStep(
+      "do:parallel-reviews>do:security-review",
+      "review security",
+      "safe",
+      {
+        status: "completed",
+      },
+    );
+    const clarity = await agentRunStep(
+      "do:parallel-reviews>do:clarity-review",
+      "review clarity",
+      "clear",
+      {
+        status: "completed",
+      },
+    );
+    const waiting = await agentRunStep(
+      "do:parallel-reviews>do:waiting-review",
+      "waiting",
+      "ignore",
+      {
+        status: "waiting",
+      },
+    );
+
+    expect(messageTexts(project([security, clarity, waiting]).messages)).toEqual([
+      "review security",
+      "safe",
+      "review clarity",
+      "clear",
     ]);
   });
 });

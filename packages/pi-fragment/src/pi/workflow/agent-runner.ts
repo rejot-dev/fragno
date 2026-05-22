@@ -2,10 +2,15 @@ import { NonRetryableError } from "@fragno-dev/workflows/workflow";
 
 import {
   Agent,
+  type AfterToolCallContext,
+  type AfterToolCallResult,
   type AgentEvent,
   type AgentMessage,
   type AgentState,
   type AgentTool,
+  type BeforeToolCallContext,
+  type BeforeToolCallResult,
+  type ToolExecutionMode,
 } from "@earendil-works/pi-agent-core";
 import type { StopReason } from "@earendil-works/pi-ai";
 
@@ -13,7 +18,7 @@ import type {
   PiAgentDefinition,
   PiPromptInput,
   PiSession,
-  PiToolFactoryContext,
+  PiToolContext,
   PiToolRegistry,
 } from "../types";
 
@@ -42,6 +47,19 @@ export type PiAgentTurnLifecycle = {
   onController?: (controller: PiAgentTurnController) => void;
 };
 
+export type PiAgentTurnBehavior = {
+  beforeToolCall?: (
+    context: BeforeToolCallContext,
+    signal?: AbortSignal,
+  ) => Promise<BeforeToolCallResult | undefined>;
+  afterToolCall?: (
+    context: AfterToolCallContext,
+    signal?: AbortSignal,
+  ) => Promise<AfterToolCallResult | undefined>;
+  stopOnTools?: string[];
+  toolExecution?: ToolExecutionMode;
+};
+
 export type PiAgentTurnOptions = {
   operation: PiAgentTurnOperation;
   session: AgentTurnSessionContext;
@@ -60,6 +78,7 @@ export type PiAgentRunResult = {
 export type AgentTurnSessionContext = {
   sessionId: string;
   agentName: string;
+  workflowName: string;
   systemPrompt?: string;
 };
 
@@ -80,7 +99,7 @@ const resolveTools = async (options: {
     return [];
   }
 
-  const context: PiToolFactoryContext = {
+  const context: PiToolContext = {
     session: options.session,
     turnId: options.turnId,
     toolConfig: options.agent.toolConfig ?? null,
@@ -113,6 +132,7 @@ const createAgentTurnRuntime = async (
   agentDefinition: PiAgentDefinition,
   sessionContext: AgentTurnSessionContext,
   turnContext: AgentTurnContext,
+  behavior: PiAgentTurnBehavior = {},
 ): Promise<Agent> => {
   const {
     systemPrompt,
@@ -131,8 +151,17 @@ const createAgentTurnRuntime = async (
     name: null,
     status: "active",
     agent: sessionContext.agentName,
+    workflowName: sessionContext.workflowName,
     createdAt: now,
     updatedAt: now,
+  };
+
+  const afterToolCall: PiAgentTurnBehavior["afterToolCall"] = async (context, signal) => {
+    const result = await behavior.afterToolCall?.(context, signal);
+    if (!behavior.stopOnTools?.includes(context.toolCall.name)) {
+      return result;
+    }
+    return { ...result, terminate: true };
   };
 
   return new Agent({
@@ -156,6 +185,9 @@ const createAgentTurnRuntime = async (
     thinkingBudgets,
     maxRetryDelayMs,
     sessionId: sessionContext.sessionId,
+    beforeToolCall: behavior.beforeToolCall,
+    afterToolCall,
+    toolExecution: behavior.toolExecution ?? (behavior.stopOnTools ? "sequential" : undefined),
   });
 };
 
@@ -167,8 +199,14 @@ export const runAgentTurn = async (
     turn: AgentTurnContext;
   },
   lifecycle: PiAgentTurnLifecycle = {},
+  behavior: PiAgentTurnBehavior = {},
 ): Promise<PiAgentRunResult> => {
-  const agent = await createAgentTurnRuntime(runtime.agent, runtime.session, runtime.turn);
+  const agent = await createAgentTurnRuntime(
+    runtime.agent,
+    runtime.session,
+    runtime.turn,
+    behavior,
+  );
   const events: AgentEvent[] = [];
   const pendingEventHandlers: Promise<unknown>[] = [];
   const unsubscribe = agent.subscribe((event) => {

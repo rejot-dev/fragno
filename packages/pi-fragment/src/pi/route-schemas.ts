@@ -18,6 +18,7 @@ const sessionBaseSchema = z.object({
   name: z.string().nullable(),
   status: z.enum(SESSION_STATUSES),
   agent: z.string(),
+  workflowName: z.string(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

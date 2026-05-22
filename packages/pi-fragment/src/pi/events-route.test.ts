@@ -4,9 +4,10 @@ import { workflowsSchema } from "@fragno-dev/workflows";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
+import { type PiAgentRunner } from "./factory";
 import { buildHarness, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
-import { PI_WORKFLOW_NAME, type PiAgentRunner } from "./workflow/workflow";
+import { interactiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
 const createDeferred = () => {
   let resolve!: () => void;
@@ -76,6 +77,7 @@ const createConfig = (): PiFragmentConfig => ({
     },
   },
   tools: {},
+  workflows: [interactiveChatWorkflow],
 });
 
 const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 2_000): Promise<T> =>
@@ -137,7 +139,11 @@ describe("pi-fragment /events route", () => {
 
   const createSessionAndStartWorkflow = async () => {
     const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { agent: "default", name: "Pi Session" },
+      body: {
+        workflow: interactiveChatWorkflow.name,
+        name: "Pi Session",
+        input: { agentName: "default" },
+      },
     });
     expect(response.type).toBe("json");
     if (response.type !== "json") {
@@ -145,11 +151,11 @@ describe("pi-fragment /events route", () => {
     }
 
     const sessionId = response.data.id;
-    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
 
     await harness.workflows.runUntilIdle(
       {
-        workflowName: PI_WORKFLOW_NAME,
+        workflowName: interactiveChatWorkflow.name,
         instanceId: sessionId,
         instanceRef: sessionId,
         reason: "create",
@@ -177,7 +183,7 @@ describe("pi-fragment /events route", () => {
       ] as AgentEvent[];
       turnEvents.push(events);
       for (const event of events) {
-        void lifecycle?.onEvent?.(event);
+        await lifecycle?.onEvent?.(event);
       }
       return {
         stopReason: "stop",
@@ -198,7 +204,11 @@ describe("pi-fragment /events route", () => {
 
     try {
       const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-        body: { agent: "default", name: "Pi Session" },
+        body: {
+          workflow: interactiveChatWorkflow.name,
+          name: "Pi Session",
+          input: { agentName: "default" },
+        },
       });
       expect(response.type).toBe("json");
       if (response.type !== "json") {
@@ -206,10 +216,10 @@ describe("pi-fragment /events route", () => {
       }
       const sessionId = response.data.id;
       const runNextTick = async (reason: "create" | "event") => {
-        await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+        await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
         await harness.workflows.runUntilIdle(
           {
-            workflowName: PI_WORKFLOW_NAME,
+            workflowName: interactiveChatWorkflow.name,
             instanceId: sessionId,
             instanceRef: sessionId,
             reason,
@@ -279,7 +289,7 @@ describe("pi-fragment /events route", () => {
 
   it("replays waiting-step emissions after the completed-state snapshot", async () => {
     const { sessionId } = await createSessionAndStartWorkflow();
-    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
 
     const stepKey = "do:command-0-prompt";
     const inFlightEvent = {
@@ -369,18 +379,23 @@ describe("pi-fragment /events route", () => {
     });
 
     const sessionResponse = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { agent: "default", name: "Pi" },
+      body: { workflow: interactiveChatWorkflow.name, name: "Pi", input: { agentName: "default" } },
     });
     expect(sessionResponse.type).toBe("json");
     if (sessionResponse.type !== "json") {
       throw new Error("expected json response");
     }
     const sessionId = sessionResponse.data.id;
-    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
     const instanceRef = sessionId;
 
     await harness.workflows.runUntilIdle(
-      { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "create" },
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        instanceRef,
+        reason: "create",
+      },
       { maxTicks: 1 },
     );
     await harness.fragments.pi.callRoute("POST", "/sessions/:sessionId/command", {
@@ -389,7 +404,12 @@ describe("pi-fragment /events route", () => {
     });
 
     const runPromise = harness.workflows.runUntilIdle(
-      { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "event" },
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        instanceRef,
+        reason: "event",
+      },
       { maxTicks: 1 },
     );
     await enteredRun.promise;
@@ -468,18 +488,23 @@ describe("pi-fragment /events route", () => {
     });
 
     const sessionResponse = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { agent: "default", name: "Pi" },
+      body: { workflow: interactiveChatWorkflow.name, name: "Pi", input: { agentName: "default" } },
     });
     expect(sessionResponse.type).toBe("json");
     if (sessionResponse.type !== "json") {
       throw new Error("expected json response");
     }
     const sessionId = sessionResponse.data.id;
-    await harness.workflows.getStatus(PI_WORKFLOW_NAME, sessionId);
+    await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
     const instanceRef = sessionId;
 
     await harness.workflows.runUntilIdle(
-      { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "create" },
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        instanceRef,
+        reason: "create",
+      },
       { maxTicks: 1 },
     );
 
@@ -489,7 +514,12 @@ describe("pi-fragment /events route", () => {
     });
 
     const runPromise = harness.workflows.runUntilIdle(
-      { workflowName: PI_WORKFLOW_NAME, instanceId: sessionId, instanceRef, reason: "event" },
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        instanceRef,
+        reason: "event",
+      },
       { maxTicks: 1 },
     );
 
@@ -547,7 +577,7 @@ describe("pi-fragment /events route", () => {
       });
       const run = harness.workflows.runUntilIdle(
         {
-          workflowName: PI_WORKFLOW_NAME,
+          workflowName: interactiveChatWorkflow.name,
           instanceId: sessionId,
           instanceRef,
           reason: "event",

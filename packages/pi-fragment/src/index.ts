@@ -22,16 +22,16 @@ export type {
   PiSessionDetail,
   PiSessionEventStreamItem,
   PiSessionStatus,
-  PiToolFactory,
-  PiToolFactoryContext,
+  PiTool,
+  PiToolContext,
+  PiToolDefinition,
+  PiToolResultSchema,
   PiToolRegistry,
-  PiWorkflowsInstanceStatus,
-  PiWorkflowsService,
 } from "./pi/types";
+export { createPiWorkflows } from "./pi/factory";
 export {
-  createPiWorkflows,
-  PI_WORKFLOW_NAME,
-  type PiWorkflowsRegistry,
-} from "./pi/workflow/workflow";
+  interactiveChatWorkflow,
+  interactiveChatWorkflowParamsSchema,
+} from "./pi/workflows/interactive-chat-workflow";
 export { piRoutesFactory } from "./routes";
 export type { FragnoRouteConfig } from "@fragno-dev/core";

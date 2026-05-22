@@ -8,6 +8,7 @@ export const piSchema = schema("pi-fragment", (s) => {
         .addColumn("id", idColumn())
         .addColumn("name", column("string").nullable())
         .addColumn("agent", column("string"))
+        .addColumn("workflowName", column("string"))
         // Possible statuses: active, paused, errored, terminated, complete, waiting.
         .addColumn("status", column("string"))
         .addColumn(

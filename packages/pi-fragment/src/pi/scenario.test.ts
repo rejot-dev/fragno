@@ -5,6 +5,8 @@ import {
   runScenario,
   type WorkflowScenarioStepRow,
 } from "@fragno-dev/workflows/scenario";
+import { Type } from "typebox";
+import { z } from "zod";
 
 import { instantiate } from "@fragno-dev/core";
 
@@ -14,9 +16,11 @@ import { createAssistantMessageEventStream, type AssistantMessage } from "@earen
 import { createPiFragmentClient } from "../client/vanilla";
 import { piRoutesFactory } from "../routes";
 import { piFragmentDefinition } from "./definition";
-import { mockModel } from "./pi-test-utils";
+import { definePiTool, definePiWorkflow } from "./dsl";
+import { createPiWorkflows } from "./factory";
+import { createAssistantStreamScript, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
-import { createPiWorkflows } from "./workflow/workflow";
+import { interactiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
 const createAssistantMessage = (stopReason: AssistantMessage["stopReason"]): AssistantMessage => ({
   role: "assistant",
@@ -37,6 +41,147 @@ const createAssistantMessage = (stopReason: AssistantMessage["stopReason"]): Ass
 });
 
 describe("Pi workflow scenarios", () => {
+  test("stops a workflow agent step after a matching tool call", async () => {
+    const classifyTool = definePiTool({
+      name: "classify",
+      label: "Classify",
+      description: "Classify a user request.",
+      parameters: Type.Object({ request: Type.String() }),
+      async execute(_toolCallId, params) {
+        return {
+          content: [{ type: "text", text: `classified:${params.request}` }],
+          details: { kind: "bug" as const, confidence: 0.91 },
+        };
+      },
+    });
+    const { streamFn } = createAssistantStreamScript()
+      .toolCall("classify", { id: "call-1", args: { request: "broken" } })
+      .build();
+    const handoffOutputSchema = z.object({
+      stopReason: z.literal("toolUse"),
+      messageCount: z.number(),
+      toolCall: z.object({
+        toolName: z.literal("classify"),
+        args: z.object({ request: z.string() }),
+        details: z.object({ kind: z.literal("bug"), confidence: z.number() }),
+        terminate: z.boolean(),
+      }),
+    });
+    const handoffWorkflow = definePiWorkflow(
+      { name: "pi-tool-handoff", schema: z.object({}), outputSchema: handoffOutputSchema },
+      async (ctx) => {
+        const result = await ctx.agent("default").prompt("classify-request", {
+          input: { text: "classify this" },
+          stopOnTools: [classifyTool.name],
+        });
+        if (result.stopReason !== "toolUse") {
+          throw new Error(`Expected toolUse stop reason, received ${result.stopReason}.`);
+        }
+        const toolCall = result.toolCalls(classifyTool.name).latest();
+
+        return handoffOutputSchema.parse({
+          stopReason: result.stopReason,
+          messageCount: result.messages.length,
+          toolCall: {
+            toolName: toolCall.toolName,
+            args: toolCall.args,
+            details: toolCall.details,
+            terminate: toolCall.result.terminate === true,
+          },
+        });
+      },
+    );
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          tools: ["classify"],
+          streamFn,
+        },
+      },
+      tools: { classify: classifyTool },
+      workflows: [handoffWorkflow],
+    };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-tool-handoff",
+        workflows: createPiWorkflows({
+          agents: config.agents,
+          tools: config.tools,
+          workflows: config.workflows,
+        }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ workflow, runners }) => [
+          runners.worker.initializeAndRunUntilIdle({
+            workflow: handoffWorkflow.name,
+            id: "session-tool-handoff",
+            params: {},
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(handoffWorkflow.name, "session-tool-handoff"),
+              steps: await ctx.state.getSteps(handoffWorkflow.name, "session-tool-handoff"),
+            }),
+            assert: ({ status, steps }) => {
+              assert(status.status === "complete");
+              expect(handoffOutputSchema.parse(status.output)).toEqual({
+                stopReason: "toolUse",
+                messageCount: 3,
+                toolCall: {
+                  toolName: "classify",
+                  args: { request: "broken" },
+                  details: { kind: "bug", confidence: 0.91 },
+                  terminate: true,
+                },
+              });
+              expect(status).toMatchObject({
+                status: "complete",
+                output: {
+                  stopReason: "toolUse",
+                  messageCount: 3,
+                  toolCall: {
+                    toolName: "classify",
+                    args: { request: "broken" },
+                    details: { kind: "bug", confidence: 0.91 },
+                    terminate: true,
+                  },
+                },
+              });
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  stepKey: "do:classify-request",
+                  status: "completed",
+                  result: expect.objectContaining({
+                    stopReason: "toolUse",
+                    toolCallResults: [
+                      expect.objectContaining({
+                        toolName: "classify",
+                        args: { request: "broken" },
+                        details: { kind: "bug", confidence: 0.91 },
+                        result: expect.objectContaining({ terminate: true }),
+                      }),
+                    ],
+                  }),
+                }),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   test("aborts an in-flight agent stream", async () => {
     let markStreamStarted!: () => void;
     const streamStarted = new Promise<void>((resolve) => {
@@ -73,11 +218,16 @@ describe("Pi workflow scenarios", () => {
         },
       },
       tools: {},
+      workflows: [interactiveChatWorkflow],
     };
     await runScenario(
       defineScenario({
         name: "pi-agent-abort",
-        workflows: createPiWorkflows({ agents: config.agents, tools: config.tools }),
+        workflows: createPiWorkflows({
+          agents: config.agents,
+          tools: config.tools,
+          workflows: config.workflows,
+        }),
         vars: () => ({
           sessionId: undefined as string | undefined,
           steps: undefined as WorkflowScenarioStepRow[] | undefined,
@@ -107,7 +257,11 @@ describe("Pi workflow scenarios", () => {
           workflow.read({
             read: async () => {
               const session = await clients.user.useCreateSession().mutate({
-                body: { agent: "default", name: "Scenario Session" },
+                body: {
+                  workflow: interactiveChatWorkflow.name,
+                  name: "Scenario Session",
+                  input: { agentName: "default" },
+                },
               });
               assert(session && !Array.isArray(session), "expected session response");
               return session.id;
@@ -115,7 +269,7 @@ describe("Pi workflow scenarios", () => {
             storeAs: "sessionId",
           }),
           runners.agent.runUntilIdle({
-            workflow: "agentLoop",
+            workflow: interactiveChatWorkflow.name,
             instanceId: (ctx) => ctx.vars.sessionId!,
             reason: "create",
           }),
@@ -134,7 +288,7 @@ describe("Pi workflow scenarios", () => {
                 });
               }),
               runners.agent.runUntilIdle({
-                workflow: "agentLoop",
+                workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 reason: "event",
               }),
@@ -147,7 +301,8 @@ describe("Pi workflow scenarios", () => {
             ],
           }),
           workflow.read({
-            read: (ctx) => ctx.state.getSteps("agentLoop", ctx.vars.sessionId ?? ""),
+            read: (ctx) =>
+              ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId ?? ""),
             storeAs: "steps",
           }),
           stores.userSession.waitFor(
