@@ -573,8 +573,8 @@ describe("Workflows Fragment", () => {
       assert(response.type === "json");
       expect(response.data.steps).toHaveLength(2);
       expect(response.data.steps.map((step) => step.stepKey)).toEqual([
-        "do:step-new",
         "do:step-old",
+        "do:step-new",
       ]);
       expect(response.data.events).toHaveLength(1);
       expect(response.data.events[0].type).toBe("latest");

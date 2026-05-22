@@ -95,12 +95,15 @@ function applyTxMutations(
  * Apply mutate-only TxResult service calls using the current UOW.
  * Bigger picture: allows composed service mutations while preserving single-retrieve semantics.
  */
-function applyServiceCalls(uow: IUnitOfWork, calls: AnyTxResult[]) {
+function applyServiceCalls(uow: IUnitOfWork, calls: readonly AnyTxResult[]) {
   for (const call of calls) {
     if (!isMutateOnlyTx(call)) {
       throw new Error("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
     }
-    const { callbacks, schema } = call._internal;
+    const { callbacks, schema, serviceCalls } = call._internal;
+    if (serviceCalls && serviceCalls.length > 0) {
+      applyServiceCalls(uow, serviceCalls);
+    }
     if (!callbacks.mutate) {
       call._internal.restrictedUow.signalReadyForMutation();
       continue;

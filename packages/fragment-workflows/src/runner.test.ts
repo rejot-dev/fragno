@@ -1105,6 +1105,105 @@ describe("Workflows Runner", () => {
     });
   });
 
+  test("can apply nested mutate-only serviceCalls from a workflow step", async () => {
+    const nestedServiceCallsSchema = schema("nested_service_calls_test", (s) =>
+      s.addTable("record", (t) =>
+        t.addColumn("id", idColumn()).addColumn("note", column("string")),
+      ),
+    );
+
+    const nestedServiceCallsFragmentDefinition = defineFragment("nested-service-calls-fragment")
+      .extend(withDatabase(nestedServiceCallsSchema))
+      .providesBaseService(({ defineService }) =>
+        defineService({
+          createRecord: function (values: { id: string; note: string }) {
+            return this.serviceTx(nestedServiceCallsSchema)
+              .mutate(({ uow }) => {
+                uow.create("record", values);
+              })
+              .build();
+          },
+          createRecordThroughNestedServiceCall: function (values: { id: string; note: string }) {
+            const createRecord = this.serviceTx(nestedServiceCallsSchema)
+              .mutate(({ uow }) => {
+                uow.create("record", values);
+              })
+              .build();
+            return this.serviceTx(nestedServiceCallsSchema)
+              .withServiceCalls(() => [createRecord] as const)
+              .mutate(() => {})
+              .build();
+          },
+        }),
+      )
+      .build();
+
+    type NestedServiceCallsFragment = AnyFragnoInstantiatedFragment & {
+      services: {
+        createRecordThroughNestedServiceCall(values: { id: string; note: string }): never;
+      };
+      db: { createUnitOfWork(mode: "read"): ReturnType<typeof harness.db.createUnitOfWork> };
+    };
+    let fragment: NestedServiceCallsFragment | undefined;
+
+    const ParentWorkflow = defineWorkflow(
+      { name: "nested-service-call-parent-workflow" },
+      async (event, step) => {
+        await step.do("create nested record", (tx) => {
+          const currentFragment = fragment;
+          if (!currentFragment) {
+            throw new Error("MISSING_FRAGMENT");
+          }
+          tx.serviceCalls(() => [
+            currentFragment.services.createRecordThroughNestedServiceCall({
+              id: `record-${event.instanceId}`,
+              note: "created",
+            }),
+          ]);
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARENT: ParentWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) =>
+        builder.withFragment(
+          "nestedServiceCalls",
+          instantiate(nestedServiceCallsFragmentDefinition),
+        ),
+    });
+    fragment = harness.fragments.nestedServiceCalls as unknown as NestedServiceCallsFragment;
+
+    const parentId = await harness.createInstance("PARENT");
+    const [parentInstance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(parentInstance).toBeTruthy();
+
+    await harness.tick(buildPayload(parentInstance!, "create"));
+
+    const status = await harness.getStatus("PARENT", parentId);
+    expect(status.error?.message).toBeUndefined();
+    expect(status).toMatchObject({ status: "complete" });
+
+    const records = (
+      await harness.fragments["nestedServiceCalls"].db
+        .createUnitOfWork("read")
+        .forSchema(nestedServiceCallsSchema)
+        .find("record", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(records).toEqual([expect.objectContaining({ id: expect.anything(), note: "created" })]);
+  });
+
   test("marks workflow errored when a step throws a falsy value", async () => {
     const FalsyThrowWorkflow = defineWorkflow(
       { name: "falsy-throw-workflow" },

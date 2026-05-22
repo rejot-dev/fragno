@@ -234,6 +234,33 @@ function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
 }
 
+export const validateWorkflowParams = async (
+  workflowsByName: ReadonlyMap<
+    string,
+    { schema?: WorkflowRegistryEntry["schema"]; workflow?: unknown }
+  >,
+  workflowName: string,
+  params: unknown,
+) => {
+  const entry = workflowsByName.get(workflowName);
+  if (!entry) {
+    throw new Error("WORKFLOW_NOT_FOUND");
+  }
+
+  if (!entry.schema) {
+    return params ?? {};
+  }
+
+  const result = await entry.schema["~standard"].validate(params ?? {});
+  if (result.issues) {
+    const error = new Error("WORKFLOW_PARAMS_INVALID");
+    (error as { issues?: unknown }).issues = result.issues;
+    throw error;
+  }
+
+  return result.value;
+};
+
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
   .withDependencies(({ config }) => {
@@ -309,29 +336,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       getWorkflowEntry(workflowName);
     };
 
-    const validateWorkflowParams = async (workflowName: string, params: unknown) => {
-      const entry = getWorkflowEntry(workflowName);
-
-      if ("workflow" in entry) {
-        return params ?? {};
-      }
-
-      if (!entry.schema) {
-        return params ?? {};
-      }
-
-      const result = await entry.schema["~standard"].validate(params ?? {});
-      if (result.issues) {
-        const error = new Error("WORKFLOW_PARAMS_INVALID");
-        (error as { issues?: unknown }).issues = result.issues;
-        throw error;
-      }
-
-      return result.value;
-    };
-
     return defineService({
-      validateWorkflowParams,
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         assertWorkflowName(workflowName);
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
@@ -457,6 +462,21 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
+      getInstanceStatusById: function (instanceId: string) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("workflow_instance", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", instanceId)),
+            ),
+          )
+          .transformRetrieve(([instance]) => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+            return buildInstanceStatus(instance);
+          })
+          .build();
+      },
       getInstanceMetadata: function (workflowName: string, instanceId: string) {
         assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
@@ -559,24 +579,66 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
                     eb("instanceRef", "=", instanceId),
                   )
-                  .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
               )
               .find("workflow_event", (b) =>
                 b
                   .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
                     eb("instanceRef", "=", instanceId),
                   )
-                  .orderByIndex("idx_workflow_event_instanceRef_createdAt", "desc"),
+                  .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
               )
               .find("workflow_step_emission", (b) =>
                 b
                   .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
                     eb("instanceRef", "=", instanceId),
                   )
-                  .orderByIndex(
-                    "idx_workflow_step_emission_instance_createdAt_sequence_id",
-                    "desc",
-                  ),
+                  .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
+              );
+          })
+          .mutate(({ retrieveResult }) => {
+            const [instance, steps, events, emissions] = retrieveResult;
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            return {
+              steps: steps.map(buildStepHistoryEntry),
+              events: events
+                .filter((event) => !isSystemEventActor(event.actor))
+                .map(buildEventHistoryEntry),
+              emissions: emissions.map(buildEmissionHistoryEntry),
+            };
+          })
+          .build();
+      },
+      listHistoryById: function (instanceId: string) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) => {
+            return uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", instanceId)),
+              )
+              .find("workflow_step", (b) =>
+                b
+                  .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                    eb("instanceRef", "=", instanceId),
+                  )
+                  .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
+              )
+              .find("workflow_event", (b) =>
+                b
+                  .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                    eb("instanceRef", "=", instanceId),
+                  )
+                  .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
+              )
+              .find("workflow_step_emission", (b) =>
+                b
+                  .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                    eb("instanceRef", "=", instanceId),
+                  )
+                  .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
               );
           })
           .mutate(({ retrieveResult }) => {
@@ -800,6 +862,65 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }));
             uow.triggerHook("onWorkflowEnqueued", {
               workflowName,
+              instanceId: instance.id.toString(),
+              instanceRef: String(instance.id),
+              reason: "event",
+            });
+
+            return buildInstanceStatus(instance);
+          })
+          .build();
+      },
+      sendEventById: function (
+        instanceId: string,
+        options: { type: string; payload?: unknown; createdAt?: Date },
+      ) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", instanceId)),
+              )
+              .find("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_instanceRef_status_wakeAt", (eb) =>
+                  eb.and(
+                    eb("instanceRef", "=", instanceId),
+                    eb("status", "=", "waiting"),
+                    eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", eb.now())),
+                  ),
+                ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [instance, steps] }) => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            const currentStatus = buildInstanceStatus(instance).status;
+            if (isTerminalStatus(currentStatus)) {
+              throw new Error("INSTANCE_TERMINAL");
+            }
+
+            uow.create("workflow_event", {
+              instanceRef: instance.id,
+              actor: WORKFLOW_EVENT_ACTOR_USER,
+              type: options.type,
+              payload: options.payload ?? null,
+              ...(options.createdAt ? { createdAt: options.createdAt } : {}),
+              deliveredAt: null,
+              consumedByStepKey: null,
+            });
+
+            WorkflowsLogger.debug("sendEvent wake", () => ({
+              workflowName: instance.workflowName,
+              instanceId,
+              eventType: options.type,
+              status: currentStatus,
+              waitingSteps: steps.filter((step) => step.status === "waiting").length,
+              reason: "event-created",
+            }));
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName: instance.workflowName,
               instanceId: instance.id.toString(),
               instanceRef: String(instance.id),
               reason: "event",
