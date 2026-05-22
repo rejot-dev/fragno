@@ -127,7 +127,7 @@ export class PiFragment extends DurableObject<CloudflareEnv> {
     });
 
     this.initPromise = ctx.blockConcurrencyWhile(async () => {
-      const { createPi, createPiFragment, defineAgent } = await import("@fragno-dev/pi-fragment");
+      const { createPi, createPiFragment } = await import("@fragno-dev/pi-fragment");
       logApiKeyStatus(env);
       const defaultModel = getModel("openai", "gpt-4.1") ?? getModel("openai", "gpt-4.1-mini");
       if (!defaultModel) {
@@ -139,35 +139,33 @@ export class PiFragment extends DurableObject<CloudflareEnv> {
         api: defaultModel.api,
       });
       const pi = createPi()
-        .agent(
-          defineAgent("default", {
-            systemPrompt: "You are helpful.",
-            model: defaultModel,
-            streamFn: createLoggingStreamFn(),
-            onEvent: (event, context) => {
-              if (event.type === "message_start" && event.message.role === "assistant") {
-                console.info("pi-fragment: LLM stream started", {
-                  sessionId: context.sessionId,
-                  turnId: context.turnId,
-                  provider: event.message.provider,
-                  model: event.message.model,
-                  api: event.message.api,
-                });
-              }
-              if (event.type === "message_end" && event.message.role === "assistant") {
-                console.info("pi-fragment: LLM stream ended", {
-                  sessionId: context.sessionId,
-                  turnId: context.turnId,
-                  provider: event.message.provider,
-                  model: event.message.model,
-                  api: event.message.api,
-                  stopReason: event.message.stopReason,
-                  usage: event.message.usage,
-                });
-              }
-            },
-          }),
-        )
+        .withAgent("default", {
+          systemPrompt: "You are helpful.",
+          model: defaultModel,
+          streamFn: createLoggingStreamFn(),
+          onEvent: (event, context) => {
+            if (event.type === "message_start" && event.message.role === "assistant") {
+              console.info("pi-fragment: LLM stream started", {
+                sessionId: context.sessionId,
+                turnId: context.turnId,
+                provider: event.message.provider,
+                model: event.message.model,
+                api: event.message.api,
+              });
+            }
+            if (event.type === "message_end" && event.message.role === "assistant") {
+              console.info("pi-fragment: LLM stream ended", {
+                sessionId: context.sessionId,
+                turnId: context.turnId,
+                provider: event.message.provider,
+                model: event.message.model,
+                api: event.message.api,
+                stopReason: event.message.stopReason,
+                usage: event.message.usage,
+              });
+            }
+          },
+        })
         .build();
       const workflowsRuntime = defaultFragnoRuntime;
       const workflowsConfig: WorkflowsFragmentConfig<typeof pi.workflows> = {
