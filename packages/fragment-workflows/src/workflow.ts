@@ -54,9 +54,14 @@ export type WorkflowStepEventHandler<TPayload = unknown> = (
   event: WorkflowStepEvent<TPayload>,
 ) => void | Promise<void>;
 
-export type WorkflowStepTx = {
+export type WorkflowStepConsumeTx = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+  /** Persist an outbound workflow-authored step emission. */
+  emit: (payload: unknown) => void;
+};
+
+export type WorkflowStepTx = WorkflowStepConsumeTx & {
   onTerminalError: {
     /**
      * Queue DB mutations that should only commit if the enclosing step ends in a terminal error
@@ -65,8 +70,6 @@ export type WorkflowStepTx = {
      */
     mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
   };
-  /** Persist an outbound workflow-authored step emission. */
-  emit: (payload: unknown) => void;
   /**
    * Observe durable workflow events of an exact type while this step is active.
    * Handlers may replay on retry; event.consume() commits only when this step completes.
@@ -86,7 +89,14 @@ export interface WorkflowStep {
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
   waitForEvent<T = unknown>(
     name: string,
-    options: { type: string; timeout?: WorkflowDuration },
+    options: {
+      type: string;
+      timeout?: WorkflowDuration;
+      onConsume?: (
+        tx: WorkflowStepConsumeTx,
+        event: { type: string; payload: Readonly<T>; timestamp: Date },
+      ) => Promise<void> | void;
+    },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }>;
 }
 

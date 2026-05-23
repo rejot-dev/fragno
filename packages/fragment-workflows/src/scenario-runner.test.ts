@@ -15,7 +15,12 @@ import type { WorkflowStepLivePump } from "./runner/step-live-pump";
 import { defineScenario, runScenario } from "./scenario";
 import { workflowsSchema } from "./schema";
 import { createWorkflowsTestRuntime } from "./test";
-import { defineWorkflow, WaitForEventTimeoutError, type InstanceStatus } from "./workflow";
+import {
+  defineWorkflow,
+  WaitForEventTimeoutError,
+  type AnyTxResult,
+  type InstanceStatus,
+} from "./workflow";
 
 describe("Workflows Runner (Scenario DSL)", () => {
   test("rejects read steps that both store and assert", async () => {
@@ -2747,6 +2752,158 @@ describe("Workflows Runner (Scenario DSL)", () => {
             const statuses = rows.map((r) => r.status).sort();
             expect(statuses).toEqual(["done", "waiting"]);
             expect(statuses).not.toContain("error-cleanup");
+          },
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("waitForEvent onConsume can persist data before the wait step completes", async () => {
+    const consumeMutationSchema = schema("wait_for_event_on_consume_test", (s) =>
+      s.addTable("consumed_event", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("approvalId", column("string"))
+          .addColumn("decision", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_consumed_event_approval", ["approvalId"]),
+      ),
+    );
+
+    const consumeMutationFragmentDefinition = defineFragment("wait-for-event-on-consume-fragment")
+      .extend(withDatabase(consumeMutationSchema))
+      .providesService("consumedEvents", ({ defineService }) =>
+        defineService({
+          record: function (approvalId: string, decision: string) {
+            return this.serviceTx(consumeMutationSchema)
+              .mutate(({ uow }) => {
+                uow.create("consumed_event", { approvalId, decision });
+              })
+              .build();
+          },
+        }),
+      )
+      .build();
+
+    let consumeMutationFragment: InstantiatedFragmentFromDefinition<
+      typeof consumeMutationFragmentDefinition
+    >;
+
+    const OnConsumeMutationWorkflow = defineWorkflow(
+      { name: "wait-for-event-on-consume-workflow" },
+      async (_event, step) => {
+        const approval = await step.waitForEvent<{ approvalId: string; decision: string }>(
+          "approval",
+          {
+            type: "approval",
+            onConsume: (tx, event) => {
+              tx.mutate((ctx) => {
+                ctx.forSchema(consumeMutationSchema).create("consumed_event", {
+                  approvalId: event.payload.approvalId,
+                  decision: event.payload.decision,
+                });
+              });
+              tx.serviceCalls(() => [
+                consumeMutationFragment.services.consumedEvents.record(
+                  event.payload.approvalId,
+                  "service-approved",
+                ) as AnyTxResult,
+              ]);
+              tx.emit({
+                type: "approval_consumed",
+                approvalId: event.payload.approvalId,
+                decision: event.payload.decision,
+              });
+            },
+          },
+        );
+        return { decision: approval.payload.decision };
+      },
+    );
+
+    const workflows = { ON_CONSUME_MUTATE: OnConsumeMutationWorkflow };
+    const scenario = defineScenario({
+      name: "wait-for-event-on-consume-mutation",
+      workflows,
+      harness: {
+        configureBuilder: (builder) =>
+          builder.withFragmentFactory(
+            "consumeMutation",
+            consumeMutationFragmentDefinition,
+            ({ adapter }) => {
+              const fragment = instantiate(consumeMutationFragmentDefinition)
+                .withOptions({ databaseAdapter: adapter })
+                .build();
+              consumeMutationFragment = fragment;
+              return fragment;
+            },
+          ),
+      },
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "ON_CONSUME_MUTATE", id: "on-consume-1" }),
+        workflow.event({
+          workflow: "ON_CONSUME_MUTATE",
+          instanceId: "on-consume-1",
+          event: {
+            type: "approval",
+            payload: { approvalId: "approval-1", decision: "approved" },
+          },
+        }),
+        runner.runUntilIdle({
+          workflow: "ON_CONSUME_MUTATE",
+          instanceId: "on-consume-1",
+          reason: "create",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("ON_CONSUME_MUTATE", "on-consume-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: { decision: "approved" } });
+          },
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            return (
+              await ctx.harness.fragments["consumeMutation"].db
+                .createUnitOfWork("read")
+                .forSchema(consumeMutationSchema)
+                .find("consumed_event", (b) => b.whereIndex("primary"))
+                .executeRetrieve()
+            )[0];
+          },
+          assert: (rows) => {
+            expect(rows).toHaveLength(2);
+            expect(rows).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  approvalId: "approval-1",
+                  decision: "approved",
+                }),
+                expect.objectContaining({
+                  approvalId: "approval-1",
+                  decision: "service-approved",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEmissions("ON_CONSUME_MUTATE", "on-consume-1"),
+          assert: (emissions) => {
+            expect(emissions).toContainEqual(
+              expect.objectContaining({
+                stepKey: "waitForEvent:approval",
+                payload: {
+                  type: "approval_consumed",
+                  approvalId: "approval-1",
+                  decision: "approved",
+                },
+              }),
+            );
           },
         }),
       ],

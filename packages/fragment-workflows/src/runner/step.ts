@@ -15,6 +15,7 @@ import type {
   WorkflowStepEmissionsCleanupHookPayload,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowStepConsumeTx,
   WorkflowStepEvent,
   WorkflowStepTx,
 } from "../workflow";
@@ -598,7 +599,14 @@ export class RunnerStep implements WorkflowStep {
 
   async waitForEvent<T = unknown>(
     name: string,
-    options: { type: string; timeout?: WorkflowDuration },
+    options: {
+      type: string;
+      timeout?: WorkflowDuration;
+      onConsume?: (
+        tx: WorkflowStepConsumeTx,
+        event: { type: string; payload: Readonly<T>; timestamp: Date },
+      ) => Promise<void> | void;
+    },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     const identity = this.#createStepIdentity("waitForEvent", name);
     const { stepKey } = identity;
@@ -614,16 +622,79 @@ export class RunnerStep implements WorkflowStep {
 
     const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);
     if (event) {
-      this.#queueEventUpdate(event, {
-        consumedByStepKey: stepKey,
-      });
-      event.consumedByStepKey = stepKey;
-
       const result = {
         type: event.type,
         payload: (event.payload ?? null) as Readonly<T>,
         timestamp: event.createdAt,
       };
+      const txQueue = this.#createStepTxQueue();
+      const livePumpHandle = this.#stepEmissions.getOrCreate(
+        workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
+        () =>
+          createWorkflowStepLivePump({
+            handlerTx: this.#handlerTx,
+            workflowName: this.#workflowName,
+            instanceId: this.#instanceId,
+          }),
+      );
+      livePumpHandle.pump.setHandlerTx(this.#handlerTx);
+      const emissionScope = livePumpHandle.pump.openScope(stepKey, {
+        stepKey,
+        epoch: this.#createEpoch(),
+        queueEventConsumption: () => {},
+        isEventConsumptionQueued: () => false,
+      });
+
+      const consumeTx: WorkflowStepConsumeTx = {
+        serviceCalls: txQueue.tx.serviceCalls,
+        mutate: txQueue.tx.mutate,
+        emit: (payload: unknown) => {
+          WorkflowsLogger.debug("workflow waitForEvent tx.emit", () => ({
+            workflowName: this.#workflowName,
+            instanceId: this.#instanceId,
+            stepKey,
+          }));
+          emissionScope.enqueueOutgoing(payload);
+        },
+      };
+
+      try {
+        await options.onConsume?.(consumeTx, result);
+      } catch (error) {
+        const err = toError(error);
+        this.#upsertStep(stepKey, {
+          name,
+          type: "waitForEvent",
+          status: "errored",
+          attempts: snapshot?.attempts ?? 0,
+          maxAttempts: snapshot?.maxAttempts ?? 1,
+          timeoutMs: snapshot?.timeoutMs ?? null,
+          parentStepKey: identity.parentStepKey,
+          depth: identity.depth,
+          errorName: err.name,
+          errorMessage: err.message,
+          waitEventType: options.type,
+          nextRetryAt: null,
+          wakeAt: null,
+        });
+        throw err;
+      } finally {
+        await emissionScope.flushAndClose();
+        await livePumpHandle.close();
+        this.#queueStepEmissionCleanup({
+          workflowName: this.#workflowName,
+          instanceId: this.#instanceId,
+          instanceRef: this.#state.instance.id.toString(),
+          stepKey,
+          epoch: emissionScope.meta.epoch,
+        });
+      }
+
+      this.#queueEventUpdate(event, {
+        consumedByStepKey: stepKey,
+      });
+      event.consumedByStepKey = stepKey;
+      txQueue.commitSuccess();
 
       this.#upsertStep(stepKey, {
         name,
