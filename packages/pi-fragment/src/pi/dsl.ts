@@ -7,6 +7,7 @@ import {
   type WorkflowsRegistry,
   type WorkflowStep,
   type WorkflowStepConfig,
+  type WorkflowStepConsumeTx,
 } from "@fragno-dev/workflows/workflow";
 import type { TSchema as TypeBoxSchema } from "typebox";
 
@@ -65,6 +66,10 @@ export type PiWorkflowContext<TParams = unknown> = {
     options?: {
       allowed?: PiSessionCommandPayload["kind"][];
       timeout?: WorkflowDuration;
+      onConsume?: (
+        tx: WorkflowStepConsumeTx,
+        command: PiSessionCommandPayload,
+      ) => Promise<void> | void;
     },
   ): Promise<PiSessionCommandPayload>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
@@ -218,6 +223,13 @@ export const compilePiWorkflow = <
             {
               type: "command",
               timeout: options?.timeout,
+              onConsume: options?.onConsume
+                ? (tx, event) => {
+                    if (!options.allowed || options.allowed.includes(event.payload.kind)) {
+                      return options.onConsume?.(tx, event.payload);
+                    }
+                  }
+                : undefined,
             },
           );
           const command = commandEvent.payload;

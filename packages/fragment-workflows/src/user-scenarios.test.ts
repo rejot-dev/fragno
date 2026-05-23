@@ -552,6 +552,54 @@ describe("Workflows Runner (User Scenarios)", () => {
     await runScenario(scenario);
   });
 
+  test("waitForEvent runs onConsume before completing the wait step", async () => {
+    let consumedPayload: { approved: boolean } | undefined;
+    let txWasProvided = false;
+    const ApprovalWorkflow = defineWorkflow(
+      { name: "approval-on-consume-workflow" },
+      async (_event, step) => {
+        const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+          type: "approval",
+          onConsume: (tx, event) => {
+            txWasProvided = typeof tx.mutate === "function";
+            consumedPayload = event.payload;
+          },
+        });
+        return { approved: approval.payload.approved };
+      },
+    );
+
+    const workflows = { APPROVAL: ApprovalWorkflow };
+    const scenario = defineScenario({
+      name: "wait-for-event-on-consume",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "APPROVAL", id: "approval-on-consume-1" }),
+        workflow.event({
+          workflow: "APPROVAL",
+          instanceId: "approval-on-consume-1",
+          event: { type: "approval", payload: { approved: true } },
+        }),
+        runner.runUntilIdle({
+          workflow: "APPROVAL",
+          instanceId: "approval-on-consume-1",
+          reason: "create",
+        }),
+        workflow.assert(async (ctx) => {
+          const status = await ctx.state.getStatus("APPROVAL", "approval-on-consume-1");
+          const events = await ctx.state.getEvents("APPROVAL", "approval-on-consume-1");
+
+          expect(status).toMatchObject({ status: "complete", output: { approved: true } });
+          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:approval");
+          expect(consumedPayload).toEqual({ approved: true });
+          expect(txWasProvided).toBe(true);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("duplicate events with same type are consumed only once per wait step", async () => {
     // report: at-least-once webhook delivery may send the same event multiple times;
     // only one should be consumed by the matching waitForEvent step.

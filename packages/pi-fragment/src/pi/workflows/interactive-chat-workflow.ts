@@ -6,7 +6,6 @@ import { piSchema } from "../../schema";
 import { definePiWorkflow } from "../dsl";
 import type { PiPromptInput, PiSessionCommandPayload } from "../types";
 import type { PiAgentRunMode } from "../workflow/agent-runner";
-import type { PiAgentStepResult } from "../workflow/pi-agent-step";
 
 const WAIT_FOR_COMMAND_TIMEOUT = "1 hour" as const;
 
@@ -134,8 +133,6 @@ const commandPayloadSchema: z.ZodType<PiSessionCommandPayload> = z.discriminated
   z.object({ commandId: z.string(), kind: z.literal("complete"), reason: z.string().optional() }),
 ]);
 
-type CommandStepResult = PiAgentStepResult | { type: "noop" } | { type: "complete" };
-
 const waitStepName = (commandIndex: number) => `wait-command-${commandIndex}`;
 const commandStepName = (commandIndex: number, kind: PiSessionCommandPayload["kind"]) =>
   `command-${commandIndex}-${kind}`;
@@ -176,6 +173,31 @@ export const interactiveChatWorkflow = definePiWorkflow(
       const receivedCommand = commandPayloadSchema.parse(
         await ctx.waitForEvent(waitStepName(commandIndex), {
           timeout: WAIT_FOR_COMMAND_TIMEOUT,
+          onConsume: (tx, payload) => {
+            const consumedCommand = commandPayloadSchema.parse(payload);
+            const normalizedCommand =
+              consumedCommand.kind === "steer"
+                ? ({ ...consumedCommand, kind: "followUp" } as const)
+                : consumedCommand;
+            const consumedCommandRunsAgent =
+              canRunCommand(normalizedCommand, status) &&
+              normalizedCommand.kind !== "complete" &&
+              normalizedCommand.kind !== "abort";
+
+            if (consumedCommandRunsAgent) {
+              return;
+            }
+
+            tx.mutate(({ forSchema }) => {
+              const uow = forSchema(piSchema);
+              uow.update("session", ctx.sessionId, (builder) =>
+                builder.set({
+                  status: normalizedCommand.kind === "complete" ? "complete" : "active",
+                  updatedAt: uow.now(),
+                }),
+              );
+            });
+          },
         }),
       );
 
@@ -189,48 +211,21 @@ export const interactiveChatWorkflow = definePiWorkflow(
       const commandRunsAgent =
         canRunCommand(command, status) && command.kind !== "complete" && command.kind !== "abort";
 
-      let result: CommandStepResult;
-      if (commandRunsAgent) {
-        result = await ctx.agent(params.agentName).run(stepName, {
-          mode: toRunMode(command),
-          input: toPromptInput(command),
-          messages,
-          systemPrompt: params.systemPrompt,
-          turnId: `${ctx.sessionId}:${turn}`,
-        });
-      } else {
-        result = await ctx.step.do(
-          stepName,
-          {
-            retries: { limit: 1, delay: "0 ms", backoff: "constant" },
-          },
-          (tx) => {
-            tx.mutate(({ forSchema }) => {
-              const uow = forSchema(piSchema);
-              uow.update("session", ctx.sessionId, (builder) =>
-                builder.set({
-                  status: command.kind === "complete" ? "complete" : "active",
-                  updatedAt: uow.now(),
-                }),
-              );
-            });
-
-            if (command.kind === "complete") {
-              return { type: "complete" };
-            }
-
-            return { type: "noop" };
-          },
-        );
-      }
-
-      if (result.type === "complete") {
+      if (command.kind === "complete") {
         return { messages };
       }
 
-      if (result.type !== "agent-run") {
+      if (!commandRunsAgent) {
         continue;
       }
+
+      const result = await ctx.agent(params.agentName).run(stepName, {
+        mode: toRunMode(command),
+        input: toPromptInput(command),
+        messages,
+        systemPrompt: params.systemPrompt,
+        turnId: `${ctx.sessionId}:${turn}`,
+      });
 
       messages = [...messages, ...result.messages];
       status = result.stopReason === "error" ? "waiting-to-continue" : "idle";
