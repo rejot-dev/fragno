@@ -147,12 +147,14 @@ function normalizeSqliteError(error: unknown): Error {
     return new Error(typeof error === "string" ? error : "UNKNOWN_DATABASE_ERROR");
   }
 
-  const { code } = error as Record<string, unknown>;
+  const { code, resultCode } = error as Record<string, unknown>;
   const message = error instanceof Error ? error.message : undefined;
 
   if (
     code === "SQLITE_CONSTRAINT_UNIQUE" ||
     code === "SQLITE_CONSTRAINT_PRIMARYKEY" ||
+    resultCode === 2067 ||
+    resultCode === 1555 ||
     message?.startsWith("UNIQUE constraint failed:")
   ) {
     const parsed = message ? parseSqliteUniqueColumns(message) : {};
@@ -160,14 +162,23 @@ function normalizeSqliteError(error: unknown): Error {
   }
   if (
     code === "SQLITE_CONSTRAINT_FOREIGNKEY" ||
+    resultCode === 787 ||
     message?.includes("FOREIGN KEY constraint failed")
   ) {
     return new DatabaseConstraintError({ kind: "foreign-key", cause: error });
   }
-  if (code === "SQLITE_CONSTRAINT_NOTNULL" || message?.includes("NOT NULL constraint failed")) {
+  if (
+    code === "SQLITE_CONSTRAINT_NOTNULL" ||
+    resultCode === 1299 ||
+    message?.includes("NOT NULL constraint failed")
+  ) {
     return new DatabaseConstraintError({ kind: "not-null", cause: error });
   }
-  if (code === "SQLITE_CONSTRAINT_CHECK" || message?.includes("CHECK constraint failed")) {
+  if (
+    code === "SQLITE_CONSTRAINT_CHECK" ||
+    resultCode === 275 ||
+    message?.includes("CHECK constraint failed")
+  ) {
     return new DatabaseConstraintError({ kind: "check", cause: error });
   }
 
