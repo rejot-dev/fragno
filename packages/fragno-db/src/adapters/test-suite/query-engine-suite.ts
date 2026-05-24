@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment";
 import { Cursor } from "../../query/cursor";
 import {
@@ -555,6 +556,46 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           post: { title: "M2M", author: { name: "M2M Author" } },
           tag: { name: "typescript" },
         });
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("enforces unique indexes on create and update", async () => {
+      const expectUniqueConstraintError = async (promise: Promise<unknown>) => {
+        await expect(promise).rejects.toBeInstanceOf(DatabaseConstraintError);
+        await expect(promise).rejects.toMatchObject({ kind: "unique" });
+      };
+
+      const { adapter, close } = await createContext();
+      try {
+        const seed = createSuiteUnitOfWork(adapter, "seed-unique-users");
+        seed.create("users", {
+          id: "unique-user-a",
+          name: "Unique A",
+          email: "unique@example.com",
+          age: 1,
+        });
+        seed.create("users", {
+          id: "unique-user-b",
+          name: "Unique B",
+          email: "unique-b@example.com",
+          age: 2,
+        });
+        await seed.executeMutations();
+
+        const badCreate = createSuiteUnitOfWork(adapter, "bad-unique-create");
+        badCreate.create("users", {
+          id: "unique-user-c",
+          name: "Unique C",
+          email: "unique@example.com",
+          age: 3,
+        });
+        await expectUniqueConstraintError(badCreate.executeMutations());
+
+        const badUpdate = createSuiteUnitOfWork(adapter, "bad-unique-update");
+        badUpdate.update("users", "unique-user-b", (b) => b.set({ email: "unique@example.com" }));
+        await expectUniqueConstraintError(badUpdate.executeMutations());
       } finally {
         await close?.();
       }
