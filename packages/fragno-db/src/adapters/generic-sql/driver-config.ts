@@ -364,4 +364,17 @@ export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
   override normalizeError(error: unknown): Error {
     return normalizeMysqlError(error);
   }
+
+  override extractAffectedRows(result: Record<string, unknown>): bigint {
+    const value = result["numAffectedRows"];
+    if (typeof value === "bigint") {
+      return value;
+    }
+    if (typeof value === "number") {
+      return BigInt(value);
+    }
+    throw new Error(
+      `No affected rows found in result: ${JSON.stringify(result)}. Driver ${this.driverType} is expected to support affected rows.`,
+    );
+  }
 }

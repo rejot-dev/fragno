@@ -394,7 +394,7 @@ describe("serialize", () => {
         const jsonCol = column("json");
         const obj = { key: "value" };
         expect(serialize(obj, jsonCol, "postgresql")).toEqual(obj);
-        expect(serialize(obj, jsonCol, "mysql")).toEqual(obj);
+        expect(serialize(obj, jsonCol, "mysql")).toBe(JSON.stringify(obj));
         expect(serialize(obj, jsonCol, "cockroachdb")).toEqual(obj);
       });
     });

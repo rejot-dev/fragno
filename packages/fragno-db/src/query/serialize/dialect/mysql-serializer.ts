@@ -19,9 +19,10 @@ export class MySQLSerializer extends SQLSerializer {
     super(driverConfig);
   }
 
-  protected serializeDate(value: Date, _col: AnyColumn): Date {
-    void _col;
-    // MySQL handles Date objects natively
+  protected serializeDate(value: Date, col: AnyColumn): Date | string {
+    if (col.type === "date") {
+      return value.toISOString().slice(0, 10);
+    }
     return value;
   }
 
@@ -35,12 +36,13 @@ export class MySQLSerializer extends SQLSerializer {
     return value;
   }
 
-  protected deserializeDate(value: unknown, _col: AnyColumn): Date {
-    void _col;
+  protected deserializeDate(value: unknown, col: AnyColumn): Date {
     if (value instanceof Date) {
+      if (col.type === "date") {
+        return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+      }
       return value;
     }
-    // MySQL returns timestamps/dates as strings
     if (typeof value === "string") {
       return new Date(value);
     }
@@ -72,13 +74,14 @@ export class MySQLSerializer extends SQLSerializer {
     throw new Error(`Cannot deserialize bigint from value: ${value}`);
   }
 
-  protected serializeJson(value: unknown): unknown {
-    // MySQL supports native JSON, pass through as-is
-    return value;
+  protected serializeJson(value: unknown): string {
+    return JSON.stringify(value);
   }
 
   protected deserializeJson(value: unknown): unknown {
-    // MySQL returns parsed JSON objects, pass through as-is
+    if (typeof value === "string") {
+      return JSON.parse(value);
+    }
     return value;
   }
 

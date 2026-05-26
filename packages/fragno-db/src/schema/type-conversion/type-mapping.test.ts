@@ -142,8 +142,8 @@ describe("SQLTypeMapper", () => {
       expect(mapper.getDatabaseType(column("bool"))).toBe("boolean");
     });
 
-    it("should convert string to text", () => {
-      expect(mapper.getDatabaseType(column("string"))).toBe("text");
+    it("should convert string to varchar", () => {
+      expect(mapper.getDatabaseType(column("string"))).toBe("varchar(191)");
     });
 
     it("should convert binary to longblob", () => {
