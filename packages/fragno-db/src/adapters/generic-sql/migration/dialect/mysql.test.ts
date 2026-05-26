@@ -65,7 +65,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null unique, \`name\` text not null, \`email\` text not null)"`,
+        `"create table \`users\` (\`id\` integer not null unique, \`name\` varchar(191) not null, \`email\` varchar(191) not null)"`,
       );
     });
 
@@ -105,7 +105,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`nullable_test\` (\`id\` integer not null unique, \`optional_name\` text, \`optional_age\` integer)"`,
+        `"create table \`nullable_test\` (\`id\` integer not null unique, \`optional_name\` varchar(191), \`optional_age\` integer)"`,
       );
     });
 
@@ -140,9 +140,8 @@ describe("MySQLSQLGenerator", () => {
       };
 
       const sql = compileOne(operation);
-      // Note: MySQL doesn't support defaults on TEXT columns, so 'status' won't have a default
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`defaults_test\` (\`id\` integer not null unique, \`status\` text not null, \`count\` integer default 0 not null, \`is_active\` boolean default true not null)"`,
+        `"create table \`defaults_test\` (\`id\` integer not null unique, \`status\` varchar(191) default 'pending' not null, \`count\` integer default 0 not null, \`is_active\` boolean default true not null)"`,
       );
     });
 
@@ -181,7 +180,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null)"`,
+        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` varchar(191) not null)"`,
       );
     });
 
@@ -197,7 +196,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`_internalId\` bigint not null  auto_increment, \`name\` text not null, constraint \`users__internalId\` primary key (\`_internalId\`))"`,
+        `"create table \`users\` (\`_internalId\` bigint not null  auto_increment, \`name\` varchar(191) not null, constraint \`users__internalId\` primary key (\`_internalId\`))"`,
       );
     });
   });
@@ -248,7 +247,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` add column \`new_column\` text"`,
+        `"alter table \`test_table\` add column \`new_column\` varchar(191)"`,
       );
     });
 
@@ -282,7 +281,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(2);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` add column \`col1\` text"`,
+        `"alter table \`test_table\` add column \`col1\` varchar(191)"`,
       );
       expect(statements[1]).toMatchInlineSnapshot(
         `"alter table \`test_table\` add column \`col2\` integer default 0 not null"`,
@@ -386,7 +385,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text not null"`,
+        `"alter table \`test_table\` modify column \`test_col\` varchar(191) not null"`,
       );
     });
 
@@ -414,7 +413,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text"`,
+        `"alter table \`test_table\` modify column \`test_col\` varchar(191)"`,
       );
     });
 
@@ -442,9 +441,8 @@ describe("MySQLSQLGenerator", () => {
 
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
-      // Note: MySQL doesn't support defaults on TEXT columns
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text not null"`,
+        `"alter table \`test_table\` modify column \`test_col\` varchar(191) default 'default_value' not null"`,
       );
     });
 
@@ -472,7 +470,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text"`,
+        `"alter table \`test_table\` modify column \`test_col\` varchar(191)"`,
       );
     });
 
@@ -789,13 +787,13 @@ describe("MySQLSQLGenerator", () => {
       expect(statements.length).toBe(7);
       expect(statements[0].sql).toBe("SET FOREIGN_KEY_CHECKS = 0");
       expect(statements[1].sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null unique, \`email\` text not null, \`name\` text not null)"`,
+        `"create table \`users\` (\`id\` integer not null unique, \`email\` varchar(191) not null, \`name\` varchar(191) not null)"`,
       );
       expect(statements[2].sql).toMatchInlineSnapshot(
         `"create unique index \`idx_unique_email\` on \`users\` (\`email\`)"`,
       );
       expect(statements[3].sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null, \`content\` text not null)"`,
+        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` varchar(191) not null, \`content\` varchar(191) not null)"`,
       );
       expect(statements[4].sql).toMatchInlineSnapshot(
         `"alter table \`posts\` add column \`published\` boolean default false not null"`,
@@ -872,7 +870,7 @@ describe("MySQLSQLGenerator", () => {
       expect(sql).toContain("`user-name`");
     });
 
-    it("should properly handle string default values (not applied for TEXT columns)", () => {
+    it("should properly escape string default values", () => {
       const operation: MigrationOperation = {
         type: "create-table",
         name: "test",
@@ -889,9 +887,8 @@ describe("MySQLSQLGenerator", () => {
       };
 
       const sql = compileOne(operation);
-      // MySQL doesn't support defaults on TEXT columns, so the default is not applied
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`test\` (\`id\` integer not null unique, \`status\` text not null)"`,
+        `"create table \`test\` (\`id\` integer not null unique, \`status\` varchar(191) default 'it''s pending' not null)"`,
       );
     });
   });
@@ -1021,7 +1018,7 @@ describe("MySQLSQLGenerator", () => {
   });
 
   describe("getDefaultValue", () => {
-    it("should return undefined for TEXT column defaults", () => {
+    it("should return literal value for string column defaults", () => {
       const defaultValue = generator.getDefaultValue({
         name: "description",
         type: "string",
@@ -1030,7 +1027,7 @@ describe("MySQLSQLGenerator", () => {
         default: { value: "default text" },
       });
 
-      expect(defaultValue).toBeUndefined();
+      expect(defaultValue).toBeDefined();
     });
 
     it("should return literal value for non-TEXT columns", () => {

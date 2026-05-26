@@ -45,11 +45,6 @@ export class MySQLSQLGenerator extends SQLGenerator {
       return undefined;
     }
 
-    // MySQL doesn't support default values for TEXT columns
-    if (column.type === "string") {
-      return undefined;
-    }
-
     if ("value" in value && value.value !== undefined) {
       return sql.lit(value.value);
     }

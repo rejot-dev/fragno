@@ -10,7 +10,11 @@ import {
   getTableRelations,
   type Relation,
 } from "../../../schema/create";
-import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
+import {
+  BetterSQLite3DriverConfig,
+  MySQL2DriverConfig,
+  NodePostgresDriverConfig,
+} from "../driver-config";
 import { GenericSQLUOWOperationCompiler } from "./generic-sql-uow-operation-compiler";
 
 function renameRelation(relation: Relation, name: string): Relation {
@@ -1560,6 +1564,150 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.sql).toMatchInlineSnapshot(
         `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "tag"."name" as "tag:name", "tag"."_internalId" as "tag:_internalId", "tag"."_version" as "tag:_version", "post_tags"."id" as "id", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "tags" as "tag" on "post_tags"."tagId" = "tag"."_internalId""`,
       );
+    });
+  });
+
+  describe("MySQL dialect SQL snapshots", () => {
+    const mysqlDriverConfig = new MySQL2DriverConfig();
+
+    test("should compile insert without returning clause", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+
+      const result = compiler.compileCreate({
+        type: "create",
+        schema: testSchema,
+        table: "users",
+        values: {
+          name: "John",
+          email: "john@example.com",
+        },
+        generatedExternalId: "user-123",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"insert into \`users\` (\`id\`, \`name\`, \`email\`) values (?, ?, ?)"`,
+      );
+    });
+
+    test("should compile reference subquery in insert", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+
+      const result = compiler.compileCreate({
+        type: "create",
+        schema: testSchema,
+        table: "posts",
+        values: {
+          title: "My Post",
+          content: "Post content",
+          userId: "user-external-id-123",
+        },
+        generatedExternalId: "post-123",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"insert into \`posts\` (\`id\`, \`title\`, \`content\`, \`userId\`) values (?, ?, ?, (select \`_internalId\` from \`users\` where \`id\` = ? limit ?))"`,
+      );
+    });
+
+    test("should compile update with version check", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+
+      const result = compiler.compileUpdate({
+        type: "update",
+        schema: testSchema,
+        table: "users",
+        id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
+        checkVersion: true,
+        set: { name: "Updated" },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"update \`users\` set \`name\` = ?, \`_version\` = coalesce(\`_version\`, 0) + 1 where (\`users\`.\`id\` = ? and \`users\`.\`_version\` = ?)"`,
+      );
+      expect(result!.expectedAffectedRows).toBe(1n);
+    });
+
+    test("should compile cursor pagination", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+      const cursor = new Cursor({
+        indexName: "idx_users_name",
+        orderDirection: "asc",
+        pageSize: 10,
+        indexValues: { name: "John" },
+      });
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: testSchema,
+        table: testSchema.tables.users,
+        indexName: "idx_users_name",
+        options: {
+          useIndex: "idx_users_name",
+          select: ["id", "name"],
+          orderByIndex: { indexName: "idx_users_name", direction: "asc" },
+          after: cursor,
+          pageSize: 10,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
+      );
+    });
+
+    test("should compile multiple joins", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+
+      const result = compiler.compileFind({
+        type: "find",
+        schema: testSchema,
+        table: testSchema.tables.comments,
+        indexName: "primary",
+        options: {
+          useIndex: "primary",
+          select: ["id", "content"],
+          joins: [
+            {
+              relation: testSchemaRelations.commentsPost,
+              options: {
+                select: ["id", "title"],
+              },
+            },
+            {
+              relation: testSchemaRelations.commentsAuthor,
+              options: {
+                select: ["id", "name"],
+              },
+            },
+          ],
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.sql).toMatchInlineSnapshot(
+        `"select \`post\`.\`id\` as \`post:id\`, \`post\`.\`title\` as \`post:title\`, \`post\`.\`_internalId\` as \`post:_internalId\`, \`post\`.\`_version\` as \`post:_version\`, \`author\`.\`id\` as \`author:id\`, \`author\`.\`name\` as \`author:name\`, \`author\`.\`_internalId\` as \`author:_internalId\`, \`author\`.\`_version\` as \`author:_version\`, \`comments\`.\`id\` as \`id\`, \`comments\`.\`content\` as \`content\`, \`comments\`.\`_internalId\` as \`_internalId\`, \`comments\`.\`_version\` as \`_version\` from \`comments\` left join \`posts\` as \`post\` on \`comments\`.\`postId\` = \`post\`.\`_internalId\` left join \`users\` as \`author\` on \`comments\`.\`authorId\` = \`author\`.\`_internalId\`"`,
+      );
+    });
+
+    test("should compile check operation", () => {
+      const compiler = new GenericSQLUOWOperationCompiler(mysqlDriverConfig);
+
+      const result = compiler.compileCheck({
+        type: "check",
+        schema: testSchema,
+        table: "users",
+        id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.query.sql).toMatchInlineSnapshot(
+        `"select 1 as \`exists\` from \`users\` where (\`users\`.\`id\` = ? and \`users\`.\`_version\` = ?) limit ?"`,
+      );
+      expect(result!.expectedReturnedRows).toBe(1);
     });
   });
 

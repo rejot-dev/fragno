@@ -128,7 +128,7 @@ describe("generateDrizzleSchema", () => {
     it("should generate MySQL schema", () => {
       const generated = generateDrizzleSchema([{ namespace: "test", schema: testSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, int, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, int, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -138,8 +138,8 @@ describe("generateDrizzleSchema", () => {
 
         export const users_test = mysqlTable("users_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
-          email: text("email").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
+          email: varchar("email", { length: 191 }).notNull(),
           age: int("age"),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
@@ -150,8 +150,8 @@ describe("generateDrizzleSchema", () => {
 
         export const posts_test = mysqlTable("posts_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          title: text("title").notNull(),
-          content: text("content").notNull(),
+          title: varchar("title", { length: 191 }).notNull(),
+          content: varchar("content", { length: 191 }).notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: int("viewCount").notNull().default(0),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -492,7 +492,7 @@ describe("generateDrizzleSchema", () => {
         "mysql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -502,14 +502,14 @@ describe("generateDrizzleSchema", () => {
 
         export const users_test = mysqlTable("users_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
         })
 
         export const posts_test = mysqlTable("posts_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          title: text("title").notNull(),
+          title: varchar("title", { length: 191 }).notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
@@ -875,7 +875,7 @@ describe("generateDrizzleSchema", () => {
         "mysql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -885,7 +885,7 @@ describe("generateDrizzleSchema", () => {
 
         export const comment_test = mysqlTable("comment_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          content: text("content").notNull(),
+          content: varchar("content", { length: 191 }).notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)

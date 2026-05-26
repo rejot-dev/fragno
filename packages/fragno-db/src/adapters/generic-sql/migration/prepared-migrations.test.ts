@@ -401,16 +401,34 @@ describe("PreparedMigrations - MySQL", () => {
     expect(statements[2].sql).toMatchInlineSnapshot(`"SET FOREIGN_KEY_CHECKS = 1"`);
   });
 
-  test("returns undefined for TEXT column defaults", () => {
-    const defaultValue = generator.getDefaultValue({
-      name: "description",
-      type: "string",
-      isNullable: true,
-      role: "regular",
-      default: { value: "default text" },
-    });
+  test("compiles string column defaults", () => {
+    const statements = generator.compile(
+      [
+        {
+          type: "create-table",
+          name: "articles",
+          columns: [
+            { name: "id", type: "string", isNullable: false, role: "external-id" },
+            {
+              name: "status",
+              type: "string",
+              isNullable: false,
+              role: "regular",
+              default: { value: "draft" },
+            },
+          ],
+        },
+      ],
+      undefined,
+    );
 
-    expect(defaultValue).toBeUndefined();
+    expect(statements.map((statement) => statement.sql)).toMatchInlineSnapshot(`
+      [
+        "SET FOREIGN_KEY_CHECKS = 0",
+        "create table \`articles\` (\`id\` varchar(191) not null unique, \`status\` varchar(191) default 'draft' not null)",
+        "SET FOREIGN_KEY_CHECKS = 1",
+      ]
+    `);
   });
 });
 
@@ -737,7 +755,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
-      create table \`users_test\` (\`id\` varchar(128) not null unique, \`name\` text not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
+      create table \`users_test\` (\`id\` varchar(128) not null unique, \`name\` varchar(191) not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
 
       alter table \`users_test\` add column \`age\` integer;
 
@@ -745,7 +763,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index \`idx_users_age_idx_test_1c69311d\` on \`users_test\` (\`age\`);
 
-      create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
+      create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` varchar(191) not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
       alter table \`posts_test\` add constraint \`fk_posts_users_posts_authorId_fk_test_96f92407\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
 
@@ -781,7 +799,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
-      alter table \`users_nullable\` modify column \`name\` text;
+      alter table \`users_nullable\` modify column \`name\` varchar(191);
 
       SET FOREIGN_KEY_CHECKS = 1;"
     `);
