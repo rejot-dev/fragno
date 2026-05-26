@@ -5,7 +5,14 @@ import { Kysely, PostgresDialect } from "kysely";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
 import { dbNow } from "../../../query/db-now";
 import { ReferenceSubquery } from "../../../query/value-encoding";
-import { column, FragnoId, idColumn, referenceColumn, schema } from "../../../schema/create";
+import {
+  column,
+  FragnoId,
+  FragnoReference,
+  idColumn,
+  referenceColumn,
+  schema,
+} from "../../../schema/create";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
 
@@ -652,6 +659,100 @@ describe("where-builder", () => {
           col: "posts.userId",
           op: "=",
           val: 12345,
+        });
+      });
+
+      it("should generate subquery for external-only FragnoId reference in where clause", () => {
+        const condition = {
+          type: "compare" as const,
+          a: postsTable.columns.userId,
+          operator: "=" as const,
+          b: FragnoId.fromExternal("user-external-id-456", 0),
+        };
+
+        const result = buildWhere(
+          condition,
+          createMockEB(),
+          new NodePostgresDriverConfig(),
+          undefined,
+          undefined,
+          postsTable,
+        );
+
+        expect(result).toHaveProperty("type", "compare");
+        expect(result).toHaveProperty("col", "posts.userId");
+        expect(result).toHaveProperty("op", "=");
+        const val = (result as unknown as { val: Record<string, unknown> }).val;
+        expect(val).toMatchObject({
+          tableName: "users",
+          _select: "_internalId",
+          _where: { col: "id", op: "=", val: "user-external-id-456" },
+          _limit: 1,
+        });
+      });
+
+      it("should split mixed reference values for in filters", () => {
+        const condition = {
+          type: "compare" as const,
+          a: postsTable.columns.userId,
+          operator: "in" as const,
+          b: [
+            new FragnoId({ externalId: "internal-fragno", internalId: 11n, version: 0 }),
+            FragnoReference.fromInternal(12n),
+            "external-string",
+            FragnoId.fromExternal("external-fragno", 0),
+          ],
+        };
+
+        const result = buildWhere(
+          condition,
+          createMockEB(),
+          new NodePostgresDriverConfig(),
+          undefined,
+          undefined,
+          postsTable,
+        );
+
+        expect(result).toMatchObject({
+          type: "or",
+          conditions: [
+            { type: "compare", col: "posts.userId", op: "in", val: [11n, 12n] },
+            { type: "compare", col: "posts.userId", op: "in" },
+          ],
+        });
+        const externalSubquery = (
+          result as unknown as { conditions: Array<{ val: Record<string, unknown> }> }
+        ).conditions[1]!.val;
+        expect(externalSubquery).toMatchObject({
+          tableName: "users",
+          _select: "_internalId",
+          _where: { col: "id", op: "in", val: ["external-string", "external-fragno"] },
+        });
+      });
+
+      it("should combine mixed reference values with and for not in filters", () => {
+        const condition = {
+          type: "compare" as const,
+          a: postsTable.columns.userId,
+          operator: "not in" as const,
+          b: [FragnoReference.fromInternal(12n), "external-string"],
+        };
+
+        const result = buildWhere(
+          condition,
+          createMockEB(),
+          new NodePostgresDriverConfig(),
+          undefined,
+          undefined,
+          postsTable,
+        );
+
+        expect(result).toMatchObject({
+          type: "and",
+          conditions: [
+            { type: "compare", col: "posts.userId", op: "not in", val: [12n] },
+            { type: "compare", col: "posts.userId", op: "not in" },
+          ],
         });
       });
 

@@ -39,7 +39,7 @@ export class MySQLSerializer extends SQLSerializer {
   protected deserializeDate(value: unknown, col: AnyColumn): Date {
     if (value instanceof Date) {
       if (col.type === "date") {
-        return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+        return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
       }
       return value;
     }

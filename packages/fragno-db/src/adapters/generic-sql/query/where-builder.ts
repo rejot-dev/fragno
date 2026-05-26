@@ -3,7 +3,10 @@ import { sql, type BinaryOperator } from "kysely";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { Condition } from "../../../query/condition-builder";
 import { getDbNowOffsetMs, isDbNow } from "../../../query/db-now";
-import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
+import {
+  createSQLSerializer,
+  type SQLSerializer,
+} from "../../../query/serialize/create-sql-serializer";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import {
   type AnyColumn,
@@ -47,6 +50,127 @@ function fullSQLNameWithAlias(
   return fullSQLName(column, resolver);
 }
 
+function buildReferenceExternalIdSubquery(
+  eb: AnyExpressionBuilder,
+  table: AnyTable,
+  column: AnyColumn,
+  externalIds: string | string[],
+  resolver?: NamingResolver,
+): unknown {
+  const foreignKey = getTableForeignKey(table, column.name);
+  if (!foreignKey) {
+    throw new Error(`Reference column ${column.name} not found in table ${table.name}`);
+  }
+
+  const refTable = foreignKey.referencedTable;
+  const internalIdColumn = refTable.getInternalIdColumn();
+  const idColumn = refTable.getIdColumn();
+  const tableName = resolver ? resolver.getTableName(refTable.name) : refTable.name;
+  const internalIdColumnName = resolver
+    ? resolver.getColumnName(refTable.name, internalIdColumn.name)
+    : internalIdColumn.name;
+  const idColumnName = resolver
+    ? resolver.getColumnName(refTable.name, idColumn.name)
+    : idColumn.name;
+
+  const query = eb.selectFrom(tableName).select(internalIdColumnName);
+  if (Array.isArray(externalIds)) {
+    return query.where(idColumnName, "in", externalIds);
+  }
+  return query.where(idColumnName, "=", externalIds).limit(1);
+}
+
+function getExternalReferenceId(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof FragnoId && value.internalId === undefined) {
+    return value.externalId;
+  }
+  return undefined;
+}
+
+export function serializeReferenceFilterValue(
+  value: unknown,
+  column: AnyColumn,
+  table: AnyTable,
+  eb: AnyExpressionBuilder,
+  serializer: SQLSerializer,
+  resolver?: NamingResolver,
+): unknown {
+  const externalId = getExternalReferenceId(value);
+  if (externalId !== undefined) {
+    return buildReferenceExternalIdSubquery(eb, table, column, externalId, resolver);
+  }
+  if (value instanceof FragnoId && value.internalId !== undefined) {
+    return serializer.serialize(value.internalId, column);
+  }
+  if (value instanceof FragnoReference) {
+    return serializer.serialize(value.internalId, column);
+  }
+  return serializer.serialize(resolveFragnoIdValue(value, column), column);
+}
+
+function constantWhere(eb: AnyExpressionBuilder, value: boolean): AnyExpressionWrapper {
+  return value ? eb(sql`1`, "=", sql`1`) : eb(sql`1`, "=", sql`0`);
+}
+
+export function buildReferenceArrayWhere({
+  values,
+  operator,
+  column,
+  columnSqlName,
+  table,
+  eb,
+  serializer,
+  resolver,
+}: {
+  values: unknown[];
+  operator: "in" | "not in";
+  column: AnyColumn;
+  columnSqlName: string;
+  table: AnyTable;
+  eb: AnyExpressionBuilder;
+  serializer: SQLSerializer;
+  resolver?: NamingResolver;
+}): AnyExpressionWrapper {
+  if (values.length === 0) {
+    return constantWhere(eb, operator === "not in");
+  }
+
+  const internalValues: unknown[] = [];
+  const externalIds: string[] = [];
+  for (const value of values) {
+    const externalId = getExternalReferenceId(value);
+    if (externalId !== undefined) {
+      externalIds.push(externalId);
+      continue;
+    }
+    internalValues.push(
+      serializeReferenceFilterValue(value, column, table, eb, serializer, resolver),
+    );
+  }
+
+  const clauses: AnyExpressionWrapper[] = [];
+  if (internalValues.length > 0) {
+    clauses.push(eb(columnSqlName, operator, internalValues));
+  }
+  if (externalIds.length > 0) {
+    clauses.push(
+      eb(
+        columnSqlName,
+        operator,
+        buildReferenceExternalIdSubquery(eb, table, column, externalIds, resolver),
+      ),
+    );
+  }
+
+  if (clauses.length === 1) {
+    return clauses[0]!;
+  }
+  return operator === "in" ? eb.or(clauses) : eb.and(clauses);
+}
+
 /**
  * Builds a WHERE clause expression from a Condition tree.
  *
@@ -87,72 +211,23 @@ export function buildWhere(
           sqliteStorageMode,
         });
       } else if (left.role === "reference" && table) {
-        // Handle reference columns specially
-        if (typeof val === "string") {
-          // String external ID - create subquery to lookup internal ID
-          const foreignKey = getTableForeignKey(table, left.name);
-          if (foreignKey) {
-            const refTable = foreignKey.referencedTable;
-            const internalIdCol = refTable.getInternalIdColumn();
-            const idCol = refTable.getIdColumn();
-            const physicalTableName = resolver
-              ? resolver.getTableName(refTable.name)
-              : refTable.name;
-
-            val = eb
-              .selectFrom(physicalTableName)
-              .select(
-                resolver
-                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
-                  : internalIdCol.name,
-              )
-              .where(
-                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
-                "=",
-                val,
-              )
-              .limit(1);
-          }
-        } else if (val instanceof FragnoId && val.internalId !== undefined) {
-          // FragnoId with internal ID - use the referenced internal ID, serialized for the driver.
-          val = serializer.serialize(val.internalId, left);
-        } else if (val instanceof FragnoId && val.internalId === undefined) {
-          // FragnoId without internal ID - create subquery using external ID
-          const foreignKey = getTableForeignKey(table, left.name);
-          if (foreignKey) {
-            const refTable = foreignKey.referencedTable;
-            const internalIdCol = refTable.getInternalIdColumn();
-            const idCol = refTable.getIdColumn();
-            const physicalTableName = resolver
-              ? resolver.getTableName(refTable.name)
-              : refTable.name;
-
-            val = eb
-              .selectFrom(physicalTableName)
-              .select(
-                resolver
-                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
-                  : internalIdCol.name,
-              )
-              .where(
-                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
-                "=",
-                val.externalId,
-              )
-              .limit(1);
-          }
-        } else if (val instanceof FragnoReference) {
-          // FragnoReference - use the referenced internal ID, serialized for the driver.
-          val = serializer.serialize(val.internalId, left);
-        } else {
-          // Other values - resolve and serialize
-          const resolvedVal = resolveFragnoIdValue(val, left);
-          val = serializer.serialize(resolvedVal, left);
+        if ((op === "in" || op === "not in") && Array.isArray(val)) {
+          return buildReferenceArrayWhere({
+            values: val,
+            operator: op,
+            column: left,
+            columnSqlName: fullSQLNameWithAlias(left, resolver, table, tableAlias),
+            table,
+            eb,
+            serializer,
+            resolver,
+          });
         }
+        val = serializeReferenceFilterValue(val, left, table, eb, serializer, resolver);
       } else {
-        // Non-reference columns - resolve FragnoId/FragnoReference and serialize
-        const resolvedVal = resolveFragnoIdValue(val, left);
-        val = serializer.serialize(resolvedVal, left);
+        val = Array.isArray(val)
+          ? val.map((item) => serializer.serialize(resolveFragnoIdValue(item, left), left))
+          : serializer.serialize(resolveFragnoIdValue(val, left), left);
       }
     }
 

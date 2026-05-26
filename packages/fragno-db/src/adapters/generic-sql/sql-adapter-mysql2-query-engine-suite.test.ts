@@ -98,8 +98,11 @@ async function createMysqlAdapterContext(
 ): Promise<{ adapter: SqlAdapter; close: () => Promise<void> }> {
   const database = createTestDatabaseName(baseDatabase);
   const adminPool = createPromisePool({ ...baseOptions, database: undefined });
-  await adminPool.query(createDatabaseSql(database, variant));
-  await adminPool.end();
+  try {
+    await adminPool.query(createDatabaseSql(database, variant));
+  } finally {
+    await adminPool.end();
+  }
 
   const poolOptions = { ...baseOptions, ...variant.poolOptions, database };
   const adapter = new SqlAdapter({
@@ -112,8 +115,11 @@ async function createMysqlAdapterContext(
     close: async () => {
       await adapter.close();
       const cleanupPool = createPromisePool({ ...baseOptions, database: undefined });
-      await cleanupPool.query(`DROP DATABASE IF EXISTS \`${escapeIdentifier(database)}\``);
-      await cleanupPool.end();
+      try {
+        await cleanupPool.query(`DROP DATABASE IF EXISTS \`${escapeIdentifier(database)}\``);
+      } finally {
+        await cleanupPool.end();
+      }
     },
   };
 }

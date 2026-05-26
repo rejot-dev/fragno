@@ -46,6 +46,7 @@ import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { buildQueryTreeRowRaw } from "./query-tree";
 import { resolveReferenceSubqueries } from "./reference-resolution";
 import type {
+  InMemoryIndexStore,
   InMemoryNamespaceStore,
   InMemoryRow,
   InMemoryStore,
@@ -870,6 +871,7 @@ const createRow = (
     row[physicalColumnName] = resolveDbNowValue(value, options);
   }
 
+  const previousInternalId = tableStore.nextInternalId;
   const internalId = options.internalIdGeneratorProvided
     ? options.internalIdGenerator()
     : tableStore.nextInternalId;
@@ -882,18 +884,31 @@ const createRow = (
   row[internalIdColumnName] = internalId;
   row[versionColumnName] = row[versionColumnName] ?? 0;
 
-  if (options.enforceConstraints) {
-    enforceOutgoingForeignKeys(namespaceStore, table, row, undefined, resolver);
+  const insertedIndexes: Array<{ indexStore: InMemoryIndexStore; key: readonly unknown[] }> = [];
+
+  try {
+    if (options.enforceConstraints) {
+      enforceOutgoingForeignKeys(namespaceStore, table, row, undefined, resolver);
+    }
+
+    for (const indexStore of tableStore.indexes.values()) {
+      const key = buildIndexKey(table, indexStore.definition, row, resolver);
+      indexStore.index.insert(key, internalId, { enforceUnique: options.enforceConstraints });
+      insertedIndexes.push({ indexStore, key });
+    }
+
+    tableStore.rows.set(internalId, row);
+    return internalId;
+  } catch (error) {
+    for (const { indexStore, key } of insertedIndexes) {
+      indexStore.index.remove(key, internalId);
+    }
+    tableStore.rows.delete(internalId);
+    if (!options.internalIdGeneratorProvided) {
+      tableStore.nextInternalId = previousInternalId;
+    }
+    throw error;
   }
-
-  tableStore.rows.set(internalId, row);
-
-  for (const indexStore of tableStore.indexes.values()) {
-    const key = buildIndexKey(table, indexStore.definition, row, resolver);
-    indexStore.index.insert(key, internalId, { enforceUnique: options.enforceConstraints });
-  }
-
-  return internalId;
 };
 
 const updateRow = (
