@@ -517,7 +517,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         method: "POST",
         path: "/sign-up",
         inputSchema: z.object({
-          email: z.email(),
+          email: z.email().max(191),
           password: z.string().min(8).max(100),
         }),
         outputSchema: z.object({
@@ -575,7 +575,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         method: "POST",
         path: "/sign-in",
         inputSchema: z.object({
-          email: z.email(),
+          email: z.email().max(191),
           password: z.string().min(8).max(100),
           auth: credentialSeedSchema.optional(),
         }),
