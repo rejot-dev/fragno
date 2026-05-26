@@ -38,7 +38,8 @@ export const commentSchema = schema((s) => {
 
 ```typescript
 // Basic types
-column("string");
+column("string"); // Short string, maps to VARCHAR(191)
+column("text"); // Unbounded text; not indexable
 column("integer");
 column("boolean");
 column("timestamp");
@@ -52,6 +53,12 @@ column("binary");
 idColumn(); // Auto-generated CUID primary key
 referenceColumn({ table: "otherTable" }); // Foreign key reference (bigint)
 ```
+
+<Callout title="Not all types are indexable" type="info">
+  Because of limitations in a number of database systems, not all types are indexable. `json`,
+  `binary`, and `text` are not indexable. `column("string")` is intended for indexable short
+  strings, while `column("text")` cannot be indexed.
+</Callout>
 
 ### Modifiers
 

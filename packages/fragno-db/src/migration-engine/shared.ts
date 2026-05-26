@@ -25,6 +25,7 @@ export interface ColumnInfo {
   name: string;
   type:
     | "string"
+    | "text"
     | "integer"
     | "bigint"
     | "decimal"

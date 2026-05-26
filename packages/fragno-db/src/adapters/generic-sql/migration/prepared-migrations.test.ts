@@ -89,7 +89,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
 
     expect(statements.length).toBe(1);
     expect(statements[0].sql).toMatchInlineSnapshot(
-      `"create table "users_test" ("id" text not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
+      `"create table "users_test" ("id" varchar(191) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
     );
   });
 
@@ -473,7 +473,7 @@ describe("PreparedMigrations - Integration", () => {
     expect(transactionStarted).toBe(true);
     expect(executedStatements.length).toBe(2);
     expect(executedStatements[0]).toMatchInlineSnapshot(
-      `"create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
+      `"create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
     );
     expect(executedStatements[1]).toMatchInlineSnapshot(
       `"insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1')"`,
@@ -627,7 +627,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 2, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "users_test" add column "age" integer;
 
@@ -649,7 +649,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "users_test" add column "age" integer;
 
@@ -657,7 +657,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
-      create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
 
@@ -695,7 +695,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(2, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "posts_test" ("id" varchar(128) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
 
@@ -857,7 +857,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     const sql = prepared.getSQL(0, 1, { updateVersionInMigration: false });
     expect(sql).not.toContain("fragno_db_settings");
     expect(sql).toMatchInlineSnapshot(
-      `"create table "users_test" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"`,
+      `"create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"`,
     );
   });
 });

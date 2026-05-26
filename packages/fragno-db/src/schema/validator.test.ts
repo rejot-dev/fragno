@@ -123,7 +123,11 @@ describe("table validation", () => {
     const users = testSchema.tables.users;
     const posts = testSchema.tables.posts;
 
+    const longString = "a".repeat(192);
     const longId = "a".repeat(129);
+    const longNameResult = users["~standard"].validate({ id: "user-1", name: longString });
+    expect((await getIssues(longNameResult)).length).toBeGreaterThan(0);
+
     const longTitleResult = posts["~standard"].validate({
       id: "post-1",
       userId: "user-1",

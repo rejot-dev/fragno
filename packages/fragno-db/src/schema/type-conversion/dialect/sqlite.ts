@@ -44,6 +44,10 @@ export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
     return "text";
   }
 
+  protected mapText(): SQLiteDatabaseType {
+    return "text";
+  }
+
   protected mapVarchar(_length: number): SQLiteDatabaseType {
     // SQLite doesn't support varchar - convert to text
     return "text";

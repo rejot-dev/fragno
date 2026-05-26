@@ -146,6 +146,14 @@ function getPrismaScalarType(
 
   switch (column.type) {
     case "string":
+      if (provider === "postgresql" || provider === "mysql") {
+        return { type: "String", nativeType: "@db.VarChar(191)" };
+      }
+      return { type: "String" };
+    case "text":
+      if (provider === "postgresql" || provider === "mysql") {
+        return { type: "String", nativeType: "@db.Text" };
+      }
       return { type: "String" };
     case "integer":
       return { type: "Int" };

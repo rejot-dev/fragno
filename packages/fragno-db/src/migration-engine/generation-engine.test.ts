@@ -112,7 +112,7 @@ describe("generateSchemaArtifacts - sql", () => {
 
     const schema3: AnySchema = schema("schema3", (s) => {
       return s.addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       });
     });
 
@@ -295,7 +295,7 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test-db"."users" ("id" varchar(128) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "test-db"."users" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);
@@ -316,7 +316,7 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV2[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      alter table "test-db"."users" add column "email" text;
+      alter table "test-db"."users" add column "email" varchar(191);
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';"
     `);

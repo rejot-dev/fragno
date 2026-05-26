@@ -113,7 +113,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
             .addColumn("id", idColumn())
             .addColumn("userId", "string")
             .addColumn("title", "string")
-            .addColumn("content", "string")
+            .addColumn("content", "text")
             .createIndex("idx_user", ["userId"]),
         ),
     );
@@ -320,7 +320,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("postId", "string")
-            .addColumn("content", "string")
+            .addColumn("content", "text")
             .createIndex("idx_post", ["postId"]),
         ),
     );
@@ -776,7 +776,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
         t
           .addColumn("id", idColumn())
           .addColumn("key", "string")
-          .addColumn("value", "string")
+          .addColumn("value", "text")
           .createIndex("unique_key", ["key"], { unique: true }),
       ),
     );

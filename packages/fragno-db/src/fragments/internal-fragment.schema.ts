@@ -11,7 +11,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("key", column("string"))
-        .addColumn("value", column("string"))
+        .addColumn("value", column("text"))
         .createIndex("unique_key", ["key"], { unique: true });
     })
     .addTable("fragno_hooks", (t) => {
@@ -25,7 +25,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
         .addColumn("maxAttempts", column("integer").defaultTo(5))
         .addColumn("lastAttemptAt", column("timestamp").nullable())
         .addColumn("nextRetryAt", column("timestamp").nullable())
-        .addColumn("error", column("string").nullable())
+        .addColumn("error", column("text").nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),

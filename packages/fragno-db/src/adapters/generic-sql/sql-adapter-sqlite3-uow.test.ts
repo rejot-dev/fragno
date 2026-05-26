@@ -36,7 +36,7 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("id", idColumn())
           .addColumn("user_id", referenceColumn({ table: "users" }))
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .createIndex("posts_user_idx", ["user_id"]);
       })
       .addTable("optional_emails", (t) => {
@@ -51,7 +51,7 @@ describe("SqlAdapter SQLite", () => {
           .addColumn("id", idColumn())
           .addColumn("post_id", referenceColumn({ table: "posts" }))
           .addColumn("user_id", referenceColumn({ table: "users" }))
-          .addColumn("text", column("string"))
+          .addColumn("text", column("text"))
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
       });

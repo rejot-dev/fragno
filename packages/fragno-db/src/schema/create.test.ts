@@ -20,6 +20,32 @@ import {
 } from "./create";
 
 describe("create", () => {
+  it("allows string columns in indexes and rejects text columns", () => {
+    expect(() =>
+      schema("indexed_strings", (s) =>
+        s.addTable("users", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("users_email_idx", ["email"]),
+        ),
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      schema("indexed_text", (s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("body", column("text"))
+            .createIndex("posts_body_idx", ["body"]),
+        ),
+      ),
+    ).toThrow(
+      'Index "posts_body_idx" references non-indexable column "body" of type "text". Use column("string") for indexed strings.',
+    );
+  });
+
   it("should create a table with columns using callback pattern", () => {
     const userSchema = schema("user", (s) => {
       return s.addTable("users", (t) => {
@@ -59,7 +85,7 @@ describe("create", () => {
           return t
             .addColumn("id", idColumn())
             .addColumn("title", column("string"))
-            .addColumn("content", column("string"));
+            .addColumn("content", column("text"));
         });
     });
 
@@ -694,7 +720,7 @@ describe("SchemaBuilder with existing schema", () => {
 
     const extendedSchema = new SchemaBuilder(existingSchema.name, existingSchema)
       .addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       })
       .build();
 
@@ -792,7 +818,7 @@ describe("SchemaBuilder with existing schema", () => {
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       })
       .build();
 
@@ -820,7 +846,7 @@ describe("SchemaBuilder with existing schema", () => {
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       })
       .build();
 
@@ -880,7 +906,7 @@ describe("SchemaBuilder with existing schema", () => {
 
     const schema3 = schema("schema3", (s) => {
       return s.addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       });
     });
 

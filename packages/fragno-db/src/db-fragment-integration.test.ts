@@ -28,7 +28,7 @@ describe.sequential("Database Fragment Integration", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("user_id", referenceColumn({ table: "users" }))
-          .addColumn("bio", column("string"))
+          .addColumn("bio", column("text"))
           .createIndex("profile_user_idx", ["user_id"]);
       });
   });

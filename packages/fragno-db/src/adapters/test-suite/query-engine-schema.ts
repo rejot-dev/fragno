@@ -27,7 +27,7 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("id", idColumn())
         .addColumn("user_id", referenceColumn({ table: "users" }).nullable())
         .addColumn("title", column("string"))
-        .addColumn("content", column("string"))
+        .addColumn("content", column("text"))
         .addColumn(
           "created_at",
           column("timestamp").defaultTo((b) => b.now()),
@@ -40,7 +40,7 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("id", idColumn())
         .addColumn("post_id", referenceColumn({ table: "posts" }))
         .addColumn("user_id", referenceColumn({ table: "users" }))
-        .addColumn("text", column("string"))
+        .addColumn("text", column("text"))
         .createIndex("comments_post_idx", ["post_id"])
         .createIndex("comments_user_idx", ["user_id"]),
     )

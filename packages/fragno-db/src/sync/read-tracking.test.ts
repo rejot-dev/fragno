@@ -43,7 +43,7 @@ const testSchema = schema("test", (s) =>
         .addColumn("id", idColumn())
         .addColumn("post_id", referenceColumn({ table: "posts" }))
         .addColumn("commenter_id", referenceColumn({ table: "users" }))
-        .addColumn("text", column("string"))
+        .addColumn("text", column("text"))
         .createIndex("comments_post_idx", ["post_id"])
         .createIndex("comments_commenter_idx", ["commenter_id"]),
     ),

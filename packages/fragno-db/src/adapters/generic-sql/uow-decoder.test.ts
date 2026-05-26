@@ -23,7 +23,7 @@ describe("UnitOfWorkDecoder", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .createIndex("idx_title", ["title"]);
       });
   });

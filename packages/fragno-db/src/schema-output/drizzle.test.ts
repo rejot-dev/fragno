@@ -20,7 +20,7 @@ describe("generateDrizzleSchema", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .createIndex("idx_user", ["userId"])
@@ -44,8 +44,8 @@ describe("generateDrizzleSchema", () => {
       "postgresql",
     );
 
-    expect(generated).toContain(`name: text("name")`);
-    expect(generated).not.toContain(`name: text("name").notNull()`);
+    expect(generated).toContain(`name: varchar("name", { length: 191 })`);
+    expect(generated).not.toContain(`name: varchar("name", { length: 191 }).notNull()`);
   });
 
   describe("postgresql", () => {
@@ -55,7 +55,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, integer, bigserial, uniqueIndex, index, text, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -67,8 +67,8 @@ describe("generateDrizzleSchema", () => {
 
         export const users_test = schema_test.table("users", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
-          email: text("email").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
+          email: varchar("email", { length: 191 }).notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -79,7 +79,7 @@ describe("generateDrizzleSchema", () => {
 
         export const posts_test = schema_test.table("posts", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          title: text("title").notNull(),
+          title: varchar("title", { length: 191 }).notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
@@ -128,7 +128,7 @@ describe("generateDrizzleSchema", () => {
     it("should generate MySQL schema", () => {
       const generated = generateDrizzleSchema([{ namespace: "test", schema: testSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, int, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, int, bigint, uniqueIndex, index, text, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -151,7 +151,7 @@ describe("generateDrizzleSchema", () => {
         export const posts_test = mysqlTable("posts_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
-          content: varchar("content", { length: 191 }).notNull(),
+          content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: int("viewCount").notNull().default(0),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -426,7 +426,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -438,14 +438,14 @@ describe("generateDrizzleSchema", () => {
 
         export const users_test = schema_test.table("users", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const posts_test = schema_test.table("posts", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          title: text("title").notNull(),
+          title: varchar("title", { length: 191 }).notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -651,7 +651,7 @@ describe("generateDrizzleSchema", () => {
       // Should have schema export
       expect(generated).toContain("export const test_schema = {");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, bigserial, integer, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigserial, integer, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -663,14 +663,14 @@ describe("generateDrizzleSchema", () => {
 
         export const categories_test = schema_test.table("categories", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const products_test = schema_test.table("products", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -734,7 +734,7 @@ describe("generateDrizzleSchema", () => {
       expect(fkMatches).toHaveLength(1);
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -746,7 +746,7 @@ describe("generateDrizzleSchema", () => {
 
         export const category_test = schema_test.table("category", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -811,7 +811,7 @@ describe("generateDrizzleSchema", () => {
       return s.addTable("comment", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("parentId", referenceColumn({ table: "comment" }).nullable())
           .createIndex("idx_parent", ["parentId"]);
       });
@@ -875,7 +875,7 @@ describe("generateDrizzleSchema", () => {
         "mysql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -885,7 +885,7 @@ describe("generateDrizzleSchema", () => {
 
         export const comment_test = mysqlTable("comment_test", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          content: varchar("content", { length: 191 }).notNull(),
+          content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
@@ -1048,7 +1048,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain('schema_my_fragment_v2.table("posts"');
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, integer, bigserial, uniqueIndex, index, text, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -1060,8 +1060,8 @@ describe("generateDrizzleSchema", () => {
 
         export const users_my_fragment_v2 = schema_my_fragment_v2.table("users", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          name: text("name").notNull(),
-          email: text("email").notNull(),
+          name: varchar("name", { length: 191 }).notNull(),
+          email: varchar("email", { length: 191 }).notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -1072,7 +1072,7 @@ describe("generateDrizzleSchema", () => {
 
         export const posts_my_fragment_v2 = schema_my_fragment_v2.table("posts", {
           id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-          title: text("title").notNull(),
+          title: varchar("title", { length: 191 }).notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),

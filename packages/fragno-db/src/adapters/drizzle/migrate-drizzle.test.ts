@@ -20,7 +20,7 @@ describe("generateSchema and migrate", () => {
           .addColumn("email", column("string"))
           .addColumn("age", column("integer").nullable())
           .addColumn("isActive", column("bool").defaultTo(true))
-          .addColumn("bio", column("string").nullable())
+          .addColumn("bio", column("text").nullable())
           .addColumn(
             "createdAt",
             column("timestamp").defaultTo((b) => b.now()),
@@ -38,8 +38,8 @@ describe("generateSchema and migrate", () => {
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
           .addColumn("slug", column("varchar(255)"))
-          .addColumn("content", column("string"))
-          .addColumn("excerpt", column("string").nullable())
+          .addColumn("content", column("text"))
+          .addColumn("excerpt", column("text").nullable())
           .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("likeCount", column("bigint").defaultTo(9999999999999999n))
@@ -60,7 +60,7 @@ describe("generateSchema and migrate", () => {
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("postId", referenceColumn({ table: "posts" }))
           .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("parentId", referenceColumn({ table: "comments" }).nullable())
@@ -79,7 +79,7 @@ describe("generateSchema and migrate", () => {
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
           .addColumn("slug", column("varchar(100)"))
-          .addColumn("description", column("string").nullable())
+          .addColumn("description", column("text").nullable())
           .addColumn("color", column("varchar(7)").nullable())
           .addColumn("usageCount", column("bigint").defaultTo(0n))
           .createIndex("idx_tags_slug", ["slug"], { unique: true })
@@ -124,7 +124,7 @@ describe("generateSchema and migrate", () => {
     expect(migrationStatements.join("\n")).toMatchInlineSnapshot(`
       "CREATE TABLE "fragno_db_settings" (
       	"id" varchar(128) NOT NULL,
-      	"key" text NOT NULL,
+      	"key" varchar(191) NOT NULL,
       	"value" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
@@ -133,17 +133,17 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "fragno_hooks" (
       	"id" varchar(128) NOT NULL,
-      	"namespace" text NOT NULL,
-      	"hookName" text NOT NULL,
+      	"namespace" varchar(191) NOT NULL,
+      	"hookName" varchar(191) NOT NULL,
       	"payload" json NOT NULL,
-      	"status" text NOT NULL,
+      	"status" varchar(191) NOT NULL,
       	"attempts" integer DEFAULT 0 NOT NULL,
       	"maxAttempts" integer DEFAULT 5 NOT NULL,
       	"lastAttemptAt" timestamp,
       	"nextRetryAt" timestamp,
       	"error" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"nonce" text NOT NULL,
+      	"nonce" varchar(191) NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
@@ -151,8 +151,8 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "fragno_db_outbox" (
       	"id" varchar(128) NOT NULL,
-      	"versionstamp" text NOT NULL,
-      	"uowId" text NOT NULL,
+      	"versionstamp" varchar(191) NOT NULL,
+      	"uowId" varchar(191) NOT NULL,
       	"payload" json NOT NULL,
       	"refMap" json,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
@@ -163,13 +163,13 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "fragno_db_outbox_mutations" (
       	"id" varchar(128) NOT NULL,
-      	"entryVersionstamp" text NOT NULL,
-      	"mutationVersionstamp" text NOT NULL,
-      	"uowId" text NOT NULL,
-      	"schema" text NOT NULL,
-      	"table" text NOT NULL,
-      	"externalId" text NOT NULL,
-      	"op" text NOT NULL,
+      	"entryVersionstamp" varchar(191) NOT NULL,
+      	"mutationVersionstamp" varchar(191) NOT NULL,
+      	"uowId" varchar(191) NOT NULL,
+      	"schema" varchar(191) NOT NULL,
+      	"table" varchar(191) NOT NULL,
+      	"externalId" varchar(191) NOT NULL,
+      	"op" varchar(191) NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
@@ -178,12 +178,12 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "fragno_db_sync_requests" (
       	"id" varchar(128) NOT NULL,
-      	"requestId" text NOT NULL,
-      	"status" text NOT NULL,
+      	"requestId" varchar(191) NOT NULL,
+      	"status" varchar(191) NOT NULL,
       	"confirmedCommandIds" json NOT NULL,
-      	"conflictCommandId" text,
-      	"baseVersionstamp" text,
-      	"lastVersionstamp" text,
+      	"conflictCommandId" varchar(191),
+      	"baseVersionstamp" varchar(191),
+      	"lastVersionstamp" varchar(191),
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
@@ -192,8 +192,8 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "test"."users" (
       	"id" varchar(128) NOT NULL,
-      	"name" text NOT NULL,
-      	"email" text NOT NULL,
+      	"name" varchar(191) NOT NULL,
+      	"email" varchar(191) NOT NULL,
       	"age" integer,
       	"isActive" boolean DEFAULT true NOT NULL,
       	"bio" text,
@@ -206,7 +206,7 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "test"."posts" (
       	"id" varchar(128) NOT NULL,
-      	"title" text NOT NULL,
+      	"title" varchar(191) NOT NULL,
       	"slug" varchar(255) NOT NULL,
       	"content" text NOT NULL,
       	"excerpt" text,
@@ -240,7 +240,7 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "test"."tags" (
       	"id" varchar(128) NOT NULL,
-      	"name" text NOT NULL,
+      	"name" varchar(191) NOT NULL,
       	"slug" varchar(100) NOT NULL,
       	"description" text,
       	"color" varchar(7),

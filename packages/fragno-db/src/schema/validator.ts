@@ -27,11 +27,16 @@ type ValidationClasses = {
 };
 
 const defaultUnknownKeysMode: TableUnknownKeysMode = "strip";
+const defaultStringMaxLength = 191;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const parseVarcharLength = (type: string): number | undefined => {
+const getStringMaxLength = (type: string): number | undefined => {
+  if (type === "string") {
+    return defaultStringMaxLength;
+  }
+
   if (!type.startsWith("varchar(") || !type.endsWith(")")) {
     return;
   }
@@ -57,7 +62,7 @@ const validateColumnValue = (
 ): string | undefined => {
   if (col.role === "external-id") {
     if (value instanceof classes.FragnoId) {
-      const maxLength = parseVarcharLength(col.type);
+      const maxLength = getStringMaxLength(col.type);
       if (maxLength !== undefined && value.externalId.length > maxLength) {
         return `String must have at most ${maxLength} characters`;
       }
@@ -65,7 +70,7 @@ const validateColumnValue = (
     }
 
     if (typeof value === "string") {
-      const maxLength = parseVarcharLength(col.type);
+      const maxLength = getStringMaxLength(col.type);
       if (maxLength !== undefined && value.length > maxLength) {
         return `String must have at most ${maxLength} characters`;
       }
@@ -88,12 +93,12 @@ const validateColumnValue = (
     return "Expected reference (string, bigint, FragnoId, or FragnoReference)";
   }
 
-  if (col.type === "string" || col.type.startsWith("varchar(")) {
+  if (col.type === "string" || col.type === "text" || col.type.startsWith("varchar(")) {
     if (typeof value !== "string") {
       return "Expected string";
     }
 
-    const maxLength = parseVarcharLength(col.type);
+    const maxLength = getStringMaxLength(col.type);
     if (maxLength !== undefined && value.length > maxLength) {
       return `String must have at most ${maxLength} characters`;
     }

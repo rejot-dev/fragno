@@ -529,7 +529,7 @@ describe("FindBuilder", () => {
           t
             .addColumn("id", idColumn())
             .addColumn("postId", column("string"))
-            .addColumn("text", "string")
+            .addColumn("text", "text")
             .createIndex("idx_post", ["postId"]),
         ),
     );
@@ -572,7 +572,7 @@ describe("IndexedConditionBuilder", () => {
         .addColumn("email", column("string"))
         .addColumn("name", column("string"))
         .addColumn("age", column("integer").nullable())
-        .addColumn("bio", column("string").nullable()) // Not indexed
+        .addColumn("bio", column("text").nullable()) // Not indexed
         .createIndex("_primary", ["id"], { unique: true })
         .createIndex("idx_email", ["email"], { unique: true })
         .createIndex("idx_name_age", ["name", "age"]),
@@ -720,7 +720,7 @@ describe("IndexedConditionBuilder", () => {
             .addColumn("email", column("string"))
             .addColumn("name", column("string"))
             .addColumn("age", column("integer").nullable())
-            .addColumn("bio", column("string").nullable()) // Not indexed!
+            .addColumn("bio", column("text").nullable()) // Not indexed!
             .createIndex("idx_email", ["email"], { unique: true })
             .createIndex("idx_name_age", ["name", "age"]),
         ),
@@ -1027,7 +1027,7 @@ describe("Phase promises with multiple views", () => {
 
     const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
-        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "text"),
       ),
     );
 
@@ -1143,7 +1143,7 @@ describe("Phase promises with multiple views", () => {
 
     const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
-        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "text"),
       ),
     );
 
@@ -1198,7 +1198,7 @@ describe("Phase promises with multiple views", () => {
 
     const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
-        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "text"),
       ),
     );
 

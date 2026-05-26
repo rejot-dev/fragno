@@ -430,8 +430,8 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbOutbox {
         id String @unique @default(cuid()) @db.VarChar(128)
-        versionstamp String
-        uowId String
+        versionstamp String @db.VarChar(191)
+        uowId String @db.VarChar(191)
         payload Json @db.Json
         refMap Json? @db.Json
         createdAt DateTime @default(now())
@@ -444,13 +444,13 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbOutboxMutations {
         id String @unique @default(cuid()) @db.VarChar(128)
-        entryVersionstamp String
-        mutationVersionstamp String
-        uowId String
-        schema String
-        table String
-        externalId String
-        op String
+        entryVersionstamp String @db.VarChar(191)
+        mutationVersionstamp String @db.VarChar(191)
+        uowId String @db.VarChar(191)
+        schema String @db.VarChar(191)
+        table String @db.VarChar(191)
+        externalId String @db.VarChar(191)
+        op String @db.VarChar(191)
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
@@ -462,8 +462,8 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbSettings {
         id String @unique @default(cuid()) @db.VarChar(128)
-        key String
-        value String
+        key String @db.VarChar(191)
+        value String @db.Text
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@unique([key], map: "unique_key")
@@ -472,12 +472,12 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbSyncRequests {
         id String @unique @default(cuid()) @db.VarChar(128)
-        requestId String
-        status String
+        requestId String @db.VarChar(191)
+        status String @db.VarChar(191)
         confirmedCommandIds Json @db.Json
-        conflictCommandId String?
-        baseVersionstamp String?
-        lastVersionstamp String?
+        conflictCommandId String? @db.VarChar(191)
+        baseVersionstamp String? @db.VarChar(191)
+        lastVersionstamp String? @db.VarChar(191)
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
@@ -487,17 +487,17 @@ describe("generatePrismaSchema", () => {
 
       model FragnoHooks {
         id String @unique @default(cuid()) @db.VarChar(128)
-        namespace String
-        hookName String
+        namespace String @db.VarChar(191)
+        hookName String @db.VarChar(191)
         payload Json @db.Json
-        status String
+        status String @db.VarChar(191)
         attempts Int @default(0)
         maxAttempts Int @default(5)
         lastAttemptAt DateTime?
         nextRetryAt DateTime?
-        error String?
+        error String? @db.Text
         createdAt DateTime @default(now())
-        nonce String
+        nonce String @db.VarChar(191)
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([namespace, createdAt, id], map: "idx_namespace_created_at")
@@ -509,7 +509,7 @@ describe("generatePrismaSchema", () => {
 
       model Posts_blog {
         id String @unique @default(cuid()) @db.VarChar(128)
-        title String
+        title String @db.VarChar(191)
         authorId BigInt
         editorId BigInt?
         publishedAt DateTime?
@@ -523,7 +523,7 @@ describe("generatePrismaSchema", () => {
 
       model Users_blog {
         id String @unique @default(cuid()) @db.VarChar(128)
-        email String
+        email String @db.VarChar(191)
         createdAt DateTime @default(now())
         birthDate DateTime? @db.Date
         profile Json? @db.Json
@@ -579,8 +579,8 @@ describe("generatePrismaSchema", () => {
 
       model UserProfiles_my_app {
         id String @unique @default(cuid()) @db.VarChar(128)
-        user_id String @map("user-id")
-        display_name String? @map("display name")
+        user_id String @db.VarChar(191) @map("user-id")
+        display_name String? @db.VarChar(191) @map("display name")
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
         @@index([user_id], map: "user-id-index")

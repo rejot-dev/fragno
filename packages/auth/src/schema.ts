@@ -6,7 +6,7 @@ export const authSchema = schema("auth", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
-        .addColumn("passwordHash", column("string"))
+        .addColumn("passwordHash", column("text"))
         .addColumn("role", column("string").defaultTo("user"))
         .addColumn(
           "createdAt",
@@ -40,9 +40,9 @@ export const authSchema = schema("auth", (s) => {
     .addTable("organization", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("name", column("string"))
+        .addColumn("name", column("text"))
         .addColumn("slug", column("string"))
-        .addColumn("logoUrl", column("string").nullable())
+        .addColumn("logoUrl", column("text").nullable())
         .addColumn("metadata", column("json").nullable())
         .addColumn("createdBy", referenceColumn({ table: "user" }))
         .addColumn(
@@ -126,12 +126,12 @@ export const authSchema = schema("auth", (s) => {
         .addColumn("userId", referenceColumn({ table: "user" }))
         .addColumn("provider", column("string"))
         .addColumn("providerAccountId", column("string"))
-        .addColumn("email", column("string").nullable())
+        .addColumn("email", column("text").nullable())
         .addColumn("emailVerified", column("bool").defaultTo(false))
-        .addColumn("image", column("string").nullable())
-        .addColumn("accessToken", column("string").nullable())
-        .addColumn("refreshToken", column("string").nullable())
-        .addColumn("idToken", column("string").nullable())
+        .addColumn("image", column("text").nullable())
+        .addColumn("accessToken", column("text").nullable())
+        .addColumn("refreshToken", column("text").nullable())
+        .addColumn("idToken", column("text").nullable())
         .addColumn("tokenType", column("string").nullable())
         .addColumn("tokenExpiresAt", column("timestamp").nullable())
         .addColumn("scopes", column("json").nullable())
@@ -156,8 +156,8 @@ export const authSchema = schema("auth", (s) => {
         .addColumn("provider", column("string"))
         .addColumn("state", column("string"))
         .addColumn("codeVerifier", column("string").nullable())
-        .addColumn("redirectUri", column("string").nullable())
-        .addColumn("returnTo", column("string").nullable())
+        .addColumn("redirectUri", column("text").nullable())
+        .addColumn("returnTo", column("text").nullable())
         .addColumn("linkUserId", referenceColumn({ table: "user" }).nullable())
         .addColumn(
           "createdAt",
