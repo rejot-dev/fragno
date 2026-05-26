@@ -7,12 +7,16 @@ import { createSQLSerializer } from "../../../query/serialize/create-sql-seriali
 import { isParentColumnRef } from "../../../query/unit-of-work/query-tree";
 import { resolveFragnoIdValue } from "../../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
-import { Column, FragnoId, FragnoReference } from "../../../schema/create";
+import { Column } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildDbNowSql } from "./db-now-sql";
 import type { AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
-import { fullSQLName } from "./where-builder";
+import {
+  buildReferenceArrayWhere,
+  fullSQLName,
+  serializeReferenceFilterValue,
+} from "./where-builder";
 
 function getColumnSqlName(
   column: AnyColumn,
@@ -92,17 +96,33 @@ export function buildQueryTreeWhere(
           sqliteStorageMode,
         });
       } else if (left.role === "reference") {
-        if (rightValue instanceof FragnoId && rightValue.internalId !== undefined) {
-          rightValue = rightValue.internalId;
-        } else if (rightValue instanceof FragnoReference) {
-          rightValue = rightValue.internalId;
-        } else if (rightValue instanceof FragnoId && rightValue.internalId === undefined) {
-          rightValue = rightValue.externalId;
-        } else {
-          rightValue = serializer.serialize(resolveFragnoIdValue(rightValue, left), left);
+        if (
+          (condition.operator === "in" || condition.operator === "not in") &&
+          Array.isArray(rightValue)
+        ) {
+          return buildReferenceArrayWhere({
+            values: rightValue,
+            operator: condition.operator,
+            column: left,
+            columnSqlName: getColumnSqlName(left, resolver, childTable, childAlias),
+            table: childTable,
+            eb,
+            serializer,
+            resolver,
+          });
         }
+        rightValue = serializeReferenceFilterValue(
+          rightValue,
+          left,
+          childTable,
+          eb,
+          serializer,
+          resolver,
+        );
       } else {
-        rightValue = serializer.serialize(resolveFragnoIdValue(rightValue, left), left);
+        rightValue = Array.isArray(rightValue)
+          ? rightValue.map((item) => serializer.serialize(resolveFragnoIdValue(item, left), left))
+          : serializer.serialize(resolveFragnoIdValue(rightValue, left), left);
       }
     }
 

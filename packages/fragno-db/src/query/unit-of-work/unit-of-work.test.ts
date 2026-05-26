@@ -2,6 +2,7 @@ import { describe, it, expect, assert, expectTypeOf } from "vitest";
 
 import { column, schema, idColumn, FragnoId } from "../../schema/create";
 import { createIndexedBuilder } from "../condition-builder";
+import { Cursor } from "../cursor";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -89,7 +90,12 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXIxMjMifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9";
+    const cursor = new Cursor({
+      indexName: "_primary",
+      orderDirection: "asc",
+      pageSize: 10,
+      indexValues: { id: "user123" },
+    }).encode();
     uow
       .forSchema(testSchema)
       .find("users", (b) => b.whereIndex("primary").after(cursor).pageSize(10));
@@ -109,7 +115,12 @@ describe("FindBuilder", () => {
 
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXI0NTYifSwiZGlyZWN0aW9uIjoiYmFja3dhcmQifQ==";
+    const cursor = new Cursor({
+      indexName: "_primary",
+      orderDirection: "asc",
+      pageSize: 5,
+      indexValues: { id: "user456" },
+    }).encode();
     uow
       .forSchema(testSchema)
       .find("users", (b) => b.whereIndex("primary").before(cursor).pageSize(5));
@@ -120,6 +131,42 @@ describe("FindBuilder", () => {
     assert(op.type === "find");
     expect(op.options.before).toBe(cursor);
     expect(op.options.pageSize).toBe(5);
+  });
+
+  it("should throw for invalid encoded cursors", () => {
+    const testSchema = schema("test", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+    );
+
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").after("not-base64"));
+    }).toThrow(/Invalid cursor/);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").before("not-base64"));
+    }).toThrow(/Invalid cursor/);
+  });
+
+  it("should throw for invalid encoded cursors in query-tree builders", () => {
+    const testSchema = schema("test", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+    );
+
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .findWithCursor("users", (b) => b.whereIndex("primary").after("not-base64"));
+    }).toThrow(/Invalid cursor/);
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .findWithCursor("users", (b) => b.whereIndex("primary").before("not-base64"));
+    }).toThrow(/Invalid cursor/);
   });
 
   it("should throw RangeError for pageSize <= 0", () => {

@@ -6,7 +6,7 @@ import type { Prettify } from "../../util/types";
 import type { Condition, ConditionBuilder } from "../condition-builder";
 import { buildCondition } from "../condition-builder";
 import type { CursorResult } from "../cursor";
-import { Cursor } from "../cursor";
+import { Cursor, getCursorMetadata } from "../cursor";
 import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
 import type { CompiledJoin } from "../find-options";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "../mod";
@@ -418,9 +418,7 @@ export class FindBuilder<
    */
   after(cursor: Cursor | string): this {
     this.#afterCursor = cursor;
-    if (cursor instanceof Cursor) {
-      this.#cursorMetadata = cursor;
-    }
+    this.#cursorMetadata = getCursorMetadata(cursor);
     return this;
   }
 
@@ -431,9 +429,7 @@ export class FindBuilder<
    */
   before(cursor: Cursor | string): this {
     this.#beforeCursor = cursor;
-    if (cursor instanceof Cursor) {
-      this.#cursorMetadata = cursor;
-    }
+    this.#cursorMetadata = getCursorMetadata(cursor);
     return this;
   }
 

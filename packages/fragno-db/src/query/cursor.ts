@@ -127,6 +127,13 @@ function encodeCursorData(data: CursorData): string {
  * const cursor = decodeCursor("eyJpbmRleFZhbHVlcyI6e30sImRpcmVjdGlvbiI6ImZvcndhcmQifQ==");
  * ```
  */
+export function getCursorMetadata(cursor: Cursor | string): Cursor {
+  if (typeof cursor !== "string") {
+    return cursor;
+  }
+  return decodeCursor(cursor);
+}
+
 export function decodeCursor(cursor: string): Cursor {
   try {
     let json: string;

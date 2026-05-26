@@ -1,6 +1,6 @@
 import type { AnyColumn, AnySchema, AnyTable, IdColumn, Index } from "../../schema/create";
 import { createIndexedBuilder, type Condition, type ConditionBuilder } from "../condition-builder";
-import type { Cursor } from "../cursor";
+import { getCursorMetadata, type Cursor } from "../cursor";
 import type { AnySelectClause, SelectClause, SelectResult } from "../mod";
 
 /**
@@ -597,17 +597,13 @@ export class QueryTreeFindBuilder<
 
   after(cursor: Cursor | string): this {
     this.#afterCursor = cursor;
-    if (typeof cursor !== "string") {
-      this.#cursorMetadata = cursor;
-    }
+    this.#cursorMetadata = getCursorMetadata(cursor);
     return this;
   }
 
   before(cursor: Cursor | string): this {
     this.#beforeCursor = cursor;
-    if (typeof cursor !== "string") {
-      this.#cursorMetadata = cursor;
-    }
+    this.#cursorMetadata = getCursorMetadata(cursor);
     return this;
   }
 
