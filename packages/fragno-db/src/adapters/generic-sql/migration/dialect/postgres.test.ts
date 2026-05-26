@@ -58,7 +58,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null unique, "name" text not null, "email" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "name" varchar(191) not null, "email" varchar(191) not null)"`,
       );
     });
 
@@ -119,7 +119,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "nullable_test" ("id" integer not null unique, "optional_name" text, "optional_age" integer)"`,
+        `"create table "nullable_test" ("id" integer not null unique, "optional_name" varchar(191), "optional_age" integer)"`,
       );
     });
 
@@ -155,7 +155,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "defaults_test" ("id" integer not null unique, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
+        `"create table "defaults_test" ("id" integer not null unique, "status" varchar(191) default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
       );
     });
 
@@ -194,7 +194,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null)"`,
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" varchar(191) not null)"`,
       );
     });
 
@@ -210,7 +210,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "users" ("_internalId" bigserial not null primary key, "name" text not null)"`,
+        `"create table "users" ("_internalId" bigserial not null primary key, "name" varchar(191) not null)"`,
       );
     });
   });
@@ -261,7 +261,7 @@ describe("PostgresSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table "test_table" add column "new_column" text"`,
+        `"alter table "test_table" add column "new_column" varchar(191)"`,
       );
     });
 
@@ -295,7 +295,7 @@ describe("PostgresSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(2);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table "test_table" add column "col1" text"`,
+        `"alter table "test_table" add column "col1" varchar(191)"`,
       );
       expect(statements[1]).toMatchInlineSnapshot(
         `"alter table "test_table" add column "col2" integer default 0 not null"`,
@@ -792,13 +792,13 @@ describe("PostgresSQLGenerator", () => {
       const statements = generator.compile(operations);
       expect(statements).toHaveLength(5);
       expect(statements[0].sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "email" varchar(191) not null, "name" varchar(191) not null)"`,
       );
       expect(statements[1].sql).toMatchInlineSnapshot(
         `"create unique index "idx_unique_email" on "users" ("email")"`,
       );
       expect(statements[2].sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" varchar(191) not null, "content" varchar(191) not null)"`,
       );
       expect(statements[3].sql).toMatchInlineSnapshot(
         `"alter table "posts" add column "published" boolean default false not null"`,
@@ -888,7 +888,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "test" ("id" integer not null unique, "status" text default 'it''s pending' not null)"`,
+        `"create table "test" ("id" integer not null unique, "status" varchar(191) default 'it''s pending' not null)"`,
       );
     });
   });

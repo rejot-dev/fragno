@@ -78,6 +78,7 @@ export abstract class SQLTypeMapper<TDatabaseType extends DatabaseTypeLiteral> {
   protected abstract mapInteger(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType;
   protected abstract mapBigint(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType;
   protected abstract mapString(): TDatabaseType;
+  protected abstract mapText(): TDatabaseType;
   protected abstract mapVarchar(length: number): TDatabaseType;
   protected abstract mapBinary(): TDatabaseType;
   protected abstract mapBool(): TDatabaseType;
@@ -112,6 +113,8 @@ export abstract class SQLTypeMapper<TDatabaseType extends DatabaseTypeLiteral> {
         return this.mapBigint(column);
       case "string":
         return this.mapString();
+      case "text":
+        return this.mapText();
       case "binary":
         return this.mapBinary();
       case "bool":

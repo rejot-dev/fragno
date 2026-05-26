@@ -10,6 +10,7 @@ import { SQLTypeMapper, type MySQLDatabaseType } from "../type-mapping";
  * - BOOLEAN for booleans (alias for TINYINT(1))
  * - JSON for JSON data (native support in MySQL 5.7+)
  * - VARCHAR(191) for strings
+ * - TEXT for unbounded text
  * - VARCHAR(n) for variable-length strings
  * - LONGBLOB for binary data
  * - DATETIME for timestamps without timezone
@@ -32,6 +33,10 @@ export class MySQLTypeMapper extends SQLTypeMapper<MySQLDatabaseType> {
 
   protected mapString(): MySQLDatabaseType {
     return "varchar(191)";
+  }
+
+  protected mapText(): MySQLDatabaseType {
+    return "text";
   }
 
   protected mapVarchar(length: number): MySQLDatabaseType {

@@ -117,8 +117,12 @@ describe("SQLTypeMapper", () => {
       expect(mapper.getDatabaseType(column("json"))).toBe("json");
     });
 
-    it("should convert string to text", () => {
-      expect(mapper.getDatabaseType(column("string"))).toBe("text");
+    it("should convert string to varchar", () => {
+      expect(mapper.getDatabaseType(column("string"))).toBe("varchar(191)");
+    });
+
+    it("should convert text to text", () => {
+      expect(mapper.getDatabaseType(column("text"))).toBe("text");
     });
 
     it("should convert binary to bytea", () => {
@@ -144,6 +148,10 @@ describe("SQLTypeMapper", () => {
 
     it("should convert string to varchar", () => {
       expect(mapper.getDatabaseType(column("string"))).toBe("varchar(191)");
+    });
+
+    it("should convert text to text", () => {
+      expect(mapper.getDatabaseType(column("text"))).toBe("text");
     });
 
     it("should convert binary to longblob", () => {

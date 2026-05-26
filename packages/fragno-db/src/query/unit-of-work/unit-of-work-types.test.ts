@@ -45,7 +45,7 @@ describe("UnitOfWork type tests", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("userId", referenceColumn({ table: "users" }))
           .createIndex("idx_user", ["userId"])
           .createIndex("idx_title", ["title"]);
@@ -53,7 +53,7 @@ describe("UnitOfWork type tests", () => {
       .addTable("comments", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("postId", referenceColumn({ table: "posts" }))
           .addColumn("authorId", referenceColumn({ table: "users" }))
           .createIndex("idx_post", ["postId"])

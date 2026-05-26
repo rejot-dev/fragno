@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
+import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
 import { createId } from "@fragno-dev/db/id"
 import { sql, relations } from "drizzle-orm"
 
@@ -9,7 +9,7 @@ import { sql, relations } from "drizzle-orm"
 export const fragno_db_settings = mysqlTable("fragno_db_settings", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   key: varchar("key", { length: 191 }).notNull(),
-  value: varchar("value", { length: 191 }).notNull(),
+  value: text("value").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
@@ -26,7 +26,7 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
   maxAttempts: int("maxAttempts").notNull().default(5),
   lastAttemptAt: datetime("lastAttemptAt"),
   nextRetryAt: datetime("nextRetryAt"),
-  error: varchar("error", { length: 191 }),
+  error: text("error"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   nonce: varchar("nonce", { length: 191 }).notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -92,7 +92,7 @@ export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
 export const user_auth = mysqlTable("user_auth", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   email: varchar("email", { length: 191 }).notNull(),
-  passwordHash: varchar("passwordHash", { length: 191 }),
+  passwordHash: text("passwordHash"),
   role: varchar("role", { length: 191 }).notNull().default("user"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -129,9 +129,9 @@ export const session_auth = mysqlTable("session_auth", {
 
 export const organization_auth = mysqlTable("organization_auth", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  name: varchar("name", { length: 191 }).notNull(),
+  name: text("name").notNull(),
   slug: varchar("slug", { length: 191 }).notNull(),
-  logoUrl: varchar("logoUrl", { length: 191 }),
+  logoUrl: text("logoUrl"),
   metadata: json("metadata"),
   createdBy: bigint("createdBy", { mode: "number" }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
@@ -226,12 +226,12 @@ export const oauthAccount_auth = mysqlTable("oauthAccount_auth", {
   userId: bigint("userId", { mode: "number" }).notNull(),
   provider: varchar("provider", { length: 191 }).notNull(),
   providerAccountId: varchar("providerAccountId", { length: 191 }).notNull(),
-  email: varchar("email", { length: 191 }),
+  email: text("email"),
   emailVerified: boolean("emailVerified").notNull().default(false),
-  image: varchar("image", { length: 191 }),
-  accessToken: varchar("accessToken", { length: 191 }),
-  refreshToken: varchar("refreshToken", { length: 191 }),
-  idToken: varchar("idToken", { length: 191 }),
+  image: text("image"),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
   tokenType: varchar("tokenType", { length: 191 }),
   tokenExpiresAt: datetime("tokenExpiresAt"),
   scopes: json("scopes"),
@@ -256,8 +256,8 @@ export const oauthState_auth = mysqlTable("oauthState_auth", {
   provider: varchar("provider", { length: 191 }).notNull(),
   state: varchar("state", { length: 191 }).notNull(),
   codeVerifier: varchar("codeVerifier", { length: 191 }),
-  redirectUri: varchar("redirectUri", { length: 191 }),
-  returnTo: varchar("returnTo", { length: 191 }),
+  redirectUri: text("redirectUri"),
+  returnTo: text("returnTo"),
   linkUserId: bigint("linkUserId", { mode: "number" }),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   expiresAt: datetime("expiresAt").notNull(),

@@ -257,7 +257,7 @@ describe("IndexedDbAdapter query engine", () => {
     expect(secondPage.hasNextPage).toBe(false);
   });
 
-  it("orders and filters binary columns without Buffer", async () => {
+  it("orders and filters encoded hash strings without Buffer", async () => {
     const originalBuffer = (globalThis as { Buffer?: unknown }).Buffer;
 
     const runWithoutBuffer = async <T>(fn: () => Promise<T>): Promise<T> => {
@@ -275,7 +275,7 @@ describe("IndexedDbAdapter query engine", () => {
       s.addTable("files", (t) =>
         t
           .addColumn("id", idColumn())
-          .addColumn("hash", column("binary"))
+          .addColumn("hash", column("string"))
           .createIndex("idx_hash", ["hash"]),
       ),
     );
@@ -298,7 +298,7 @@ describe("IndexedDbAdapter query engine", () => {
             table: "files",
             externalId: "file-1",
             versionstamp: "vs1",
-            values: { hash: new Uint8Array([0x00, 0x01]) },
+            values: { hash: "0001" },
           },
           {
             op: "create",
@@ -306,7 +306,7 @@ describe("IndexedDbAdapter query engine", () => {
             table: "files",
             externalId: "file-2",
             versionstamp: "vs1",
-            values: { hash: new Uint8Array([0x00, 0x02]) },
+            values: { hash: "0002" },
           },
           {
             op: "create",
@@ -314,7 +314,7 @@ describe("IndexedDbAdapter query engine", () => {
             table: "files",
             externalId: "file-3",
             versionstamp: "vs1",
-            values: { hash: new Uint8Array([0x01]) },
+            values: { hash: "01" },
           },
         ],
       }),
@@ -328,9 +328,7 @@ describe("IndexedDbAdapter query engine", () => {
     expect(ordered.map((row) => row.id.externalId)).toEqual(["file-1", "file-2", "file-3"]);
 
     const match = await runWithoutBuffer(() =>
-      query.find("files", (b) =>
-        b.whereIndex("idx_hash", (eb) => eb("hash", "=", new Uint8Array([0x00, 0x02]))),
-      ),
+      query.find("files", (b) => b.whereIndex("idx_hash", (eb) => eb("hash", "=", "0002"))),
     );
 
     expect(match).toHaveLength(1);

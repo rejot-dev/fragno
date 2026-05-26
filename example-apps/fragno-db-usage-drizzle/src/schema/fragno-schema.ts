@@ -8,7 +8,7 @@ import { relations } from "drizzle-orm"
 
 export const fragno_db_settings = pgTable("fragno_db_settings", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  key: text("key").notNull(),
+  key: varchar("key", { length: 191 }).notNull(),
   value: text("value").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
@@ -18,17 +18,17 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 
 export const fragno_hooks = pgTable("fragno_hooks", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  namespace: text("namespace").notNull(),
-  hookName: text("hookName").notNull(),
+  namespace: varchar("namespace", { length: 191 }).notNull(),
+  hookName: varchar("hookName", { length: 191 }).notNull(),
   payload: json("payload").notNull(),
-  status: text("status").notNull(),
+  status: varchar("status", { length: 191 }).notNull(),
   attempts: integer("attempts").notNull().default(0),
   maxAttempts: integer("maxAttempts").notNull().default(5),
   lastAttemptAt: timestamp("lastAttemptAt"),
   nextRetryAt: timestamp("nextRetryAt"),
   error: text("error"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  nonce: text("nonce").notNull(),
+  nonce: varchar("nonce", { length: 191 }).notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -40,8 +40,8 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 
 export const fragno_db_outbox = pgTable("fragno_db_outbox", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  versionstamp: text("versionstamp").notNull(),
-  uowId: text("uowId").notNull(),
+  versionstamp: varchar("versionstamp", { length: 191 }).notNull(),
+  uowId: varchar("uowId", { length: 191 }).notNull(),
   payload: json("payload").notNull(),
   refMap: json("refMap"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -54,13 +54,13 @@ export const fragno_db_outbox = pgTable("fragno_db_outbox", {
 
 export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  entryVersionstamp: text("entryVersionstamp").notNull(),
-  mutationVersionstamp: text("mutationVersionstamp").notNull(),
-  uowId: text("uowId").notNull(),
-  schema: text("schema").notNull(),
-  table: text("table").notNull(),
-  externalId: text("externalId").notNull(),
-  op: text("op").notNull(),
+  entryVersionstamp: varchar("entryVersionstamp", { length: 191 }).notNull(),
+  mutationVersionstamp: varchar("mutationVersionstamp", { length: 191 }).notNull(),
+  uowId: varchar("uowId", { length: 191 }).notNull(),
+  schema: varchar("schema", { length: 191 }).notNull(),
+  table: varchar("table", { length: 191 }).notNull(),
+  externalId: varchar("externalId", { length: 191 }).notNull(),
+  op: varchar("op", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
@@ -72,12 +72,12 @@ export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", 
 
 export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  requestId: text("requestId").notNull(),
-  status: text("status").notNull(),
+  requestId: varchar("requestId", { length: 191 }).notNull(),
+  status: varchar("status", { length: 191 }).notNull(),
   confirmedCommandIds: json("confirmedCommandIds").notNull(),
-  conflictCommandId: text("conflictCommandId"),
-  baseVersionstamp: text("baseVersionstamp"),
-  lastVersionstamp: text("lastVersionstamp"),
+  conflictCommandId: varchar("conflictCommandId", { length: 191 }),
+  baseVersionstamp: varchar("baseVersionstamp", { length: 191 }),
+  lastVersionstamp: varchar("lastVersionstamp", { length: 191 }),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
@@ -93,9 +93,9 @@ const schema_auth = pgSchema("auth");
 
 export const user_auth = schema_auth.table("user", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  email: text("email").notNull(),
+  email: varchar("email", { length: 191 }).notNull(),
   passwordHash: text("passwordHash"),
-  role: text("role").notNull().default("user"),
+  role: varchar("role", { length: 191 }).notNull().default("user"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
@@ -132,7 +132,7 @@ export const session_auth = schema_auth.table("session", {
 export const organization_auth = schema_auth.table("organization", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   name: text("name").notNull(),
-  slug: text("slug").notNull(),
+  slug: varchar("slug", { length: 191 }).notNull(),
   logoUrl: text("logoUrl"),
   metadata: json("metadata"),
   createdBy: bigint("createdBy", { mode: "number" }).notNull(),
@@ -178,7 +178,7 @@ export const organizationMember_auth = schema_auth.table("organizationMember", {
 export const organizationMemberRole_auth = schema_auth.table("organizationMemberRole", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   memberId: bigint("memberId", { mode: "number" }).notNull(),
-  role: text("role").notNull(),
+  role: varchar("role", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
@@ -196,10 +196,10 @@ export const organizationMemberRole_auth = schema_auth.table("organizationMember
 export const organizationInvitation_auth = schema_auth.table("organizationInvitation", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   organizationId: bigint("organizationId", { mode: "number" }).notNull(),
-  email: text("email").notNull(),
+  email: varchar("email", { length: 191 }).notNull(),
   roles: json("roles").notNull(),
-  status: text("status").notNull(),
-  token: text("token").notNull(),
+  status: varchar("status", { length: 191 }).notNull(),
+  token: varchar("token", { length: 191 }).notNull(),
   inviterId: bigint("inviterId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -226,15 +226,15 @@ export const organizationInvitation_auth = schema_auth.table("organizationInvita
 export const oauthAccount_auth = schema_auth.table("oauthAccount", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
-  provider: text("provider").notNull(),
-  providerAccountId: text("providerAccountId").notNull(),
+  provider: varchar("provider", { length: 191 }).notNull(),
+  providerAccountId: varchar("providerAccountId", { length: 191 }).notNull(),
   email: text("email"),
   emailVerified: boolean("emailVerified").notNull().default(false),
   image: text("image"),
   accessToken: text("accessToken"),
   refreshToken: text("refreshToken"),
   idToken: text("idToken"),
-  tokenType: text("tokenType"),
+  tokenType: varchar("tokenType", { length: 191 }),
   tokenExpiresAt: timestamp("tokenExpiresAt"),
   scopes: json("scopes"),
   rawProfile: json("rawProfile"),
@@ -255,9 +255,9 @@ export const oauthAccount_auth = schema_auth.table("oauthAccount", {
 
 export const oauthState_auth = schema_auth.table("oauthState", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  provider: text("provider").notNull(),
-  state: text("state").notNull(),
-  codeVerifier: text("codeVerifier"),
+  provider: varchar("provider", { length: 191 }).notNull(),
+  state: varchar("state", { length: 191 }).notNull(),
+  codeVerifier: varchar("codeVerifier", { length: 191 }),
   redirectUri: text("redirectUri"),
   returnTo: text("returnTo"),
   linkUserId: bigint("linkUserId", { mode: "number" }),
@@ -425,11 +425,11 @@ const schema_comment = pgSchema("comment");
 
 export const comment_comment = schema_comment.table("comment", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
+  title: varchar("title", { length: 191 }).notNull(),
+  content: varchar("content", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  postReference: text("postReference").notNull(),
-  userReference: text("userReference").notNull(),
+  postReference: varchar("postReference", { length: 191 }).notNull(),
+  userReference: varchar("userReference", { length: 191 }).notNull(),
   parentId: bigint("parentId", { mode: "number" }),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
@@ -470,11 +470,11 @@ const schema_upvote = pgSchema("upvote");
 
 export const upvote_upvote = schema_upvote.table("upvote", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
-  ownerReference: text("ownerReference"),
+  reference: varchar("reference", { length: 191 }).notNull(),
+  ownerReference: varchar("ownerReference", { length: 191 }),
   rating: integer("rating").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-  note: text("note"),
+  note: varchar("note", { length: 191 }),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -483,7 +483,7 @@ export const upvote_upvote = schema_upvote.table("upvote", {
 
 export const upvote_total_upvote = schema_upvote.table("upvote_total", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  reference: text("reference").notNull(),
+  reference: varchar("reference", { length: 191 }).notNull(),
   total: integer("total").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
@@ -507,16 +507,16 @@ const schema_workflows = pgSchema("workflows");
 
 export const workflow_instance_workflows = schema_workflows.table("workflow_instance", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
-  workflowName: text("workflowName").notNull(),
-  status: text("status").notNull(),
+  workflowName: varchar("workflowName", { length: 191 }).notNull(),
+  status: varchar("status", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   startedAt: timestamp("startedAt"),
   completedAt: timestamp("completedAt"),
   params: json("params").notNull(),
   output: json("output"),
-  errorName: text("errorName"),
-  errorMessage: text("errorMessage"),
+  errorName: varchar("errorName", { length: 191 }),
+  errorMessage: varchar("errorMessage", { length: 191 }),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -527,21 +527,21 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  stepKey: text("stepKey").notNull(),
-  parentStepKey: text("parentStepKey"),
+  stepKey: varchar("stepKey", { length: 191 }).notNull(),
+  parentStepKey: varchar("parentStepKey", { length: 191 }),
   depth: integer("depth").notNull().default(0),
-  name: text("name").notNull(),
-  type: text("type").notNull(),
-  status: text("status").notNull(),
+  name: varchar("name", { length: 191 }).notNull(),
+  type: varchar("type", { length: 191 }).notNull(),
+  status: varchar("status", { length: 191 }).notNull(),
   attempts: integer("attempts").notNull().default(0),
   maxAttempts: integer("maxAttempts").notNull(),
   timeoutMs: integer("timeoutMs"),
   nextRetryAt: timestamp("nextRetryAt"),
   wakeAt: timestamp("wakeAt"),
-  waitEventType: text("waitEventType"),
+  waitEventType: varchar("waitEventType", { length: 191 }),
   result: json("result"),
-  errorName: text("errorName"),
-  errorMessage: text("errorMessage"),
+  errorName: varchar("errorName", { length: 191 }),
+  errorMessage: varchar("errorMessage", { length: 191 }),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -560,12 +560,12 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
 export const workflow_event_workflows = schema_workflows.table("workflow_event", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  actor: text("actor").notNull().default("user"),
-  type: text("type").notNull(),
+  actor: varchar("actor", { length: 191 }).notNull().default("user"),
+  type: varchar("type", { length: 191 }).notNull(),
   payload: json("payload"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   deliveredAt: timestamp("deliveredAt"),
-  consumedByStepKey: text("consumedByStepKey"),
+  consumedByStepKey: varchar("consumedByStepKey", { length: 191 }),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -580,10 +580,10 @@ export const workflow_event_workflows = schema_workflows.table("workflow_event",
 export const workflow_step_emission_workflows = schema_workflows.table("workflow_step_emission", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
-  stepKey: text("stepKey").notNull(),
-  epoch: text("epoch").notNull(),
+  stepKey: varchar("stepKey", { length: 191 }).notNull(),
+  epoch: varchar("epoch", { length: 191 }).notNull(),
   sequence: integer("sequence").notNull(),
-  actor: text("actor").notNull().default("user"),
+  actor: varchar("actor", { length: 191 }).notNull().default("user"),
   payload: json("payload"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),

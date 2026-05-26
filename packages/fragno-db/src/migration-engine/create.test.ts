@@ -14,7 +14,7 @@ describe("createMigrator", () => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       })
       .addTable("comments", (t) => {
-        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        return t.addColumn("id", idColumn()).addColumn("text", column("text"));
       });
   });
 

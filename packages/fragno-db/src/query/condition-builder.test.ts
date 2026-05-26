@@ -20,7 +20,7 @@ describe("ConditionBuilder", () => {
         t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("published", column("bool"))
           .createIndex("idx_posts_primary", ["id"], { unique: true })
           .createIndex("idx_published", ["published"]),

@@ -14,7 +14,7 @@ describe("generateMigrationFromSchema", () => {
           return t
             .addColumn("id", idColumn())
             .addColumn("title", column("string"))
-            .addColumn("content", column("string"));
+            .addColumn("content", column("text"));
         });
     });
 
@@ -45,7 +45,7 @@ describe("generateMigrationFromSchema", () => {
           return t.addColumn("id", idColumn()).addColumn("title", column("string"));
         })
         .addTable("comments", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+          return t.addColumn("id", idColumn()).addColumn("text", column("text"));
         });
     });
 
@@ -299,7 +299,7 @@ describe("generateMigrationFromSchema", () => {
           return t
             .addColumn("id", idColumn().defaultTo("auto"))
             .addColumn("title", column("string"))
-            .addColumn("content", column("string"))
+            .addColumn("content", column("text"))
             .addColumn("userId", referenceColumn({ table: "users" }));
         })
         .addTable("users", (t) => {

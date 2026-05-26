@@ -28,7 +28,7 @@ describe("query type tests", () => {
         return t
           .addColumn("_id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("userId", column("string"))
           .addColumn("publishedAt", column("timestamp").nullable())
           .addColumn("viewCount", column("integer"));
@@ -38,7 +38,7 @@ describe("query type tests", () => {
           .addColumn("_id", idColumn())
           .addColumn("postId", column("string"))
           .addColumn("authorId", column("string"))
-          .addColumn("text", column("string"))
+          .addColumn("text", column("text"))
           .addColumn("likes", column("integer").nullable());
       });
   });

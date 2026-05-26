@@ -69,7 +69,11 @@ export abstract class SQLSerializer {
     }
 
     // Handle string/varchar deserialization (delegated to subclass for consistency)
-    if (col.type === "string" || (typeof col.type === "string" && col.type.startsWith("varchar"))) {
+    if (
+      col.type === "string" ||
+      col.type === "text" ||
+      (typeof col.type === "string" && col.type.startsWith("varchar"))
+    ) {
       return this.deserializeString(value);
     }
 

@@ -26,7 +26,7 @@ describe("where-builder", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
-          .addColumn("content", column("string"))
+          .addColumn("content", column("text"))
           .addColumn("userId", referenceColumn({ table: "users" }))
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("publishedAt", column("timestamp").nullable());

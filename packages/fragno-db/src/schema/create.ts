@@ -220,6 +220,7 @@ type IdColumnType = `varchar(${number})`;
 
 export type TypeMap = {
   string: string;
+  text: string;
   bigint: bigint;
   integer: number;
   decimal: number;
@@ -661,6 +662,34 @@ function isReferenceColumn(column: AnyColumn): boolean {
   return column.role === "reference" && column.referenceTableName !== undefined;
 }
 
+function isIndexableColumn(column: AnyColumn): boolean {
+  if (column.role === "external-id") {
+    return true;
+  }
+
+  return (
+    column.type === "string" ||
+    column.type.startsWith("varchar(") ||
+    column.type === "integer" ||
+    column.type === "bigint" ||
+    column.type === "bool" ||
+    column.type === "date" ||
+    column.type === "timestamp" ||
+    column.type === "decimal"
+  );
+}
+
+function assertIndexableColumn(indexName: string, column: AnyColumn): void {
+  if (isIndexableColumn(column)) {
+    return;
+  }
+
+  const hint = column.type === "text" ? ' Use column("string") for indexed strings.' : "";
+  throw new Error(
+    `Index "${indexName}" references non-indexable column "${column.name}" of type "${column.type}".${hint}`,
+  );
+}
+
 function createForeignKeySubOperation(
   tableName: string,
   columnName: string,
@@ -826,6 +855,7 @@ export class TableBuilder<
       if (!column) {
         throw new Error(`Unknown column name ${colName}`);
       }
+      assertIndexableColumn(name, column);
       return column;
     });
 

@@ -49,7 +49,7 @@ const paritySchema = schema("parity", (s) => {
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
         .addColumn("slug", column("varchar(64)"))
-        .addColumn("body", column("string"))
+        .addColumn("body", column("text"))
         .addColumn("published", column("bool").defaultTo(false))
         .addColumn("publishedAt", column("timestamp").nullable())
         .addColumn("authorId", referenceColumn({ table: "users" }))

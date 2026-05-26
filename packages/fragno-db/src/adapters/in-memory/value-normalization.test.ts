@@ -14,7 +14,7 @@ const testSchema = schema("test", (s) =>
         .addColumn("payload", column("json"))
         .addColumn("size", column("bigint"))
         .addColumn("userId", referenceColumn({ table: "users" }))
-        .createIndex("compound_idx", ["createdAt", "isActive", "payload", "size", "userId"]),
+        .createIndex("compound_idx", ["createdAt", "isActive", "size", "userId"]),
     ),
 );
 
@@ -27,7 +27,6 @@ describe("in-memory index normalization", () => {
     }
 
     const createdAt = new Date("2024-01-01T00:00:00.000Z");
-    const payload = { ok: true, count: 2 };
     const size = 9n;
     const userId = 12n;
 
@@ -35,7 +34,7 @@ describe("in-memory index normalization", () => {
       id: "evt_1",
       createdAt,
       isActive: true,
-      payload,
+      payload: { ok: true, count: 2 },
       size,
       userId,
     };
@@ -49,12 +48,6 @@ describe("in-memory index normalization", () => {
     const expectedBigint = Buffer.alloc(8);
     expectedBigint.writeBigInt64BE(size);
 
-    expect(key).toEqual([
-      createdAt.getTime(),
-      1,
-      JSON.stringify(payload),
-      expectedBigint,
-      Number(userId),
-    ]);
+    expect(key).toEqual([createdAt.getTime(), 1, expectedBigint, Number(userId)]);
   });
 });
