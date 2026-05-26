@@ -10,7 +10,7 @@ import { serializeInvitation, serializeMember, serializeOrganization } from "./s
 
 const createOrganizationInputSchema = z.object({
   name: z.string().min(1).max(120),
-  slug: z.string().min(1),
+  slug: z.string().min(1).max(191),
   logoUrl: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
@@ -18,7 +18,7 @@ const createOrganizationInputSchema = z.object({
 const updateOrganizationInputSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
-    slug: z.string().min(1).optional(),
+    slug: z.string().min(1).max(191).optional(),
     logoUrl: z.string().nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   })
@@ -387,7 +387,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         path: "/organizations/invitations/:invitationId",
         inputSchema: z.object({
           action: z.enum(["accept", "reject", "cancel"]),
-          token: z.string().optional(),
+          token: z.string().max(191).optional(),
         }),
         outputSchema: z.object({
           invitation: invitationSchema,
@@ -726,7 +726,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         path: "/organizations/:organizationId/members",
         inputSchema: z.object({
           userId: z.string(),
-          roles: z.array(z.string()).optional(),
+          roles: z.array(z.string().trim().min(1).max(191)).optional(),
         }),
         outputSchema: z.object({
           member: memberSchema,
@@ -802,7 +802,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         method: "PATCH",
         path: "/organizations/:organizationId/members/:memberId",
         inputSchema: z.object({
-          roles: z.array(z.string()).min(1),
+          roles: z.array(z.string().trim().min(1).max(191)).min(1),
         }),
         outputSchema: z.object({
           member: memberSchema,
@@ -969,8 +969,8 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         method: "POST",
         path: "/organizations/:organizationId/invitations",
         inputSchema: z.object({
-          email: z.email(),
-          roles: z.array(z.string()).optional(),
+          email: z.email().max(191),
+          roles: z.array(z.string().trim().min(1).max(191)).optional(),
         }),
         outputSchema: z.object({
           invitation: invitationSchema,

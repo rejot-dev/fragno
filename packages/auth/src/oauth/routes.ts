@@ -62,6 +62,10 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
 
           const providerId = pathParams.provider;
+          if (providerId.length > 191) {
+            return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
+          }
+
           const provider = oauthConfig.providers[providerId];
           if (!provider) {
             return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
@@ -192,6 +196,10 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
 
           const providerId = pathParams.provider;
+          if (providerId.length > 191) {
+            return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
+          }
+
           const provider = oauthConfig.providers[providerId];
           if (!provider) {
             return error({ message: "Unknown provider", code: "provider_not_found" }, 404);
@@ -204,6 +212,9 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           }
           if (!state) {
             return error({ message: "Missing state", code: "invalid_state" }, 400);
+          }
+          if (state.length > 191) {
+            return error({ message: "Invalid state", code: "invalid_state" }, 400);
           }
 
           const redirectUri = resolveRedirectUri(provider, oauthConfig.defaultRedirectUri);
@@ -222,6 +233,13 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           const userInfo = await provider.getUserInfo(tokens);
           if (!userInfo) {
             return error({ message: "Unable to load profile", code: "invalid_code" }, 401);
+          }
+
+          if (
+            String(userInfo.user.id).length > 191 ||
+            (userInfo.user.email != null && userInfo.user.email.length > 191)
+          ) {
+            return error({ message: "Invalid code", code: "invalid_code" }, 401);
           }
 
           const [result] = await this.handlerTx()
