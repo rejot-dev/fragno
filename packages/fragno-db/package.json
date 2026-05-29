@@ -57,6 +57,10 @@
       "types": "./dist/adapters/sql/index.d.ts",
       "default": "./dist/adapters/sql/index.js"
     },
+    "./adapters/dynamodb": {
+      "types": "./dist/adapters/dynamodb/index.d.ts",
+      "default": "./dist/adapters/dynamodb/index.js"
+    },
     "./schema-output/drizzle": {
       "types": "./dist/schema-output/drizzle.d.ts",
       "default": "./dist/schema-output/drizzle.js"
@@ -125,6 +129,8 @@
     "superjson": "^2.2.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.940.0",
+    "@aws-sdk/lib-dynamodb": "^3.940.0",
     "@electric-sql/pglite": "^0.3.15",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
@@ -143,9 +149,17 @@
     "zod": "^4.3.5"
   },
   "peerDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.940.0",
+    "@aws-sdk/lib-dynamodb": "^3.940.0",
     "drizzle-orm": "^0.44.6"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-dynamodb": {
+      "optional": true
+    },
+    "@aws-sdk/lib-dynamodb": {
+      "optional": true
+    },
     "drizzle-orm": {
       "optional": true
     }

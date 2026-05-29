@@ -41,6 +41,9 @@ Format:
 - [In-Memory Adapter + OCC Model Checker — Spec](./spec-in-memory-adapter.md) — In-memory adapter
   design with optimistic concurrency control, SQLite-aligned semantics, storage/indexing, and model
   checker behavior.
+- [Fragno DB DynamoDB Adapter — Spec and Implementation Plan](./spec-dynamodb-adapter.md) — DynamoDB
+  adapter design with sidecar indexes, UOW execution semantics, migrations, outbox support,
+  open-question decisions, and end-to-end testable implementation slices.
 - [Fragno DB Outbox — Spec](./spec-outbox.md) — Optional outbox with a global clock stored in
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
 - [Fragno Lofi Submit + Conflict Detection — Spec](./spec-lofi-submit.md) — Client submit endpoint,

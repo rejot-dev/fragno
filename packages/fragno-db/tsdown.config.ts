@@ -11,6 +11,7 @@ export default defineConfig([
       "./src/adapters/adapters.ts",
       "./src/adapters/in-memory/index.ts",
       "./src/adapters/sql/index.ts",
+      "./src/adapters/dynamodb/index.ts",
       "./src/adapters/generic-sql/driver-config.ts",
       "./src/schema-output/drizzle.ts",
       "./src/schema-output/prisma.ts",
