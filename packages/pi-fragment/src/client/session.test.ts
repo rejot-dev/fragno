@@ -89,6 +89,49 @@ describe("Pi session stream reducer", () => {
     state = reducePiSessionStreamFrame(state, toolEndEvent, { now: 8 });
     expect(state.events).toContain(toolEndEvent);
   });
+
+  it("rolls back stale step-emission events when a competing epoch commits", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "user",
+        stepKey: "do:racy client message",
+        epoch: "first-epoch",
+        payload: { type: "message_update", message: message("first stale") } as AgentEvent,
+      },
+      { now: 2 },
+    );
+    expect(state.agent?.messages).toEqual([message("first stale")]);
+
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "user",
+        stepKey: "do:racy client message",
+        epoch: "second-epoch",
+        payload: { type: "message_update", message: message("second valid") } as AgentEvent,
+      },
+      { now: 3 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "system",
+        stepKey: "do:racy client message",
+        epoch: "second-epoch",
+        payload: { control: "step-committed", epoch: "second-epoch" },
+      },
+      { now: 4 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("second valid")]);
+  });
 });
 
 describe("createStorePiSessionTransport", () => {

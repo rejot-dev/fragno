@@ -30,6 +30,7 @@ export type PiSessionStoreState = {
   connectionStatus: PiSessionConnectionStatus;
   sessionId: string;
   agent: PiAgentStateSnapshot | null;
+  snapshotAgent: PiAgentStateSnapshot | null;
   events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>;
   lastEvent: AgentEvent | null;
   lastFrameAt: number | null;
@@ -122,11 +123,6 @@ const isFatalStreamError = (error: unknown) => {
 };
 
 type SnapshotFrame = Extract<PiSessionEventStreamItem, { type: "snapshot" }>;
-const isSnapshotFrame = (frame: PiSessionEventStreamItem): frame is SnapshotFrame =>
-  "type" in frame && frame.type === "snapshot";
-
-const isAgentEvent = (frame: PiSessionEventStreamItem): frame is AgentEvent =>
-  "type" in frame && frame.type !== "snapshot";
 
 const replaceLastMessage = (messages: AgentMessage[], message: AgentMessage): AgentMessage[] =>
   messages.length === 0 ? [message] : [...messages.slice(0, -1), message];
@@ -157,6 +153,7 @@ export const createInitialPiSessionStoreState = (options: {
   connectionStatus: "idle",
   sessionId: options.sessionId,
   agent: null,
+  snapshotAgent: null,
   events: [],
   lastEvent: null,
   lastFrameAt: null,
@@ -169,41 +166,99 @@ export const createInitialPiSessionStoreState = (options: {
   },
 });
 
+const committedEpochsByStep = (events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>) => {
+  const committed = new Map<string, string>();
+  for (const event of events) {
+    if ("kind" in event && event.kind === "step-emission") {
+      const payload = event.payload;
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "control" in payload &&
+        payload.control === "step-committed"
+      ) {
+        committed.set(event.stepKey, event.epoch);
+      }
+    }
+  }
+  return committed;
+};
+
+const agentEventFromStreamFrame = (
+  frame: Exclude<PiSessionEventStreamItem, SnapshotFrame>,
+  committedEpochs: ReadonlyMap<string, string>,
+): AgentEvent | null => {
+  if ("type" in frame) {
+    return frame;
+  }
+  if (!("kind" in frame) || frame.kind !== "step-emission") {
+    return null;
+  }
+
+  const payload = frame.payload;
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("type" in payload) ||
+    payload.type === "snapshot"
+  ) {
+    return null;
+  }
+
+  const committedEpoch = committedEpochs.get(frame.stepKey);
+  if (committedEpoch && committedEpoch !== frame.epoch) {
+    return null;
+  }
+
+  return payload as AgentEvent;
+};
+
+const rebuildAgentState = (
+  snapshotAgent: PiAgentStateSnapshot,
+  events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>,
+): { agent: PiAgentStateSnapshot; lastEvent: AgentEvent | null } => {
+  const committedEpochs = committedEpochsByStep(events);
+  let messages = snapshotAgent.messages;
+  let previousEvent: AgentEvent | null = null;
+
+  for (const event of events) {
+    const agentEvent = agentEventFromStreamFrame(event, committedEpochs);
+    if (!agentEvent) {
+      continue;
+    }
+    messages = reduceMessages(messages, agentEvent, previousEvent);
+    previousEvent = agentEvent;
+  }
+
+  return { agent: { ...snapshotAgent, messages }, lastEvent: previousEvent };
+};
+
 export const reducePiSessionStreamFrame = (
   state: PiSessionStoreState,
   frame: PiSessionEventStreamItem,
   meta: { now: number },
 ): PiSessionStoreState => {
-  if (isSnapshotFrame(frame)) {
+  if ("type" in frame && frame.type === "snapshot") {
     return {
       ...state,
       connectionStatus: "open",
       agent: frame.state,
+      snapshotAgent: frame.state,
       lastFrameAt: meta.now,
       streamError: undefined,
     };
   }
 
-  if (!isAgentEvent(frame)) {
-    return {
-      ...state,
-      connectionStatus: "open",
-      events: [...state.events, frame],
-      lastFrameAt: meta.now,
-      streamError: undefined,
-    };
-  }
+  const events = [...state.events, frame];
+  const snapshotAgent = state.snapshotAgent ?? { messages: [] };
+  const rebuilt = rebuildAgentState(snapshotAgent, events);
 
-  const currentAgent = state.agent ?? { messages: [] };
   return {
     ...state,
     connectionStatus: "open",
-    agent: {
-      ...currentAgent,
-      messages: reduceMessages(currentAgent.messages, frame, state.lastEvent),
-    },
-    events: [...state.events, frame],
-    lastEvent: frame,
+    agent: rebuilt.agent,
+    events,
+    lastEvent: rebuilt.lastEvent,
     lastFrameAt: meta.now,
     streamError: undefined,
   };
@@ -283,8 +338,10 @@ const runningToolsFromEvents = (
   events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>,
 ): PiLiveToolExecution[] => {
   const running = new Map<string, PiLiveToolExecution>();
-  for (const event of events) {
-    if (!isAgentEvent(event)) {
+  const committedEpochs = committedEpochsByStep(events);
+  for (const frame of events) {
+    const event = agentEventFromStreamFrame(frame, committedEpochs);
+    if (!event) {
       continue;
     }
     if (event.type === "tool_execution_start") {
@@ -334,6 +391,7 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   const state = atom<PiSessionStoreState>({
     ...initialState,
     agent: args.initialData?.agent.state ?? initialState.agent,
+    snapshotAgent: args.initialData?.agent.state ?? initialState.snapshotAgent,
     events: args.initialData?.agent.events ?? initialState.events,
   });
 
@@ -381,7 +439,7 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
 
           for await (const frame of frames) {
             if (!sawSnapshot) {
-              if (!isSnapshotFrame(frame)) {
+              if (!("type" in frame && frame.type === "snapshot")) {
                 throw new PiSessionProtocolError("Expected /events stream to start with snapshot.");
               }
               sawSnapshot = true;

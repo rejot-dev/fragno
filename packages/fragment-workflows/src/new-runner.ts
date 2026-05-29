@@ -5,9 +5,12 @@ import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
-import { createRunnerState } from "./runner/state";
+import { createRunnerState, type RunnerState } from "./runner/state";
 import { RunnerStep, RunnerStepSuspended } from "./runner/step";
-import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
+import {
+  workflowStepLivePumpKey,
+  type WorkflowStepLivePumpRegistry,
+} from "./runner/step-live-pump";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -286,6 +289,28 @@ function planEarlyReschedule(
   return null;
 }
 
+function addStepCommittedEmissions(uow: IUnitOfWork, state: RunnerState) {
+  const mutatedStepKeys = new Set<string>([
+    ...state.mutations.stepCreates.keys(),
+    ...state.mutations.stepUpdates.keys(),
+  ]);
+  const schemaUow = uow.forSchema(workflowsSchema);
+
+  for (const request of state.mutations.stepEmissionCleanupRequests) {
+    if (!mutatedStepKeys.has(request.stepKey)) {
+      continue;
+    }
+    schemaUow.create("workflow_step_emission", {
+      instanceRef: request.instanceRef,
+      stepKey: request.stepKey,
+      epoch: request.epoch,
+      sequence: 0,
+      actor: "system",
+      payload: { control: "step-committed", epoch: request.epoch },
+    });
+  }
+}
+
 async function planRunTask(
   selection: RunnerTickSelectionResult,
   ctx: RunnerTickContext,
@@ -306,6 +331,7 @@ async function planRunTask(
     operations: [
       (uow) => {
         applyRunnerMutations(uow, state);
+        addStepCommittedEmissions(uow, state);
         applyOutcome(uow, selection.instance, outcome);
       },
     ],
@@ -549,6 +575,14 @@ export async function runWorkflowsTick(options: {
       return 0;
     }
     throw err;
+  }
+
+  const livePump = options.stepEmissions?.get(
+    workflowStepLivePumpKey(options.payload.workflowName, options.payload.instanceId),
+  );
+  if (livePump) {
+    livePump.setHandlerTx(options.busHandlerTx ?? options.handlerTx);
+    await livePump.flushNow();
   }
 
   return processed;
