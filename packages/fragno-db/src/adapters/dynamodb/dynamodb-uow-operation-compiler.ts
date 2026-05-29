@@ -28,6 +28,7 @@ export interface DynamoDBPlanBase {
   schemaName: string;
   namespace: string;
   tableName: string;
+  table: AnyTable;
   layout: DynamoDBTableLayout;
 }
 
@@ -229,6 +230,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
       schemaName: schema.name,
       namespace: layout.namespace,
       tableName: table.name,
+      table,
       layout: layout.getTableLayout(table),
     };
   }

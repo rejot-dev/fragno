@@ -6,9 +6,6 @@ import { FragnoDatabase } from "../../fragno-database";
 import { suffixNamingStrategy, type SqlNamingStrategy } from "../../naming/sql-naming";
 import type {
   CompiledMutation,
-  MutationResult,
-  UOWDecoder,
-  UOWExecutor,
   UOWInstrumentation,
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
@@ -22,6 +19,9 @@ import {
   type DatabaseContextStorage,
 } from "../adapters";
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
+import { createDynamoDBLayout } from "./dynamodb-layout";
+import { DynamoDBUOWDecoder } from "./dynamodb-uow-decoder";
+import { DynamoDBUOWExecutor } from "./dynamodb-uow-executor";
 import {
   DynamoDBUOWOperationCompiler,
   type DynamoDBCommandPlan,
@@ -156,15 +156,28 @@ export class DynamoDBAdapter implements DatabaseAdapter<DynamoDBUnitOfWorkConfig
     const compiler = createUOWCompilerFromOperationCompiler(
       new DynamoDBUOWOperationCompiler({ tablePrefix: this.tablePrefix }),
     );
-    const executor = new PlanningOnlyDynamoDBExecutor();
-    const decoder = new PlanningOnlyDynamoDBDecoder();
+    const mergedConfig = { ...this.uowConfig, ...config };
+    const settingsTableName = createDynamoDBLayout({
+      schema: createAdapterMetadataSchema(),
+      namespace: null,
+      tablePrefix: this.tablePrefix,
+      namingStrategy: this.namingStrategy,
+    }).settingsTableName;
+    const executor = new DynamoDBUOWExecutor({
+      client: this.client,
+      settingsTableName,
+      consistentRead: mergedConfig.consistentRead ?? this.consistentRead,
+      maxFilteredReadPages: mergedConfig.maxFilteredReadPages ?? this.maxFilteredReadPages,
+      allowScans: mergedConfig.allowScans ?? this.allowScans,
+    });
+    const decoder = new DynamoDBUOWDecoder();
 
     return new UnitOfWork(
       compiler,
       executor,
       decoder,
       name,
-      this.#normalizeUowConfig({ ...this.uowConfig, ...config }),
+      this.#normalizeUowConfig(mergedConfig),
       this.#schemaNamespaceMap,
     );
   }
@@ -195,37 +208,19 @@ export class DynamoDBAdapter implements DatabaseAdapter<DynamoDBUnitOfWorkConfig
   }
 }
 
+function createAdapterMetadataSchema(): AnySchema {
+  return {
+    name: "dynamodb_adapter",
+    version: 0,
+    tables: {},
+    operations: [],
+    clone: createAdapterMetadataSchema,
+  };
+}
+
 function extractCommandPlan(query: unknown): DynamoDBCommandPlan {
   if (query && typeof query === "object" && "query" in query) {
     return (query as CompiledMutation<DynamoDBCommandPlan>).query;
   }
   return query as DynamoDBCommandPlan;
-}
-
-class PlanningOnlyDynamoDBExecutor implements UOWExecutor<DynamoDBCommandPlan, unknown> {
-  async executeRetrievalPhase(retrievalBatch: DynamoDBCommandPlan[]): Promise<unknown[]> {
-    if (retrievalBatch.length === 0) {
-      return [];
-    }
-    throw new Error(
-      "DynamoDB retrieval execution is not implemented until slice 4. Use dryRun to inspect command plans.",
-    );
-  }
-
-  async executeMutationPhase(
-    mutationBatch: CompiledMutation<DynamoDBCommandPlan>[],
-  ): Promise<MutationResult> {
-    if (mutationBatch.length === 0) {
-      return { success: true, createdInternalIds: [] };
-    }
-    throw new Error(
-      "DynamoDB mutation execution is not implemented until slice 4. Use dryRun to inspect command plans.",
-    );
-  }
-}
-
-class PlanningOnlyDynamoDBDecoder implements UOWDecoder<unknown> {
-  decode(rawResults: unknown[]): unknown[] {
-    return rawResults;
-  }
 }

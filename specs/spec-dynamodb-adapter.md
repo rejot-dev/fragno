@@ -630,7 +630,7 @@ Tests:
 
 ### Slice 4 — Create and primary-index find end to end
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 8, 11.1, 12.1, 15.
 
