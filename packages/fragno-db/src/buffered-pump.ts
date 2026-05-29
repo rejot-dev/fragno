@@ -434,6 +434,22 @@ export class BufferedDatabasePump<
     };
   }
 
+  async publishObserved(messages: readonly TObserved[]): Promise<void> {
+    if (messages.length === 0) {
+      return;
+    }
+    const messagesToPublish = this.#hasFlushed
+      ? this.#unobservedMessages(this.#cursorsFor(this.#lastSnapshot), messages)
+      : messages;
+    if (messagesToPublish.length === 0) {
+      return;
+    }
+    if (this.#hasFlushed) {
+      this.#lastSnapshot = [...this.#lastSnapshot, ...messagesToPublish];
+    }
+    await this.#deliverObserved(messagesToPublish);
+  }
+
   async snapshotState(): Promise<BufferedPumpSnapshot<TObserved>> {
     if (!this.#hasFlushed) {
       await this.flushNow();
@@ -577,6 +593,10 @@ export class BufferedDatabasePump<
     }
     cursors.add(cursor);
     return false;
+  }
+
+  #unobservedMessages(cursors: Set<string>, messages: readonly TObserved[]): TObserved[] {
+    return messages.filter((message) => !this.#isAlreadyObserved(cursors, message));
   }
 
   #cursorsFor(items: readonly TObserved[]): Set<string> {

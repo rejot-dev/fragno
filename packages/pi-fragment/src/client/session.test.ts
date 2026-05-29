@@ -9,6 +9,7 @@ import {
   createInitialPiSessionStoreState,
   createPiSessionStore,
   createStorePiSessionTransport,
+  isPiSessionPossiblyStuck,
   reducePiSessionStreamFrame,
   type PiSessionTransport,
 } from "./session";
@@ -30,6 +31,15 @@ const stream = (frames: AgentEvent[] | unknown[]) =>
       yield frame as never;
     }
   })();
+
+const stepEmission = (payload: AgentEvent, options: { stepKey?: string; epoch?: string } = {}) =>
+  ({
+    kind: "step-emission",
+    actor: "user",
+    stepKey: options.stepKey ?? "do:command-0-followUp",
+    epoch: options.epoch ?? "epoch-1",
+    payload,
+  }) as const;
 
 const createStore = (
   transport: PiSessionTransport,
@@ -88,6 +98,381 @@ describe("Pi session stream reducer", () => {
     const toolEndEvent = { type: "tool_execution_end", toolCallId: "tool_1" } as AgentEvent;
     state = reducePiSessionStreamFrame(state, toolEndEvent, { now: 8 });
     expect(state.events).toContain(toolEndEvent);
+  });
+
+  it("replaces an abandoned partial assistant message when recovery starts a new stream", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("abandoned partial") } as AgentEvent,
+      { now: 3 },
+    );
+
+    state = reducePiSessionStreamFrame(state, { type: "agent_start" } as AgentEvent, { now: 4 });
+    state = reducePiSessionStreamFrame(state, { type: "turn_start" } as AgentEvent, { now: 5 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 6 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("recovered partial") } as AgentEvent,
+      { now: 7 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("recovered partial")]);
+  });
+
+  it("handles recovery that emits message_update without a new message_start", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("abandoned partial") } as AgentEvent,
+      { now: 3 },
+    );
+
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("recovered partial") } as AgentEvent,
+      { now: 4 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("recovered partial")]);
+  });
+
+  it("handles recovery events before message_update without duplicating the abandoned draft", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("abandoned partial") } as AgentEvent,
+      { now: 3 },
+    );
+
+    state = reducePiSessionStreamFrame(state, { type: "agent_start" } as AgentEvent, { now: 4 });
+    state = reducePiSessionStreamFrame(state, { type: "turn_start" } as AgentEvent, { now: 5 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("recovered partial") } as AgentEvent,
+      { now: 6 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("recovered partial")]);
+  });
+
+  it("keeps a completed message when the next recovered message starts", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_end", message: message("complete") } as AgentEvent,
+      { now: 2 },
+    );
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 3 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("next partial") } as AgentEvent,
+      { now: 4 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("complete"), message("next partial")]);
+  });
+
+  it("drops only the abandoned partial when multiple completed messages exist", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_end", message: message("complete") } as AgentEvent,
+      { now: 2 },
+    );
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 3 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("abandoned") } as AgentEvent,
+      { now: 4 },
+    );
+    state = reducePiSessionStreamFrame(state, { type: "agent_start" } as AgentEvent, { now: 5 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 6 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("recovered") } as AgentEvent,
+      { now: 7 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("complete"), message("recovered")]);
+  });
+
+  it("replaces an abandoned step-emission partial when recovery starts in the same epoch", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_start" } as AgentEvent),
+      { now: 2 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_update", message: message("abandoned") } as AgentEvent),
+      { now: 3 },
+    );
+    state = reducePiSessionStreamFrame(state, stepEmission({ type: "agent_start" } as AgentEvent), {
+      now: 4,
+    });
+    state = reducePiSessionStreamFrame(state, stepEmission({ type: "turn_start" } as AgentEvent), {
+      now: 5,
+    });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_start" } as AgentEvent),
+      { now: 6 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_update", message: message("recovered") } as AgentEvent),
+      { now: 7 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("recovered")]);
+  });
+
+  it("replaces an abandoned step-emission partial when recovery starts in a new uncommitted epoch", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_start" } as AgentEvent, { epoch: "epoch-1" }),
+      { now: 2 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_update", message: message("abandoned") } as AgentEvent, {
+        epoch: "epoch-1",
+      }),
+      { now: 3 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_start" } as AgentEvent, { epoch: "epoch-2" }),
+      { now: 4 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_update", message: message("recovered") } as AgentEvent, {
+        epoch: "epoch-2",
+      }),
+      { now: 5 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("recovered")]);
+  });
+
+  it("does not duplicate recovered step-emission updates after an old epoch commits stale", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission(
+        { type: "message_update", message: message("old epoch partial") } as AgentEvent,
+        { epoch: "epoch-1" },
+      ),
+      { now: 2 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission(
+        { type: "message_update", message: message("new epoch partial") } as AgentEvent,
+        { epoch: "epoch-2" },
+      ),
+      { now: 3 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "system",
+        stepKey: "do:command-0-followUp",
+        epoch: "epoch-2",
+        payload: { control: "step-committed", epoch: "epoch-2" },
+      },
+      { now: 4 },
+    );
+
+    expect(state.agent?.messages).toEqual([message("new epoch partial")]);
+    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+  });
+
+  it("does not mark a committed stale step emission as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_end", message: message("done") } as AgentEvent),
+      { now: 1_000 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "system",
+        stepKey: "do:command-0-followUp",
+        epoch: "epoch-1",
+        payload: { control: "step-committed", epoch: "epoch-1" },
+      },
+      { now: 1_001 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+  });
+
+  it("does not mark old uncommitted step emissions as stuck after a later step commits", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_update", message: message("abandoned") } as AgentEvent, {
+        stepKey: "do:command-0-followUp",
+        epoch: "epoch-1",
+      }),
+      { now: 1_000 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      stepEmission({ type: "message_end", message: message("done") } as AgentEvent, {
+        stepKey: "do:command-1-followUp",
+        epoch: "epoch-2",
+      }),
+      { now: 2_000 },
+    );
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "system",
+        stepKey: "do:command-1-followUp",
+        epoch: "epoch-2",
+        payload: { control: "step-committed", epoch: "epoch-2" },
+      },
+      { now: 2_001 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+  });
+
+  it("does not mark a disconnected stale session as needing a nudge", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("partial") } as AgentEvent,
+      { now: 1_000 },
+    );
+
+    expect(
+      isPiSessionPossiblyStuck({ ...state, connectionStatus: "retrying" }, { now: 10_000 }),
+    ).toBe(false);
+  });
+
+  it("marks a stale tool execution start as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "tool_execution_start", toolCallId: "tool_1" } as AgentEvent,
+      { now: 1_000 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("marks a stale tool execution update as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "tool_execution_update", toolCallId: "tool_1" } as AgentEvent,
+      { now: 1_000 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("marks a stale agent start as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "agent_start" } as AgentEvent, {
+      now: 1_000,
+    });
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("marks a stale message start as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, {
+      now: 1_000,
+    });
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("marks an uncommitted stale step after message_end as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "user",
+        stepKey: "do:command-0-followUp",
+        epoch: "epoch-1",
+        payload: { type: "message_end", message: message("done") } as AgentEvent,
+      },
+      { now: 1_000 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("marks an uncommitted stale step after agent_end as possibly stuck", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      {
+        kind: "step-emission",
+        actor: "user",
+        stepKey: "do:command-0-followUp",
+        epoch: "epoch-1",
+        payload: { type: "agent_end" } as AgentEvent,
+      },
+      { now: 1_000 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+  });
+
+  it("detects an open session as possibly stuck when the last event is non-terminal and stale", () => {
+    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_update", message: message("partial") } as AgentEvent,
+      { now: 1_000 },
+    );
+
+    expect(isPiSessionPossiblyStuck(state, { now: 5_999 })).toBe(false);
+    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+
+    const ended = reducePiSessionStreamFrame(
+      state,
+      { type: "message_end", message: message("done") } as AgentEvent,
+      { now: 6_000 },
+    );
+    expect(isPiSessionPossiblyStuck(ended, { now: 20_000 })).toBe(false);
   });
 
   it("rolls back stale step-emission events when a competing epoch commits", () => {

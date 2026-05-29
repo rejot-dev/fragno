@@ -261,6 +261,8 @@ export function SessionConversationPanel({
 export function SessionComposer({
   busy,
   error,
+  needsNudge,
+  onContinue,
   onSend,
   onStop,
   readyForInput,
@@ -269,6 +271,8 @@ export function SessionComposer({
   readyForInput: boolean;
   disabledReason?: string | null;
   error: string | null;
+  needsNudge: boolean;
+  onContinue: () => Promise<unknown> | unknown;
   onSend: (command: { kind: "followUp" | "steer"; text: string }) => Promise<boolean> | boolean;
   onStop: () => Promise<unknown> | unknown;
 }) {
@@ -322,14 +326,26 @@ export function SessionComposer({
         />
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1.5">
-          <button
-            type="button"
-            disabled={busy || readyForInput}
-            onClick={onStop}
-            className="min-h-8 border border-red-400/40 bg-red-500/10 px-2.5 text-[10px] font-semibold tracking-[0.14em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-          >
-            Stop
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={busy || readyForInput}
+              onClick={onStop}
+              className="min-h-8 border border-red-400/40 bg-red-500/10 px-2.5 text-[10px] font-semibold tracking-[0.14em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+            >
+              Stop
+            </button>
+            {needsNudge ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onContinue}
+                className="min-h-8 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+              >
+                Continue
+              </button>
+            ) : null}
+          </div>
           <div className="flex items-center gap-1.5">
             <div className="grid grid-cols-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5">
               <button

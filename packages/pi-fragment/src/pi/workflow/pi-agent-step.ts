@@ -2,6 +2,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
   type WorkflowStepConfig,
+  type WorkflowStepEmission,
 } from "@fragno-dev/workflows/workflow";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
@@ -10,6 +11,7 @@ import { PiLogger } from "../../debug-log";
 import { piSchema } from "../../schema";
 import type { PiAgentRegistry, PiSessionCommandPayload } from "../types";
 import {
+  restoreAgentTurnFromEvents,
   runAgentTurn,
   type AgentTurnContext,
   type AgentTurnSessionContext,
@@ -61,8 +63,17 @@ export type PiAgentStepBehavior = PiAgentTurnBehavior & {
   controls?: Array<"abort" | "steer">;
 };
 
-export const isEphemeralAgentEvent = (event: AgentEvent) =>
-  event.type === "message_update" || event.type === "tool_execution_update";
+const committedEmissionEpochs = (emissions: WorkflowStepEmission[]) =>
+  new Set(
+    emissions.flatMap((emission) =>
+      typeof emission.payload === "object" &&
+      emission.payload !== null &&
+      "control" in emission.payload &&
+      emission.payload.control === "step-committed"
+        ? [emission.epoch]
+        : [],
+    ),
+  );
 
 export const createPiAgentStepResult = (input: {
   stopReason: PiAgentRunResult["stopReason"];
@@ -94,10 +105,70 @@ export const runPiAgentStep = async (
   runtime.step.do(runtime.stepName, behavior.step ?? defaultStepConfig, async (tx) => {
     const runAgent = runtime.agentRunner ?? runAgentTurn;
     const messagesBeforeStep = runtime.turn.messages.length;
-    const controls = behavior.controls ?? ["abort", "steer"];
-    const result = await runAgent(
+    const previousEmissions = tx.previousEmissions();
+    const committedEpochs = committedEmissionEpochs(previousEmissions);
+    const previousEvents = previousEmissions.flatMap((emission): AgentEvent[] => {
+      if (committedEpochs.has(emission.epoch)) {
+        return [];
+      }
+      const payload = emission.payload;
+      if (typeof payload !== "object" || payload === null || !("type" in payload)) {
+        return [];
+      }
+      switch (payload.type) {
+        case "agent_start":
+        case "agent_end":
+        case "turn_start":
+        case "turn_end":
+        case "message_start":
+        case "message_update":
+        case "message_end":
+        case "tool_execution_start":
+        case "tool_execution_update":
+        case "tool_execution_end":
+          return [payload as AgentEvent];
+        default:
+          return [];
+      }
+    });
+    const restore = restoreAgentTurnFromEvents({
+      baseMessages: runtime.turn.messages,
       operation,
-      runtime,
+      events: previousEvents,
+    });
+    const controls = behavior.controls ?? ["abort", "steer"];
+
+    const finish = (result: PiAgentRunResult) => {
+      tx.mutate(({ forSchema }) => {
+        const uow = forSchema(piSchema);
+        uow.update("session", runtime.event.instanceId, (builder) =>
+          builder.set({ status: "waiting", updatedAt: uow.now() }),
+        );
+      });
+
+      return createPiAgentStepResult({
+        stopReason: result.stopReason,
+        messages: result.messages.slice(messagesBeforeStep),
+        events: result.events.filter(
+          (agentEvent) =>
+            agentEvent.type !== "message_update" && agentEvent.type !== "tool_execution_update",
+        ),
+        errorMessage: result.errorMessage,
+      });
+    };
+
+    if (restore.type === "finish") {
+      return finish({
+        stopReason: restore.stopReason,
+        messages: restore.messages,
+        events: restore.events,
+        errorMessage: restore.errorMessage,
+      });
+    }
+
+    const result = await runAgent(
+      restore.operation,
+      { ...runtime, turn: { ...runtime.turn, messages: restore.messages } },
       {
         onController: (controller) => {
           if (controls.length === 0) {
@@ -127,17 +198,5 @@ export const runPiAgentStep = async (
       behavior,
     );
 
-    tx.mutate(({ forSchema }) => {
-      const uow = forSchema(piSchema);
-      uow.update("session", runtime.event.instanceId, (builder) =>
-        builder.set({ status: "waiting", updatedAt: uow.now() }),
-      );
-    });
-
-    return createPiAgentStepResult({
-      stopReason: result.stopReason,
-      messages: result.messages.slice(messagesBeforeStep),
-      events: result.events.filter((agentEvent) => !isEphemeralAgentEvent(agentEvent)),
-      errorMessage: result.errorMessage,
-    });
+    return finish({ ...result, events: [...restore.events, ...result.events] });
   });

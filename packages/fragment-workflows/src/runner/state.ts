@@ -8,6 +8,7 @@ import type {
   WorkflowEventUpdate,
   WorkflowInstanceRecord,
   WorkflowStepCreateDraft,
+  WorkflowStepEmissionRecord,
   WorkflowStepRecord,
   WorkflowStepUpdateDraft,
 } from "./types";
@@ -41,6 +42,7 @@ export type RunnerState = {
   instance: WorkflowInstanceRecord;
   stepsByKey: Map<string, WorkflowStepSnapshot>;
   events: WorkflowEventRecord[];
+  stepEmissions: WorkflowStepEmissionRecord[];
   mutations: RunnerMutationBuffer;
 };
 
@@ -67,6 +69,7 @@ export function createRunnerState(
   instance: WorkflowInstanceRecord,
   steps: WorkflowStepRecord[],
   events: WorkflowEventRecord[],
+  stepEmissions: WorkflowStepEmissionRecord[],
 ): RunnerState {
   const stepsByKey = new Map<string, WorkflowStepSnapshot>();
   for (const step of steps) {
@@ -77,6 +80,7 @@ export function createRunnerState(
     instance,
     stepsByKey,
     events,
+    stepEmissions,
     mutations: createMutationBuffer(),
   };
 }
