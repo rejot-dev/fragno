@@ -85,6 +85,8 @@ class PiSessionProtocolError extends Error {
   }
 }
 
+export const PI_SESSION_STUCK_AFTER_MS = 5_000;
+
 const defaultRetryDelay = ({ attempt }: { attempt: number; error: unknown }) =>
   Math.min(10_000, 500 * 2 ** Math.min(attempt, 8));
 
@@ -131,15 +133,23 @@ const reduceMessages = (
   messages: AgentMessage[],
   event: AgentEvent,
   previousEvent: AgentEvent | null,
+  hasOpenMessageDraft: boolean,
 ): AgentMessage[] => {
+  // If a prior stream died after message_update, recovery can emit agent/turn events before the
+  // next message_start. Track the open draft across those events and drop it when the recovered
+  // message starts, so the next update reuses the same visual assistant slot.
+  if (event.type === "message_start" && hasOpenMessageDraft) {
+    return messages.slice(0, -1);
+  }
+
   if (event.type === "message_update") {
-    return previousEvent?.type === "message_update"
+    return hasOpenMessageDraft && previousEvent?.type !== "message_start"
       ? replaceLastMessage(messages, event.message)
       : [...messages, event.message];
   }
 
   if (event.type === "message_end") {
-    return previousEvent?.type === "message_update"
+    return hasOpenMessageDraft
       ? replaceLastMessage(messages, event.message)
       : [...messages, event.message];
   }
@@ -220,17 +230,65 @@ const rebuildAgentState = (
   const committedEpochs = committedEpochsByStep(events);
   let messages = snapshotAgent.messages;
   let previousEvent: AgentEvent | null = null;
+  let hasOpenMessageDraft = false;
 
   for (const event of events) {
     const agentEvent = agentEventFromStreamFrame(event, committedEpochs);
     if (!agentEvent) {
       continue;
     }
-    messages = reduceMessages(messages, agentEvent, previousEvent);
+    messages = reduceMessages(messages, agentEvent, previousEvent, hasOpenMessageDraft);
+
+    if (agentEvent.type === "message_update") {
+      hasOpenMessageDraft = true;
+    }
+    if (agentEvent.type === "message_end") {
+      hasOpenMessageDraft = false;
+    }
     previousEvent = agentEvent;
   }
 
   return { agent: { ...snapshotAgent, messages }, lastEvent: previousEvent };
+};
+
+const latestStepEmissionCommitState = (
+  events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>,
+): "none" | "committed" | "uncommitted" => {
+  const committed = committedEpochsByStep(events);
+  const latestStepEmission = events.findLast(
+    (frame) => "kind" in frame && frame.kind === "step-emission",
+  );
+
+  if (!latestStepEmission || latestStepEmission.kind !== "step-emission") {
+    return "none";
+  }
+
+  return committed.get(latestStepEmission.stepKey) === latestStepEmission.epoch
+    ? "committed"
+    : "uncommitted";
+};
+
+export const isPiSessionPossiblyStuck = (
+  state: PiSessionStoreState,
+  meta: { now: number; stuckAfterMs?: number },
+) => {
+  if (
+    state.connectionStatus !== "open" ||
+    state.lastFrameAt === null ||
+    meta.now - state.lastFrameAt < (meta.stuckAfterMs ?? PI_SESSION_STUCK_AFTER_MS)
+  ) {
+    return false;
+  }
+
+  const latestStepCommitState = latestStepEmissionCommitState(state.events);
+  if (latestStepCommitState === "committed") {
+    return false;
+  }
+
+  return (
+    latestStepCommitState === "uncommitted" ||
+    (state.lastEvent !== null && !state.lastEvent.type.endsWith("_end"))
+  );
 };
 
 export const reducePiSessionStreamFrame = (
@@ -388,6 +446,12 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   const now = deps.now ?? (() => Date.now());
   const retryDelay = deps.retryDelay ?? defaultRetryDelay;
   const initialState = createInitialPiSessionStoreState({ sessionId });
+  const staleCheckNow = atom(now());
+  onMount(staleCheckNow, () => {
+    const interval = setInterval(() => staleCheckNow.set(now()), 1_000);
+    return () => clearInterval(interval);
+  });
+
   const state = atom<PiSessionStoreState>({
     ...initialState,
     agent: args.initialData?.agent.state ?? initialState.agent,
@@ -520,6 +584,9 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   const sendError = computed(state, ($state) =>
     $state.command.error instanceof Error ? $state.command.error.message : null,
   );
+  const needsNudge = computed([state, staleCheckNow], ($state, $now) =>
+    isPiSessionPossiblyStuck($state, { now: $now }),
+  );
   const statusText = computed([state, runningTools], ($state, $runningTools) => {
     if ($state.command.loading) {
       return "Sending…";
@@ -556,6 +623,7 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
     events,
     runningTools,
     readyForInput,
+    needsNudge,
     sending,
     error,
     sendError,

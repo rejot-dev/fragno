@@ -12,6 +12,7 @@ import { parseDurationMs } from "../utils";
 import type {
   AnyTxResult,
   WorkflowDuration,
+  WorkflowStepEmission,
   WorkflowStepEmissionsCleanupHookPayload,
   WorkflowStep,
   WorkflowStepConfig,
@@ -199,6 +200,20 @@ export class RunnerStep implements WorkflowStep {
     return identity;
   }
 
+  #previousEmissionsFor(stepKey: string): WorkflowStepEmission[] {
+    return this.#state.stepEmissions
+      .filter((emission) => emission.stepKey === stepKey)
+      .map((emission) => ({
+        id: emission.id.toString(),
+        actor: emission.actor,
+        stepKey: emission.stepKey,
+        epoch: emission.epoch,
+        sequence: emission.sequence,
+        payload: emission.payload,
+        createdAt: emission.createdAt,
+      }));
+  }
+
   #prepareWaitingDraft(
     identity: StepIdentity,
     base: {
@@ -294,7 +309,7 @@ export class RunnerStep implements WorkflowStep {
     const attempt = (snapshot?.attempts ?? 0) + 1;
     const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
     const timeoutMs = snapshot?.timeoutMs ?? null;
-    const txQueue = this.#createStepTxQueue();
+    const txQueue = this.#createStepTxQueue(identity);
     const pendingEventConsumptions = new Map<string, WorkflowEventRecord>();
     const queueEventConsumption = (event: WorkflowEventRecord, consumedByStepKey: string) => {
       if (consumedByStepKey !== identity.stepKey) {
@@ -627,7 +642,7 @@ export class RunnerStep implements WorkflowStep {
         payload: (event.payload ?? null) as Readonly<T>,
         timestamp: event.createdAt,
       };
-      const txQueue = this.#createStepTxQueue();
+      const txQueue = this.#createStepTxQueue(identity);
       const livePumpHandle = this.#stepEmissions.getOrCreate(
         workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
         () =>
@@ -656,6 +671,7 @@ export class RunnerStep implements WorkflowStep {
           }));
           emissionScope.enqueueOutgoing(payload);
         },
+        previousEmissions: txQueue.tx.previousEmissions,
       };
 
       try {
@@ -785,7 +801,7 @@ export class RunnerStep implements WorkflowStep {
     this.#state.mutations.stepEmissionCleanupRequests.push(request);
   }
 
-  #createStepTxQueue(): StepTxQueue {
+  #createStepTxQueue(identity: StepIdentity): StepTxQueue {
     const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
     const pendingServiceCalls: AnyTxResult[] = [];
     const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
@@ -800,6 +816,7 @@ export class RunnerStep implements WorkflowStep {
         },
       },
       emit: () => {},
+      previousEmissions: () => this.#previousEmissionsFor(identity.stepKey),
       onEvent: () => () => {},
       serviceCalls: (factory) => {
         let calls: readonly AnyTxResult[];

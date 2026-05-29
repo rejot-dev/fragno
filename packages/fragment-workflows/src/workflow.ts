@@ -54,11 +54,23 @@ export type WorkflowStepEventHandler<TPayload = unknown> = (
   event: WorkflowStepEvent<TPayload>,
 ) => void | Promise<void>;
 
+export type WorkflowStepEmission<TPayload = unknown> = {
+  id: string;
+  actor: string;
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  payload: TPayload;
+  createdAt: Date;
+};
+
 export type WorkflowStepConsumeTx = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
   /** Persist an outbound workflow-authored step emission. */
   emit: (payload: unknown) => void;
+  /** Emissions for this step that were already persisted before the current attempt started. */
+  previousEmissions: () => WorkflowStepEmission[];
 };
 
 export type WorkflowStepTx = WorkflowStepConsumeTx & {

@@ -107,6 +107,8 @@ export default function BackofficeOrganisationPiSessionDetail() {
     return true;
   };
 
+  const handleContinue = () => liveSession.sendCommand({ kind: "continue" });
+
   const handleStop = () =>
     liveSession.sendCommand({ kind: "abort", reason: "Stopped from backoffice UI" });
 
@@ -160,6 +162,8 @@ export default function BackofficeOrganisationPiSessionDetail() {
         readyForInput={liveSession.readyForInput}
         disabledReason={disabledReason}
         error={liveSession.sendError}
+        needsNudge={liveSession.needsNudge}
+        onContinue={handleContinue}
         onSend={handleSend}
         onStop={handleStop}
       />

@@ -425,6 +425,35 @@ describe("BufferedDatabasePump", () => {
     expect(observed).toEqual([{ id: "row-3", payload: "third" }]);
   });
 
+  test("publishObserved appends only newly observed items to snapshots", async () => {
+    type Item = { id: string; payload: string };
+    const pump = new BufferedDatabasePump<Item, unknown, Item>({
+      handlerTx,
+      flush: async () => ({ observedItems: [{ id: "row-1", payload: "first" }] }),
+      cursorForObservedItem: (item) => item.id,
+    });
+    const observed: Item[] = [];
+    pump.observe((item) => {
+      observed.push(item);
+    });
+
+    await pump.flushNow();
+    await pump.publishObserved([
+      { id: "row-1", payload: "stale" },
+      { id: "row-2", payload: "second" },
+      { id: "row-2", payload: "duplicate" },
+    ]);
+
+    expect(observed).toEqual([
+      { id: "row-1", payload: "first" },
+      { id: "row-2", payload: "second" },
+    ]);
+    await expect(pump.snapshot()).resolves.toEqual([
+      { id: "row-1", payload: "first" },
+      { id: "row-2", payload: "second" },
+    ]);
+  });
+
   test("flush failures restore drained outgoing buffers and rethrow", async () => {
     const errors: unknown[] = [];
     let shouldFail = true;

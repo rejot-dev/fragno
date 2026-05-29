@@ -10,14 +10,14 @@ import { z } from "zod";
 
 import { instantiate } from "@fragno-dev/core";
 
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import { createPiFragmentClient } from "../client/vanilla";
 import { piRoutesFactory } from "../routes";
 import { piFragmentDefinition } from "./definition";
 import { definePiTool, definePiWorkflow } from "./dsl";
-import { createPiWorkflows } from "./factory";
+import { createPiWorkflows, type PiAgentRunner } from "./factory";
 import { createAssistantStreamScript, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { interactiveChatWorkflow } from "./workflows/interactive-chat-workflow";
@@ -41,6 +41,241 @@ const createAssistantMessage = (stopReason: AssistantMessage["stopReason"]): Ass
 });
 
 describe("Pi workflow scenarios", () => {
+  test("restores an in-flight prompt step after runner restart without replaying the prompt", async () => {
+    let releaseInFlightAttempt!: () => void;
+    const inFlightAttemptReleased = new Promise<void>((resolve) => {
+      releaseInFlightAttempt = resolve;
+    });
+    const { streamFn } = createAssistantStreamScript()
+      .waitBeforeStart(inFlightAttemptReleased)
+      .text("late stale response")
+      .text("stop")
+      .build();
+    const restoreWorkflow = definePiWorkflow(
+      { name: "pi-restore-prompt-in-flight", schema: z.object({}) },
+      async (ctx) => {
+        const result = await ctx.agent("default").prompt("ask", {
+          input: { text: "hello" },
+        });
+        return {
+          roles: result.messages.map((message) => message.role),
+          text: result.messages
+            .flatMap((message) =>
+              "content" in message && Array.isArray(message.content)
+                ? message.content.flatMap((content) =>
+                    content.type === "text" ? [content.text] : [],
+                  )
+                : [],
+            )
+            .join(" "),
+        };
+      },
+    );
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          streamFn,
+        },
+      },
+      tools: {},
+      workflows: [restoreWorkflow],
+    };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-restore-prompt-in-flight",
+        workflows: createPiWorkflows({
+          agents: config.agents,
+          tools: config.tools,
+          workflows: config.workflows,
+        }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker", "killer"],
+        steps: ({ workflow, runners, concurrent }) => [
+          workflow.create({ workflow: restoreWorkflow.name, id: "restore-prompt-session" }),
+          concurrent({
+            worker: [
+              runners.worker.tick({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-prompt-session",
+                reason: "create",
+              }),
+            ],
+            killer: [
+              runners.killer.waitForEmission({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-prompt-session",
+                match: (emission) => {
+                  const payload = emission.payload as AgentEvent;
+                  return payload.type === "message_end" && payload.message.role === "user";
+                },
+              }),
+              runners.killer.restart(),
+              runners.killer.tick({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-prompt-session",
+                reason: "create",
+              }),
+              workflow.read({
+                read: () => {
+                  releaseInFlightAttempt();
+                },
+              }),
+            ],
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(restoreWorkflow.name, "restore-prompt-session"),
+              steps: await ctx.state.getSteps(restoreWorkflow.name, "restore-prompt-session"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { roles: ["user", "assistant"], text: "hello stop" },
+              });
+              expect(steps[0]).toMatchObject({
+                stepKey: "do:ask",
+                status: "completed",
+              });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("finishes an in-flight prompt step from restored completed events after runner restart", async () => {
+    const promptMessage: Extract<AgentMessage, { role: "user" }> = {
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: 1,
+    };
+    const finalMessage = createAssistantMessage("stop");
+    let releaseInFlightAttempt!: () => void;
+    const inFlightAttemptReleased = new Promise<void>((resolve) => {
+      releaseInFlightAttempt = resolve;
+    });
+    let runnerCallCount = 0;
+    const agentRunner: PiAgentRunner = async (_operation, _runtime, lifecycle) => {
+      runnerCallCount += 1;
+      await lifecycle?.onEvent?.({ type: "agent_start" });
+      await lifecycle?.onEvent?.({ type: "turn_start" });
+      await lifecycle?.onEvent?.({ type: "message_start", message: promptMessage });
+      await lifecycle?.onEvent?.({ type: "message_end", message: promptMessage });
+      await lifecycle?.onEvent?.({ type: "message_start", message: finalMessage });
+      await lifecycle?.onEvent?.({ type: "message_end", message: finalMessage });
+      await lifecycle?.onEvent?.({ type: "agent_end", messages: [promptMessage, finalMessage] });
+      await inFlightAttemptReleased;
+      return {
+        stopReason: "stop",
+        messages: [promptMessage, finalMessage],
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const restoreWorkflow = definePiWorkflow(
+      { name: "pi-restore-completed-in-flight", schema: z.object({}) },
+      async (ctx) => {
+        const result = await ctx.agent("default").prompt("ask", {
+          input: { text: "hello" },
+        });
+        return {
+          stopReason: result.stopReason,
+          roles: result.messages.map((message) => message.role),
+        };
+      },
+    );
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+        },
+      },
+      tools: {},
+      workflows: [restoreWorkflow],
+    };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-restore-completed-in-flight",
+        workflows: createPiWorkflows({
+          agents: config.agents,
+          tools: config.tools,
+          workflows: config.workflows,
+          agentRunner,
+        }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker", "killer"],
+        steps: ({ workflow, runners, concurrent }) => [
+          workflow.create({ workflow: restoreWorkflow.name, id: "restore-completed-session" }),
+          concurrent({
+            worker: [
+              runners.worker.tick({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-completed-session",
+                reason: "create",
+              }),
+            ],
+            killer: [
+              runners.killer.waitForEmission({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-completed-session",
+                match: (emission) => (emission.payload as AgentEvent).type === "agent_end",
+              }),
+              runners.killer.restart(),
+              runners.killer.tick({
+                workflow: restoreWorkflow.name,
+                instanceId: "restore-completed-session",
+                reason: "create",
+              }),
+              workflow.read({
+                read: () => {
+                  releaseInFlightAttempt();
+                },
+              }),
+            ],
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(restoreWorkflow.name, "restore-completed-session"),
+              steps: await ctx.state.getSteps(restoreWorkflow.name, "restore-completed-session"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { stopReason: "stop", roles: ["user", "assistant"] },
+              });
+              expect(steps[0]).toMatchObject({
+                stepKey: "do:ask",
+                status: "completed",
+              });
+              expect(runnerCallCount).toBe(1);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   test("stops a workflow agent step after a matching tool call", async () => {
     const classifyTool = definePiTool({
       name: "classify",

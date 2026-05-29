@@ -111,6 +111,57 @@ describe("Workflows Runner", () => {
     expect(await readStepEmissionRows(harness, instanceId)).toHaveLength(0);
   });
 
+  test("WorkflowStepTx previousEmissions returns rows loaded before the current attempt", async () => {
+    const observedPayloads: unknown[][] = [];
+
+    const PreviousEmissionsWorkflow = defineWorkflow<
+      "previous-emissions-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "previous-emissions-workflow" }, async (_event, step) => {
+      await step.do("recoverable", async (tx) => {
+        tx.emit({ type: "current-attempt" });
+        observedPayloads.push(tx.previousEmissions().map((emission) => emission.payload));
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PREVIOUS_EMISSIONS: PreviousEmissionsWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("PREVIOUS_EMISSIONS");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const seedUow = harness.db
+      .createUnitOfWork("seed-previous-emission")
+      .forSchema(workflowsSchema);
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instanceId,
+      stepKey: "do:recoverable",
+      epoch: "previous-epoch",
+      sequence: 0,
+      actor: "user",
+      payload: { type: "checkpoint" },
+    });
+    const { success } = await seedUow.executeMutations();
+    expect(success).toBe(true);
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    expect(observedPayloads).toEqual([[{ type: "checkpoint" }]]);
+  });
+
   test("central step emission bus observes outbound events from the active in-process step", async () => {
     const stepEntered = deferred();
     const releaseStep = deferred();
@@ -176,6 +227,133 @@ describe("Workflows Runner", () => {
       emissionBus.stop();
       releaseStep.resolve();
       await tick;
+    }
+  });
+
+  test("central step emission bus observes step commit marker before the tick resolves", async () => {
+    const observed: unknown[] = [];
+    const stepEmissions = createStepEmissions();
+
+    const CommitFlushWorkflow = defineWorkflow<
+      "central-message-bus-commit-flush-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "central-message-bus-commit-flush-workflow" }, async (_event, step) => {
+      await step.do("commit marker", async (tx) => {
+        tx.emit({ type: "started" });
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { COMMIT_FLUSH: CommitFlushWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("COMMIT_FLUSH");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const emissionBus = await harness.fragment.inContext(function () {
+      return openBus(stepEmissions, {
+        handlerTx: this.handlerTx,
+        workflowName: "central-message-bus-commit-flush-workflow",
+        instanceId,
+      });
+    });
+    const unsubscribe = emissionBus.observe((message) => {
+      observed.push(message.payload);
+    });
+    let flushCount = 0;
+    const originalFlushNow = emissionBus.flushNow.bind(emissionBus);
+    emissionBus.flushNow = async () => {
+      flushCount += 1;
+      await originalFlushNow();
+    };
+
+    try {
+      await harness.tick(buildPayload(instance!, "create"));
+      emissionBus.stop();
+
+      expect(observed).toEqual(
+        expect.arrayContaining([expect.objectContaining({ control: "step-committed" })]),
+      );
+      expect(flushCount).toBe(1);
+    } finally {
+      unsubscribe();
+      emissionBus.stop();
+    }
+  });
+
+  test("central step emission bus snapshot dedupes a commit marker already observed by a flush", async () => {
+    const stepEmissions = createStepEmissions();
+
+    const CommitSnapshotWorkflow = defineWorkflow<
+      "central-message-bus-commit-snapshot-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "central-message-bus-commit-snapshot-workflow" }, async (_event, step) => {
+      await step.do("commit marker", async (tx) => {
+        tx.emit({ type: "started" });
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { COMMIT_SNAPSHOT: CommitSnapshotWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("COMMIT_SNAPSHOT");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const emissionBus = await harness.fragment.inContext(function () {
+      return openBus(stepEmissions, {
+        handlerTx: this.handlerTx,
+        workflowName: "central-message-bus-commit-snapshot-workflow",
+        instanceId,
+      });
+    });
+    const flushNow = emissionBus.flushNow.bind(emissionBus);
+    const publishObserved = emissionBus.publishObserved.bind(emissionBus);
+    emissionBus.publishObserved = async (messages) => {
+      await flushNow();
+      await publishObserved(messages);
+    };
+
+    try {
+      await harness.tick(buildPayload(instance!, "create"));
+
+      const snapshot = await emissionBus.snapshot();
+      const commitMarkers = snapshot.filter(
+        (message) =>
+          typeof message.payload === "object" &&
+          message.payload !== null &&
+          "control" in message.payload &&
+          message.payload.control === "step-committed",
+      );
+      expect(commitMarkers).toHaveLength(1);
+    } finally {
+      emissionBus.stop();
     }
   });
 

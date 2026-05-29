@@ -58,33 +58,53 @@ const buildAssistantMessage = (
   timestamp: Date.now(),
 });
 
+type ScriptedAssistantTurnOptions = {
+  waitBeforeStart?: Promise<unknown>;
+};
+
 type ScriptedAssistantTurn =
-  | { type: "text"; text: string; stopReason?: Extract<StopReason, "stop" | "length"> }
-  | { type: "toolCall"; toolCall: ToolCall };
+  | ({
+      type: "text";
+      text: string;
+      stopReason?: Extract<StopReason, "stop" | "length">;
+    } & ScriptedAssistantTurnOptions)
+  | ({ type: "toolCall"; toolCall: ToolCall } & ScriptedAssistantTurnOptions);
 
 export const createAssistantStreamScript = () => {
   const turns: ScriptedAssistantTurn[] = [];
+  let nextTurnOptions: ScriptedAssistantTurnOptions = {};
+  const takeNextTurnOptions = () => {
+    const options = nextTurnOptions;
+    nextTurnOptions = {};
+    return options;
+  };
   const builder = {
+    waitBeforeStart(waitBeforeStart: Promise<unknown>) {
+      nextTurnOptions = { ...nextTurnOptions, waitBeforeStart };
+      return builder;
+    },
     text(text: string, options: { stopReason?: Extract<StopReason, "stop" | "length"> } = {}) {
-      turns.push({ type: "text", text, stopReason: options.stopReason });
+      turns.push({ type: "text", text, stopReason: options.stopReason, ...takeNextTurnOptions() });
       return builder;
     },
     toolCall(name: string, options: { id: string; args: Record<string, unknown> }) {
       turns.push({
         type: "toolCall",
         toolCall: { type: "toolCall", id: options.id, name, arguments: options.args },
+        ...takeNextTurnOptions(),
       });
       return builder;
     },
     build(): { streamFn: StreamFn } {
       let nextTurnIndex = 0;
       return {
-        streamFn: () => {
+        streamFn: async () => {
           const turn = turns[nextTurnIndex];
           if (!turn) {
             throw new Error(`No scripted assistant turn available at index ${nextTurnIndex}.`);
           }
           nextTurnIndex += 1;
+          await turn.waitBeforeStart;
 
           const stream = createAssistantMessageEventStream();
           const message =
