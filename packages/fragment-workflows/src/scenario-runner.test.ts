@@ -1214,6 +1214,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           secondMessages: undefined as unknown,
           firstSharedMessages: undefined as unknown,
           secondSharedMessages: undefined as unknown,
+          firstCommittedMessages: undefined as unknown,
+          secondCommittedMessages: undefined as unknown,
         };
       },
       runners: ["first", "second", "observer"],
@@ -1392,6 +1394,51 @@ describe("Workflows Runner (Scenario DSL)", () => {
             runners.observer.resolveControl({ key: "shared:release" }),
             runners.observer.resolveControl({ key: "first:release" }),
           ],
+        }),
+        stores.firstCurrentStep.waitFor(
+          (state) =>
+            !state.loading &&
+            hasStepControl(state.data, "do:racy client message", "step-committed"),
+          {
+            storeAs: "firstCommittedMessages",
+            select: (state) => state.data,
+          },
+        ),
+        stores.secondCurrentStep.waitFor(
+          (state) =>
+            !state.loading &&
+            hasStepControl(state.data, "do:racy client message", "step-committed"),
+          {
+            storeAs: "secondCommittedMessages",
+            select: (state) => state.data,
+          },
+        ),
+        workflow.assert((ctx) => {
+          expect(ctx.vars.firstCommittedMessages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                stepKey: "do:racy client message",
+                actor: "system",
+                payload: expect.objectContaining({ control: "step-committed" }),
+              }),
+            ]),
+          );
+          expect(ctx.vars.firstCommittedMessages).not.toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                stepKey: "do:racy client message",
+                payload: { runner: "first", message: "first:started" },
+              }),
+            ]),
+          );
+          expect(ctx.vars.secondCommittedMessages).not.toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                stepKey: "do:racy client message",
+                payload: { runner: "first", message: "first:started" },
+              }),
+            ]),
+          );
         }),
 
         workflow.read({

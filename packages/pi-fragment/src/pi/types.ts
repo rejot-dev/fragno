@@ -82,9 +82,18 @@ export type PiAgentDefinition = {
 
 export type PiAgentRegistry = Record<string, PiAgentDefinition>;
 
+export type PiSessionStepEmissionFrame = {
+  kind: "step-emission";
+  actor: string;
+  stepKey: string;
+  epoch: string;
+  payload: unknown;
+};
+
 export type PiSessionEventStreamItem =
   | { type: "snapshot"; state: PiAgentStateSnapshot }
   | AgentEvent
+  | PiSessionStepEmissionFrame
   | { kind: "abort"; commandId: string; reason?: string }
   | { kind: "steer"; commandId: string; input: PiPromptInput };
 

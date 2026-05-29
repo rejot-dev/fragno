@@ -20,7 +20,7 @@ import type { WorkflowEventRecord } from "./types";
 
 const WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS = 100;
 
-const STEP_STARTED_PAYLOAD = { control: "step-started" };
+const STEP_STARTED_PAYLOAD = { control: "step-started" as const };
 
 type StepEmissionOpenScopeMeta = {
   stepKey: string;

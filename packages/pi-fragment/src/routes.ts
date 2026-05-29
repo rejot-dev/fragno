@@ -328,17 +328,15 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
 
               const snapshot = await emissionBus.snapshot();
 
-              const inFlightEvents = snapshot
-                .filter(
-                  (emission) =>
-                    emission.actor === "user" &&
-                    !initialDetail.completedStepKeys.has(emission.stepKey),
-                )
-                .map((emission) => emission.payload)
-                .filter(
-                  (payload): payload is PiSessionEventStreamItem =>
-                    !("type" in payload) || payload.type !== "snapshot",
-                );
+              const inFlightEvents: PiSessionEventStreamItem[] = snapshot
+                .filter((emission) => !initialDetail.completedStepKeys.has(emission.stepKey))
+                .map((emission) => ({
+                  kind: "step-emission" as const,
+                  actor: emission.actor,
+                  stepKey: emission.stepKey,
+                  epoch: emission.epoch,
+                  payload: emission.payload,
+                }));
 
               const initialEmissions: PiSessionEventStreamItem[] = [
                 {
@@ -361,11 +359,17 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   emissionBus: {
                     observe: (handler) =>
                       emissionBus.observe(
-                        (message) => {
-                          if (message.actor === "user") {
-                            return handler(message);
-                          }
-                        },
+                        (message) =>
+                          handler({
+                            ...message,
+                            payload: {
+                              kind: "step-emission" as const,
+                              actor: message.actor,
+                              stepKey: message.stepKey,
+                              epoch: message.epoch,
+                              payload: message.payload,
+                            },
+                          }),
                         { after: snapshot },
                       ),
                   },

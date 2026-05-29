@@ -95,15 +95,43 @@ function assertJsonStream<TResponse extends { type: string }>(
   }
 }
 
+const unwrapRouteFrame = <T>(frame: T): T => {
+  if (
+    typeof frame === "object" &&
+    frame !== null &&
+    "kind" in frame &&
+    frame.kind === "step-emission" &&
+    "actor" in frame &&
+    frame.actor === "user" &&
+    "payload" in frame
+  ) {
+    return frame.payload as T;
+  }
+  return frame;
+};
+
+const isSystemStepEmissionFrame = (frame: unknown) =>
+  typeof frame === "object" &&
+  frame !== null &&
+  "kind" in frame &&
+  frame.kind === "step-emission" &&
+  "actor" in frame &&
+  frame.actor === "system";
+
 const readFrame = async <T>(
   stream: AsyncGenerator<T, unknown, unknown>,
   message = "Timed out waiting for stream frame.",
 ): Promise<T> => {
-  const next = await withTimeout(stream.next(), message);
-  if (next.done) {
-    throw new Error("Stream ended before the next frame was written.");
+  while (true) {
+    const next = await withTimeout(stream.next(), message);
+    if (next.done) {
+      throw new Error("Stream ended before the next frame was written.");
+    }
+    if (isSystemStepEmissionFrame(next.value)) {
+      continue;
+    }
+    return unwrapRouteFrame(next.value);
   }
-  return next.value;
 };
 
 const readUntilFrame = async <T, TMatch extends T>(
@@ -337,7 +365,11 @@ describe("pi-fragment /events route", () => {
     });
     assertJsonStream(response);
 
-    expect(await Array.fromAsync(response.stream)).toEqual([
+    expect(
+      (await Array.fromAsync(response.stream))
+        .filter((frame) => !isSystemStepEmissionFrame(frame))
+        .map(unwrapRouteFrame),
+    ).toEqual([
       expect.objectContaining({
         type: "snapshot",
         state: { messages: [] },
@@ -421,7 +453,11 @@ describe("pi-fragment /events route", () => {
     });
     assertJsonStream(response);
 
-    expect(await Array.fromAsync(response.stream)).toEqual([
+    expect(
+      (await Array.fromAsync(response.stream))
+        .filter((frame) => !isSystemStepEmissionFrame(frame))
+        .map(unwrapRouteFrame),
+    ).toEqual([
       expect.objectContaining({
         type: "snapshot",
         state: { messages: [] },
