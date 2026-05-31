@@ -1,7 +1,9 @@
-import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import {
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
-
-import { migrate } from "@fragno-dev/db";
+import { z } from "zod";
 
 import type { MasterFileSystem } from "@/files";
 import {
@@ -12,14 +14,16 @@ import {
 import {
   createPiBashCommandContext,
   createPiRuntime,
-  isValidPiToolId,
   type PiRuntimeFragments,
   type PiSessionFileSystemContext,
 } from "@/fragno/pi/pi";
 import {
+  PI_TOOL_IDS,
   resolvePiHarnesses,
   type PiConfigState,
   type PiHarnessConfig,
+  type PiThinkingLevel,
+  type PiSteeringMode,
   type StoredPiConfig,
 } from "@/fragno/pi/pi-shared";
 
@@ -30,26 +34,114 @@ type PiHookQueueOptions = DurableHookQueueOptions & {
   fragment?: PiHookQueueFragment;
 };
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
+type PiRuntime =
+  | { configured: false }
+  | {
+      configured: true;
+      stored: StoredPiConfig;
+      config: StoredPiConfig;
+      fragments: PiRuntimeFragments;
+    };
+
+const apiKeySchema = z
+  .string()
+  .trim()
+  .transform((value) => value || undefined)
+  .optional();
+
+const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional();
+
+const steeringModeSchema = z.enum(["all", "one-at-a-time"]).optional();
+
+const harnessSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1, "Harness id is required.")
+    .refine((value) => !value.includes("::"), {
+      message: "Harness id cannot contain '::'.",
+    }),
+  label: z.string().trim().min(1, "Harness label is required."),
+  description: z
+    .string()
+    .trim()
+    .transform((value) => value || undefined)
+    .optional(),
+  systemPrompt: z.string().trim().min(1, "Harness system prompt is required."),
+  tools: z.array(z.enum(PI_TOOL_IDS)).default([]),
+  thinkingLevel: thinkingLevelSchema,
+  steeringMode: steeringModeSchema,
+  toolConfig: z.unknown().optional(),
+});
+
+const harnessesSchema = z.array(harnessSchema).superRefine((harnesses, context) => {
+  const ids = new Set<string>();
+  for (const [index, harness] of harnesses.entries()) {
+    if (ids.has(harness.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Harness id '${harness.id}' is duplicated.`,
+        path: [index, "id"],
+      });
+      continue;
+    }
+    ids.add(harness.id);
+  }
+});
+
+const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
+  orgId: z.string().trim().min(1, "Stored Pi config is missing an organisation id."),
+  apiKeys: z.object({
+    openai: apiKeySchema,
+    anthropic: apiKeySchema,
+    gemini: apiKeySchema,
+  }),
+  harnesses: harnessesSchema,
+  createdAt: z.string().trim().min(1, "Stored Pi config is missing createdAt."),
+  updatedAt: z.string().trim().min(1, "Stored Pi config is missing updatedAt."),
+});
+
+const setAdminConfigInputSchema = z.object({
+  orgId: z.string().trim().min(1, "Pi configuration requires an organisation id."),
+  apiKeys: z
+    .object({
+      openai: apiKeySchema,
+      anthropic: apiKeySchema,
+      gemini: apiKeySchema,
+    })
+    .optional(),
+  harnesses: harnessesSchema.optional(),
+});
+
+const hookQueueOptionsSchema = z
+  .object({
+    fragment: z.enum(["pi", "workflows"]).optional(),
+    cursor: z
+      .string()
+      .trim()
+      .transform((value) => value || undefined)
+      .optional(),
+    pageSize: z
+      .number()
+      .refine((value) => Number.isFinite(value) && Number.isInteger(value), {
+        message: "pageSize must be an integer.",
+      })
+      .optional(),
+  })
+  .optional();
 
 const buildOrgIdMismatchMessage = (expectedOrgId: string, orgId: string) =>
   `Pi Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`;
 
 const buildOrgIdMismatchResponse = (expectedOrgId: string, orgId: string) =>
-  jsonResponse(
+  Response.json(
     {
       message: buildOrgIdMismatchMessage(expectedOrgId, orgId),
       code: "ORG_ID_MISMATCH",
       expectedOrgId,
       orgId,
     },
-    409,
+    { status: 409 },
   );
 
 const maskSecret = (value?: string) => {
@@ -82,7 +174,7 @@ const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
   return {
     configured: isConfigured(config),
     config: {
-      orgId: typeof config.orgId === "string" ? config.orgId : "",
+      orgId: config.orgId,
       apiKeys: {
         openai: maskSecret(config.apiKeys.openai),
         anthropic: maskSecret(config.apiKeys.anthropic),
@@ -95,104 +187,105 @@ const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
   };
 };
 
-const normalizeKey = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+const toStoredHarness = (harness: z.infer<typeof harnessSchema>): PiHarnessConfig => ({
+  id: harness.id,
+  label: harness.label,
+  description: harness.description,
+  systemPrompt: harness.systemPrompt,
+  tools: harness.tools,
+  thinkingLevel: harness.thinkingLevel as PiThinkingLevel | undefined,
+  steeringMode: harness.steeringMode as PiSteeringMode | undefined,
+  toolConfig: harness.toolConfig,
+});
 
-const normalizeHarnesses = (value: unknown): PiHarnessConfig[] | null => {
-  if (value === undefined) {
-    return null;
-  }
-  if (!Array.isArray(value)) {
-    throw new Error("Harnesses must be an array.");
-  }
-
-  const harnesses: PiHarnessConfig[] = value.map((item, index) => {
-    if (!item || typeof item !== "object") {
-      throw new Error(`Harness entry ${index + 1} must be an object.`);
-    }
-    const record = item as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    const label = typeof record.label === "string" ? record.label.trim() : "";
-    const systemPrompt = typeof record.systemPrompt === "string" ? record.systemPrompt.trim() : "";
-    const tools = Array.isArray(record.tools)
-      ? record.tools.filter((tool): tool is string => typeof tool === "string")
-      : [];
-
-    if (!id) {
-      throw new Error(`Harness entry ${index + 1} is missing an id.`);
-    }
-    if (id.includes("::")) {
-      throw new Error(`Harness '${id}' cannot contain '::'.`);
-    }
-    if (!label) {
-      throw new Error(`Harness '${id}' is missing a label.`);
-    }
-    if (!systemPrompt) {
-      throw new Error(`Harness '${id}' is missing a system prompt.`);
-    }
-
-    for (const tool of tools) {
-      if (!isValidPiToolId(tool)) {
-        throw new Error(`Harness '${id}' references unknown tool '${tool}'.`);
-      }
-    }
-
-    return {
-      id,
-      label,
-      description: typeof record.description === "string" ? record.description.trim() : undefined,
-      systemPrompt,
-      tools,
-      thinkingLevel: record.thinkingLevel as PiHarnessConfig["thinkingLevel"],
-      steeringMode: record.steeringMode as PiHarnessConfig["steeringMode"],
-      toolConfig: record.toolConfig,
-    };
-  });
-
-  const ids = new Set<string>();
-  for (const harness of harnesses) {
-    if (ids.has(harness.id)) {
-      throw new Error(`Harness id '${harness.id}' is duplicated.`);
-    }
-    ids.add(harness.id);
-  }
-
-  return harnesses;
-};
+const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
+  harnesses.map(toStoredHarness);
 
 export class Pi extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
-  #piFragment: PiRuntimeFragments["piFragment"] | null = null;
-  #workflowsFragment: PiRuntimeFragments["workflowsFragment"] | null = null;
-  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
-  private initPromise: Promise<void>;
-  #configFingerprint: string | null = null;
+  #host: FragmentDurableObjectHost<StoredPiConfig, PiRuntimeFragments>;
+  #runtime: PiRuntime = { configured: false };
   #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
-    this.initPromise = state.blockConcurrencyWhile(async () => {
-      const config = await this.#loadConfig();
-      if (config && isConfigured(config)) {
-        await this.#ensureRuntime(config);
+    this.#host = createFragmentDurableObjectHost<CloudflareEnv, StoredPiConfig, PiRuntimeFragments>(
+      {
+        name: "Pi",
+        state,
+        env,
+        createRuntime: (config) => this.#createRuntime(config),
+        getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.piFragment],
+        hostRuntime: (runtime, { hostFragment }) => ({
+          ...runtime,
+          workflowsFragment: hostFragment(runtime.workflowsFragment),
+          piFragment: hostFragment(runtime.piFragment),
+        }),
+        mounts: [
+          {
+            id: "workflows",
+            match: ({ pathname }) => pathname.startsWith("/api/workflows"),
+            target: (runtime) => runtime.workflowsFragment,
+          },
+          { id: "pi", target: (runtime) => runtime.piFragment },
+        ],
+        onProcessError: (error) => {
+          console.error("Pi hook processor error", error);
+        },
+        onDispatcherError: (error) => {
+          console.warn("Pi hook processor disabled", error);
+        },
+      },
+    );
+
+    void state.blockConcurrencyWhile(async () => {
+      try {
+        const stored = await this.#loadConfig();
+        if (!stored || !isConfigured(stored)) {
+          this.#runtime = { configured: false };
+          return;
+        }
+
+        this.#getStoredOrgId(stored, { required: true });
+        const fragments = await this.#host.initialize(stored);
+        this.#runtime = {
+          configured: true,
+          stored,
+          config: stored,
+          fragments,
+        };
+      } catch (error) {
+        console.log("Migration failed", { error });
+        throw error;
       }
     });
   }
 
   async #loadConfig() {
-    const config = await this.#state.storage.get<StoredPiConfig>(CONFIG_KEY);
-    return config ?? null;
-  }
-
-  #getStoredOrgId(config: StoredPiConfig | null) {
-    if (!config || typeof config.orgId !== "string") {
+    const config = await this.#state.storage.get<unknown>(CONFIG_KEY);
+    if (config === undefined || config === null) {
       return null;
     }
 
-    const storedOrgId = config.orgId.trim();
-    return storedOrgId ? storedOrgId : null;
+    return storedPiConfigSchema.parse(config);
+  }
+
+  #getStoredOrgId(config: StoredPiConfig | null, options: { required: true }): string;
+  #getStoredOrgId(config: StoredPiConfig | null, options?: { required?: false }): string | null;
+  #getStoredOrgId(config: StoredPiConfig | null, options: { required?: boolean } = {}) {
+    const storedOrgId = typeof config?.orgId === "string" ? config.orgId.trim() : "";
+    if (storedOrgId) {
+      return storedOrgId;
+    }
+
+    if (options.required) {
+      throw new Error("Stored Pi config is missing an organisation id.");
+    }
+
+    return null;
   }
 
   #assertRequestOrgIdMatchesConfig(request: Request, config: StoredPiConfig): Response | null {
@@ -213,30 +306,15 @@ export class Pi extends DurableObject<CloudflareEnv> {
     return null;
   }
 
-  #fingerprintConfig(config: StoredPiConfig) {
-    try {
-      return JSON.stringify({
-        orgId: config.orgId,
-        apiKeys: config.apiKeys,
-        harnesses: resolvePiHarnesses(config.harnesses),
-      });
-    } catch {
-      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    }
-  }
-
-  async #buildRuntime(config: StoredPiConfig) {
-    const orgId = config.orgId.trim();
-    if (!orgId) {
-      throw new Error("Pi runtime requires an organisation id.");
-    }
+  #createRuntime(config: StoredPiConfig) {
+    const orgId = this.#getStoredOrgId(config, { required: true });
 
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       orgId,
       env: this.#env,
     };
 
-    const runtime = createPiRuntime({
+    return createPiRuntime({
       config,
       state: this.#state,
       env: this.#env,
@@ -247,36 +325,39 @@ export class Pi extends DurableObject<CloudflareEnv> {
         orgId,
       }),
     });
-
-    await migrate(runtime.workflowsFragment);
-    await migrate(runtime.piFragment);
-
-    this.#piFragment = runtime.piFragment;
-    this.#workflowsFragment = runtime.workflowsFragment;
-    this.#dispatcher = runtime.dispatcher;
   }
 
-  async #ensureRuntime(config: StoredPiConfig) {
-    const nextFingerprint = this.#fingerprintConfig(config);
-    if (
-      this.#piFragment &&
-      this.#workflowsFragment &&
-      this.#configFingerprint === nextFingerprint
-    ) {
+  async #setRuntimeFromStoredConfig(stored: StoredPiConfig | null) {
+    if (!stored || !isConfigured(stored)) {
+      this.#runtime = { configured: false };
       return;
     }
 
-    this.#configFingerprint = nextFingerprint;
-    this.initPromise = this.#state.blockConcurrencyWhile(async () => {
-      await this.#buildRuntime(config);
-    });
+    this.#getStoredOrgId(stored, { required: true });
+    const fragments = await this.#host.initialize(stored);
+    this.#runtime = {
+      configured: true,
+      stored,
+      config: stored,
+      fragments,
+    };
+  }
 
-    await this.initPromise;
+  #getConfiguredRuntime() {
+    return this.#runtime.configured ? this.#runtime : null;
+  }
+
+  #getConfiguredRuntimeOrThrow() {
+    const runtime = this.#getConfiguredRuntime();
+    if (!runtime) {
+      throw new Error("Pi is unavailable.");
+    }
+
+    return runtime;
   }
 
   async alarm() {
-    await this.initPromise;
-    await this.#dispatcher?.alarm?.();
+    await this.#host.alarm();
   }
 
   async getAdminConfig(): Promise<PiConfigState> {
@@ -285,15 +366,8 @@ export class Pi extends DurableObject<CloudflareEnv> {
   }
 
   async setAdminConfig(payload: unknown): Promise<PiConfigState> {
-    if (!payload || typeof payload !== "object") {
-      throw new Error("Request body must be a JSON object.");
-    }
-
-    const record = payload as Record<string, unknown>;
-    const normalizedOrgId = typeof record.orgId === "string" ? record.orgId.trim() : "";
-    if (!normalizedOrgId) {
-      throw new Error("Pi configuration requires an organisation id.");
-    }
+    const parsed = setAdminConfigInputSchema.parse(payload);
+    const normalizedOrgId = parsed.orgId;
 
     const existing = await this.#loadConfig();
     const existingOrgId = this.#getStoredOrgId(existing);
@@ -301,47 +375,39 @@ export class Pi extends DurableObject<CloudflareEnv> {
       throw new Error(buildOrgIdMismatchMessage(existingOrgId, normalizedOrgId));
     }
 
-    const apiKeysInput = record.apiKeys as Record<string, unknown> | undefined;
-    const harnessesInput = record.harnesses;
-
-    const openaiInput = apiKeysInput ? normalizeKey(apiKeysInput.openai) : "";
-    const anthropicInput = apiKeysInput ? normalizeKey(apiKeysInput.anthropic) : "";
-    const geminiInput = apiKeysInput ? normalizeKey(apiKeysInput.gemini) : "";
-
-    const harnesses = normalizeHarnesses(harnessesInput);
-
     const now = new Date().toISOString();
     const stored: StoredPiConfig = {
       orgId: normalizedOrgId,
       apiKeys: {
-        openai: openaiInput || existing?.apiKeys.openai,
-        anthropic: anthropicInput || existing?.apiKeys.anthropic,
-        gemini: geminiInput || existing?.apiKeys.gemini,
+        openai: parsed.apiKeys?.openai || existing?.apiKeys.openai,
+        anthropic: parsed.apiKeys?.anthropic || existing?.apiKeys.anthropic,
+        gemini: parsed.apiKeys?.gemini || existing?.apiKeys.gemini,
       },
-      harnesses: harnesses ?? existing?.harnesses ?? [],
+      harnesses:
+        parsed.harnesses === undefined
+          ? (existing?.harnesses ?? [])
+          : toStoredHarnesses(parsed.harnesses),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
 
-    await this.#state.storage.put(CONFIG_KEY, stored);
+    await this.#state.storage.put(CONFIG_KEY, storedPiConfigSchema.parse(stored));
 
-    if (isConfigured(stored)) {
-      await this.#ensureRuntime(stored);
-    } else {
-      this.#piFragment = null;
-      this.#workflowsFragment = null;
-      this.#dispatcher = null;
-      this.#configFingerprint = this.#fingerprintConfig(stored);
+    try {
+      await this.#state.blockConcurrencyWhile(async () => {
+        await this.#setRuntimeFromStoredConfig(stored);
+      });
+    } catch (error) {
+      console.log("Migration failed", { error });
+      throw new Error("Failed to migrate Pi schema.");
     }
 
     return buildConfigState(stored);
   }
 
   async getHookQueue(options?: PiHookQueueOptions): Promise<DurableHookQueueResponse> {
-    await this.initPromise;
-
-    const config = await this.#loadConfig();
-    if (!config || !isConfigured(config)) {
+    const runtime = this.#getConfiguredRuntime();
+    if (!runtime) {
       return {
         configured: false,
         hooksEnabled: false,
@@ -352,115 +418,36 @@ export class Pi extends DurableObject<CloudflareEnv> {
       };
     }
 
-    await this.#ensureRuntime(config);
-
-    const targetFragmentId = options?.fragment === "workflows" ? "workflows" : "pi";
+    const configuredRuntime = this.#getConfiguredRuntimeOrThrow();
+    const parsedOptions = hookQueueOptionsSchema.parse(options) ?? {};
+    const targetFragmentId = parsedOptions.fragment === "workflows" ? "workflows" : "pi";
     const targetFragment =
-      targetFragmentId === "workflows" ? this.#workflowsFragment : this.#piFragment;
-    if (!targetFragment) {
-      throw new Error(`Failed to load ${targetFragmentId} fragment runtime.`);
-    }
+      targetFragmentId === "workflows"
+        ? configuredRuntime.fragments.workflowsFragment
+        : configuredRuntime.fragments.piFragment;
 
     return await loadDurableHookQueue(targetFragment, {
-      cursor: options?.cursor,
-      pageSize: options?.pageSize,
+      cursor: parsedOptions.cursor,
+      pageSize: parsedOptions.pageSize,
     });
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.initPromise;
-
-    const config = await this.#loadConfig();
-    if (!config || !isConfigured(config)) {
-      return jsonResponse(
+    const runtime = this.#getConfiguredRuntime();
+    if (!runtime) {
+      return Response.json(
         { message: "Pi is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        400,
+        { status: 400 },
       );
     }
 
-    const orgIdMismatchResponse = this.#assertRequestOrgIdMatchesConfig(request, config);
+    const orgIdMismatchResponse = this.#assertRequestOrgIdMatchesConfig(request, runtime.stored);
     if (orgIdMismatchResponse) {
       return orgIdMismatchResponse;
     }
 
-    await this.#ensureRuntime(config);
-
-    const requestStartedAt = Date.now();
-
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const targetFragmentId = path.startsWith("/api/workflows") ? "workflows" : "pi";
-    const targetFragment =
-      targetFragmentId === "workflows" ? this.#workflowsFragment : this.#piFragment;
-    if (!targetFragment) {
-      throw new Error(
-        `${targetFragmentId === "pi" ? "Pi" : "Workflows"} fragment failed to initialize.`,
-      );
-    }
-
-    const isMessageSend =
-      targetFragmentId === "pi" &&
-      request.method === "POST" &&
-      path.includes("/sessions/") &&
-      path.endsWith("/messages");
-    let messageSessionId: string | null = null;
-
-    let proxyRequest = request;
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      const bodyText = await request.text();
-      proxyRequest = new Request(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: bodyText,
-      });
-
-      if (isMessageSend) {
-        messageSessionId = path.split("/").at(-2) ?? null;
-        let textLength: number | null = null;
-        let payloadKeys: string[] | null = null;
-        try {
-          const payload = JSON.parse(bodyText) as Record<string, unknown>;
-          payloadKeys = Object.keys(payload);
-          if (typeof payload.text === "string") {
-            textLength = payload.text.length;
-          }
-        } catch {
-          // ignore payload parse errors
-        }
-        console.info("Pi DO: session message request", {
-          sessionId: messageSessionId,
-          path,
-          textLength,
-          payloadKeys,
-        });
-      }
-    } else if (isMessageSend) {
-      messageSessionId = path.split("/").at(-2) ?? null;
-      console.info("Pi DO: session message request (no body)", {
-        sessionId: messageSessionId,
-        path,
-      });
-    }
-
-    const response = await targetFragment.handler(proxyRequest);
-
-    if (isMessageSend) {
-      console.info("Pi DO: session message response", {
-        sessionId: messageSessionId ?? path.split("/").at(-2) ?? null,
-        path,
-        status: response.status,
-      });
-    }
-
-    if (isMessageSend) {
-      console.info("Pi DO: session message request complete", {
-        sessionId: messageSessionId ?? path.split("/").at(-2) ?? null,
-        path,
-        status: response.status,
-        ms: Date.now() - requestStartedAt,
-      });
-    }
-
-    return response;
+    return this.#host.fetch(runtime.fragments, request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }
