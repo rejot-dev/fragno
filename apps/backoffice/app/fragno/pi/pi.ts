@@ -1,7 +1,5 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/cloudflare-do";
-import type { DurableHooksDispatcherDurableObjectHandler } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
@@ -45,7 +43,6 @@ import {
 export type PiRuntimeFragments = {
   piFragment: ReturnType<typeof createPiFragment>;
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
-  dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
 export type PiBashCommandContext = InteractiveBashCommandContext & {
@@ -324,16 +321,9 @@ export const createPiRuntime = (options: {
     },
   );
 
-  const dispatcher = createDurableHooksProcessor<CloudflareEnv>([workflowsFragment, piFragment], {
-    onProcessError: (error) => {
-      console.error("Pi hook processor error", error);
-    },
-  })(options.state, options.env);
-
   return {
     piFragment,
     workflowsFragment,
-    dispatcher,
   };
 };
 

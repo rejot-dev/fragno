@@ -60,10 +60,16 @@ const createState = (initialEntries?: Array<[string, unknown]>) => {
     }),
   };
   const waitUntil = vi.fn();
+  let blockConcurrencyPromise: Promise<unknown> | undefined;
+  const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
+    blockConcurrencyPromise = Promise.resolve().then(callback);
+    return blockConcurrencyPromise as Promise<T>;
+  });
 
   return {
     store,
-    state: { storage, waitUntil } as unknown as DurableObjectState,
+    state: { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState,
+    waitForBlockConcurrency: async () => await blockConcurrencyPromise,
   };
 };
 
@@ -83,6 +89,8 @@ describe("Telegram Durable Object", () => {
       });
     });
     createTelegramServerMock.mockImplementation(() => ({
+      name: "telegram",
+      $internal: { durableHooksToken: {} },
       handler: handlerMock,
     }));
 
@@ -177,9 +185,9 @@ describe("Telegram Durable Object", () => {
     ).rejects.toThrowError('Telegram Durable Object is already bound to organisation "acme".');
   });
 
-  test("treats stored config without an org id as not configured", async () => {
+  test("rejects stored config without an org id during initialization", async () => {
     const createdAt = "2026-03-16T00:00:00.000Z";
-    const { state } = createState([
+    const { state, waitForBlockConcurrency } = createState([
       [
         CONFIG_KEY,
         {
@@ -191,16 +199,11 @@ describe("Telegram Durable Object", () => {
         },
       ],
     ]);
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    new Telegram(state, {} as CloudflareEnv);
 
-    const response = await telegram.fetch(
-      new Request("https://example.com/api/telegram/webhook?orgId=acme"),
+    await expect(waitForBlockConcurrency()).rejects.toThrowError(
+      "Stored Telegram config is missing an organisation id.",
     );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "NOT_CONFIGURED",
-    });
   });
 
   test("resolves normalized automation file metadata through Telegram getFile", async () => {
