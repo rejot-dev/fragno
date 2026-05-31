@@ -1,1475 +1,854 @@
-# Workflows Smoke Test Report (2026-02-02)
+# Workflows Smoke Test Report
 
-## Environment
+This directory has been refreshed for the current workflow fragment API.
 
-- Repo: /Users/wilco/.superset/worktrees/fragno/workflows-smoke-test
-- Example app: `example-apps/wf-example` via `pnpm --filter @fragno-example/wf-example dev`
-- Base URL used: `http://localhost:5173/api/workflows`
-- Workflow CLI: `apps/fragno-wf` built via `pnpm --filter @fragno-dev/fragno-wf build`
-- Added test workflow: `wait-timeout-workflow` (waitForEvent timeout edge tests)
-- Added test workflow: `crash-test-workflow` (long-running step for crash recovery tests)
-- Optional env: `WF_DISABLE_INTERNAL_DISPATCHER=1` to keep API server up while managing dispatchers
-  externally
+## Current API assumptions
 
-## Manual checks completed
+- Workflow execution is driven by durable hooks (`onWorkflowEnqueued`) and durable hook processors.
+- Public routes are the routes in `src/routes.ts`: workflow list, instance list/create/batch,
+  instance detail, full history, current-step emissions, pause/resume/terminate, and send-event.
+- There is no public restart route, no public `_runner/tick` route, and no public history pagination
+  route in the current source.
+- Instance list pagination remains public through `GET /:workflowName/instances?pageSize&cursor`.
+- Current-step emissions are available through
+  `GET /:workflowName/instances/:instanceId/current-step/emissions?once=true` or a live stream.
 
-- `fragno-wf workflows list` returns expected workflows.
-- `instances create`, `get`, `history`, `logs`, `send-event`, `pause/resume` all functioned normally
-  for single instances.
-- Crash tests (no new issues): app server crash mid-step recovered after lease expiry; dispatcher
-  SIGKILL during processing + events while down recovered after restart.
-- Event duplication/idempotency checks (new script `duplicate-event-idempotency.js`) completed with
-  no issues; example history for `dup_ml5gjane_0` shows 3 duplicate `approval` events where only one
-  had `consumedByStepKey=approval`, and a single `fulfillment` event consumed after restart
-  (runNumber 1).
-- API cancellation semantics (no new issues): `pause-resume-race.js` completed with no stuck paused
-  instances; `terminate-running-parallel.js` reported no overwrites (all terminated instances stayed
-  terminated).
-- Large payload handling (no new issues): `large-payload.js` ran with 256 KB params + 256 KB
-  approval/fulfillment payloads; DB shows full byte lengths for params/output/events (see evidence
-  below for instance `large_ml5hhgm0`).
-- Concurrency + authorization hooks (no new issues): ran `auth-hook-concurrency.js` with
-  `WF_AUTH_REJECT_PCT=30` and concurrent create/pause/resume/send-event calls; rejected requests
-  left no DB mutations (see evidence below).
-- Migration edge cases (no new issues): concurrent `migrate()` calls succeeded while two dispatchers
-  were polling; no errors in logs, no duplicate indexes, schema version unchanged (see evidence
-  below).
+## Updated artifacts
 
-## Evidence (Large Payload Handling)
+- Added shared helper: `smoke-support.js`.
+- Updated stale absolute imports in `dispatcher.ts`, `dispatcher-skew.ts`, and `migration-edge.ts`.
+- Updated public-route scripts to use current history/status shapes and current step keys.
+- Replaced obsolete `_runner/tick` storming with durable-hook/event storming.
+- Replaced history cursor checks with instance-list cursor checks plus full-history validation.
+- Marked restart/runNumber scripts as compatibility guards because restart is not part of the
+  current API.
+- Replaced retention/GC checks with public integrity checks because no retention/GC policy is
+  exposed.
 
-Instance: `large_ml5hhgm0` (2026-02-02)
+## Recommended evidence to capture when running
 
-```sql
-SELECT
-  octet_length (params ->> 'largeParam') AS large_param_bytes,
-  octet_length (output -> 'request' ->> 'largeParam') AS output_param_bytes
-FROM
-  "workflow_instance_workflows"
-WHERE
-  "instanceId" = 'large_ml5hhgm0';
-```
+For each run, record:
 
-Result:
+- command and env (`BASE_URL`, database URL, dispatcher count, payload sizes);
+- generated instance IDs;
+- terminal status counts;
+- history invariants (consumed events, step attempt bounds, emission cleanup);
+- process/fault timeline for crash, dispatcher, and DB restart scripts.
 
-```
- large_param_bytes | output_param_bytes
--------------------+--------------------
-            262144 |             262144
-```
+See `../TESTING_PLAN.md` and `correctness-todo.md` for the full plan and checklist.
 
-```sql
-SELECT
-  type,
-  octet_length (payload ->> 'note') AS note_bytes,
-  octet_length (payload ->> 'blob') AS blob_bytes
-FROM
-  "workflow_event_workflows"
-WHERE
-  "instanceId" = 'large_ml5hhgm0'
-ORDER BY
-  "createdAt";
-```
+## 2026-05-31 local testing start
 
-Result:
+### Fast in-repo layer
 
-```
-    type     | note_bytes | blob_bytes
--------------+------------+------------
- approval    |     262144 |
- fulfillment |            |     262144
-```
+- `pnpm exec turbo types:check --filter=@fragno-dev/workflows --output-logs=errors-only` — passed
+  from cache (`5 successful`).
+- `pnpm exec turbo test --filter=@fragno-dev/workflows --output-logs=errors-only` — passed from
+  cache (`6 successful`).
+- `node --check packages/fragment-workflows/workflows-smoke-artifacts/*.js` — passed for 25
+  JavaScript smoke scripts.
 
-## Evidence (Migration Edge Cases)
+### Example-app smoke attempt: Postgres.app 18
 
-Environment (2026-02-02):
+Environment and setup:
 
-- App server started with migrations enabled (auto-selected port `http://localhost:5179/` due to
-  existing ports).
-- Two dispatchers active, each calls `migrate()` on startup.
-- Three concurrent migration workers started via `migration-edge.ts`.
+- Initial documented URL `postgres://postgres:postgres@localhost:5436/wilco` failed during app
+  startup with `relation "fragno_db_settings" already exists`, indicating the shared `wilco`
+  database was not a clean smoke target.
+- Created fresh Postgres databases for subsequent attempts, including:
+  - `fragno_wf_example_20260531_121030_26123`
+  - `fragno_wf_example_20260531_121532_15289`
+  - `fragno_wf_example_20260531_122604_29809`
+  - `fragno_wf_example_20260531_122847_220`
+- Started `pnpm --filter @fragno-example/wf-example dev` with fresh database URLs and verified
+  `GET http://localhost:5173/api/workflows` returned the configured workflows.
 
-Logs:
-
-```
-[migration-edge] start pid=79000
-[migration-edge] complete pid=79000 elapsedMs=13
-[migration-edge] start pid=78999
-[migration-edge] complete pid=78999 elapsedMs=11
-[migration-edge] start pid=78998
-[migration-edge] complete pid=78998 elapsedMs=14
-```
-
-Schema version:
-
-```sql
-SELECT
-  *
-FROM
-  fragno_db_settings;
-```
-
-Result:
-
-```
-           id           |           key            | value | _internalId | _version
-------------------------+--------------------------+-------+-------------+----------
- W7w3GeEu-1_ZEtXHkN5iFA | .schema_version          | 2     |           1 |        0
- mwAMQdhMeRoUfE3dt5uN0g | workflows.schema_version | 9     |           2 |        0
-```
-
-Duplicate index check:
-
-```sql
-SELECT
-  indexname,
-  count(*)
-FROM
-  pg_indexes
-WHERE
-  schemaname = 'public'
-GROUP BY
-  indexname
-HAVING
-  count(*) > 1;
-```
-
-Result:
-
-```
- indexname | count
------------+-------
-(0 rows)
-```
-
-## Evidence (Concurrency + Authorization Hooks)
-
-Environment (2026-02-02):
-
-- Example app started with `WF_AUTH_REJECT_PCT=30` (random 30% reject).
-- Base URL: `http://localhost:5180/api/workflows`
-
-Command:
+Commands attempted:
 
 ```bash
-BASE_URL=http://localhost:5180/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/auth-hook-concurrency.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/create-race.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/load-concurrency.js
+COUNT=1 BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/load-concurrency.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/load-parallel.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/duplicate-event-idempotency.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/large-payload.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/wait-timeout-edge.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/terminate-race.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/terminate-running-parallel.js
+BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/scenario-matrix.js
 ```
 
-Output summary (run `ml5hpy93`):
+Observed results:
 
-```
-create: ok=14 unauthorized=16 otherErrors=0
-pause: ok=3 unauthorized=11 otherErrors=0
-resume: ok=6 unauthorized=8 otherErrors=0
-approval: ok=9 unauthorized=5 otherErrors=0
-fulfillment: ok=7 unauthorized=7 otherErrors=0
-```
+- `create-race.js` reached its current expected outcome: one `200` and four duplicate/concurrent
+  `500` responses.
+- The baseline smoke suite is blocked locally by Postgres.app authentication failures from the
+  app/dispatcher process:
+  - `Postgres.app failed to verify "trust" authentication`
+  - detail: `You did not confirm the permission dialog.`
+  - hint: `Configure app permissions in Postgres.app settings`
+- Because of that local DB auth failure, workflow instances stayed `active` and scripts that need
+  the durable-hook dispatcher to advance workflows failed or timed out.
+- Representative failing outputs:
+  - `load-concurrency.js`: create failures with `500 INTERNAL_SERVER_ERROR`; with `COUNT=1`,
+    approval event/status calls also returned `500` and the instance timed out.
+  - `history-pagination.js`: timed out waiting for approval instances to reach
+    `waiting for approval`.
+  - `large-payload.js`: timed out waiting for the large approval instance to reach
+    `waiting for approval`.
+  - `wait-timeout-edge.js`: all 20 instances failed to reach waiting state.
+  - `terminate-race.js`, `terminate-running-parallel.js`, `scenario-matrix.js`: failed on
+    `500 INTERNAL_SERVER_ERROR` during create/status/event paths.
 
-DB checks (rejected create left no instance rows):
+Evidence logs:
 
-```sql
-SELECT
-  count(*) AS unauthorized_create_instances
-FROM
-  "workflow_instance_workflows"
-WHERE
-  "instanceId" IN (
-    'auth_ml5hpy93_0',
-    'auth_ml5hpy93_2',
-    'auth_ml5hpy93_5',
-    'auth_ml5hpy93_6',
-    'auth_ml5hpy93_8',
-    'auth_ml5hpy93_10',
-    'auth_ml5hpy93_13',
-    'auth_ml5hpy93_15',
-    'auth_ml5hpy93_16',
-    'auth_ml5hpy93_18',
-    'auth_ml5hpy93_20',
-    'auth_ml5hpy93_21',
-    'auth_ml5hpy93_23',
-    'auth_ml5hpy93_25',
-    'auth_ml5hpy93_27',
-    'auth_ml5hpy93_29'
-  );
-```
+- `/tmp/wf-example-dev-fragno_wf_example_20260531_121532_15289.log`
+- `/tmp/wf-smoke-baseline-20260531-121545.log`
+- `/tmp/wf-smoke-baseline-continue-20260531-121824.log`
+- `/tmp/wf-smoke-probe-20260531-122611.log`
+- `/tmp/wf-example-dev-fragno_wf_example_20260531_122847_220.log`
 
-Result:
+Next action before rerunning smoke: resolve local Postgres.app permissions for the Node/React Router
+dev process, or run the smoke target against a non-Postgres.app database endpoint that uses password
+authentication without the Postgres.app trust-permission dialog.
 
-```
- unauthorized_create_instances
-------------------------------
-                            0
-```
+### 2026-05-31 Postgres.app confirmation rerun
 
-DB checks (rejected approval/fulfillment left no event rows):
+Added `confirm-postgres-app.sh` to automate the fresh-DB + wf-example + smoke-script confirmation
+flow.
 
-```sql
-SELECT
-  i."instanceId",
-  coalesce(
-    count(e.*) FILTER (
-      WHERE
-        e.type = 'approval'
-    ),
-    0
-  ) AS approval_events
-FROM
-  "workflow_instance_workflows" i
-  LEFT JOIN "workflow_event_workflows" e ON e."instanceId" = i."instanceId"
-WHERE
-  i."instanceId" IN (
-    'auth_ml5hpy93_9',
-    'auth_ml5hpy93_11',
-    'auth_ml5hpy93_22',
-    'auth_ml5hpy93_26',
-    'auth_ml5hpy93_28'
-  )
-GROUP BY
-  i."instanceId"
-ORDER BY
-  i."instanceId";
+Runs after adjusting Postgres.app permissions no longer showed the trust-auth failure, and workflows
+advanced far enough to hit smoke/product assertions instead of local DB authentication errors:
+
+- `packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh`
+  - database: `fragno_wf_confirm_20260531_140353_45923`
+  - `duplicate-event-idempotency.js` failed because the instance became `errored` instead of
+    `complete`.
+  - DB evidence: `workflows.workflow_instance.errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- `packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh history-pagination.js`
+  - database: `fragno_wf_confirm_20260531_140427_47546`
+  - `history-pagination.js` failed with `completed instance ... missing from paginated list`.
+
+Interpretation: local Postgres.app authentication is now unblocked; remaining failures are
+workflow/smoke correctness issues to investigate.
+
+### 2026-05-31 investigation notes (reports only)
+
+No implementation changes are being kept for these findings. Product-code trial edits were reverted;
+only smoke artifacts/reporting remain changed.
+
+#### Finding A: duplicate-event/idempotency smoke has unstable outcomes under concurrent event hooks
+
+Reproduction command:
+
+```bash
+packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh
 ```
 
-Result:
+Observed runs:
 
-```
-    instanceId    | approval_events
-------------------+-----------------
- auth_ml5hpy93_11 |               0
- auth_ml5hpy93_22 |               0
- auth_ml5hpy93_26 |               0
- auth_ml5hpy93_28 |               0
- auth_ml5hpy93_9  |               0
-```
+- `fragno_wf_confirm_20260531_140353_45923`: `duplicate-event-idempotency.js` failed because
+  terminal status was `errored`; DB evidence showed
+  `workflow_instance.errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- `fragno_wf_confirm_20260531_141852_91423`: same script reached `complete`, but failed
+  `fulfillment duplicates were not persisted for idempotency inspection`.
+  - DB evidence: 10 approval events persisted, but only 4 fulfillment events persisted; 1
+    fulfillment was consumed and 3 remained unconsumed.
 
-```sql
-SELECT
-  i."instanceId",
-  coalesce(
-    count(e.*) FILTER (
-      WHERE
-        e.type = 'fulfillment'
-    ),
-    0
-  ) AS fulfillment_events
-FROM
-  "workflow_instance_workflows" i
-  LEFT JOIN "workflow_event_workflows" e ON e."instanceId" = i."instanceId"
-WHERE
-  i."instanceId" IN (
-    'auth_ml5hpy93_1',
-    'auth_ml5hpy93_4',
-    'auth_ml5hpy93_9',
-    'auth_ml5hpy93_11',
-    'auth_ml5hpy93_17',
-    'auth_ml5hpy93_19',
-    'auth_ml5hpy93_22'
-  )
-GROUP BY
-  i."instanceId"
-ORDER BY
-  i."instanceId";
+Interpretation/report:
+
+- There appears to be a race around duplicate event delivery while the workflow is waiting/advancing
+  through `waitForEvent` and step-emission pump scope handling.
+- A separate smoke-script expectation may also be too strict for events sent after the instance has
+  already reached terminal state: terminal event submissions can return `409 INSTANCE_TERMINAL`, so
+  `DUPLICATE_COUNT` events are not guaranteed to be persisted after completion races.
+
+#### Finding B: status-filtered pagination can skip completed instances when cursor timestamps collide/truncate
+
+Reproduction observed earlier:
+
+```bash
+packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh history-pagination.js
 ```
 
-Result:
+Observed run:
 
+- `fragno_wf_confirm_20260531_140427_47546`: `history-pagination.js` failed with
+  `completed instance ... missing from paginated list`.
+- DB evidence for that run showed all 7 instances were `complete`, with `updatedAt` values in the
+  same few milliseconds.
+- Public pagination over `GET /approval-workflow/instances?status=complete&pageSize=2` returned
+  pages:
+  - page 1: `_2`, `_1`, cursor timestamp rounded/truncated to `...32.301Z`
+  - page 2: `_6`, `_4`, cursor timestamp rounded/truncated to `...32.300Z`
+  - page 3: `_5`
+  - missing: `_0`, `_3`
+
+Interpretation/report:
+
+- The public status-filtered list uses the `workflowName,status,updatedAt` index for cursor
+  pagination.
+- Cursor serialization appears to lose timestamp precision relative to Postgres row values
+  (microseconds), so rows sharing the same millisecond boundary can be skipped.
+- This reproduced once and then passed on a later run, so track as a flake/product issue rather than
+  a deterministic local smoke failure.
+
+#### Finding C: wait-timeout edge smoke sends “before timeout” events too close to wake processing and consistently loses to timeout
+
+Reproduction command:
+
+```bash
+packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh wait-timeout-edge.js
 ```
-    instanceId    | fulfillment_events
-------------------+--------------------
- auth_ml5hpy93_1  |                  0
- auth_ml5hpy93_11 |                  0
- auth_ml5hpy93_17 |                  0
- auth_ml5hpy93_19 |                  0
- auth_ml5hpy93_22 |                  0
- auth_ml5hpy93_4  |                  0
- auth_ml5hpy93_9  |                  0
+
+Observed run:
+
+- `fragno_wf_confirm_20260531_141934_94853`: all `edge_before_*` instances errored with
+  `WAIT_FOR_EVENT_TIMEOUT`.
+- Representative DB timing:
+  - wait step created: `2026-05-31 14:19:37.085336`
+  - before-event created: `2026-05-31 14:19:39.165834`
+  - wait step errored: `2026-05-31 14:19:39.191439`
+  - event stayed unconsumed (`deliveredAt` and `consumedByStepKey` null)
+
+Interpretation/report:
+
+- The smoke sends “before” events at `timeoutMs - 150ms` after waiting-state detection, not relative
+  to the persisted `wakeAt`/step creation timestamp.
+- In practice those requests land only ~25–30ms before the timeout update and lose to the wake hook,
+  so this currently reports a boundary race rather than a clearly-before-timeout invariant.
+- This may be either expected boundary behavior that should be documented, or the smoke should be
+  split into a clearly-before case and a true boundary-race case.
+
+#### Finding D: scenario matrix can flag retry attempt bounds on naturally flaky example workflow
+
+Observed run:
+
+- In `/tmp/wf-smoke-baseline-green-20260531-141523.log`, `scenario-matrix.js` flagged:
+  `parallel sm_par_mptqtv8v_3 exceeded attempts on do:fetch-user`.
+- DB evidence showed `do:fetch-user attempts = 6`, `maxAttempts = 5`, terminal error
+  `FLAKY_USER_FETCH`.
+
+Interpretation/report:
+
+- The example workflow uses random failures and remote fetches, so the smoke can expose retry
+  accounting issues but is not fully deterministic.
+- For production gating this should move to the dedicated deterministic harness proposed in
+  `TESTING_PLAN.md`.
+
+### 2026-05-31 smoke artifact fixes
+
+The following observations were determined to be smoke-artifact issues rather than workflow-product
+findings and were fixed in the scripts:
+
+- `duplicate-event-idempotency.js`: count only successfully accepted duplicate event requests when
+  asserting history persistence; concurrent duplicates that lose to terminalization may validly
+  return `409 INSTANCE_TERMINAL`.
+- `wait-timeout-edge.js`: send the “before timeout” event clearly before the timeout window instead
+  of ~150ms before the edge, so the script validates normal before/after behavior instead of
+  scheduler-boundary timing.
+- `clock-skew-timeout.js`: use the current step key shape, `waitForEvent:edge-wait`, when reading
+  `wakeAt` from history.
+- `pause-resume-race.js`: keep polling/resuming paused instances during the final cleanup sweep so a
+  pause event processed after an early no-op resume is not mistaken for a workflow correctness
+  failure.
+- `crash-recover.js`, `dispatcher-crash-recover.js`, and `stress-fault.js`: spawn dispatchers with
+  the current Node process plus `--import tsx` instead of requiring a global `tsx` binary or shell
+  shim.
+- `dispatcher.ts`: allow smoke scripts to set `WF_STUCK_PROCESSING_TIMEOUT_MINUTES` so
+  crash-recovery tests can requeue processing hooks within the test timeout.
+- `confirm-postgres-app.sh`: pass `WF_EXAMPLE_DATABASE_URL` through to smoke scripts that launch
+  external dispatchers or query the database directly.
+
+### 2026-05-31 continued production-readiness smoke investigation
+
+Scope: report-only. No workflow implementation changes were made. Runs used Postgres.app 18 on
+`localhost:5436`, fresh databases per `confirm-postgres-app.sh`, and `PORT=5174` because another
+local dev server was already listening on `5173`.
+
+#### Additional passing Postgres smoke coverage
+
+The following example-app smoke scripts passed before later scripts in the same fresh DB run failed:
+
+- `create-race.js`, `load-concurrency.js`, `load-parallel.js` in
+  `fragno_wf_confirm_20260531_164918_91951` before `duplicate-event-idempotency.js` failed.
+- `history-pagination.js`, `large-payload.js`, `wait-timeout-edge.js`, `terminate-race.js`,
+  `terminate-running-parallel.js` in `fragno_wf_confirm_20260531_165222_3444` before
+  `scenario-matrix.js` failed.
+- `pause-event-race.js`, `pause-resume-race.js`, `clock-skew-retry.js`, `clock-skew-timeout.js` in
+  `fragno_wf_confirm_20260531_165324_6885` before `runner-tick-storm.js` failed.
+- Restart compatibility guards and `auth-hook-concurrency.js` in
+  `fragno_wf_confirm_20260531_165504_11564` before `retention-gc-check.js` failed.
+- `crash-recover.js` completed crash recovery in `fragno_wf_confirm_20260531_165540_13275`.
+- `dispatcher-crash-recover.js` passed in `fragno_wf_confirm_20260531_165628_15798`.
+- `stress-fault.js` passed with the app's internal dispatcher enabled in
+  `fragno_wf_confirm_20260531_165655_17105`.
+- `stress-fault.js` also passed with `WF_DISABLE_INTERNAL_DISPATCHER=1` and external dispatcher
+  counts `2`, `4`, `8`, and `16`:
+  - `DISPATCHER_COUNT=2`: `fragno_wf_confirm_20260531_165745_19695`
+  - `DISPATCHER_COUNT=4`: `fragno_wf_confirm_20260531_165817_21282`
+  - `DISPATCHER_COUNT=8`: `fragno_wf_confirm_20260531_165844_22628`
+  - `DISPATCHER_COUNT=16`: `fragno_wf_confirm_20260531_165910_24203`
+
+Interpretation: simple lifecycle/load, timeout, termination, dispatcher restart, and
+multi-dispatcher stress paths can pass on Postgres. This is useful evidence, but not sufficient for
+production readiness because deterministic custom harnesses, MySQL/SQLite lanes, mock external
+services, and several chaos cases are still missing.
+
+#### Finding I: duplicate event storms can deterministically error instances with `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`
+
+Reproduction commands:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh runner-tick-storm.js
+EVENT_STORM_COUNT=2 COUNT=1 PORT=5174 \
+  packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh runner-tick-storm.js
 ```
 
-## Bugs Found
-
-### 1) Batch create endpoint hangs with non-empty payload
-
-**Severity:** High (blocks batch instance creation)
-
-**Repro steps:**
-
-1. Start the workflows example app:
-   ```bash
-   pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Call batch create with any non-empty `instances` array (example):
-   ```bash
-   curl -X POST http://localhost:5174/api/workflows/approval-workflow/instances/batch \
-     -H 'content-type: application/json' \
-     -d '{"instances":[{"id":"batchtest1"}]}'
-   ```
-3. Observe that the request never returns (client times out after 5–20s).
-4. Confirm instance was not created:
-   ```bash
-   curl http://localhost:5174/api/workflows/approval-workflow/instances/batchtest1
-   # => {"message":"Instance not found","code":"INSTANCE_NOT_FOUND"}
-   ```
-
-**Expected:**
-
-- API responds quickly with:
-  ```json
-  { "instances": [{ "id": "batchtest1", "details": { "status": "active" } }] }
-  ```
-
-**Actual:**
-
-- Request hangs indefinitely (no response within 20s).
-- No instance is created.
-
-**Notes:**
-
-- This reproduces consistently with 1+ instances.
-- An empty array _does_ return immediately: `{ "instances": [] }`.
-- Single-instance create (`POST /:workflowName/instances`) works normally.
-- Repro persists even after stopping additional dispatcher processes.
-
-### 2) Parallel-steps workflow can stall retries for minutes (pending task left with stale lease)
-
-**Severity:** High (workflows stall far beyond retry schedule; requires external tick to recover)
-
-**Repro steps:**
-
-1. Start the workflows example app (Postgres on port 5436):
-   ```bash
-   pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Start additional dispatcher processes (to simulate concurrent dispatchers):
-   ```bash
-   NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts
-   NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts
-   ```
-3. Run the parallel-steps load script (10 concurrent instances):
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/load-parallel.js
-   ```
-
-**Expected:**
-
-- Each instance completes in ~10–20s (fetch-todo retries every 2s, fetch-user retries every 400ms).
-
-**Actual:**
-
-- 2/10 instances remained stuck >90s. Status showed `waiting` with current step `fetch-user` still
-  `running`, while `fetch-todo` was waiting for a retry that never triggered.
-- Example instance status while stuck:
-  ```
-  Status: waiting
-  Current step: fetch-user (running, attempts 2/5)
-  ```
-- History showed:
-  ```
-  fetch-user ... do running 2/5
-  fetch-todo ... do waiting 2/7 retry:2026-02-02T15:05:30.994Z
-  ```
-- Postgres task row showed `status = pending` **but** `lockedUntil` still set in the past/future
-  (stale lease), preventing the pending task from being claimed until some unrelated hook tick
-  fired.
-- The stuck instances only errored ~9 minutes later (at ~15:14:46Z) with `FLAKY_USER_FETCH`, far
-  beyond the expected retry schedule.
-
-**Notes:**
-
-- This appears to be a race between the task lease heartbeat and task rescheduling: the heartbeat
-  updates `lockedUntil` after the task has been set back to `pending`, leaving a pending task with
-  an active lease and no subsequent tick scheduled to pick it up when the lease expires.
-- A manual `/api/workflows/_runner/tick` returned `processed: 0` while tasks were pending.
-
-### 3) Retry limits exceeded under concurrent dispatchers (attempts > maxAttempts)
-
-**Severity:** High (retry/backoff guarantees violated; steps run more times than configured)
-
-**Repro steps:**
-
-1. Start the workflows example app (Postgres on port 5436):
-   ```bash
-   pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Start multiple dispatcher processes:
-   ```bash
-   NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts
-   NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts
-   ```
-3. Run the parallel-steps load script (10 concurrent instances):
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/load-parallel.js
-   ```
-4. Inspect history for any instances that errored on `fetch-user`:
-   ```bash
-   curl -s http://localhost:5173/api/workflows/parallel-steps-workflow/instances/par_ml5bt1vr_8/history
-   ```
-   Example output shows attempts > max:
-   ```
-   "stepKey":"fetch-user", "status":"errored", "attempts":9, "maxAttempts":5
-   ```
-
-**Expected:**
-
-- `attempts` should never exceed `maxAttempts` (5 for `fetch-user`, 7 for `fetch-todo`).
-
-**Actual:**
-
-- `fetch-user` steps reached attempts 6–9 with `maxAttempts: 5` on multiple instances in the same
-  run (example: `par_ml5bt1vr_8`).
-
-**Notes:**
-
-- This only appeared once multiple dispatchers were actually running.
-- Likely caused by concurrent dispatchers picking the same step/task and incrementing attempts
-  independently.
-
-### 4) waitForEvent timeout is soft: events after deadline still complete
-
-**Severity:** Medium (timeouts are not strictly enforced; late events can be accepted)
-
-**Repro steps:**
-
-1. Use the added wait-timeout workflow (`wait-timeout-workflow`), which waits for `edge` events with
-   a `2 s` timeout.
-2. Run the edge timing script:
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/wait-timeout-edge.js
-   ```
-3. The script waits for the instance to reach `waiting`, then sends some events **after**
-   `timeoutMs + 150ms`.
-
-**Expected:**
-
-- Events sent after the timeout should be ignored and instances should error with
-  `WaitForEventTimeoutError`.
-
-**Actual:**
-
-- Several instances completed successfully even though the event timestamp is **after** the timeout
-  wakeAt. Example (`edge_after_ml5cldwa_7`):
-  - `wakeAt`: `2026-02-02T15:52:06.284Z`
-  - event payload `sentAt`: `2026-02-02T15:52:06.559Z` (≈275ms after wakeAt)
-  - instance completed at `2026-02-02T15:52:06.999Z`
-
-**Notes:**
-
-- This suggests the timeout is only enforced when the timeout task is processed; events arriving
-  after the deadline but before the timeout tick still complete.
-
-### 5) Runner tick storms can leave a pending task with an active lease (instance stalls until manual tick)
-
-**Severity:** High (concurrent tick calls fail to advance pending work; can stall workflows)
-
-**Repro steps:**
-
-1. Start the workflows example app:
-   ```bash
-   WF_EXAMPLE_DATABASE_URL=postgres://postgres:postgres@localhost:5436/wilco pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Run the tick storm script:
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/runner-tick-storm.js
-   ```
-
-**Expected:**
-
-- Concurrent `_runner/tick` calls should safely advance pending tasks.
-- No pending task should retain a non-null `lockedUntil`.
-- All instances should complete without manual intervention.
-
-**Actual:**
-
-- The tick storm reported `processed 0` for all 5 rounds and timed out waiting for one instance:
-  ```
-  Timed out waiting for 1 instances
-  - tick_ml5g7wlh_2
-  ```
-- Instance status remained `waiting` with `fetch-user` still `running`:
-  ```
-  Status: waiting
-  Current step: fetch-user (running, attempts 2/5)
-  ```
-- History showed `fetch-todo` in `waiting` with a retry scheduled:
-  ```
-  fetch-todo ... waiting (attempts 2/7) nextRetryAt: 2026-02-02T17:33:37.558Z
-  ```
-- Postgres showed a **pending** task with a non-null lease:
-  ```sql
-  SELECT
-    id,
-    status,
-    "lockedUntil",
-    "runNumber",
-    attempts,
-    "maxAttempts",
-    "runAt",
-    "updatedAt"
-  FROM
-    "workflow_task_workflows"
-  WHERE
-    "instanceId" = 'tick_ml5g7wlh_2';
-  ```
-  Result:
-  ```
-  status  | lockedUntil              | runAt
-  pending | 2026-02-02 18:34:35.6    | 2026-02-02 18:33:37.558
-  ```
-
-### 6) History pagination returns 500 when requesting steps page 2
-
-**Severity:** High (breaks history pagination and blocks parity checks vs DB)
-
-**Repro steps:**
-
-1. Ensure the workflows example app is running:
-   ```bash
-   pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Run the history pagination script:
-   ```bash
-   node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-   ```
-
-**Expected:**
-
-- `/history` accepts `stepsCursor` and returns the next page without errors.
-
-**Actual:**
-
-- Second page request fails with 500. Example failure (two consecutive runs, different instance
-  IDs):
-  ```
-  GET /approval-workflow/instances/hist_ml5h9yem/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aDl5ZW0iLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDM6MDguMDk0WiJ9fQ%3D%3D -> 500
-  GET /approval-workflow/instances/hist_ml5ha3nk/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGEzbmsiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDM6MTQuODg5WiJ9fQ%3D%3D -> 500
-  ```
-
-**Notes:**
-
-- The error happens on the second page when a `stepsCursor` is provided.
-- The script never reaches events/logs pagination because the request errors out.
-
-### 6) waitForEvent timeouts delayed by clock-skewed dispatchers
-
-**Severity:** High (timeouts depend on dispatcher clock; can be delayed ~1 minute with 60s skew)
-
-**Repro steps:**
-
-1. Start the workflows example app with internal dispatcher disabled:
-   ```bash
-   WF_DISABLE_INTERNAL_DISPATCHER=1 pnpm --filter @fragno-example/wf-example dev
-   ```
-2. Start two skewed dispatchers (+60s and -60s):
-   ```bash
-   WF_CLOCK_SKEW_MS=60000 NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher-skew.ts
-   WF_CLOCK_SKEW_MS=-60000 NODE_OPTIONS=--conditions=development tsx packages/fragment-workflows/workflows-smoke-artifacts/dispatcher-skew.ts
-   ```
-3. Run the timeout skew script:
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/clock-skew-timeout.js
-   ```
-
-**Expected:**
-
-- `waitForEvent` timeouts should fire near the step `wakeAt` (~2s after waiting), independent of
-  dispatcher clock skew.
-
-**Actual:**
-
-- All 6 instances timed out ~58–59s late (roughly matching the +60s skew). Example output:
-  ```
-  Timeout skew violations: 6
-  - skew_timeout_ml5h03py_0: deltaMs=58617 wakeAt=2026-02-02T17:55:30.380Z updatedAt=2026-02-02T17:56:28.997Z
-  - skew_timeout_ml5h03py_1: deltaMs=58613 wakeAt=2026-02-02T17:55:30.386Z updatedAt=2026-02-02T17:56:28.999Z
-  ```
-
-**Notes:**
-
-- This indicates timeout scheduling is tied to dispatcher wall clock instead of workflow schedule
+Observed runs:
+
+- `fragno_wf_confirm_20260531_165324_6885`: default `runner-tick-storm.js` errored all 12
+  `hookstorm_*` instances.
+- `fragno_wf_confirm_20260531_165426_9843`: default `runner-tick-storm.js` failed again with
+  `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- `fragno_wf_confirm_20260531_170034_28658`: `COUNT=1 EVENT_STORM_COUNT=1` passed.
+- `fragno_wf_confirm_20260531_170040_29010`: `COUNT=1 EVENT_STORM_COUNT=2` failed with
+  `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- `fragno_wf_confirm_20260531_170113_30531` and `fragno_wf_confirm_20260531_170116_30731`:
+  `COUNT=1 EVENT_STORM_COUNT=4/8` failed quickly; DB state still showed the instance errored with
+  `BUFFERED_PUMP_SCOPE_ALREADY_OPEN` after two persisted approval events.
+
+Representative DB evidence from `fragno_wf_confirm_20260531_165324_6885`:
+
+- all 12 `hookstorm_*` instances had `workflow_instance.status = errored` and
+  `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`;
+- each instance still had only `waitForEvent:approval` in `workflow_step`, with step status
+  `waiting`;
+- each instance had 8 persisted approval events and 0 consumed approval events.
+
+Representative single-instance evidence from `fragno_wf_confirm_20260531_170040_29010`:
+
+- instance `hookstorm_mptwpv1c_fj3a5x_0`: `status = errored`,
+  `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`;
+- approval events: 2 persisted, 0 consumed.
+
+The same error also appears after prior load when running `duplicate-event-idempotency.js` in the
+same DB:
+
+- `fragno_wf_confirm_20260531_164918_91951`: duplicate instance errored after load scripts; approval
+  events 10 persisted/1 consumed, fulfillment events 5 persisted/0 consumed, final instance error
+  `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- `fragno_wf_confirm_20260531_165055_96608`: duplicate instance errored before consuming any
+  approval event; approval events 5 persisted/0 consumed.
+- `fragno_wf_confirm_20260531_165144_98937`: duplicate instance errored while waiting for
+  fulfillment; approval events 10 persisted/1 consumed, fulfillment events 5 persisted/0 consumed.
+
+Control runs: `duplicate-event-idempotency.js` passed three consecutive times when run alone
+(`fragno_wf_confirm_20260531_165032_95302`, `_165038_95685`, `_165044_96053`).
+
+Interpretation/report:
+
+- This is a product-readiness blocker. Concurrent user events for a waiting workflow can surface an
+  internal buffered-pump scope collision and mark the workflow instance `errored`.
+- The error leaves externally confusing state: instance terminal `errored`, but the latest/current
+  step can still be a `waiting` step, and user events remain unconsumed.
+- A production workflow engine should tolerate duplicate/concurrent event submissions by consuming
+  at most one matching event, leaving extras unconsumed or rejecting late terminal submissions; it
+  should not terminal-error the instance with an internal pump error.
+
+#### Finding J: retry accounting can exceed `maxAttempts` in the scenario matrix
+
+Reproduction command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh \
+  history-pagination.js large-payload.js wait-timeout-edge.js terminate-race.js \
+  terminate-running-parallel.js scenario-matrix.js
+```
+
+Observed run:
+
+- `fragno_wf_confirm_20260531_165222_3444`: `scenario-matrix.js` failed with
+  `parallel sm_par_mptwffhr_0 exceeded attempts on do:fetch-user`.
+
+DB evidence:
+
+- instance `sm_par_mptwffhr_0`: `status = errored`, `errorMessage = FLAKY_USER_FETCH`;
+- step `do:fetch-user`: `status = errored`, `attempts = 6`, `maxAttempts = 5`;
+- global query in that DB showed exactly one step with `attempts > maxAttempts`.
+
+Interpretation/report:
+
+- The scenario uses a naturally flaky example workflow, so the failing instance is not deterministic
+  by seed. However, `attempts > maxAttempts` is a core invariant violation independent of the random
+  failure source.
+- This should be reproduced in the future deterministic retry harness from `TESTING_PLAN.md`, but
+  the current evidence is enough to keep retry accounting on the product-risk list.
+
+#### Finding K: `current-step/emissions?once=true` returns `null`/empty body for no emissions despite an array-shaped route contract
+
+Reproduction command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh \
+  restart-event-race.js restart-fulfillment-leak.js restart-race.js \
+  auth-hook-concurrency.js retention-gc-check.js
+```
+
+Observed run:
+
+- `fragno_wf_confirm_20260531_165504_11564`: `retention-gc-check.js` failed with
+  `TypeError: Cannot read properties of null (reading 'length')` after completing the approval
+  workflow and querying current-step emissions for a terminal instance.
+
+Interpretation/report:
+
+- The public route declares an array output for
+  `GET /:workflowName/instances/:instanceId/current-step/emissions?once=true`.
+- For a terminal/no-emissions case, the smoke helper parsed an empty response body as `null`, so
+  callers do not receive `[]` even though the route contract is array-shaped.
+- This is either an API response bug (`once=true` should serialize an empty array) or a client/smoke
+  helper compatibility gap, but as-is it is not a clean production API contract.
+
+#### Finding L: concurrent migrations on an empty Postgres database are not idempotent/safe
+
+Manual reproduction command:
+
+```bash
+# fresh database: fragno_wf_20260531_165952_migration
+for i in 1 2 3 4; do
+  WF_EXAMPLE_DATABASE_URL=postgres://wilco@localhost:5436/fragno_wf_20260531_165952_migration \
+    node --conditions=development --import tsx \
+    packages/fragment-workflows/workflows-smoke-artifacts/migration-edge.ts \
+    >/tmp/wf-migration-20260531_165952_migration-$i.log 2>&1 &
+done
+wait
+```
+
+Observed result:
+
+- 1 of 4 migration processes completed.
+- 3 of 4 failed while concurrently creating base DB metadata tables/sequences.
+- Representative errors:
+  - `duplicate key value violates unique constraint "pg_class_relname_nsp_index"`, detail
+    `fragno_db_settings__internalId_seq already exists`;
+  - `duplicate key value violates unique constraint "pg_type_typname_nsp_index"`, detail
+    `fragno_db_settings already exists`.
+- Afterward, `fragno_db_settings` contained `.schema_version = 7` and
+  `workflows.schema_version = 6`, so one process converged the schema but the concurrent callers
+  failed rather than all converging cleanly.
+- Failed DB retained for inspection: `fragno_wf_20260531_165952_migration`.
+
+Interpretation/report:
+
+- This is a production-readiness blocker for apps that can start multiple API/dispatcher processes
+  against a fresh database at the same time.
+- The migration path needs either external serialization, DB advisory locking, transactional
+  create-if-not-exists behavior, or documented startup requirements that only one migrator runs at a
   time.
-- A manual `_runner/tick` (`processed: 1`) immediately advanced the workflow to terminal
-  (`errored`), indicating the instance was stalled until an external tick ran.
-
-**Notes:**
-
-- This mirrors the stale lease behavior seen in parallel-step retries, but here it was triggered by
-  a burst of concurrent `_runner/tick` calls.
-
-### 6) DB restart mid-transaction crashes API server (unhandled pg pool error)
-
-**Severity:** High (availability regression during DB restarts)
-
-**Repro steps:**
-
-1. Start the workflows example app, logging output:
-   ```bash
-   WF_EXAMPLE_DATABASE_URL=postgres://postgres:postgres@localhost:5436/wilco pnpm --filter @fragno-example/wf-example dev > /tmp/wf-example.log 2>&1
-   ```
-2. Run the DB restart script (creates `crash-test-workflow` instances and restarts Postgres 2s into
-   the run):
-   ```bash
-   BASE_URL=http://localhost:5173/api/workflows node packages/fragment-workflows/workflows-smoke-artifacts/db-restart-mid-transaction.js
-   ```
-3. Observe the app process exits and the API port stops listening.
-
-**Expected:**
-
-- The API server should tolerate a Postgres restart without crashing, reconnecting once the DB is
-  back.
-- Workflows should continue (or retry) without requiring a manual app restart.
-
-**Actual:**
-
-- The app exits with an unhandled `pg` pool error as soon as Postgres is stopped:
-  ```
-  node:events:486
-        throw er; // Unhandled 'error' event
-  error: terminating connection due to administrator command
-  ...
-  severity: 'FATAL',
-  code: '57P01'
-  ```
-- `pnpm --filter @fragno-example/wf-example dev` exits; port 5173 is no longer listening until
-  manually restarted.
-
-**Notes:**
-
-- The workflow instances themselves reached `complete` after the DB was back, but the API server did
-  not recover without a manual restart.
-
-### 7) Retention/GC not enforced (retentionUntil never set; no GC tasks scheduled)
-
-**Severity:** Medium (retention policy appears unimplemented; completed instances never become
-eligible for cleanup)
-
-**Repro steps:**
-
-1. Create a workflow instance that completes automatically:
-   ```bash
-   curl -s -X POST http://localhost:5173/api/workflows/demo-data-workflow/instances \
-     -H 'content-type: application/json' \
-     -d '{}'
-   ```
-2. Wait until the instance reaches `complete`.
-3. Query the instance row for `retentionUntil`:
-   ```sql
-   SELECT
-     "workflowName",
-     "instanceId",
-     status,
-     "retentionUntil",
-     "completedAt"
-   FROM
-     "workflow_instance_workflows"
-   WHERE
-     "instanceId" = 'inst_ml5h24xf_hcfmuw60';
-   ```
-4. Check whether any GC tasks are scheduled:
-   ```sql
-   SELECT
-     kind,
-     count(*)
-   FROM
-     "workflow_task_workflows"
-   GROUP BY
-     kind
-   ORDER BY
-     kind;
-   ```
-
-**Expected:**
-
-- When a retention window is configured (or by default), completed instances should have a non-null
-  `retentionUntil`.
-- A GC task should eventually be scheduled to remove expired instances and related rows.
-
-**Actual:**
-
-- `retentionUntil` remains `NULL` even after completion:
-  ```
-  demo-data-workflow | inst_ml5h24xf_hcfmuw60 | complete | (null) | 2026-02-02 18:57:07.705
-  ```
-- No GC tasks are present; only `wake` tasks exist:
-  ```
-  kind | count
-  ----+------
-  wake | 22
-  ```
-
-**Notes:**
-
-- There is a `retentionUntil` column in the schema, but no code path appears to set it or schedule
-  `gc` tasks.
-- Without a configured retention policy, the GC correctness scenario cannot be fully exercised.
-
-**Evidence (2026-02-02, current run):**
-
-- Instance created: `inst_ml5hj06i_oktd5tfq` (`demo-data-workflow`, completed with error).
-- `retentionUntil` still `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'inst_ml5hj06i_oktd5tfq';
-  ```
-  Result:
-  ```
-   demo-data-workflow | inst_ml5hj06i_oktd5tfq | errored | (null) | 2026-02-02 19:10:16.38
-  ```
-- No GC tasks scheduled:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 2
-  ```
-
-**Evidence (2026-02-02, latest check):**
-
-- Instance created: `inst_ml5hsqt8_do24wr95` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'inst_ml5hsqt8_do24wr95';
-  ```
-  Result:
-  ```
-   demo-data-workflow | inst_ml5hsqt8_do24wr95 | errored | (null) | 2026-02-02 19:17:48.74
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, current check):**
-
-- Instance created: `inst_ml5hut3m_9qu6hiay` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'inst_ml5hut3m_9qu6hiay';
-  ```
-  Result:
-  ```
-   demo-data-workflow | inst_ml5hut3m_9qu6hiay | errored | (null) | 2026-02-02 19:19:26.825
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, retention/GC re-check):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5hw8rx` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5hw8rx';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5hw8rx | complete | (null) | 2026-02-02 19:20:29.872
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5hxax9` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5hxax9';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5hxax9 | errored | (null) | 2026-02-02 19:21:19.235
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, retention/GC latest run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5hyely` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5hyely';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5hyely | complete | (null) | 2026-02-02 19:22:08.855
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5hzdbl` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5hzdbl';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5hzdbl | errored | (null) | 2026-02-02 19:22:55.73
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 11
-  ```
-
-**Evidence (2026-02-02, retention/GC latest run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Script timed out waiting for `retention_ml5i3ni7` to reach terminal state.
-- Instance remains active:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5i3ni7';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5i3ni7 | active | (null) | (null)
-  ```
-- Recent completed instances still have `retentionUntil` = `NULL`:
-  ```sql
-  SELECT
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    status IN ('complete', 'errored', 'terminated')
-  ORDER BY
-    "completedAt" DESC NULLS LAST
-  LIMIT
-    5;
-  ```
-  Result:
-  ```
-   conc_ml5i2f3c_29 | complete | (null) | 2026-02-02 19:25:22.289
-   conc_ml5i2f3c_28 | complete | (null) | 2026-02-02 19:25:22.278
-   conc_ml5i2f3c_27 | complete | (null) | 2026-02-02 19:25:20.652
-   conc_ml5i2f3c_21 | complete | (null) | 2026-02-02 19:25:20.65
-   conc_ml5i2f3c_8  | complete | (null) | 2026-02-02 19:25:20.646
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   run  | 2
-   wake | 36
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5i6gq5` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5i6gq5';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5i6gq5 | complete | (null) | 2026-02-02 19:28:24.905
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 37
-  ```
-
-**Evidence (2026-02-02, retention/GC latest run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5i7n0j` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5i7n0j';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5i7n0j | errored | (null) | 2026-02-02 19:29:21.549
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 37
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5i92jn` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5i92jn';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5i92jn | complete | (null) | 2026-02-02 19:30:26.44
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 37
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5i9zuc` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5i9zuc';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5i9zuc | complete | (null) | 2026-02-02 19:31:09.578
-  ```
-- GC tasks still absent (only `wake` tasks observed):
-  ```sql
-  SELECT
-    kind,
-    status,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind,
-    status
-  ORDER BY
-    kind,
-    status;
-  ```
-  Result:
-  ```
-   wake | pending | 29
-  ```
-
-### 8) History pagination cursor returns 500 (cannot page beyond first history page)
-
-**Severity:** High (history API breaks with cursors; pagination unusable)
-
-**Repro steps:**
-
-1. Ensure the workflows example app is running (`http://localhost:5173/api/workflows`).
-2. Run the new pagination script:
-   ```bash
-   node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-   ```
-3. The script creates an `approval-workflow` instance with many events and requests history with
-   `pageSize=2`.
-4. The first history page returns cursors; using any cursor (steps/events) yields a 500.
-
-**Expected:**
-
-- `/history` should accept `stepsCursor`/`eventsCursor`/`logsCursor` and return the next page.
-
-**Actual:**
-
-- Requests with a cursor return `500 INTERNAL_SERVER_ERROR`. Example (steps cursor from the first
-  page):
-  ```bash
-  curl -s -w "\nHTTP:%{http_code}\n" \
-    "http://localhost:5173/api/workflows/approval-workflow/instances/hist_ml5h829f/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aDgyOWYiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDE6MzkuNzc0WiJ9fQ%3D%3D\""
-  # => {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  # => HTTP:500
-  ```
-  The same occurs with `eventsCursor` from the first page.
-
-**Notes:**
-
-- First page responses include valid-looking base64 cursors, but the follow-up call consistently
-  fails with 500.
-- This blocks the history pagination correctness scenario (cannot walk cursors forward/backward).
-
-### 9) History pagination still fails on stepsCursor (current run)
-
-**Severity:** High (blocks history pagination checks)
-
-**Evidence (2026-02-02):**
-
-- Command:
-  ```bash
-  node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-  ```
-- Failure output (page 2 for steps cursor):
-  ```
-  GET /approval-workflow/instances/hist_ml5hb4hw/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGI0aHciLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDQ6MDIuNjQwWiJ9fQ%3D%3D -> 500
-  ```
-
-**Evidence (2026-02-02, rerun):**
-
-- Command:
-  ```bash
-  node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-  ```
-- Failure output (page 2 for steps cursor):
-  ```
-  GET /approval-workflow/instances/hist_ml5hc2j8/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGMyajgiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDQ6NDYuNzUxWiJ9fQ%3D%3D -> 500: {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  ```
-
-**Evidence (2026-02-02, current run):**
-
-- Command:
-  ```bash
-  node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-  ```
-- Failure output (page 2 for steps cursor):
-  ```
-  GET /approval-workflow/instances/hist_ml5hcymx/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGN5bXgiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDU6MjguMzU5WiJ9fQ%3D%3D -> 500: {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  ```
-
-**Evidence (2026-02-02, current run):**
-
-- Command:
-  ```bash
-  node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-  ```
-- Failure output (page 2 for steps cursor):
-  ```
-  GET /approval-workflow/instances/hist_ml5hdzxi/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGR6eGkiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDY6MTYuNjk2WiJ9fQ%3D%3D -> 500: {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  ```
-
-**Evidence (2026-02-02, current run):**
-
-- Command:
-  ```bash
-  node packages/fragment-workflows/workflows-smoke-artifacts/history-pagination.js
-  ```
-- Failure output (page 2 for steps cursor):
-  ```
-  GET /approval-workflow/instances/hist_ml5hf86v/history?pageSize=2&order=asc&includeLogs=false&stepsCursor=eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfd29ya2Zsb3dfc3RlcF9oaXN0b3J5X2NyZWF0ZWRBdCIsIm9yZGVyRGlyZWN0aW9uIjoiYXNjIiwicGFnZVNpemUiOjIsImluZGV4VmFsdWVzIjp7IndvcmtmbG93TmFtZSI6ImFwcHJvdmFsLXdvcmtmbG93IiwiaW5zdGFuY2VJZCI6Imhpc3RfbWw1aGY4NnYiLCJydW5OdW1iZXIiOjAsImNyZWF0ZWRBdCI6IjIwMjYtMDItMDJUMTg6MDc6MTQuMDU5WiJ9fQ%3D%3D -> 500: {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  ```
-
-### 10) SERIALIZABLE isolation causes 500s on concurrent create (unhandled serialization failures)
-
-**Severity:** High (API 500s under stricter isolation; no retry path)
-
-**Repro steps:**
-
-1. Set DB default isolation to SERIALIZABLE:
-   ```sql
-   ALTER DATABASE wilco
-   SET
-     default_transaction_isolation = 'serializable';
-   ```
-2. Restart the example app (`pnpm --filter @fragno-example/wf-example dev`).
-3. Run the concurrency script:
-   ```bash
-   node packages/fragment-workflows/workflows-smoke-artifacts/load-concurrency.js
-   ```
-
-**Expected:**
-
-- Requests should succeed or retry on serialization failures (no 500s).
-
-**Actual:**
-
-- `POST /approval-workflow/instances` returns 500s under concurrent load. Script output
-  (2026-02-02):
-  ```
-  Creating 30 instances...
-  Create failures: 10
-  Error: POST /approval-workflow/instances -> 500: {"error":"Internal server error","code":"INTERNAL_SERVER_ERROR"}
-  ```
-- Server log shows serialization errors:
-  ```
-  Error in handler error: could not serialize access due to concurrent update
-  code: '40001'
-  routine: 'ExecUpdate'
-  ```
-
-**Notes:**
-
-- After switching back to `read committed` and restarting, the same script completed without errors.
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5ib6f4` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5ib6f4';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5ib6f4 | complete | (null) | 2026-02-02 19:32:05.408
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 29
-  ```
-
-**Evidence (2026-02-02, retention/GC latest run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5icpmx` (`demo-data-workflow`, complete).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5icpmx';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5icpmx | complete | (null) | 2026-02-02 19:33:16.356
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 29
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5idqda` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5idqda';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5idqda | errored | (null) | 2026-02-02 19:34:05.868
-  ```
-- GC tasks still absent:
-  ```sql
-  SELECT
-    kind,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind
-  ORDER BY
-    kind;
-  ```
-  Result:
-  ```
-   wake | 29
-  ```
-
-**Evidence (2026-02-02, retention/GC current run):**
-
-- Script: `node packages/fragment-workflows/workflows-smoke-artifacts/retention-gc-check.js`
-- Instance created: `retention_ml5if3fm` (`demo-data-workflow`, errored).
-- `retentionUntil` remains `NULL` after completion:
-  ```sql
-  SELECT
-    "workflowName",
-    "instanceId",
-    status,
-    "retentionUntil",
-    "completedAt"
-  FROM
-    "workflow_instance_workflows"
-  WHERE
-    "instanceId" = 'retention_ml5if3fm';
-  ```
-  Result:
-  ```
-   demo-data-workflow | retention_ml5if3fm | errored | (null) | 2026-02-02 19:35:09.461
-  ```
-- GC tasks still absent (only `wake` tasks observed):
-  ```sql
-  SELECT
-    kind,
-    status,
-    count(*)
-  FROM
-    "workflow_task_workflows"
-  GROUP BY
-    kind,
-    status
-  ORDER BY
-    kind,
-    status;
-  ```
-  Result:
-  ```
-   wake | pending | 29
-  ```
+
+#### Finding M: crash-recovery smoke must be isolated because it intentionally kills the API server
+
+Observed command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh \
+  crash-recover.js dispatcher-crash-recover.js stress-fault.js
+```
+
+Observed run:
+
+- `fragno_wf_confirm_20260531_165540_13275`: `crash-recover.js` completed and recovered 5
+  `crash-test-workflow` instances to `complete`.
+- The next script, `dispatcher-crash-recover.js`, failed with `fetch failed` / `ECONNREFUSED`
+  because `crash-recover.js` had intentionally killed the wf-example API process and
+  `confirm-postgres-app.sh` did not restart it between scripts.
+
+Interpretation/report:
+
+- This is a smoke-runner/harness limitation, not a workflow-product failure.
+- Fault scripts that kill the API process need to run in isolated confirmation invocations, or the
+  future suite runner needs lifecycle hooks that can restart the app between destructive tests.
+
+#### Current production-readiness conclusion
+
+Based on the current plan and evidence, the workflow fragment is **not production-ready yet**. The
+largest blockers are:
+
+1. deterministic internal `BUFFERED_PUMP_SCOPE_ALREADY_OPEN` terminal errors under
+   duplicate/concurrent event storms;
+2. retry attempt overflow (`attempts > maxAttempts`) observed in scenario smoke;
+3. concurrent migration startup failures on fresh Postgres databases;
+4. incomplete production harness coverage: no dedicated deterministic smoke app, no MySQL/SQLite
+   lanes, no mock external service, no cross-backend normalized-state comparison, and limited
+   destructive DB/process fault coverage.
+
+The passing Postgres smoke runs are encouraging for basic lifecycle and dispatcher recovery, but
+they do not meet the release bar in `TESTING_PLAN.md`.
+
+### 2026-05-31 follow-up investigation: cursor precision, skew dispatchers, and harness isolation
+
+Scope: report-only for product behavior. Smoke harness change made: recreated/fixed
+`confirm-postgres-app.sh` and made it launch React Router with `--port $PORT --strictPort` so it
+fails fast when the requested port is occupied instead of accidentally validating against a
+different already-running app.
+
+#### Additional passing evidence
+
+- `PORT=5174 confirm-postgres-app.sh create-race.js` passed on fresh DB
+  `fragno_wf_confirm_20260531_171710_3957`.
+- With the app internal dispatcher disabled and two external normal dispatchers, the following
+  subset passed before the run reached the pagination script: `create-race.js`,
+  `load-concurrency.js`, and `load-parallel.js`.
+- With the app internal dispatcher disabled and two skewed external dispatchers
+  (`WF_CLOCK_SKEW_MS=60000` and `WF_CLOCK_SKEW_MS=-60000`), both clock-skew scripts passed on fresh
+  DB `fragno_wf_skew_20260531_171456_32061`:
+  - `clock-skew-retry.js`
+  - `clock-skew-timeout.js`
+- Sequential repeated migrations on a fresh Postgres database completed 4/4 times; the migration
+  blocker remains specifically the concurrent-start case, not normal repeated sequential startup.
+
+#### Finding N: instance-list cursor pagination can skip rows because timestamp cursor values lose Postgres microsecond precision
+
+Reproduction command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh history-pagination.js
+```
+
+Observed isolated run:
+
+- DB: `fragno_wf_confirm_20260531_171644_29166`
+- Script failed with: `completed instance page_mptxajdb_mxdjbu_6 missing from paginated list`.
+
+DB evidence for the seven completed instances:
+
+- `page_mptxajdb_mxdjbu_5`: `updatedAt = 2026-05-31 17:16:49.542048`
+- `page_mptxajdb_mxdjbu_2`: `updatedAt = 2026-05-31 17:16:49.541792`
+- `page_mptxajdb_mxdjbu_6`: `updatedAt = 2026-05-31 17:16:49.541514`
+- `page_mptxajdb_mxdjbu_4`: `updatedAt = 2026-05-31 17:16:49.530639`
+- `page_mptxajdb_mxdjbu_1`: `updatedAt = 2026-05-31 17:16:49.529123`
+- `page_mptxajdb_mxdjbu_0`: `updatedAt = 2026-05-31 17:16:49.528871`
+- `page_mptxajdb_mxdjbu_3`: `updatedAt = 2026-05-31 17:16:49.528557`
+
+API page evidence with `status=complete&pageSize=2`:
+
+1. Page 1 returned ids `..._5`, `..._2` and cursor value for `updatedAt = 2026-05-31T15:16:49.541Z`.
+2. Page 2 returned ids `..._4`, `..._1`.
+3. Page 3 returned ids `..._0`, `..._3` and ended pagination.
+4. Instance `..._6` was skipped.
+
+Interpretation/report:
+
+- The cursor encoded the last row's `updatedAt` only to millisecond precision (`.541Z`), while
+  Postgres stored microseconds (`.541792`).
+- The next page compared against the rounded/truncated cursor and skipped another row that sorted
+  between the true last value and the serialized cursor (`.541514`).
+- This is a production-readiness blocker for public list pagination on Postgres. Cursor pagination
+  needs a precision-preserving encoding and/or a deterministic tie-breaker in the index/order/cursor
+  tuple.
+
+#### Finding O: current-step emissions `once=true` has an empty NDJSON response for terminal/no-emission state
+
+Follow-up evidence for the earlier `retention-gc-check.js` failure:
+
+- Reproduction DB: `fragno_wf_confirm_20260531_171146_16415`.
+- Route queried after completing an approval workflow:
+
+```bash
+curl -i 'http://localhost:5174/api/workflows/approval-workflow/instances/integrity_mptx453s_m6mhef/current-step/emissions?once=true'
+```
+
+Observed response:
+
+- HTTP `200`
+- `content-type: application/x-ndjson; charset=utf-8`
+- empty body
+
+Interpretation/report:
+
+- The route contract declares an array output, while the implementation uses `jsonStream` and writes
+  zero NDJSON records for an empty `once=true` snapshot.
+- The smoke helper therefore parses the empty body as `null`, causing `retention-gc-check.js` to
+  fail on `.length`.
+- This may be an API contract/implementation mismatch rather than a core workflow-state bug, but it
+  is still a production API usability issue until either the route returns `[]` for `once=true` or
+  the public contract explicitly documents NDJSON streaming semantics and empty-body behavior.
+
+#### Finding P: scenario-matrix retry overflow reproduced again on a fresh isolated DB
+
+Reproduction command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh scenario-matrix.js
+```
+
+Observed run:
+
+- DB: `fragno_wf_confirm_20260531_171248_24943`
+- Script reported two anomalies:
+  - `parallel sm_par_mptx5h6e_2 exceeded attempts on do:fetch-user`
+  - `parallel sm_par_mptx5h6e_3 exceeded attempts on do:fetch-user`
+
+DB evidence:
+
+- Both overflow rows had `stepKey = do:fetch-user`, `status = errored`, `attempts = 6`,
+  `maxAttempts = 5`, `errorMessage = FLAKY_USER_FETCH`.
+
+Interpretation/report:
+
+- This confirms the earlier retry-accounting finding on a fresh isolated run. It is not just
+  contamination from previous scripts sharing a database.
+
+#### Harness note: strict port binding matters
+
+While investigating `history-pagination.js`, an orphaned wf-example dev server on port `5174` caused
+one attempted confirmation run to start a new server on `5177` while the readiness probe still
+succeeded against the old `5174` process. `confirm-postgres-app.sh` now passes
+`--port $PORT --strictPort` to React Router so this class of false validation fails immediately
+instead of mixing databases/processes.
+
+### 2026-06-01 follow-up investigation: dispatcher catch-up and API validation behavior
+
+Scope: report-only for product behavior. Smoke artifact additions/fixes made during this pass:
+
+- Added `api-route-validation.js` to cover workflow-list and route/input validation behavior through
+  the public API.
+- Updated `confirm-postgres-app.sh` cleanup to recursively kill the React Router child process as
+  well as the parent `pnpm` process; previous failed/manual runs could leave an orphaned server on
+  `5174`.
+
+Validation command:
+
+```bash
+PORT=5174 packages/fragment-workflows/workflows-smoke-artifacts/confirm-postgres-app.sh api-route-validation.js
+```
+
+Observed passing run:
+
+- DB: `fragno_wf_confirm_20260601_094829_23850`
+- `GET /` listed all configured workflows.
+- Unknown workflow create/event requests returned `404 WORKFLOW_NOT_FOUND`.
+- Missing event `type` returned `400 FRAGNO_VALIDATION_ERROR` rather than `500`.
+- The script completed and the temporary DB was dropped.
+
+#### Finding Q: queued events while no dispatcher is polling can still hit `BUFFERED_PUMP_SCOPE_ALREADY_OPEN` after dispatcher recovery
+
+Manual reproduction shape:
+
+1. Start `wf-example` with `WF_DISABLE_INTERNAL_DISPATCHER=1` on a fresh Postgres DB.
+2. Create 5 `approval-workflow` instances.
+3. Before starting an external dispatcher, send one `approval` and one `fulfillment` event to each
+   instance.
+4. Start `workflows-smoke-artifacts/dispatcher.ts` and wait for recovery.
+
+Observed run:
+
+- DB retained: `fragno_wf_catchupfail_20260531_184318_1566`
+- Before starting the external dispatcher, instance statuses were mixed: three `waiting`, two
+  `active`.
+- After starting the dispatcher and waiting ~30s:
+  - `catchup_mpu0dva4_r6n0o2_0`: `complete`
+  - `catchup_mpu0dva4_r6n0o2_1`: `errored`, `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`
+  - `catchup_mpu0dva4_r6n0o2_2`: `errored`, `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`
+  - `catchup_mpu0dva4_r6n0o2_3`: `errored`, `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`
+  - `catchup_mpu0dva4_r6n0o2_4`: `errored`, `errorMessage = BUFFERED_PUMP_SCOPE_ALREADY_OPEN`
+
+DB evidence:
+
+- The completed instance consumed exactly one approval and one fulfillment event.
+- Each errored instance had exactly one persisted approval event and one persisted fulfillment
+  event, but both were unconsumed.
+- Each errored instance still had only `waitForEvent:approval` in `workflow_step`, with step status
+  `waiting`.
+
+Interpretation/report:
+
+- This extends the event-storm finding: the buffered-pump scope collision is not limited to high
+  duplicate counts. It can also happen with one event of each type per instance when events are
+  queued while no dispatcher is polling and then an external dispatcher catches up.
+- This is a durability/product-readiness blocker for deployments that intentionally run API
+  processes without internal dispatchers and rely on external worker catch-up.
+
+#### Finding R: route input-schema validation returns framework-level `FRAGNO_VALIDATION_ERROR` instead of route-declared error codes
+
+Observed in `api-route-validation.js`:
+
+- Creating an instance with an invalid ID (`bad/slash`) returned:
+  - HTTP `400`
+  - `code = FRAGNO_VALIDATION_ERROR`
+  - zod issue details containing the identifier regex.
+- Missing event `type` similarly returned `400 FRAGNO_VALIDATION_ERROR`.
+
+Interpretation/report:
+
+- The workflow routes declare domain error codes such as `INVALID_INSTANCE_ID`, but input-schema
+  validation can fail before the route handler reaches `assertIdentifier`, producing a
+  framework-level validation code instead.
+- This may be acceptable if documented as the public validation contract, but the current route
+  `errorCodes` list does not make that behavior obvious to API consumers.
+- Production release should either document `FRAGNO_VALIDATION_ERROR` for schema-level failures or
+  align route schemas/handlers so declared domain error codes are consistently returned.
+
+#### Finding S: batch create silently deduplicates duplicate IDs inside the same request
+
+Observed in `api-route-validation.js`:
+
+```json
+{
+  "instances": [
+    {
+      "id": "api_..._batch_dup",
+      "params": { "requestId": "r1", "amount": 1, "requestedBy": "api" }
+    },
+    {
+      "id": "api_..._batch_dup",
+      "params": { "requestId": "r2", "amount": 2, "requestedBy": "api" }
+    }
+  ]
+}
+```
+
+Response:
+
+- HTTP `200`
+- one created instance in the response, not two;
+- no explicit duplicate-ID warning/error.
+
+Interpretation/report:
+
+- This is not necessarily a correctness bug, but it is an important public API behavior to document
+  and guard with tests.
+- If callers expect response cardinality to match request cardinality, the current behavior is
+  surprising. The release gate should decide whether same-batch duplicates should be rejected,
+  reported per item, or explicitly documented as idempotent deduplication.
+
+#### Coverage gap: example approval params are not runtime-validated
+
+`api-route-validation.js` sent structurally incomplete approval params (`{ "requestId": "r" }`) and
+the example app accepted them with HTTP `200` / `status = active`.
+
+Interpretation/report:
+
+- This appears to be a coverage/example limitation rather than a route failure: the current example
+  workflows are TypeScript-typed but do not provide runtime schemas for params.
+- It reinforces the `TESTING_PLAN.md` requirement for a dedicated schema-validation smoke workflow
+  with invalid params/output assertions.
+
+### 2026-06-01 follow-up investigation: API scoping and terminal management edge cases
+
+Scope: report-only. No workflow implementation or smoke artifact changes were made in this pass. A
+one-off fresh-Postgres probe was run against `wf-example` on `PORT=5174`.
+
+Observed run:
+
+- DB: `fragno_wf_probe_20260601_144702_221` (temporary DB dropped after the probe)
+- App log: `/tmp/wf-probe-app-probe_20260601_144702_221.log`
+
+Positive checks from the same probe:
+
+- `GET /approval-workflow/instances/not_here` returned `404 INSTANCE_NOT_FOUND`.
+- `GET /approval-workflow/instances?cursor=not-a-valid-cursor` returned `400 INVALID_CURSOR`.
+- Sending an `approval` event while an instance was paused persisted the event but did not consume
+  it while paused:
+  - paused status stayed `paused` after ~2.5s;
+  - approval event count was `1`;
+  - consumed approval count while paused was `0`.
+- After `resume`, the previously queued approval event was consumed and the workflow advanced to
+  `sleep:cooldown`.
+
+#### Finding T: public instance IDs are globally unique across workflows despite workflow-scoped routes
+
+Probe shape:
+
+1. Create `approval-workflow` instance with ID `probe_mpv7dva3_3tigyc_shared`.
+2. Create `demo-data-workflow` instance with the same public ID.
+
+Observed response:
+
+```json
+{
+  "first": {
+    "status": 200,
+    "body": { "id": "probe_mpv7dva3_3tigyc_shared", "details": { "status": "active" } }
+  },
+  "second": {
+    "status": 409,
+    "body": { "message": "Instance already exists", "code": "INSTANCE_ID_ALREADY_EXISTS" }
+  }
+}
+```
+
+Static source context:
+
+- `workflow_instance` defines a unique index on `(workflowName, id)`, but the external `idColumn()`
+  also creates a global unique constraint on `id` in Postgres (`workflow_instance_id_key` was
+  visible in `\d workflows.workflow_instance` during earlier DB inspection).
+- Routes are shaped as `/:workflowName/instances/:instanceId`, which suggests workflow-scoped
+  identifiers to API consumers.
+
+Interpretation/report:
+
+- This may be intentional if workflow instance IDs are meant to be globally unique across the entire
+  workflows fragment, but the route shape and `(workflowName, id)` index imply that same-ID
+  instances under different workflows might be valid.
+- If global uniqueness is intended, it should be documented explicitly and the redundant
+  workflow-name/id unique index may be misleading.
+- If workflow-scoped uniqueness is intended, the current schema/API behavior prevents it and blocks
+  the planned security test for “workflow A events cannot affect workflow B even with matching
+  instance IDs.”
+
+#### Finding U: `resume` is a successful no-op on terminal instances while other terminal mutators return `INSTANCE_TERMINAL`
+
+Probe shape:
+
+1. Complete an `approval-workflow` instance.
+2. Call terminal-state management/event routes against the completed instance.
+
+Observed response:
+
+```json
+{
+  "termStatus": { "status": "complete" },
+  "postTerminal": {
+    "pause": {
+      "status": 409,
+      "body": { "message": "Instance is terminal", "code": "INSTANCE_TERMINAL" }
+    },
+    "resume": { "status": 200, "body": { "ok": true } },
+    "terminate": {
+      "status": 409,
+      "body": { "message": "Instance is terminal", "code": "INSTANCE_TERMINAL" }
+    },
+    "event": {
+      "status": 409,
+      "body": { "message": "Instance is terminal", "code": "INSTANCE_TERMINAL" }
+    }
+  }
+}
+```
+
+Static source context:
+
+- `pauseInstance` explicitly throws `INSTANCE_TERMINAL` for terminal statuses.
+- `terminateInstance` and `sendEvent` also reject terminal instances.
+- `resumeInstance` returns the current instance status whenever the current status is not `paused`;
+  this includes terminal states.
+
+Interpretation/report:
+
+- This is an API consistency issue: all other mutating operations reject terminal instances, but
+  `resume` reports success even though the instance is terminal and cannot be resumed.
+- It may be acceptable as an idempotent no-op, but then the contract should document that `resume`
+  differs from `pause`, `terminate`, and `send-event` on terminal instances.
+- If the production-readiness bar expects “terminal-state errors” consistently across management
+  routes, `resume` should be covered by explicit tests and either documented or aligned.
+
+#### Additional validation-surface note: batch max-size failure uses framework validation code
+
+The same probe submitted 101 batch-create items. The route returned HTTP `400` with
+`code = FRAGNO_VALIDATION_ERROR` and a zod `too_big` issue, not a workflow-domain code.
+
+This is consistent with Finding R rather than a separate product finding, but it adds batch max-size
+behavior to the list of route-level errors that need contract documentation.

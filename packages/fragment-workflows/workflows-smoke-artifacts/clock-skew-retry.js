@@ -47,7 +47,7 @@ async function getStatus(id) {
 }
 
 async function getHistory(id) {
-  return request(`/demo-data-workflow/instances/${id}/history?includeLogs=false&pageSize=50`);
+  return request(`/demo-data-workflow/instances/${id}/history`);
 }
 
 async function waitForTerminal(id, timeoutMs) {
@@ -63,7 +63,7 @@ async function waitForTerminal(id, timeoutMs) {
 }
 
 function analyzeFlakyStep(history) {
-  const steps = (history.steps ?? []).filter((step) => step.stepKey === "flaky-step");
+  const steps = (history.steps ?? []).filter((step) => step.stepKey === "do:flaky-step");
   if (!steps.length) {
     return { hasStep: false };
   }

@@ -1,121 +1,101 @@
-const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
+import {
+  assert,
+  baseUrl,
+  createInstance,
+  pauseInstance,
+  requestNoThrow,
+  resumeInstance,
+  runId,
+  sendEvent,
+} from "./smoke-support.js";
+
 const count = Number(process.env.COUNT ?? 30);
 
-if (!Number.isFinite(count) || count <= 0) {
-  throw new Error(`Invalid COUNT: ${process.env.COUNT}`);
-}
-
-async function request(path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...options.headers,
-    },
-  });
-  const text = await response.text();
-  let json;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = null;
-  }
-  return { ok: response.ok, status: response.status, json, text };
-}
-
-async function createInstance(id) {
-  return request(`/approval-workflow/instances`, {
-    method: "POST",
-    body: JSON.stringify({
-      id,
-      params: { requestId: `req_${id}`, amount: 100, requestedBy: "auth-test" },
-    }),
-  });
-}
-
-async function pauseInstance(id) {
-  return request(`/approval-workflow/instances/${id}/pause`, { method: "POST" });
-}
-
-async function resumeInstance(id) {
-  return request(`/approval-workflow/instances/${id}/resume`, { method: "POST" });
-}
-
-async function sendEvent(id, type, payload) {
-  return request(`/approval-workflow/instances/${id}/events`, {
-    method: "POST",
-    body: JSON.stringify({ type, payload }),
-  });
-}
-
-function summarize(label, results) {
-  const ok = results.filter((r) => r.ok);
-  const unauthorized = results.filter((r) => r.status === 401);
-  const failed = results.filter((r) => !r.ok && r.status !== 401);
-  console.log(
-    `${label}: ok=${ok.length} unauthorized=${unauthorized.length} otherErrors=${failed.length}`,
+function summarize(label, results, allowedStatuses = [200, 409]) {
+  const ok = results.filter((result) => result.status === undefined);
+  const acceptedErrors = results.filter((result) => allowedStatuses.includes(result.status));
+  const unexpected = results.filter(
+    (result) => result.status !== undefined && !allowedStatuses.includes(result.status),
   );
-  return {
-    ok: ok.map((r) => r.id),
-    unauthorized: unauthorized.map((r) => r.id),
-    failed: failed.map((r) => ({ id: r.id, status: r.status, body: r.text })),
-  };
+  console.log(
+    `${label}: ok=${ok.length} acceptedErrors=${acceptedErrors.length} unexpected=${unexpected.length}`,
+  );
+  assert(
+    unexpected.length === 0,
+    `${label} unexpected errors: ${JSON.stringify(unexpected.slice(0, 5))}`,
+  );
+}
+
+async function capture(id, action) {
+  try {
+    await action();
+    return { id };
+  } catch (error) {
+    return { id, status: error.status, body: error.body ?? error.message };
+  }
 }
 
 async function main() {
-  const runId = Date.now().toString(36);
-  const ids = Array.from({ length: count }, (_, i) => `auth_${runId}_${i}`);
+  assert(Number.isFinite(count) && count > 0, `Invalid COUNT: ${count}`);
+  const prefix = runId("concurrency");
+  const ids = Array.from({ length: count }, (_, index) => `${prefix}_${index}`);
 
-  console.log(`Creating ${ids.length} instances...`);
-  const createResults = await Promise.all(
-    ids.map(async (id) => ({ id, ...(await createInstance(id)) })),
-  );
-  const createSummary = summarize("create", createResults);
-
-  console.log("Issuing pause requests concurrently...");
-  const pauseResults = await Promise.all(
-    createSummary.ok.map(async (id) => ({ id, ...(await pauseInstance(id)) })),
-  );
-  const pauseSummary = summarize("pause", pauseResults);
-
-  console.log("Issuing resume requests concurrently...");
-  const resumeResults = await Promise.all(
-    createSummary.ok.map(async (id) => ({ id, ...(await resumeInstance(id)) })),
-  );
-  const resumeSummary = summarize("resume", resumeResults);
-
-  console.log("Sending approval events concurrently...");
-  const approvalResults = await Promise.all(
-    createSummary.ok.map(async (id) => ({
-      id,
-      ...(await sendEvent(id, "approval", { approved: true, approver: "auth-test" })),
-    })),
-  );
-  const approvalSummary = summarize("approval", approvalResults);
-
-  console.log("Sending fulfillment events concurrently...");
-  const fulfillmentResults = await Promise.all(
-    createSummary.ok.map(async (id) => ({
-      id,
-      ...(await sendEvent(id, "fulfillment", { confirmationId: `conf_${id}` })),
-    })),
-  );
-  const fulfillmentSummary = summarize("fulfillment", fulfillmentResults);
-
+  console.log(`[auth-hook-concurrency] baseUrl=${baseUrl}`);
   console.log(
-    JSON.stringify(
-      {
-        runId,
-        create: createSummary,
-        pause: pauseSummary,
-        resume: resumeSummary,
-        approval: approvalSummary,
-        fulfillment: fulfillmentSummary,
-      },
-      null,
-      2,
+    "Note: current wf-example has no authorization hook; this script now checks management concurrency only.",
+  );
+
+  const createResults = await Promise.all(
+    ids.map((id) =>
+      capture(id, () =>
+        createInstance("approval-workflow", id, {
+          requestId: `req_${id}`,
+          amount: 100,
+          requestedBy: "concurrency-test",
+        }),
+      ),
     ),
   );
+  summarize("create", createResults, [409]);
+
+  const createdIds = createResults
+    .filter((result) => result.status === undefined)
+    .map((result) => result.id);
+  const pauseResults = await Promise.all(
+    createdIds.map((id) => capture(id, () => pauseInstance("approval-workflow", id))),
+  );
+  summarize("pause", pauseResults, [409]);
+
+  const resumeResults = await Promise.all(
+    createdIds.map((id) => capture(id, () => resumeInstance("approval-workflow", id))),
+  );
+  summarize("resume", resumeResults, [409]);
+
+  const approvalResults = await Promise.all(
+    createdIds.map((id) =>
+      capture(id, () =>
+        sendEvent("approval-workflow", id, "approval", {
+          approved: true,
+          approver: "concurrency-test",
+        }),
+      ),
+    ),
+  );
+  summarize("approval", approvalResults, [409]);
+
+  const fulfillmentResults = await Promise.all(
+    createdIds.map((id) =>
+      capture(id, () =>
+        sendEvent("approval-workflow", id, "fulfillment", { confirmationId: `conf_${id}` }),
+      ),
+    ),
+  );
+  summarize("fulfillment", fulfillmentResults, [409]);
+
+  // Exercise public 404 response shape without failing the run.
+  await requestNoThrow(`/approval-workflow/instances/${prefix}_missing`);
+
+  console.log(`[auth-hook-concurrency] complete created=${createdIds.length}`);
 }
 
 main().catch((error) => {

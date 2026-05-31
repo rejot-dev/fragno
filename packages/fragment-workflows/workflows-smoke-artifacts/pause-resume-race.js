@@ -3,12 +3,16 @@ const count = Number(process.env.COUNT ?? 20);
 const maxDelayMs = Number(process.env.MAX_DELAY_MS ?? 150);
 const pollTimeoutMs = Number(process.env.POLL_TIMEOUT_MS ?? 10000);
 const pollIntervalMs = Number(process.env.POLL_INTERVAL_MS ?? 400);
+const settleMs = Number(process.env.SETTLE_MS ?? 1500);
 
 if (!Number.isFinite(count) || count <= 0) {
   throw new Error(`Invalid COUNT: ${process.env.COUNT}`);
 }
 if (!Number.isFinite(maxDelayMs) || maxDelayMs < 0) {
   throw new Error(`Invalid MAX_DELAY_MS: ${process.env.MAX_DELAY_MS}`);
+}
+if (!Number.isFinite(settleMs) || settleMs < 0) {
+  throw new Error(`Invalid SETTLE_MS: ${process.env.SETTLE_MS}`);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,44 +97,53 @@ async function main() {
 
   await Promise.all(toggles);
 
-  console.log("Issuing final resume to all instances...");
-  await Promise.all(
-    ids.map(async (id) => {
-      try {
-        await resumeInstance(id);
-      } catch (error) {
-        console.warn(`final resume failed for ${id}: ${error.message ?? error}`);
-      }
-    }),
-  );
-
-  console.log("Polling for instances to leave paused states...");
-  const remaining = new Set(ids);
+  console.log("Polling and resuming until paused states settle...");
   const start = Date.now();
   const latest = new Map();
+  let stableSince = null;
 
-  while (remaining.size && Date.now() - start < pollTimeoutMs) {
+  while (Date.now() - start < pollTimeoutMs) {
+    const paused = [];
     await Promise.all(
-      Array.from(remaining).map(async (id) => {
+      ids.map(async (id) => {
         try {
           const status = await getStatus(id);
           latest.set(id, status);
-          if (status.details.status !== "paused") {
-            remaining.delete(id);
+          if (status.details.status === "paused") {
+            paused.push(id);
           }
         } catch (error) {
           console.error(`Status check failed for ${id}:`, error.message ?? error);
+          stableSince = null;
         }
       }),
     );
-    if (remaining.size) {
-      await sleep(pollIntervalMs);
+
+    if (paused.length) {
+      stableSince = null;
+      await Promise.all(
+        paused.map(async (id) => {
+          try {
+            await resumeInstance(id);
+          } catch (error) {
+            console.warn(`settle resume failed for ${id}: ${error.message ?? error}`);
+          }
+        }),
+      );
+    } else {
+      stableSince ??= Date.now();
+      if (Date.now() - stableSince >= settleMs) {
+        break;
+      }
     }
+
+    await sleep(pollIntervalMs);
   }
 
-  if (remaining.size) {
-    console.error(`Instances stuck in paused state: ${remaining.size}`);
-    remaining.forEach((id) => console.error(`- ${id}`));
+  const stuck = ids.filter((id) => latest.get(id)?.details?.status === "paused");
+  if (stuck.length || stableSince === null || Date.now() - stableSince < settleMs) {
+    console.error(`Instances did not settle outside paused state: ${stuck.length || ids.length}`);
+    (stuck.length ? stuck : ids).slice(0, 10).forEach((id) => console.error(`- ${id}`));
     process.exit(1);
   }
 

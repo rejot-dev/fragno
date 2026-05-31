@@ -1,44 +1,18 @@
-import { spawn, execSync } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 
-const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
+import { assert, assertEqual, baseUrl, createInstance, runId, sleep } from "./smoke-support.js";
+
 const count = Number(process.env.COUNT ?? 5);
-const leaseMs = Number(process.env.LEASE_MS ?? 60000);
-const crashDelayMs = Number(process.env.CRASH_DELAY_MS ?? 2000);
-const restartDelayMs = Number(process.env.RESTART_DELAY_MS ?? 3000);
-const dbHost = process.env.PGHOST ?? "localhost";
-const dbPort = Number(process.env.PGPORT ?? 5436);
-const dbUser = process.env.PGUSER ?? "postgres";
-const dbName = process.env.PGDATABASE ?? "wilco";
-const dbPassword = process.env.PGPASSWORD ?? "postgres";
-
-if (!Number.isFinite(count) || count <= 0) {
-  throw new Error(`Invalid COUNT: ${process.env.COUNT}`);
-}
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function request(pathname, options = {}) {
-  const response = await fetch(`${baseUrl}${pathname}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...options.headers,
-    },
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`${options.method ?? "GET"} ${pathname} -> ${response.status}: ${text}`);
-  }
-  return response.status === 204 ? null : response.json();
-}
-
-async function createInstance(id) {
-  return request(`/crash-test-workflow/instances`, {
-    method: "POST",
-    body: JSON.stringify({ id, params: {} }),
-  });
-}
+const crashDelayMs = Number(process.env.CRASH_DELAY_MS ?? 2_000);
+const recoveryTimeoutMs = Number(process.env.RECOVERY_TIMEOUT_MS ?? 45_000);
+const appPort = Number(new URL(baseUrl).port || 80);
+const databaseUrl =
+  process.env.WF_EXAMPLE_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  `postgres://${process.env.PGUSER ?? "postgres"}:${process.env.PGPASSWORD ?? "postgres"}@${process.env.PGHOST ?? "localhost"}:${process.env.PGPORT ?? 5436}/${process.env.PGDATABASE ?? "wilco"}`;
+const require = createRequire(import.meta.url);
 
 function getAppPid() {
   if (process.env.APP_PID) {
@@ -48,126 +22,117 @@ function getAppPid() {
     }
   }
   try {
-    const output = execSync("lsof -n -iTCP:5173 -sTCP:LISTEN -t", {
+    const output = execSync(`lsof -n -iTCP:${appPort} -sTCP:LISTEN -t`, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
     const pid = Number(output.split("\n")[0]);
-    if (Number.isFinite(pid) && pid > 0) {
-      return pid;
-    }
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
   }
-  return null;
 }
 
-function killProcess(pid) {
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch (error) {
-    console.warn(`Failed to kill pid ${pid}:`, error.message ?? error);
+function psqlQuery(query) {
+  return execFileSync("psql", [databaseUrl, "-t", "-A", "-c", query], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+function buildTsxCommand(dispatcherPath) {
+  if (process.env.TSX_BIN) {
+    return { command: process.env.TSX_BIN, args: [dispatcherPath] };
   }
+  require.resolve("tsx");
+  return {
+    command: process.execPath,
+    args: ["--conditions=development", "--import", "tsx", dispatcherPath],
+  };
 }
 
 function spawnDispatcher(label) {
   const dispatcherPath = path.resolve(
     "packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts",
   );
-  const proc = spawn("tsx", [dispatcherPath], {
-    env: { ...process.env, NODE_OPTIONS: "--conditions=development" },
-    stdio: "ignore",
+  const tsx = buildTsxCommand(dispatcherPath);
+  const proc = spawn(tsx.command, tsx.args, {
+    env: {
+      ...process.env,
+      WF_EXAMPLE_DATABASE_URL: databaseUrl,
+      WF_STUCK_PROCESSING_TIMEOUT_MINUTES:
+        process.env.WF_STUCK_PROCESSING_TIMEOUT_MINUTES ?? "0.05",
+    },
+    stdio: "inherit",
   });
-  proc.on("exit", (code, signal) => {
-    if (code !== null && code !== 0) {
-      console.warn(`[dispatcher ${label}] exited with code ${code}`);
-    }
-    if (signal) {
-      console.warn(`[dispatcher ${label}] exited with signal ${signal}`);
-    }
+  proc.exitPromise = new Promise((resolve) => {
+    proc.on("exit", (code, signal) => {
+      if (code !== null && code !== 0) {
+        console.warn(`[dispatcher ${label}] exited with code ${code}`);
+      }
+      if (signal) {
+        console.warn(`[dispatcher ${label}] exited with signal ${signal}`);
+      }
+      resolve();
+    });
   });
   return proc;
 }
 
-function psqlQuery(query) {
-  const cmd = [
-    `PGPASSWORD=${dbPassword}`,
-    "psql",
-    `-h ${dbHost}`,
-    `-p ${dbPort}`,
-    `-U ${dbUser}`,
-    `-d ${dbName}`,
-    "-t",
-    "-A",
-    `-c "${query.replace(/"/g, '\\"')}"`,
-  ].join(" ");
-  return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+async function stopDispatcher(proc) {
+  if (!proc || proc.killed) {
+    return;
+  }
+  proc.kill("SIGTERM");
+  await Promise.race([proc.exitPromise, sleep(3000)]);
 }
 
 async function main() {
-  const runId = Date.now().toString(36);
-  const ids = Array.from({ length: count }, (_, i) => `crash_${runId}_${i}`);
+  assert(Number.isFinite(count) && count > 0, `Invalid COUNT: ${count}`);
+  const prefix = runId("crash");
+  const ids = Array.from({ length: count }, (_, index) => `${prefix}_${index}`);
 
-  console.log(`Creating ${ids.length} crash-test instances...`);
-  await Promise.all(ids.map((id) => createInstance(id)));
-
+  console.log(`[crash-recover] baseUrl=${baseUrl} creating ${ids.length} crash-test instances`);
+  await Promise.all(ids.map((id) => createInstance("crash-test-workflow", id, {})));
   await sleep(crashDelayMs);
 
   const appPid = getAppPid();
-  if (!appPid) {
-    throw new Error("Unable to determine app server PID on port 5173");
-  }
+  assert(appPid, `Unable to determine app server PID on port ${appPort}; set APP_PID explicitly`);
+  console.log(`[crash-recover] killing app server pid=${appPid}`);
+  process.kill(appPid, "SIGKILL");
 
-  console.log(`Crashing app server pid=${appPid}...`);
-  killProcess(appPid);
-
-  await sleep(restartDelayMs);
-
-  console.log("Starting recovery dispatcher...");
+  console.log("[crash-recover] starting external recovery dispatcher");
   const dispatcher = spawnDispatcher("recovery");
+  try {
+    const deadline = Date.now() + recoveryTimeoutMs;
+    let rows = [];
+    while (Date.now() < deadline) {
+      const idList = ids.map((id) => `'${id}'`).join(",");
+      const raw = psqlQuery(
+        `select id, status from workflows.workflow_instance where id in (${idList}) order by id;`,
+      );
+      rows = raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => line.split("|"));
+      if (rows.length === ids.length && rows.every(([, status]) => status === "complete")) {
+        break;
+      }
+      await sleep(1_000);
+    }
 
-  const waitMs = leaseMs + 15000;
-  console.log(`Waiting ${Math.round(waitMs / 1000)}s for lease expiry + recovery...`);
-  await sleep(waitMs);
+    const incomplete = rows.filter(([, status]) => status !== "complete");
+    assertEqual("incomplete instances", incomplete.length, 0);
 
-  const idList = ids.map((id) => `'${id}'`).join(",");
-  const statusRows = psqlQuery(
-    `select "instanceId", status from workflow_instance_workflows where "instanceId" in (${idList}) order by "instanceId";`,
-  );
-  const statuses = statusRows
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => line.split("|"));
-
-  const incomplete = statuses.filter(([, status]) => status !== "complete");
-  if (incomplete.length) {
-    console.error(`Instances not complete after crash recovery: ${incomplete.length}`);
-    incomplete.slice(0, 5).forEach(([id, status]) => {
-      console.error(`- ${id}: ${status}`);
-    });
+    const overAttempts = Number(
+      psqlQuery('select count(*) from workflows.workflow_step where "attempts" > "maxAttempts";'),
+    );
+    assertEqual("steps exceeding maxAttempts", overAttempts, 0);
+  } finally {
+    await stopDispatcher(dispatcher);
   }
 
-  const staleProcessing = psqlQuery(
-    "select count(*) from workflow_task_workflows where status='processing' and \"lockedUntil\" <= now();",
-  );
-  const stalePending = psqlQuery(
-    "select count(*) from workflow_task_workflows where status='pending' and \"lockedUntil\" is not null;",
-  );
-  console.log(`Stale processing tasks: ${staleProcessing}`);
-  console.log(`Pending tasks with lock: ${stalePending}`);
-
-  const overAttempts = psqlQuery(
-    'select count(*) from workflow_step_workflows where "maxAttempts" is not null and "attempts" > "maxAttempts";',
-  );
-  console.log(`Steps exceeding maxAttempts: ${overAttempts}`);
-
-  dispatcher.kill("SIGTERM");
-
-  if (incomplete.length || Number(staleProcessing) > 0 || Number(stalePending) > 0) {
-    process.exit(1);
-  }
-
-  console.log("Crash recovery test finished with no detected anomalies.");
+  console.log("[crash-recover] complete");
 }
 
 main().catch((error) => {

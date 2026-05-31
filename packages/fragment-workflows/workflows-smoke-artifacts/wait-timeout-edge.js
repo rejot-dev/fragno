@@ -2,7 +2,7 @@ const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
 const countBefore = Number(process.env.COUNT_BEFORE ?? 10);
 const countAfter = Number(process.env.COUNT_AFTER ?? 10);
 const timeoutMs = Number(process.env.TIMEOUT_MS ?? 2000);
-const earlyOffsetMs = Number(process.env.EARLY_OFFSET_MS ?? 150);
+const beforeDelayMs = Number(process.env.BEFORE_DELAY_MS ?? 100);
 const lateOffsetMs = Number(process.env.LATE_OFFSET_MS ?? 150);
 const pollTimeoutMs = Number(process.env.POLL_TIMEOUT_MS ?? 8000);
 const pollIntervalMs = Number(process.env.POLL_INTERVAL_MS ?? 300);
@@ -12,6 +12,9 @@ if (!Number.isFinite(countBefore) || countBefore < 0) {
 }
 if (!Number.isFinite(countAfter) || countAfter < 0) {
   throw new Error(`Invalid COUNT_AFTER: ${process.env.COUNT_AFTER}`);
+}
+if (!Number.isFinite(beforeDelayMs) || beforeDelayMs < 0) {
+  throw new Error(`Invalid BEFORE_DELAY_MS: ${process.env.BEFORE_DELAY_MS}`);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,14 +103,13 @@ async function main() {
   for (const id of beforeIds) {
     sendPromises.push(
       new Promise((resolve) => {
-        const delay = Math.max(0, timeoutMs - earlyOffsetMs);
         setTimeout(() => {
           sendEdgeEvent(id, { expected: "before", sentAt: Date.now() })
             .catch((error) => {
               console.error(`sendEdgeEvent before failed for ${id}:`, error.message ?? error);
             })
             .finally(resolve);
-        }, delay);
+        }, beforeDelayMs);
       }),
     );
   }

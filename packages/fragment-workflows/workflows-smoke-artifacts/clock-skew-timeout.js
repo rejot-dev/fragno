@@ -47,7 +47,7 @@ async function getStatus(id) {
 }
 
 async function getHistory(id) {
-  return request(`/wait-timeout-workflow/instances/${id}/history?includeLogs=false&pageSize=25`);
+  return request(`/wait-timeout-workflow/instances/${id}/history`);
 }
 
 async function waitForStatus(id, predicate, timeoutMs) {
@@ -64,7 +64,7 @@ async function waitForStatus(id, predicate, timeoutMs) {
 
 function getEdgeWaitStep(history) {
   const steps = history.steps ?? [];
-  return steps.find((step) => step.stepKey === "edge-wait") ?? null;
+  return steps.find((step) => step.stepKey === "waitForEvent:edge-wait") ?? null;
 }
 
 async function main() {
