@@ -686,7 +686,7 @@ Tests:
 
 ### Slice 6 — Secondary indexes, unique indexes, cursor pagination, and count
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 9, 11.1, 11.2, 12.1, 12.2, 14.
 

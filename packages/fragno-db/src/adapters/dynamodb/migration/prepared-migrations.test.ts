@@ -1,19 +1,21 @@
 import { expect, it } from "vitest";
 
 import { ListTablesCommand } from "@aws-sdk/client-dynamodb";
+import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 import { column, idColumn, schema } from "../../../schema/create";
 import { DynamoDBAdapter } from "../dynamodb-adapter";
 import { createDynamoDBLayout } from "../dynamodb-layout";
 import { describeDynamoDBLocal, getDynamoDBLocalTestContext } from "../test-utils";
 
+const migrationBaseSchema = schema("shop", (s) =>
+  s.addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("status", column("string"))),
+);
+
 const migrationSchema = schema("shop", (s) =>
-  s.addTable("orders", (t) =>
-    t
-      .addColumn("id", idColumn())
-      .addColumn("status", column("string"))
-      .createIndex("byStatus", ["status"]),
-  ),
+  s
+    .addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("status", column("string")))
+    .alterTable("orders", (t) => t.createIndex("byStatus", ["status"])),
 );
 
 describeDynamoDBLocal("DynamoDB migrations", () => {
@@ -45,5 +47,48 @@ describeDynamoDBLocal("DynamoDB migrations", () => {
         layout.getTableLayout("orders").indexTableName,
       ]),
     );
+  });
+
+  it("backfills added index entries during migration", async () => {
+    const context = getDynamoDBLocalTestContext();
+    expect(context).not.toBeNull();
+    const { client, tablePrefix } = context!;
+    const baseAdapter = new DynamoDBAdapter({ client, tablePrefix });
+    await baseAdapter.prepareMigrations(migrationBaseSchema, "shop").execute(0);
+
+    const layout = createDynamoDBLayout({
+      schema: migrationSchema,
+      namespace: "shop",
+      tablePrefix,
+    });
+    const tableLayout = layout.getTableLayout("orders");
+    await client.send(
+      new PutCommand({
+        TableName: tableLayout.baseTableName,
+        Item: {
+          pk: "order_backfill",
+          id: "order_backfill",
+          status: "open",
+          _internalId: "1",
+          _version: 0,
+        },
+      }),
+    );
+
+    const indexedAdapter = new DynamoDBAdapter({ client, tablePrefix });
+    await indexedAdapter.prepareMigrations(migrationSchema, "shop").execute(1, 2);
+
+    const result = await client.send(
+      new QueryCommand({
+        TableName: tableLayout.indexTableName,
+        KeyConditionExpression: "#pk = :pk",
+        ExpressionAttributeNames: { "#pk": "pk" },
+        ExpressionAttributeValues: { ":pk": "idx#byStatus" },
+      }),
+    );
+
+    expect(result.Items).toEqual([
+      expect.objectContaining({ externalId: "order_backfill", internalId: "1" }),
+    ]);
   });
 });

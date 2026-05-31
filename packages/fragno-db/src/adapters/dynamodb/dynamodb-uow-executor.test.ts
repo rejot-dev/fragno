@@ -9,7 +9,10 @@ const executorSchema = schema("shop", (s) =>
     t
       .addColumn("id", idColumn())
       .addColumn("status", column("string"))
-      .addColumn("total", column("integer")),
+      .addColumn("total", column("integer"))
+      .addColumn("receipt", column("string").nullable())
+      .createIndex("by_status", ["status", "total"])
+      .createIndex("receipt_unique", ["receipt"], { unique: true }),
   ),
 );
 
@@ -26,7 +29,7 @@ async function createMigratedAdapter() {
 
 async function createOrder(adapter: DynamoDBAdapter, id: string) {
   const createUow = adapter.createUnitOfWork(executorSchema, "shop");
-  createUow.create("orders", { id, status: "open", total: 100 });
+  createUow.create("orders", { id, status: "open", total: 100, receipt: null });
   await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
 }
 
@@ -178,6 +181,139 @@ describeDynamoDBLocal("DynamoDB UOW executor", () => {
     const updated = await findOrder(adapter, "order_check_update");
     expect(updated.status).toBe("paid");
     expect(updated.id.version).toBe(1);
+  });
+
+  it("finds rows by secondary index in index order", async () => {
+    const adapter = await createMigratedAdapter();
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_idx_3", status: "queued", total: 30 });
+    createUow.create("orders", { id: "order_idx_1", status: "queued", total: 10 });
+    createUow.create("orders", { id: "order_idx_paid", status: "paid", total: 20 });
+    createUow.create("orders", { id: "order_idx_2", status: "queued", total: 20 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const findUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withFind = findUow.find("orders", (b) =>
+      b
+        .whereIndex("by_status", (eb) => eb("status", "=", "queued"))
+        .orderByIndex("by_status", "asc"),
+    );
+    const [orders] = await withFind.executeRetrieve();
+
+    expect(orders.map((order: { id: FragnoId }) => order.id.externalId)).toEqual([
+      "order_idx_1",
+      "order_idx_2",
+      "order_idx_3",
+    ]);
+  });
+
+  it("updates and deletes secondary index entries", async () => {
+    const adapter = await createMigratedAdapter();
+    await createOrder(adapter, "order_reindex");
+    const order = await findOrder(adapter, "order_reindex");
+
+    const updateUow = adapter.createUnitOfWork(executorSchema, "shop");
+    updateUow.update("orders", order.id, (b) => b.set({ status: "paid", total: 500 }).check());
+    await expect(updateUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const oldIndexUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withOldFind = oldIndexUow.find("orders", (b) =>
+      b.whereIndex("by_status", (eb) => eb("status", "=", "open")),
+    );
+    const [oldRows] = await withOldFind.executeRetrieve();
+    expect(oldRows).toHaveLength(0);
+
+    const newIndexUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withNewFind = newIndexUow.find("orders", (b) =>
+      b.whereIndex("by_status", (eb) => eb("status", "=", "paid")),
+    );
+    const [newRows] = await withNewFind.executeRetrieve();
+    expect(newRows.map((row: { id: FragnoId }) => row.id.externalId)).toEqual(["order_reindex"]);
+
+    const deleteUow = adapter.createUnitOfWork(executorSchema, "shop");
+    deleteUow.delete("orders", "order_reindex");
+    await expect(deleteUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const deletedIndexUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withDeletedFind = deletedIndexUow.find("orders", (b) =>
+      b.whereIndex("by_status", (eb) => eb("status", "=", "paid")),
+    );
+    const [deletedRows] = await withDeletedFind.executeRetrieve();
+    expect(deletedRows).toHaveLength(0);
+  });
+
+  it("enforces unique secondary indexes", async () => {
+    const adapter = await createMigratedAdapter();
+    const first = adapter.createUnitOfWork(executorSchema, "shop");
+    first.create("orders", {
+      id: "order_receipt_1",
+      status: "paid",
+      total: 1,
+      receipt: "receipt_1",
+    });
+    await expect(first.executeMutations()).resolves.toEqual({ success: true });
+
+    const second = adapter.createUnitOfWork(executorSchema, "shop");
+    second.create("orders", {
+      id: "order_receipt_2",
+      status: "paid",
+      total: 2,
+      receipt: "receipt_1",
+    });
+    await expect(second.executeMutations()).rejects.toThrow();
+  });
+
+  it("paginates secondary index results with a cursor", async () => {
+    const adapter = await createMigratedAdapter();
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_page_1", status: "page", total: 1 });
+    createUow.create("orders", { id: "order_page_2", status: "page", total: 2 });
+    createUow.create("orders", { id: "order_page_3", status: "page", total: 3 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const firstPageUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withFirstPage = firstPageUow.findWithCursor("orders", (b) =>
+      b
+        .whereIndex("by_status", (eb) => eb("status", "=", "page"))
+        .orderByIndex("by_status", "asc")
+        .pageSize(2),
+    );
+    const [firstPage] = await withFirstPage.executeRetrieve();
+
+    expect(firstPage.items.map((order: { id: FragnoId }) => order.id.externalId)).toEqual([
+      "order_page_1",
+      "order_page_2",
+    ]);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeDefined();
+
+    const secondPageUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withSecondPage = secondPageUow.findWithCursor("orders", (b) =>
+      b.after(firstPage.cursor!),
+    );
+    const [secondPage] = await withSecondPage.executeRetrieve();
+
+    expect(secondPage.items.map((order: { id: FragnoId }) => order.id.externalId)).toEqual([
+      "order_page_3",
+    ]);
+    expect(secondPage.hasNextPage).toBe(false);
+  });
+
+  it("counts rows by secondary index", async () => {
+    const adapter = await createMigratedAdapter();
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_count_1", status: "counted", total: 1 });
+    createUow.create("orders", { id: "order_count_2", status: "counted", total: 2 });
+    createUow.create("orders", { id: "order_count_other", status: "ignored", total: 3 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const countUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const withCount = countUow.find("orders", (b) =>
+      b.whereIndex("by_status", (eb) => eb("status", "=", "counted")).selectCount(),
+    );
+    const [count] = await withCount.executeRetrieve();
+
+    expect(count).toBe(2);
   });
 
   it("throws when two writes target the same base item", async () => {

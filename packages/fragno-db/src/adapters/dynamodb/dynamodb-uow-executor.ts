@@ -8,6 +8,7 @@ import {
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 import type { Condition, Operator } from "../../query/condition-builder";
+import { decodeCursor } from "../../query/cursor";
 import type {
   CompiledMutation,
   MutationResult,
@@ -16,7 +17,11 @@ import type {
 import { resolveFragnoIdValue } from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference } from "../../schema/create";
-import { decodeDynamoDBIndexEntry, encodeDynamoDBIndexEntry } from "./dynamodb-index-codec";
+import {
+  decodeDynamoDBIndexEntry,
+  encodeDynamoDBIndexEntry,
+  encodeDynamoDBIndexTuple,
+} from "./dynamodb-index-codec";
 import type { DynamoDBRawResult, DynamoDBRawRow } from "./dynamodb-uow-decoder";
 import type {
   DynamoDBCheckPlan,
@@ -24,6 +29,7 @@ import type {
   DynamoDBCreatePlan,
   DynamoDBDeletePlan,
   DynamoDBFindPlan,
+  DynamoDBCountPlan,
   DynamoDBUpdatePlan,
 } from "./dynamodb-uow-operation-compiler";
 import { assertDynamoDBItemSize, type BaseRowItem } from "./dynamodb-value-codec";
@@ -83,14 +89,12 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   readonly #settingsTableName: string;
   readonly #consistentRead: boolean;
   readonly #maxFilteredReadPages: number;
-  readonly #allowScans: boolean;
 
   constructor(options: DynamoDBUOWExecutorOptions) {
     this.#client = options.client as unknown as DynamoDBSendableClient;
     this.#settingsTableName = options.settingsTableName;
     this.#consistentRead = options.consistentRead ?? true;
     this.#maxFilteredReadPages = options.maxFilteredReadPages ?? 10;
-    this.#allowScans = options.allowScans ?? false;
   }
 
   async executeRetrievalPhase(retrievalBatch: DynamoDBCommandPlan[]): Promise<DynamoDBRawResult[]> {
@@ -103,7 +107,8 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       }
 
       if (plan.kind === "count") {
-        throw new Error("DynamoDB count execution is not implemented until slice 6.");
+        results.push(await this.#executeCount(plan));
+        continue;
       }
 
       throw new Error(`Unsupported DynamoDB retrieval plan: ${plan.kind}`);
@@ -154,17 +159,10 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   }
 
   async #executeFind(plan: DynamoDBFindPlan): Promise<DynamoDBRawRow[]> {
-    if (plan.indexName !== PRIMARY_INDEX_NAME) {
-      throw new Error(
-        `DynamoDB secondary index find is not implemented until slice 6: ${plan.tableName}.${plan.indexName}`,
-      );
-    }
-    if (plan.after || plan.before || plan.withCursor) {
-      throw new Error("DynamoDB cursor pagination is not implemented until slice 6.");
-    }
-
     const matchedRows: DynamoDBRawRow[] = [];
-    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    let lastEvaluatedKey = createCursorExclusiveStartKey(plan);
+    const limit =
+      plan.withCursor && plan.pageSize !== undefined ? plan.pageSize + 1 : plan.pageSize;
     let pagesRead = 0;
 
     do {
@@ -197,7 +195,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
           continue;
         }
         matchedRows.push(selectDynamoDBRow(row, plan.table, plan.selectedColumns));
-        if (plan.pageSize !== undefined && matchedRows.length >= plan.pageSize) {
+        if (limit !== undefined && matchedRows.length >= limit) {
           return matchedRows;
         }
       }
@@ -205,15 +203,59 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       lastEvaluatedKey = queryResult.LastEvaluatedKey;
     } while (lastEvaluatedKey);
 
-    if (!this.#allowScans && matchedRows.length === 0 && plan.condition === undefined) {
-      return matchedRows;
-    }
-
     return matchedRows;
   }
 
+  async #executeCount(plan: DynamoDBCountPlan): Promise<{ count: number }[]> {
+    if (!plan.condition) {
+      const result = (await this.#client.send(
+        new QueryCommand({
+          TableName: plan.layout.indexTableName,
+          KeyConditionExpression: "#pk = :pk",
+          ExpressionAttributeNames: { "#pk": "pk" },
+          ExpressionAttributeValues: { ":pk": `idx#${plan.indexName}` },
+          ConsistentRead: this.#consistentRead,
+          Select: "COUNT",
+        }),
+      )) as { Count?: number };
+      return [{ count: result.Count ?? 0 }];
+    }
+
+    let count = 0;
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    let pagesRead = 0;
+    do {
+      pagesRead += 1;
+      if (pagesRead > this.#maxFilteredReadPages) {
+        throw new Error(
+          `DynamoDB read limit exceeded for ${plan.tableName}.${plan.indexName}; increase maxFilteredReadPages to count more filtered pages.`,
+        );
+      }
+      const queryResult = (await this.#client.send(
+        new QueryCommand({
+          TableName: plan.layout.indexTableName,
+          KeyConditionExpression: "#pk = :pk",
+          ExpressionAttributeNames: { "#pk": "pk" },
+          ExpressionAttributeValues: { ":pk": `idx#${plan.indexName}` },
+          ConsistentRead: this.#consistentRead,
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      )) as { Items?: DynamoDBIndexEntryItem[]; LastEvaluatedKey?: Record<string, unknown> };
+      const rows = await this.#batchGetRows(
+        plan,
+        (queryResult.Items ?? []).map((entry) => entry.externalId),
+      );
+      count += rows.filter((row) =>
+        evaluateDynamoDBCondition(plan.condition!, plan.table, row),
+      ).length;
+      lastEvaluatedKey = queryResult.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return [{ count }];
+  }
+
   async #batchGetRows(
-    plan: DynamoDBFindPlan,
+    plan: DynamoDBFindPlan | DynamoDBCountPlan,
     externalIds: readonly string[],
   ): Promise<DynamoDBRawRow[]> {
     if (externalIds.length === 0) {
@@ -292,7 +334,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         if (!existingRow) {
           continue;
         }
-        transactionActions.push(this.#updateTransactItem(write, existingRow, group.checks));
+        transactionActions.push(...this.#updateTransactItems(write, existingRow, group.checks));
         continue;
       }
 
@@ -300,7 +342,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         if (!existingRow) {
           continue;
         }
-        transactionActions.push(...this.#deleteTransactItems(write, group.checks));
+        transactionActions.push(...this.#deleteTransactItems(write, existingRow, group.checks));
         continue;
       }
     }
@@ -388,11 +430,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     };
   }
 
-  #updateTransactItem(
+  #updateTransactItems(
     plan: DynamoDBUpdatePlan,
     existingRow: ExistingRow,
     checks: readonly DynamoDBCheckPlan[],
-  ): TransactionAction {
+  ): TransactionAction[] {
     const forbiddenColumn = Object.keys(plan.set).find(
       (columnName) =>
         columnName === "id" || columnName === "_internalId" || columnName === "_version",
@@ -434,23 +476,27 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     const nextRow = { ...existingRow, ...plan.set, _version: existingRow._version + 1 };
     assertDynamoDBItemSize(nextRow);
 
-    return {
-      conditionFailure: "occ",
-      item: {
-        Update: {
-          TableName: plan.layout.baseTableName,
-          Key: { pk: plan.externalId },
-          UpdateExpression: `SET ${setExpressions.join(", ")}`,
-          ConditionExpression: condition,
-          ExpressionAttributeNames: expressionAttributeNames,
-          ExpressionAttributeValues: expressionAttributeValues,
+    return [
+      {
+        conditionFailure: "occ",
+        item: {
+          Update: {
+            TableName: plan.layout.baseTableName,
+            Key: { pk: plan.externalId },
+            UpdateExpression: `SET ${setExpressions.join(", ")}`,
+            ConditionExpression: condition,
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+          },
         },
       },
-    };
+      ...createChangedSecondaryIndexActions(plan, existingRow, nextRow),
+    ];
   }
 
   #deleteTransactItems(
     plan: DynamoDBDeletePlan,
+    existingRow: ExistingRow,
     checks: readonly DynamoDBCheckPlan[],
   ): TransactionAction[] {
     const expressionAttributeValues: Record<string, unknown> = {};
@@ -480,18 +526,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
           },
         },
       },
-      {
-        conditionFailure: "constraint",
-        item: {
-          Delete: {
-            TableName: plan.layout.indexTableName,
-            Key: {
-              pk: `idx#${PRIMARY_INDEX_NAME}`,
-              sk: createPrimaryIndexSortKey(plan),
-            },
-          },
-        },
-      },
+      ...createDeleteIndexActions(plan, existingRow),
     ];
   }
 
@@ -580,10 +615,9 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       _internalId: internalId.toString(),
       _version: 0,
     };
-    const primaryIndexEntry = createPrimaryIndexEntry(plan, internalId);
+    const indexActions = createPutIndexActions(plan, baseRow, internalId);
 
     assertDynamoDBItemSize(baseRow);
-    assertDynamoDBItemSize(primaryIndexEntry);
 
     return [
       {
@@ -597,17 +631,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
           },
         },
       },
-      {
-        conditionFailure: "constraint",
-        item: {
-          Put: {
-            TableName: plan.layout.indexTableName,
-            Item: primaryIndexEntry,
-            ConditionExpression: "attribute_not_exists(#pk) AND attribute_not_exists(#sk)",
-            ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-          },
-        },
-      },
+      ...indexActions,
     ];
   }
 }
@@ -619,22 +643,166 @@ interface DynamoDBIndexEntryItem {
   internalId: string;
 }
 
-function createPrimaryIndexEntry(
+function createPutIndexActions(
   plan: DynamoDBCreatePlan,
+  row: BaseRowItem,
   internalId: bigint,
+): TransactionAction[] {
+  return createAllIndexItems(plan.table, row, plan.externalId, internalId.toString()).flatMap(
+    (item) => createPutIndexItemActions(plan.layout.indexTableName, item),
+  );
+}
+
+function createChangedSecondaryIndexActions(
+  plan: DynamoDBUpdatePlan,
+  existingRow: ExistingRow,
+  nextRow: ExistingRow,
+): TransactionAction[] {
+  const actions: TransactionAction[] = [];
+  for (const index of Object.values(plan.table.indexes)) {
+    if (
+      !index.columnNames.some((columnName) =>
+        Object.prototype.hasOwnProperty.call(plan.set, columnName),
+      )
+    ) {
+      continue;
+    }
+
+    const oldItems = createSecondaryIndexItems(
+      index,
+      existingRow,
+      plan.externalId,
+      existingRow._internalId,
+    );
+    const nextItems = createSecondaryIndexItems(
+      index,
+      nextRow,
+      plan.externalId,
+      nextRow._internalId,
+    );
+    if (oldItems.every((item, index) => indexItemsEqual(item, nextItems[index]))) {
+      continue;
+    }
+
+    actions.push(
+      ...oldItems.map((item) => createDeleteIndexItemAction(plan.layout.indexTableName, item)),
+    );
+    actions.push(
+      ...nextItems.flatMap((item) => createPutIndexItemActions(plan.layout.indexTableName, item)),
+    );
+  }
+  return actions;
+}
+
+function createDeleteIndexActions(plan: DynamoDBDeletePlan, row: ExistingRow): TransactionAction[] {
+  return createAllIndexItems(plan.table, row, plan.externalId, row._internalId).map((item) =>
+    createDeleteIndexItemAction(plan.layout.indexTableName, item),
+  );
+}
+
+function createAllIndexItems(
+  table: AnyTable,
+  row: Record<string, unknown>,
+  externalId: string,
+  internalId: string,
+): DynamoDBIndexEntryItem[] {
+  return [
+    createPrimaryIndexEntry(table, externalId, internalId),
+    ...Object.values(table.indexes).flatMap((index) =>
+      createSecondaryIndexItems(index, row, externalId, internalId),
+    ),
+  ];
+}
+
+function createSecondaryIndexItems(
+  index: AnyTable["indexes"][string],
+  row: Record<string, unknown>,
+  externalId: string,
+  internalId: string,
+): DynamoDBIndexEntryItem[] {
+  const segments = index.columns.map((column) => ({ column, value: row[column.name] }));
+  const hasNullSegment = segments.some(
+    (segment) => segment.value === null || segment.value === undefined,
+  );
+  const entry: DynamoDBIndexEntryItem = {
+    pk: `idx#${index.name}`,
+    sk: encodeDynamoDBIndexEntry(segments, externalId),
+    externalId,
+    internalId,
+  };
+  if (!index.unique || hasNullSegment) {
+    return [entry];
+  }
+  return [
+    entry,
+    {
+      pk: `unique#${index.name}`,
+      sk: encodeDynamoDBIndexTuple(segments, { mode: "equality" }),
+      externalId,
+      internalId,
+    },
+  ];
+}
+
+function createPrimaryIndexEntry(
+  table: AnyTable,
+  externalId: string,
+  internalId: string,
 ): DynamoDBIndexEntryItem {
-  const sk = createPrimaryIndexSortKey(plan);
+  const sk = createPrimaryIndexSortKey(table, externalId);
   return {
     pk: `idx#${PRIMARY_INDEX_NAME}`,
     sk,
     externalId: decodeDynamoDBIndexEntry(sk).externalId,
-    internalId: internalId.toString(),
+    internalId,
   };
 }
 
-function createPrimaryIndexSortKey(plan: DynamoDBCreatePlan | DynamoDBDeletePlan): string {
-  const idColumn = plan.table.getIdColumn();
-  return encodeDynamoDBIndexEntry([{ column: idColumn, value: plan.externalId }], plan.externalId);
+function createPrimaryIndexSortKey(table: AnyTable, externalId: string): string {
+  const idColumn = table.getIdColumn();
+  return encodeDynamoDBIndexEntry([{ column: idColumn, value: externalId }], externalId);
+}
+
+function createPutIndexItemActions(
+  indexTableName: string,
+  item: DynamoDBIndexEntryItem,
+): TransactionAction[] {
+  assertDynamoDBItemSize(item);
+  return [
+    {
+      conditionFailure: "constraint",
+      item: {
+        Put: {
+          TableName: indexTableName,
+          Item: item,
+          ConditionExpression: "attribute_not_exists(#pk) AND attribute_not_exists(#sk)",
+          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+        },
+      },
+    },
+  ];
+}
+
+function createDeleteIndexItemAction(
+  indexTableName: string,
+  item: DynamoDBIndexEntryItem,
+): TransactionAction {
+  return {
+    conditionFailure: "constraint",
+    item: {
+      Delete: {
+        TableName: indexTableName,
+        Key: { pk: item.pk, sk: item.sk },
+      },
+    },
+  };
+}
+
+function indexItemsEqual(
+  left: DynamoDBIndexEntryItem,
+  right: DynamoDBIndexEntryItem | undefined,
+): boolean {
+  return right !== undefined && left.pk === right.pk && left.sk === right.sk;
 }
 
 function groupMutationsByRow(plans: readonly DynamoDBCommandPlan[]): Map<string, RowMutationGroup> {
@@ -714,6 +882,70 @@ function coalescedExpectedVersion(
     );
   }
   return plan.expectedVersion ?? checkVersion;
+}
+
+function createCursorExclusiveStartKey(
+  plan: DynamoDBFindPlan,
+): Record<string, unknown> | undefined {
+  if (plan.before) {
+    throw new Error("DynamoDB before cursor pagination is not implemented yet.");
+  }
+  if (!plan.after) {
+    return undefined;
+  }
+
+  const cursor = decodeCursor(plan.after);
+  const indexColumns = getIndexColumns(plan.table, plan.indexName);
+  const externalId = getCursorExternalId(plan, cursor.indexValues);
+  const segments = indexColumns.map((column) => ({
+    column,
+    value: coerceCursorIndexValue(cursor.indexValues[column.name], column),
+  }));
+
+  return {
+    pk: `idx#${plan.indexName}`,
+    sk: encodeDynamoDBIndexEntry(segments, externalId),
+  };
+}
+
+function getCursorExternalId(plan: DynamoDBFindPlan, indexValues: Record<string, unknown>): string {
+  const tiebreaker = indexValues["__fragnoExternalId"];
+  if (typeof tiebreaker === "string") {
+    return tiebreaker;
+  }
+  if (plan.indexName === PRIMARY_INDEX_NAME) {
+    const value = indexValues[plan.table.getIdColumn().name];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  throw new Error(
+    `DynamoDB cursor for ${plan.tableName}.${plan.indexName} is missing its external ID tiebreaker.`,
+  );
+}
+
+function getIndexColumns(table: AnyTable, indexName: string): AnyColumn[] {
+  if (indexName === PRIMARY_INDEX_NAME) {
+    return [table.getIdColumn()];
+  }
+  const index = table.indexes[indexName];
+  if (!index) {
+    throw new Error(`Index ${indexName} not found on table ${table.name}.`);
+  }
+  return [...index.columns];
+}
+
+function coerceCursorIndexValue(value: unknown, column: AnyColumn): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (column.type === "date" || column.type === "timestamp") {
+    return value instanceof Date ? value : new Date(String(value));
+  }
+  if (column.role === "internal-id" || column.role === "reference" || column.type === "bigint") {
+    return BigInt(String(value));
+  }
+  return value;
 }
 
 function selectDynamoDBRow(

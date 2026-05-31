@@ -5,15 +5,20 @@ import {
   ResourceNotFoundException,
 } from "@aws-sdk/client-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 import type { SqlNamingStrategy } from "../../../naming/sql-naming";
-import type { AnySchema } from "../../../schema/create";
+import type { AnySchema, AnyTable } from "../../../schema/create";
 import type {
   ExecuteOptions,
   PreparedMigrations,
 } from "../../generic-sql/migration/prepared-migrations";
-import { createDynamoDBLayout, type DynamoDBLayout } from "../dynamodb-layout";
+import { encodeDynamoDBIndexEntry, encodeDynamoDBIndexTuple } from "../dynamodb-index-codec";
+import {
+  createDynamoDBLayout,
+  type DynamoDBLayout,
+  type DynamoDBTableLayout,
+} from "../dynamodb-layout";
 
 export interface DynamoDBPreparedMigrationsConfig {
   client: DynamoDBDocumentClient;
@@ -73,6 +78,8 @@ export function createDynamoDBPreparedMigrations(
       await ensureBaseTable(client, tableLayout.baseTableName);
       await ensureIndexTable(client, tableLayout.indexTableName);
     }
+
+    await backfillIndexes(client, config.schema, layout);
 
     const updateVersion = options?.updateVersionInMigration ?? defaultUpdateVersion;
     if (updateVersion && targetVersion !== fromVersion) {
@@ -170,6 +177,81 @@ async function ensureTable(
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
+}
+
+async function backfillIndexes(
+  client: DynamoDBSendableClient,
+  schema: AnySchema,
+  layout: DynamoDBLayout,
+): Promise<void> {
+  for (const table of Object.values(schema.tables)) {
+    const tableLayout = layout.getTableLayout(table);
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+    do {
+      const result = (await client.send(
+        new ScanCommand({
+          TableName: tableLayout.baseTableName,
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      )) as { Items?: Record<string, unknown>[]; LastEvaluatedKey?: Record<string, unknown> };
+
+      for (const row of result.Items ?? []) {
+        await backfillRowIndexes(client, table, tableLayout, row);
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+  }
+}
+
+async function backfillRowIndexes(
+  client: DynamoDBSendableClient,
+  table: AnyTable,
+  tableLayout: DynamoDBTableLayout,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const externalId = row["id"];
+  const internalId = row["_internalId"];
+  if (typeof externalId !== "string" || typeof internalId !== "string") {
+    return;
+  }
+
+  const primaryEntry = {
+    pk: "idx#_primary",
+    sk: encodeDynamoDBIndexEntry([{ column: table.getIdColumn(), value: externalId }], externalId),
+    externalId,
+    internalId,
+  };
+  const items = [
+    primaryEntry,
+    ...Object.values(table.indexes).flatMap((index) => {
+      const segments = index.columns.map((column) => ({ column, value: row[column.name] }));
+      const hasNullSegment = segments.some(
+        (segment) => segment.value === null || segment.value === undefined,
+      );
+      const entry = {
+        pk: `idx#${index.name}`,
+        sk: encodeDynamoDBIndexEntry(segments, externalId),
+        externalId,
+        internalId,
+      };
+      if (!index.unique || hasNullSegment) {
+        return [entry];
+      }
+      return [
+        entry,
+        {
+          pk: `unique#${index.name}`,
+          sk: encodeDynamoDBIndexTuple(segments, { mode: "equality" }),
+          externalId,
+          internalId,
+        },
+      ];
+    }),
+  ];
+
+  for (const item of items) {
+    await client.send(new PutCommand({ TableName: tableLayout.indexTableName, Item: item }));
+  }
 }
 
 async function writeSchemaVersion(
