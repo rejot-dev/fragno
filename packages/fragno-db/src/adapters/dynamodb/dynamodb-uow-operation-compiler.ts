@@ -3,17 +3,22 @@ import {
   type Condition,
   type ConditionBuilder,
 } from "../../query/condition-builder";
+import type { CompiledQueryTreeRootNode } from "../../query/unit-of-work/query-tree";
 import type {
   CompiledMutation,
   MutationOperation,
   RetrievalOperation,
 } from "../../query/unit-of-work/unit-of-work";
-import { encodeValues, encodeValuesWithDbDefaults } from "../../query/value-encoding";
+import {
+  encodeValues,
+  encodeValuesWithDbDefaults,
+  ReferenceSubquery,
+} from "../../query/value-encoding";
 import type { AnyColumn, AnySchema, AnyTable } from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { UOWOperationCompiler } from "../shared/uow-operation-compiler";
 import { createDynamoDBLayout, type DynamoDBTableLayout } from "./dynamodb-layout";
-import { encodeDynamoDBItemAttributes, type DynamoDBAttributeValue } from "./dynamodb-value-codec";
+import { encodeDynamoDBValue, type DynamoDBAttributeValue } from "./dynamodb-value-codec";
 
 export type DynamoDBCommandPlan =
   | DynamoDBFindPlan
@@ -30,6 +35,7 @@ export interface DynamoDBPlanBase {
   tableName: string;
   table: AnyTable;
   layout: DynamoDBTableLayout;
+  tableLayouts: Record<string, DynamoDBTableLayout>;
 }
 
 export interface DynamoDBFindPlan extends DynamoDBPlanBase {
@@ -44,7 +50,10 @@ export interface DynamoDBFindPlan extends DynamoDBPlanBase {
   withCursor: boolean;
   withSingleResult: boolean;
   readTracking: boolean;
+  queryTree?: CompiledQueryTreeRootNode;
 }
+
+export type DynamoDBPlanAttributeValue = DynamoDBAttributeValue | ReferenceSubquery;
 
 export interface DynamoDBCountPlan extends DynamoDBPlanBase {
   kind: "count";
@@ -55,14 +64,14 @@ export interface DynamoDBCountPlan extends DynamoDBPlanBase {
 export interface DynamoDBCreatePlan extends DynamoDBPlanBase {
   kind: "create";
   externalId: string;
-  item: Record<string, DynamoDBAttributeValue>;
+  item: Record<string, DynamoDBPlanAttributeValue>;
 }
 
 export interface DynamoDBUpdatePlan extends DynamoDBPlanBase {
   kind: "update";
   externalId: string;
   expectedVersion?: number;
-  set: Record<string, DynamoDBAttributeValue>;
+  set: Record<string, DynamoDBPlanAttributeValue>;
 }
 
 export interface DynamoDBDeletePlan extends DynamoDBPlanBase {
@@ -133,6 +142,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
       withCursor: op.withCursor ?? false,
       withSingleResult: op.withSingleResult ?? false,
       readTracking: op.readTracking ?? false,
+      queryTree: op.options.queryTree,
     };
   }
 
@@ -141,7 +151,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
   ): CompiledMutation<DynamoDBCommandPlan> | null {
     const table = this.getTable(op.schema, op.table);
     const values = encodeValuesWithDbDefaults(op.values, table);
-    const item = encodeDynamoDBItemAttributes(values, table);
+    const item = encodeDynamoDBPlanAttributes(values, table);
 
     return {
       query: {
@@ -162,7 +172,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
   ): CompiledMutation<DynamoDBCommandPlan> | null {
     const table = this.getTable(op.schema, op.table);
     const values = encodeValues(op.set, table, false);
-    const set = encodeDynamoDBItemAttributes(values, table);
+    const set = encodeDynamoDBPlanAttributes(values, table);
 
     return {
       query: {
@@ -232,6 +242,12 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
       tableName: table.name,
       table,
       layout: layout.getTableLayout(table),
+      tableLayouts: Object.fromEntries(
+        Object.values(schema.tables).map((schemaTable) => [
+          schemaTable.name,
+          layout.getTableLayout(schemaTable),
+        ]),
+      ),
     };
   }
 
@@ -263,4 +279,26 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
     }
     return condition;
   }
+}
+
+function encodeDynamoDBPlanAttributes(
+  values: Record<string, unknown>,
+  table: AnyTable,
+): Record<string, DynamoDBPlanAttributeValue> {
+  const output: Record<string, DynamoDBPlanAttributeValue> = {};
+  for (const [columnName, value] of Object.entries(values)) {
+    const column = table.columns[columnName];
+    if (!column) {
+      continue;
+    }
+    if (value instanceof ReferenceSubquery) {
+      output[columnName] = value;
+      continue;
+    }
+    const encoded = encodeDynamoDBValue(value, column);
+    if (encoded !== undefined) {
+      output[columnName] = encoded;
+    }
+  }
+  return output;
 }

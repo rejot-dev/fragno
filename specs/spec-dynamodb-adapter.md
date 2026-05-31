@@ -717,7 +717,7 @@ Tests:
 
 ### Slice 7 — Query-tree joins and reference columns
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 9, 11.3, 15.
 

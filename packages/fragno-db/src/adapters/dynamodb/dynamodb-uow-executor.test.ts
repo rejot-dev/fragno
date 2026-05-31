@@ -1,6 +1,13 @@
 import { expect, it } from "vitest";
 
-import { column, FragnoId, idColumn, schema } from "../../schema/create";
+import {
+  column,
+  FragnoId,
+  FragnoReference,
+  idColumn,
+  referenceColumn,
+  schema,
+} from "../../schema/create";
 import { DynamoDBAdapter } from "./dynamodb-adapter";
 import { describeDynamoDBLocal, getDynamoDBLocalTestContext } from "./test-utils";
 
@@ -16,6 +23,25 @@ const executorSchema = schema("shop", (s) =>
   ),
 );
 
+const queryTreeSchema = schema("blog", (s) =>
+  s
+    .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
+    .addTable("posts", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("user_id", referenceColumn({ table: "users" }))
+        .addColumn("title", column("string"))
+        .createIndex("posts_user_idx", ["user_id"]),
+    )
+    .addTable("comments", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("post_id", referenceColumn({ table: "posts" }))
+        .addColumn("body", column("string"))
+        .createIndex("comments_post_idx", ["post_id"]),
+    ),
+);
+
 async function createMigratedAdapter() {
   const context = getDynamoDBLocalTestContext();
   expect(context).not.toBeNull();
@@ -24,6 +50,17 @@ async function createMigratedAdapter() {
     tablePrefix: context!.tablePrefix,
   });
   await adapter.prepareMigrations(executorSchema, "shop").execute(0);
+  return adapter;
+}
+
+async function createMigratedQueryTreeAdapter() {
+  const context = getDynamoDBLocalTestContext();
+  expect(context).not.toBeNull();
+  const adapter = new DynamoDBAdapter({
+    client: context!.client,
+    tablePrefix: context!.tablePrefix,
+  });
+  await adapter.prepareMigrations(queryTreeSchema, "blog").execute(0);
   return adapter;
 }
 
@@ -325,5 +362,70 @@ describeDynamoDBLocal("DynamoDB UOW executor", () => {
     uow.delete("orders", "order_duplicate_write");
 
     await expect(uow.executeMutations()).rejects.toThrow(/multiple writes/);
+  });
+
+  it("creates rows with reference columns and reads one-level query-tree joins", async () => {
+    const adapter = await createMigratedQueryTreeAdapter();
+
+    const createUow = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    createUow.create("users", { id: "user_qt_1", name: "Ada" });
+    createUow.create("posts", { id: "post_qt_2", user_id: "user_qt_1", title: "Second" });
+    createUow.create("posts", { id: "post_qt_1", user_id: "user_qt_1", title: "First" });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const readUow = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    const withUsers = readUow.find("users", (b) =>
+      b
+        .whereIndex("primary", (eb) => eb("id", "=", "user_qt_1"))
+        .joinMany("posts", "posts", (post) =>
+          post
+            .onIndex("posts_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+            .select(["id", "user_id", "title"]),
+        ),
+    );
+    const [users] = await withUsers.executeRetrieve();
+
+    expect(users).toHaveLength(1);
+    expect(users[0].posts.map((post: { id: FragnoId }) => post.id.externalId)).toEqual([
+      "post_qt_1",
+      "post_qt_2",
+    ]);
+    expect(users[0].posts[0].user_id).toBeInstanceOf(FragnoReference);
+  });
+
+  it("decodes nested query-tree joins", async () => {
+    const adapter = await createMigratedQueryTreeAdapter();
+
+    const createUow = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    createUow.create("users", { id: "user_nested", name: "Grace" });
+    createUow.create("posts", { id: "post_nested", user_id: "user_nested", title: "Compiler" });
+    createUow.create("comments", { id: "comment_nested", post_id: "post_nested", body: "Nice" });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const readUow = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    const withUsers = readUow.find("users", (b) =>
+      b
+        .whereIndex("primary", (eb) => eb("id", "=", "user_nested"))
+        .joinMany("posts", "posts", (post) =>
+          post
+            .onIndex("posts_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+            .joinMany("comments", "comments", (comment) =>
+              comment.onIndex("comments_post_idx", (eb) => eb("post_id", "=", eb.parent("id"))),
+            ),
+        ),
+    );
+    const [users] = await withUsers.executeRetrieve();
+
+    expect(users[0].posts[0].comments).toHaveLength(1);
+    expect(users[0].posts[0].comments[0]).toMatchObject({ body: "Nice" });
+  });
+
+  it("throws when a reference external ID is missing", async () => {
+    const adapter = await createMigratedQueryTreeAdapter();
+
+    const uow = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    uow.create("posts", { id: "post_missing_ref", user_id: "missing_user", title: "Oops" });
+
+    await expect(uow.executeMutations()).rejects.toThrow(/Foreign key constraint violation/);
   });
 });

@@ -9,19 +9,26 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 import type { Condition, Operator } from "../../query/condition-builder";
 import { decodeCursor } from "../../query/cursor";
+import {
+  getQueryTreeSelectedColumnNames,
+  isParentColumnRef,
+  type CompiledQueryTreeChildNode,
+  type CompiledQueryTreeRootNode,
+} from "../../query/unit-of-work/query-tree";
 import type {
   CompiledMutation,
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { resolveFragnoIdValue } from "../../query/value-encoding";
+import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
-import { FragnoId, FragnoReference } from "../../schema/create";
+import { FragnoId, FragnoReference, getTableForeignKey } from "../../schema/create";
 import {
   decodeDynamoDBIndexEntry,
   encodeDynamoDBIndexEntry,
   encodeDynamoDBIndexTuple,
 } from "./dynamodb-index-codec";
+import type { DynamoDBTableLayout } from "./dynamodb-layout";
 import type { DynamoDBRawResult, DynamoDBRawRow } from "./dynamodb-uow-decoder";
 import type {
   DynamoDBCheckPlan,
@@ -32,7 +39,12 @@ import type {
   DynamoDBCountPlan,
   DynamoDBUpdatePlan,
 } from "./dynamodb-uow-operation-compiler";
-import { assertDynamoDBItemSize, type BaseRowItem } from "./dynamodb-value-codec";
+import {
+  assertDynamoDBItemSize,
+  encodeDynamoDBValue,
+  type BaseRowItem,
+  type DynamoDBAttributeValue,
+} from "./dynamodb-value-codec";
 
 export interface DynamoDBUOWExecutorOptions {
   client: DynamoDBDocumentClient;
@@ -51,6 +63,8 @@ type CreateReservation = {
   internalId: bigint;
 };
 
+type CreatedReferenceMap = Map<string, bigint>;
+
 type MutationPreflight =
   | {
       success: true;
@@ -68,6 +82,20 @@ type ExistingRow = BaseRowItem & {
   pk: string;
   _internalId: string;
   _version: number;
+};
+
+type QueryRowsOptions = {
+  table: AnyTable;
+  layout: DynamoDBTableLayout;
+  indexName: string;
+  orderDirection?: "asc" | "desc";
+  exclusiveStartKey?: Record<string, unknown>;
+  limit?: number;
+  predicate?: (row: DynamoDBRawRow) => boolean;
+};
+
+type DynamoDBPlanBaseWithLayouts = {
+  tableLayouts: Record<string, DynamoDBTableLayout>;
 };
 
 type BaseWritePlan = DynamoDBCreatePlan | DynamoDBUpdatePlan | DynamoDBDeletePlan;
@@ -159,51 +187,24 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   }
 
   async #executeFind(plan: DynamoDBFindPlan): Promise<DynamoDBRawRow[]> {
-    const matchedRows: DynamoDBRawRow[] = [];
-    let lastEvaluatedKey = createCursorExclusiveStartKey(plan);
+    if (plan.queryTree) {
+      return this.#executeQueryTreeFind(plan, plan.queryTree);
+    }
+
+    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     const limit =
       plan.withCursor && plan.pageSize !== undefined ? plan.pageSize + 1 : plan.pageSize;
-    let pagesRead = 0;
+    const rows = await this.#queryRowsByIndex({
+      table: plan.table,
+      layout: plan.layout,
+      indexName: plan.indexName,
+      orderDirection: plan.orderDirection,
+      exclusiveStartKey: createCursorExclusiveStartKey(plan),
+      limit,
+      predicate: (row) => !condition || evaluateDynamoDBCondition(condition, plan.table, row),
+    });
 
-    do {
-      pagesRead += 1;
-      if (pagesRead > this.#maxFilteredReadPages) {
-        throw new Error(
-          `DynamoDB read limit exceeded for ${plan.tableName}.${plan.indexName}; increase maxFilteredReadPages to read more filtered pages.`,
-        );
-      }
-
-      const queryResult = (await this.#client.send(
-        new QueryCommand({
-          TableName: plan.layout.indexTableName,
-          KeyConditionExpression: "#pk = :pk",
-          ExpressionAttributeNames: { "#pk": "pk" },
-          ExpressionAttributeValues: { ":pk": `idx#${plan.indexName}` },
-          ConsistentRead: this.#consistentRead,
-          ScanIndexForward: plan.orderDirection !== "desc",
-          ExclusiveStartKey: lastEvaluatedKey,
-        }),
-      )) as { Items?: DynamoDBIndexEntryItem[]; LastEvaluatedKey?: Record<string, unknown> };
-
-      const entries = queryResult.Items ?? [];
-      const rows = await this.#batchGetRows(
-        plan,
-        entries.map((entry) => entry.externalId),
-      );
-      for (const row of rows) {
-        if (plan.condition && !evaluateDynamoDBCondition(plan.condition, plan.table, row)) {
-          continue;
-        }
-        matchedRows.push(selectDynamoDBRow(row, plan.table, plan.selectedColumns));
-        if (limit !== undefined && matchedRows.length >= limit) {
-          return matchedRows;
-        }
-      }
-
-      lastEvaluatedKey = queryResult.LastEvaluatedKey;
-    } while (lastEvaluatedKey);
-
-    return matchedRows;
+    return rows.map((row) => selectDynamoDBRow(row, plan.table, plan.selectedColumns));
   }
 
   async #executeCount(plan: DynamoDBCountPlan): Promise<{ count: number }[]> {
@@ -221,6 +222,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return [{ count: result.Count ?? 0 }];
     }
 
+    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     let count = 0;
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     let pagesRead = 0;
@@ -245,8 +247,8 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         plan,
         (queryResult.Items ?? []).map((entry) => entry.externalId),
       );
-      count += rows.filter((row) =>
-        evaluateDynamoDBCondition(plan.condition!, plan.table, row),
+      count += rows.filter(
+        (row) => condition && evaluateDynamoDBCondition(condition, plan.table, row),
       ).length;
       lastEvaluatedKey = queryResult.LastEvaluatedKey;
     } while (lastEvaluatedKey);
@@ -256,6 +258,13 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
 
   async #batchGetRows(
     plan: DynamoDBFindPlan | DynamoDBCountPlan,
+    externalIds: readonly string[],
+  ): Promise<DynamoDBRawRow[]> {
+    return this.#batchGetRowsFromLayout(plan.layout, externalIds);
+  }
+
+  async #batchGetRowsFromLayout(
+    layout: DynamoDBTableLayout,
     externalIds: readonly string[],
   ): Promise<DynamoDBRawRow[]> {
     if (externalIds.length === 0) {
@@ -268,7 +277,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       const result = (await this.#client.send(
         new BatchGetCommand({
           RequestItems: {
-            [plan.layout.baseTableName]: {
+            [layout.baseTableName]: {
               Keys: chunk.map((externalId) => ({ pk: externalId })),
               ConsistentRead: this.#consistentRead,
             },
@@ -276,7 +285,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         }),
       )) as { Responses?: Record<string, DynamoDBRawRow[]> };
 
-      for (const row of result.Responses?.[plan.layout.baseTableName] ?? []) {
+      for (const row of result.Responses?.[layout.baseTableName] ?? []) {
         if (typeof row["pk"] === "string") {
           orderedRows.set(row["pk"], row);
         }
@@ -287,6 +296,134 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       const row = orderedRows.get(externalId);
       return row ? [row] : [];
     });
+  }
+
+  async #queryRowsByIndex(options: QueryRowsOptions): Promise<DynamoDBRawRow[]> {
+    const matchedRows: DynamoDBRawRow[] = [];
+    let lastEvaluatedKey = options.exclusiveStartKey;
+    let pagesRead = 0;
+
+    do {
+      pagesRead += 1;
+      if (pagesRead > this.#maxFilteredReadPages) {
+        throw new Error(
+          `DynamoDB read limit exceeded for ${options.table.name}.${options.indexName}; increase maxFilteredReadPages to read more filtered pages.`,
+        );
+      }
+
+      const queryResult = (await this.#client.send(
+        new QueryCommand({
+          TableName: options.layout.indexTableName,
+          KeyConditionExpression: "#pk = :pk",
+          ExpressionAttributeNames: { "#pk": "pk" },
+          ExpressionAttributeValues: { ":pk": `idx#${options.indexName}` },
+          ConsistentRead: this.#consistentRead,
+          ScanIndexForward: options.orderDirection !== "desc",
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      )) as { Items?: DynamoDBIndexEntryItem[]; LastEvaluatedKey?: Record<string, unknown> };
+
+      const rows = await this.#batchGetRowsFromLayout(
+        options.layout,
+        (queryResult.Items ?? []).map((entry) => entry.externalId),
+      );
+      for (const row of rows) {
+        if (options.predicate && !options.predicate(row)) {
+          continue;
+        }
+        matchedRows.push(row);
+        if (options.limit !== undefined && matchedRows.length >= options.limit) {
+          return matchedRows;
+        }
+      }
+
+      lastEvaluatedKey = queryResult.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return matchedRows;
+  }
+
+  async #executeQueryTreeFind(
+    plan: DynamoDBFindPlan,
+    root: CompiledQueryTreeRootNode,
+  ): Promise<DynamoDBRawRow[]> {
+    const condition = await this.#resolveReferenceCondition(plan, root.where);
+    const limit =
+      plan.withCursor && root.pageSize !== undefined ? root.pageSize + 1 : root.pageSize;
+    const rows = await this.#queryRowsByIndex({
+      table: root.table,
+      layout: plan.layout,
+      indexName: root.useIndex,
+      orderDirection: root.orderByIndex?.direction ?? plan.orderDirection,
+      exclusiveStartKey: createCursorExclusiveStartKey(plan),
+      limit,
+      predicate: (row) => !condition || evaluateDynamoDBCondition(condition, root.table, row),
+    });
+
+    const rawRows: DynamoDBRawRow[] = [];
+    for (const row of rows) {
+      rawRows.push(await this.#buildQueryTreeRowRaw(plan, root, row));
+    }
+    return rawRows;
+  }
+
+  async #buildQueryTreeRowRaw(
+    plan: DynamoDBFindPlan,
+    node: CompiledQueryTreeRootNode | CompiledQueryTreeChildNode,
+    row: DynamoDBRawRow,
+  ): Promise<DynamoDBRawRow> {
+    const selected = selectDynamoDBQueryTreeRow(
+      row,
+      node.table,
+      node.select,
+      plan.readTracking ? [node.table.getIdColumn().name] : [],
+    );
+
+    for (const child of node.children) {
+      selected[child.alias] = await this.#buildQueryTreeChildValue(plan, child, node.table, row);
+    }
+
+    return selected;
+  }
+
+  async #buildQueryTreeChildValue(
+    plan: DynamoDBFindPlan,
+    child: CompiledQueryTreeChildNode,
+    parentTable: AnyTable,
+    parentRow: DynamoDBRawRow,
+  ): Promise<unknown> {
+    const layout = plan.tableLayouts[child.table.name];
+    if (!layout) {
+      throw new Error(`Missing DynamoDB layout for query-tree table ${child.table.name}.`);
+    }
+    const onIndex = await this.#resolveReferenceConditionForTable(child.table, plan, child.onIndex);
+    const where = await this.#resolveReferenceConditionForTable(child.table, plan, child.where);
+    const orderByDifferentIndex =
+      child.orderByIndex !== undefined && child.orderByIndex.indexName !== child.onIndexName;
+    const rows = await this.#queryRowsByIndex({
+      table: child.table,
+      layout,
+      indexName: child.onIndexName,
+      orderDirection: child.orderByIndex?.direction ?? "asc",
+      limit: orderByDifferentIndex ? undefined : child.pageSize,
+      predicate: (row) =>
+        evaluateDynamoDBCondition(onIndex, child.table, row, parentTable, parentRow) &&
+        (!where || evaluateDynamoDBCondition(where, child.table, row)),
+    });
+
+    const ordered = orderByDifferentIndex
+      ? orderDynamoDBRows(rows, child.table, child.orderByIndex!)
+      : rows;
+    const limited = child.pageSize !== undefined ? ordered.slice(0, child.pageSize) : ordered;
+    const items = [];
+    for (const row of limited) {
+      items.push(await this.#buildQueryTreeRowRaw(plan, child, row));
+    }
+
+    if (child.cardinality === "one") {
+      return items[0] ?? null;
+    }
+    return items;
   }
 
   async #preflightMutations(plans: readonly DynamoDBCommandPlan[]): Promise<MutationPreflight> {
@@ -300,6 +437,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     const reservationByPlan = new Map(
       createReservations.map((reservation) => [reservation.plan, reservation.internalId] as const),
     );
+    const createdReferences = createCreatedReferenceMap(createReservations);
 
     for (const group of groups.values()) {
       const write = group.writes[0];
@@ -322,7 +460,9 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         if (internalId === undefined) {
           throw new Error(`Failed to reserve DynamoDB internal ID for ${write.tableName}.`);
         }
-        transactionActions.push(...this.#createTransactItems(write, internalId));
+        transactionActions.push(
+          ...(await this.#createTransactItems(write, internalId, createdReferences)),
+        );
         continue;
       }
 
@@ -334,7 +474,9 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
         if (!existingRow) {
           continue;
         }
-        transactionActions.push(...this.#updateTransactItems(write, existingRow, group.checks));
+        transactionActions.push(
+          ...(await this.#updateTransactItems(write, existingRow, group.checks, createdReferences)),
+        );
         continue;
       }
 
@@ -430,11 +572,12 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     };
   }
 
-  #updateTransactItems(
+  async #updateTransactItems(
     plan: DynamoDBUpdatePlan,
     existingRow: ExistingRow,
     checks: readonly DynamoDBCheckPlan[],
-  ): TransactionAction[] {
+    createdReferences: CreatedReferenceMap,
+  ): Promise<TransactionAction[]> {
     const forbiddenColumn = Object.keys(plan.set).find(
       (columnName) =>
         columnName === "id" || columnName === "_internalId" || columnName === "_version",
@@ -445,6 +588,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       );
     }
 
+    const set = await this.#resolvePlanAttributes(plan, plan.set, createdReferences);
     const expressionAttributeNames: Record<string, string> = {
       "#pk": "pk",
       "#version": "_version",
@@ -455,7 +599,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     const setExpressions = ["#version = #version + :versionIncrement"];
 
     let index = 0;
-    for (const [columnName, value] of Object.entries(plan.set)) {
+    for (const [columnName, value] of Object.entries(set)) {
       index += 1;
       const nameKey = `#set${index}`;
       const valueKey = `:set${index}`;
@@ -473,7 +617,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       expressionAttributeValues[":expectedVersion"] = expectedVersion;
     }
 
-    const nextRow = { ...existingRow, ...plan.set, _version: existingRow._version + 1 };
+    const nextRow = { ...existingRow, ...set, _version: existingRow._version + 1 };
     assertDynamoDBItemSize(nextRow);
 
     return [
@@ -607,10 +751,15 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     return value;
   }
 
-  #createTransactItems(plan: DynamoDBCreatePlan, internalId: bigint): TransactionAction[] {
+  async #createTransactItems(
+    plan: DynamoDBCreatePlan,
+    internalId: bigint,
+    createdReferences: CreatedReferenceMap,
+  ): Promise<TransactionAction[]> {
+    const item = await this.#resolvePlanAttributes(plan, plan.item, createdReferences);
     const baseRow: BaseRowItem = {
       pk: plan.externalId,
-      ...plan.item,
+      ...item,
       id: plan.externalId,
       _internalId: internalId.toString(),
       _version: 0,
@@ -634,6 +783,144 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       ...indexActions,
     ];
   }
+
+  async #resolvePlanAttributes(
+    plan: DynamoDBCreatePlan | DynamoDBUpdatePlan,
+    values: Record<string, unknown>,
+    createdReferences: CreatedReferenceMap,
+  ): Promise<Record<string, DynamoDBAttributeValue>> {
+    const resolved: Record<string, DynamoDBAttributeValue> = {};
+    for (const [columnName, value] of Object.entries(values)) {
+      const column = plan.table.columns[columnName];
+      if (!column) {
+        continue;
+      }
+      if (value instanceof ReferenceSubquery) {
+        const internalId = await this.#resolveReferenceSubquery(plan, value, createdReferences);
+        const encoded = encodeDynamoDBValue(internalId, column);
+        if (encoded !== undefined) {
+          resolved[columnName] = encoded;
+        }
+        continue;
+      }
+      resolved[columnName] = value as DynamoDBAttributeValue;
+    }
+    return resolved;
+  }
+
+  async #resolveReferenceSubquery(
+    plan: DynamoDBPlanBaseWithLayouts,
+    reference: ReferenceSubquery,
+    createdReferences: CreatedReferenceMap,
+  ): Promise<bigint> {
+    const layout = plan.tableLayouts[reference.referencedTable.name];
+    if (!layout) {
+      throw new Error(
+        `Missing DynamoDB layout for referenced table ${reference.referencedTable.name}.`,
+      );
+    }
+
+    const created = createdReferences.get(createdReferenceKey(layout, reference.externalIdValue));
+    if (created !== undefined) {
+      return created;
+    }
+
+    const row = await this.#getExistingRow(layout.baseTableName, reference.externalIdValue);
+    if (!row) {
+      throw new Error(
+        `Foreign key constraint violation: referenced row ${reference.referencedTable.name}.${reference.externalIdValue} was not found.`,
+      );
+    }
+    return BigInt(row._internalId);
+  }
+
+  async #resolveReferenceCondition(
+    plan: DynamoDBFindPlan | DynamoDBCountPlan,
+    condition: Condition | undefined,
+  ): Promise<Condition | undefined> {
+    return this.#resolveReferenceConditionForTable(plan.table, plan, condition);
+  }
+
+  async #resolveReferenceConditionForTable(
+    table: AnyTable,
+    plan: DynamoDBPlanBaseWithLayouts,
+    condition: Condition | undefined,
+  ): Promise<Condition | undefined> {
+    if (!condition) {
+      return undefined;
+    }
+
+    switch (condition.type) {
+      case "and":
+        return {
+          ...condition,
+          items: await Promise.all(
+            condition.items.map(
+              async (item) => (await this.#resolveReferenceConditionForTable(table, plan, item))!,
+            ),
+          ),
+        };
+      case "or":
+        return {
+          ...condition,
+          items: await Promise.all(
+            condition.items.map(
+              async (item) => (await this.#resolveReferenceConditionForTable(table, plan, item))!,
+            ),
+          ),
+        };
+      case "not":
+        return {
+          ...condition,
+          item: (await this.#resolveReferenceConditionForTable(table, plan, condition.item))!,
+        };
+      case "compare":
+        if (condition.a.role !== "reference") {
+          return condition;
+        }
+        return {
+          ...condition,
+          b: await this.#resolveReferenceConditionValue(table, plan, condition.a, condition.b),
+        };
+    }
+  }
+
+  async #resolveReferenceConditionValue(
+    table: AnyTable,
+    plan: DynamoDBPlanBaseWithLayouts,
+    column: AnyColumn,
+    value: unknown,
+  ): Promise<unknown> {
+    if (Array.isArray(value)) {
+      return Promise.all(
+        value.map((item) => this.#resolveReferenceConditionValue(table, plan, column, item)),
+      );
+    }
+    if (isParentColumnRef(value) || value instanceof FragnoReference) {
+      return value;
+    }
+    if (value instanceof FragnoId && value.internalId !== undefined) {
+      return value;
+    }
+
+    const externalId =
+      typeof value === "string" ? value : value instanceof FragnoId ? value.externalId : undefined;
+    if (!externalId) {
+      return value;
+    }
+
+    const foreignKey = getTableForeignKey(table, column.name);
+    const referencedTable = foreignKey?.referencedTable;
+    if (!referencedTable) {
+      return value;
+    }
+    const layout = plan.tableLayouts[referencedTable.name];
+    if (!layout) {
+      return value;
+    }
+    const row = await this.#getExistingRow(layout.baseTableName, externalId);
+    return row ? BigInt(row._internalId) : -1n;
+  }
 }
 
 interface DynamoDBIndexEntryItem {
@@ -641,6 +928,23 @@ interface DynamoDBIndexEntryItem {
   sk: string;
   externalId: string;
   internalId: string;
+}
+
+function createCreatedReferenceMap(
+  reservations: readonly CreateReservation[],
+): CreatedReferenceMap {
+  const map: CreatedReferenceMap = new Map();
+  for (const reservation of reservations) {
+    map.set(
+      createdReferenceKey(reservation.plan.layout, reservation.plan.externalId),
+      reservation.internalId,
+    );
+  }
+  return map;
+}
+
+function createdReferenceKey(layout: DynamoDBTableLayout, externalId: string): string {
+  return `${layout.baseTableName}\0${externalId}`;
 }
 
 function createPutIndexActions(
@@ -948,6 +1252,25 @@ function coerceCursorIndexValue(value: unknown, column: AnyColumn): unknown {
   return value;
 }
 
+function selectDynamoDBQueryTreeRow(
+  row: DynamoDBRawRow,
+  table: AnyTable,
+  selectedColumns: true | readonly string[],
+  extraColumnNames: readonly string[] = [],
+): DynamoDBRawRow {
+  const selected: DynamoDBRawRow = {};
+  for (const columnName of getQueryTreeSelectedColumnNames(
+    table,
+    selectedColumns,
+    extraColumnNames,
+  )) {
+    if (Object.prototype.hasOwnProperty.call(row, columnName)) {
+      selected[columnName] = row[columnName];
+    }
+  }
+  return selected;
+}
+
 function selectDynamoDBRow(
   row: DynamoDBRawRow,
   table: AnyTable,
@@ -975,41 +1298,79 @@ function selectDynamoDBRow(
   return selected;
 }
 
+function orderDynamoDBRows(
+  rows: DynamoDBRawRow[],
+  table: AnyTable,
+  orderByIndex: { indexName: string; direction: "asc" | "desc" },
+): DynamoDBRawRow[] {
+  const columns = getIndexColumns(table, orderByIndex.indexName);
+  return rows.slice().sort((left, right) => {
+    for (const column of columns) {
+      const comparison = compareValues(
+        normalizeComparableValue(left[column.name], column),
+        normalizeComparableValue(right[column.name], column),
+      );
+      if (comparison !== 0) {
+        return orderByIndex.direction === "asc" ? comparison : -comparison;
+      }
+    }
+    return 0;
+  });
+}
+
 function evaluateDynamoDBCondition(
-  condition: Condition,
+  condition: Condition | undefined,
   table: AnyTable,
   row: DynamoDBRawRow,
+  parentTable?: AnyTable,
+  parentRow?: DynamoDBRawRow,
 ): boolean {
+  if (!condition) {
+    return true;
+  }
   switch (condition.type) {
     case "and":
-      return condition.items.every((item) => evaluateDynamoDBCondition(item, table, row));
+      return condition.items.every((item) =>
+        evaluateDynamoDBCondition(item, table, row, parentTable, parentRow),
+      );
     case "or":
-      return condition.items.some((item) => evaluateDynamoDBCondition(item, table, row));
+      return condition.items.some((item) =>
+        evaluateDynamoDBCondition(item, table, row, parentTable, parentRow),
+      );
     case "not":
-      return !evaluateDynamoDBCondition(condition.item, table, row);
+      return !evaluateDynamoDBCondition(condition.item, table, row, parentTable, parentRow);
     case "compare":
-      return evaluateComparison(condition, table, row);
+      return evaluateComparison(condition, table, row, parentTable, parentRow);
   }
 }
 
 function evaluateComparison(
   condition: Extract<Condition, { type: "compare" }>,
-  _table: AnyTable,
+  table: AnyTable,
   row: DynamoDBRawRow,
+  parentTable?: AnyTable,
+  parentRow?: DynamoDBRawRow,
 ): boolean {
-  const column = condition.a;
-  const left = normalizeComparableValue(row[column.name], column);
+  const resolved = resolveComparisonSides(condition, table, row, parentTable, parentRow);
+  const left = normalizeComparableValue(resolved.leftValue, resolved.leftColumn);
   const operator = condition.operator;
 
   if (operator === "in" || operator === "not in") {
     const values = Array.isArray(condition.b) ? condition.b : [];
     const matches = values.some(
-      (value) => compareValues(left, normalizeInputComparableValue(value, column)) === 0,
+      (value) =>
+        compareValues(
+          left,
+          normalizeInputComparableValue(
+            resolveParentConditionValue(value, resolved.rightColumn, parentTable, parentRow),
+            resolved.rightColumn,
+          ),
+        ) === 0,
     );
     return operator === "in" ? matches : !matches;
   }
 
-  const right = normalizeInputComparableValue(condition.b, column);
+  const right = normalizeInputComparableValue(resolved.rightValue, resolved.rightColumn);
   const comparison = compareValues(left, right);
 
   switch (operator) {
@@ -1035,6 +1396,69 @@ function evaluateComparison(
     case "not ends with":
       return evaluateStringComparison(String(left ?? ""), operator, String(right ?? ""));
   }
+}
+
+function resolveComparisonSides(
+  condition: Extract<Condition, { type: "compare" }>,
+  table: AnyTable,
+  row: DynamoDBRawRow,
+  parentTable?: AnyTable,
+  parentRow?: DynamoDBRawRow,
+): {
+  leftColumn: AnyColumn;
+  leftValue: unknown;
+  rightColumn: AnyColumn;
+  rightValue: unknown;
+} {
+  let leftColumn = condition.a;
+  let rightColumn = condition.a;
+
+  if (isParentColumnRef(condition.b)) {
+    if (!parentTable || !parentRow) {
+      throw new Error("Parent column references can only be evaluated for child query-tree nodes.");
+    }
+
+    let parentColumn = condition.b.column;
+    if (leftColumn.role === "external-id" && parentColumn.role !== "external-id") {
+      leftColumn = table.getInternalIdColumn();
+    }
+    if (parentColumn.role === "external-id" && leftColumn.role !== "external-id") {
+      parentColumn = parentTable.getInternalIdColumn();
+    }
+
+    return {
+      leftColumn,
+      leftValue: row[leftColumn.name],
+      rightColumn: parentColumn,
+      rightValue: parentRow[parentColumn.name],
+    };
+  }
+
+  return {
+    leftColumn,
+    leftValue: row[leftColumn.name],
+    rightColumn,
+    rightValue: condition.b,
+  };
+}
+
+function resolveParentConditionValue(
+  value: unknown,
+  fallbackColumn: AnyColumn,
+  parentTable?: AnyTable,
+  parentRow?: DynamoDBRawRow,
+): unknown {
+  if (!isParentColumnRef(value)) {
+    return value;
+  }
+  if (!parentTable || !parentRow) {
+    throw new Error("Parent column references can only be evaluated for child query-tree nodes.");
+  }
+  const column =
+    value.column.role === "external-id" && fallbackColumn.role !== "external-id"
+      ? parentTable.getInternalIdColumn()
+      : value.column;
+  return parentRow[column.name];
 }
 
 function normalizeComparableValue(value: unknown, column: AnyColumn): unknown {

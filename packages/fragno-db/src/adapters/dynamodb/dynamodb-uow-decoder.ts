@@ -1,4 +1,8 @@
 import { Cursor, createCursorFromRecord, type CursorResult } from "../../query/cursor";
+import type {
+  CompiledQueryTreeChildNode,
+  CompiledQueryTreeRootNode,
+} from "../../query/unit-of-work/query-tree";
 import type { RetrievalOperation, UOWDecoder } from "../../query/unit-of-work/unit-of-work";
 import { FragnoId, FragnoReference, type AnySchema, type AnyTable } from "../../schema/create";
 import { decodeDynamoDBValue } from "./dynamodb-value-codec";
@@ -25,7 +29,11 @@ export class DynamoDBUOWDecoder implements UOWDecoder<DynamoDBRawResult> {
         return this.#decodeCount(result);
       }
 
-      const rows = (result as DynamoDBRawRow[]).map((row) => this.#decodeRow(row, op.table));
+      const rows = (result as DynamoDBRawRow[]).map((row) =>
+        op.options.queryTree
+          ? this.#decodeQueryTreeRow(row, op.options.queryTree)
+          : this.#decodeRow(row, op.table),
+      );
       if (op.withCursor) {
         return this.#decodeCursorResult(rows, op);
       }
@@ -77,6 +85,30 @@ export class DynamoDBUOWDecoder implements UOWDecoder<DynamoDBRawResult> {
   #decodeCount(result: DynamoDBRawResult): number {
     const first = (result as { count: number }[])[0];
     return first?.count ?? 0;
+  }
+
+  #decodeQueryTreeRow(
+    row: DynamoDBRawRow,
+    node: CompiledQueryTreeRootNode | CompiledQueryTreeChildNode,
+  ): Record<string, unknown> {
+    const output = this.#decodeRow(row, node.table);
+
+    for (const child of node.children) {
+      const value = row[child.alias];
+      if (child.cardinality === "many") {
+        output[child.alias] = Array.isArray(value)
+          ? value.map((item) => this.#decodeQueryTreeRow(item as DynamoDBRawRow, child))
+          : [];
+        continue;
+      }
+
+      output[child.alias] =
+        value && typeof value === "object"
+          ? this.#decodeQueryTreeRow(value as DynamoDBRawRow, child)
+          : null;
+    }
+
+    return output;
   }
 
   #decodeRow(row: DynamoDBRawRow, table: AnyTable): Record<string, unknown> {
