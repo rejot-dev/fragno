@@ -155,9 +155,6 @@ export async function createPiSession(
       systemPrompt?: string;
     };
     name?: string;
-    steeringMode: "all" | "one-at-a-time";
-    tags?: string[];
-    metadata?: unknown;
   },
 ): Promise<PiCreateSessionResult> {
   try {
@@ -195,7 +192,6 @@ export async function sendPiSessionMessage(
     text: string;
     done?: boolean;
     commandKind?: "followUp" | "steer";
-    steeringMode?: "all" | "one-at-a-time";
   },
 ): Promise<PiSendMessageResult> {
   try {

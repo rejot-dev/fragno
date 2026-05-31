@@ -70,12 +70,6 @@ export type PiSessionsOutletContext = {
   createSessionPanel?: ReactNode;
 };
 
-const parseTags = (value: string) =>
-  value
-    .split(/[,\n]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-
 const parseOptionalBoolean = (value: FormDataEntryValue | null) => {
   if (typeof value !== "string") {
     return undefined;
@@ -178,7 +172,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (intent === "send-message") {
     const sessionId = getValue("sessionId");
     const text = getValue("text");
-    const steeringMode = getValue("steeringMode");
     const commandKind = getValue("commandKind");
     const done = parseOptionalBoolean(formData.get("done"));
 
@@ -206,20 +199,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       } satisfies PiSendMessageActionData;
     }
 
-    if (steeringMode && steeringMode !== "all" && steeringMode !== "one-at-a-time") {
-      return {
-        intent: "send-message",
-        ok: false,
-        message: "Steering mode must be all or one-at-a-time.",
-      } satisfies PiSendMessageActionData;
-    }
-
     const result = await sendPiSessionMessage(request, context, params.orgId, sessionId, {
       text,
       done,
       commandKind: commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
-      steeringMode:
-        steeringMode === "all" || steeringMode === "one-at-a-time" ? steeringMode : undefined,
     });
 
     return {
@@ -233,10 +216,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const harnessId = getValue("harnessId");
   const modelOption = getValue("modelOption");
   const name = getValue("name");
-  const steeringMode = getValue("steeringMode") as "all" | "one-at-a-time";
-  const tagsRaw = getValue("tags");
-  const metadataRaw = getValue("metadata");
-
   if (!harnessId) {
     return {
       intent: "create-session",
@@ -270,27 +249,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       ok: false,
       message: "Model selection is invalid.",
     } satisfies PiCreateSessionActionData;
-  }
-
-  if (steeringMode !== "all" && steeringMode !== "one-at-a-time") {
-    return {
-      intent: "create-session",
-      ok: false,
-      message: "Steering mode must be all or one-at-a-time.",
-    } satisfies PiCreateSessionActionData;
-  }
-
-  let metadata: unknown | undefined;
-  if (metadataRaw) {
-    try {
-      metadata = JSON.parse(metadataRaw);
-    } catch {
-      return {
-        intent: "create-session",
-        ok: false,
-        message: "Metadata must be valid JSON.",
-      } satisfies PiCreateSessionActionData;
-    }
   }
 
   const { configState, configError } = await fetchPiConfig(context, params.orgId);
@@ -333,15 +291,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     model: modelSelection.name,
   });
 
-  const tags = tagsRaw ? parseTags(tagsRaw) : undefined;
-
   const result = await createPiSession(request, context, params.orgId, {
     workflow: interactiveChatWorkflow.name,
     input: { agentName: agent },
     name: name || undefined,
-    steeringMode,
-    tags,
-    metadata,
   });
 
   if (result.error || !result.session) {
@@ -379,10 +332,6 @@ export default function BackofficeOrganisationPiSessionsLayout() {
     configState?.config?.apiKeys?.openai,
   ]);
   const [selectedModelOption, setSelectedModelOption] = useState("");
-  const [steeringMode, setSteeringMode] = useState<"all" | "one-at-a-time">(
-    harnesses[0]?.steeringMode ?? "one-at-a-time",
-  );
-
   useEffect(() => {
     if (harnesses.length === 0) {
       setSelectedHarnessId("");
@@ -407,13 +356,6 @@ export default function BackofficeOrganisationPiSessionsLayout() {
       setSelectedModelOption(nextModel);
     }
   }, [availableModelOptions, selectedModelOption]);
-
-  useEffect(() => {
-    const harness = harnesses.find((entry) => entry.id === selectedHarnessId);
-    if (harness?.steeringMode) {
-      setSteeringMode(harness.steeringMode);
-    }
-  }, [harnesses, selectedHarnessId]);
 
   const selectedHarness = useMemo(
     () => harnesses.find((entry) => entry.id === selectedHarnessId) ?? null,
@@ -521,40 +463,6 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               type="text"
               name="name"
               placeholder="Optional session title"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-[var(--bo-fg)]">Steering mode</label>
-            <select
-              name="steeringMode"
-              required
-              value={steeringMode}
-              onChange={(event) => setSteeringMode(event.target.value as "all" | "one-at-a-time")}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-            >
-              <option value="one-at-a-time">One-at-a-time</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-[var(--bo-fg)]">Tags</label>
-            <input
-              type="text"
-              name="tags"
-              placeholder="Comma-separated tags"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-[var(--bo-fg)]">Metadata (JSON)</label>
-            <textarea
-              name="metadata"
-              rows={3}
-              placeholder='{"source": "backoffice"}'
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
             />
           </div>

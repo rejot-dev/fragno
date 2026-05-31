@@ -1,6 +1,7 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Link } from "react-router";
 
 import type { PiSessionEventStreamItem } from "@fragno-dev/pi-fragment";
 
@@ -54,20 +55,16 @@ const formatJson = (value: unknown) => {
 };
 
 export function SessionHeader({
-  exportFilename,
-  exportHref,
+  backTo,
   harnessLabel,
   modelLabel,
   options,
-  onBack,
   session,
 }: {
-  exportFilename: string;
-  exportHref: string;
+  backTo: string;
   harnessLabel: string;
   modelLabel: string;
   options?: ReactNode;
-  onBack: () => void;
   session: {
     id: string;
     name?: string | null;
@@ -76,11 +73,18 @@ export function SessionHeader({
   };
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          Session detail
-        </p>
+    <div className="flex w-full flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+          <Link
+            to={backTo}
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          >
+            Back
+          </Link>
+          <span className="h-3 w-px bg-[var(--bo-border-strong)]" />
+          <span>Session detail</span>
+        </div>
         <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
           {session.name || session.id}
         </h3>
@@ -91,27 +95,13 @@ export function SessionHeader({
           {options}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <a
-          href={exportHref}
-          download={exportFilename}
-          className="inline-flex items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
-          Download JSONL
-        </a>
-        <button
-          type="button"
-          onClick={onBack}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
-          Back
-        </button>
-      </div>
     </div>
   );
 }
 
 export function SessionDisplayOptions({
+  exportFilename,
+  exportHref,
   showThinking,
   showToolCalls,
   showTrace,
@@ -121,6 +111,8 @@ export function SessionDisplayOptions({
   onShowTraceChange,
   onShowUsageChange,
 }: {
+  exportFilename: string;
+  exportHref: string;
   showThinking: boolean;
   showToolCalls: boolean;
   showTrace: boolean;
@@ -133,7 +125,7 @@ export function SessionDisplayOptions({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="space-y-2 sm:min-w-96">
+    <div className="ml-auto space-y-2 sm:min-w-96">
       <div className="flex justify-end">
         <button
           type="button"
@@ -145,7 +137,7 @@ export function SessionDisplayOptions({
       </div>
 
       {expanded ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+        <div className="ml-auto space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-right">
           <div className="grid gap-2 sm:grid-cols-2">
             <ToggleSwitch
               label="Tool calls"
@@ -160,6 +152,13 @@ export function SessionDisplayOptions({
             <ToggleSwitch label="Trace" checked={showTrace} onCheckedChange={onShowTraceChange} />
             <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
           </div>
+          <a
+            href={exportHref}
+            download={exportFilename}
+            className="ml-auto inline-flex items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          >
+            Download JSONL
+          </a>
         </div>
       ) : null}
     </div>

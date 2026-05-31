@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLoaderData, useNavigate, useOutletContext, useParams } from "react-router";
+import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { createOrgPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
@@ -33,8 +33,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationPiSessionDetail() {
   const { session } = useLoaderData<typeof loader>();
-  const navigate = useNavigate();
-  const { harnesses } = useOutletContext<PiSessionsOutletContext>();
+  const { basePath, harnesses } = useOutletContext<PiSessionsOutletContext>();
   const { orgId } = useParams();
   const [displayOptions, setDisplayOptions] = useState({
     showToolCalls: true,
@@ -116,12 +115,13 @@ export default function BackofficeOrganisationPiSessionDetail() {
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <SessionHeader
         session={displaySession}
-        exportHref={`/api/pi/${orgId}/sessions/${displaySession.id}/export/pi-jsonl`}
-        exportFilename={`pi-session-${displaySession.id}.jsonl`}
+        backTo={basePath}
         harnessLabel={harnessLabel}
         modelLabel={modelLabel}
         options={
           <SessionDisplayOptions
+            exportHref={`/api/pi/${orgId}/sessions/${displaySession.id}/export/pi-jsonl`}
+            exportFilename={`pi-session-${displaySession.id}.jsonl`}
             showToolCalls={displayOptions.showToolCalls}
             showThinking={displayOptions.showThinking}
             showTrace={displayOptions.showTrace}
@@ -132,7 +132,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
             onShowUsageChange={updateDisplayOption("showUsage")}
           />
         }
-        onBack={() => navigate("..")}
       />
 
       {liveSession.error ? (
