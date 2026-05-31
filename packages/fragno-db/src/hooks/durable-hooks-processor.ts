@@ -1,4 +1,5 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
+import { getDurableHooksToken, hasDurableHooksConfigured } from "./durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
 import { createDurableHooksRunner } from "./hooks";
 
@@ -17,10 +18,6 @@ export type DurableHooksProcessorGroupOptions = {
   onError?: (error: unknown) => void;
 };
 
-type DurableHooksInternal = {
-  durableHooksToken?: object;
-};
-
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
 
 function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined): number | false {
@@ -33,17 +30,10 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
   return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
 }
 
-function hasDurableHooksConfigured(
-  fragment: AnyFragnoInstantiatedDatabaseFragment,
-): fragment is AnyFragnoInstantiatedDatabaseFragment {
-  const internal = fragment.$internal as DurableHooksInternal | undefined;
-  return Boolean(internal?.durableHooksToken);
-}
-
 export function createDurableHooksProcessor(
   fragment: AnyFragnoInstantiatedDatabaseFragment,
 ): DurableHooksProcessor {
-  const durableHooksToken = (fragment.$internal as DurableHooksInternal).durableHooksToken;
+  const durableHooksToken = getDurableHooksToken(fragment);
   if (!durableHooksToken) {
     throw new Error(`[fragno-db] Durable hooks not configured for fragment "${fragment.name}".`);
   }

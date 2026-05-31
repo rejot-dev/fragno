@@ -26,6 +26,7 @@ export default defineConfig([
       "./src/buffered-pump.ts",
       "./src/dispatchers/node/index.ts",
       "./src/dispatchers/cloudflare-do/index.ts",
+      "./src/dispatchers/cloudflare-do/fragment-durable-object.ts",
       "./src/migration-engine/generation-engine.ts",
     ],
     dts: true,
