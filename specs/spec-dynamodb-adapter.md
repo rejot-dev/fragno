@@ -743,7 +743,7 @@ Tests:
 
 ### Slice 8 — Outbox integration end to end
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 13, 14.
 

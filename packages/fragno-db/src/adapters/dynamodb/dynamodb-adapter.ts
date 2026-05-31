@@ -2,7 +2,9 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { FragnoDatabase } from "../../fragno-database";
+import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 import { suffixNamingStrategy, type SqlNamingStrategy } from "../../naming/sql-naming";
 import type {
   CompiledMutation,
@@ -163,12 +165,25 @@ export class DynamoDBAdapter implements DatabaseAdapter<DynamoDBUnitOfWorkConfig
       tablePrefix: this.tablePrefix,
       namingStrategy: this.namingStrategy,
     }).settingsTableName;
+    const internalLayout = createDynamoDBLayout({
+      schema: internalSchema,
+      namespace: null,
+      tablePrefix: this.tablePrefix,
+      namingStrategy: this.namingStrategy,
+    });
     const executor = new DynamoDBUOWExecutor({
       client: this.client,
       settingsTableName,
       consistentRead: mergedConfig.consistentRead ?? this.consistentRead,
       maxFilteredReadPages: mergedConfig.maxFilteredReadPages ?? this.maxFilteredReadPages,
       allowScans: mergedConfig.allowScans ?? this.allowScans,
+      outbox: getOutboxConfigForAdapter(this),
+      internalTableLayouts: Object.fromEntries(
+        Object.values(internalSchema.tables).map((table) => [
+          table.name,
+          internalLayout.getTableLayout(table),
+        ]),
+      ),
     });
     const decoder = new DynamoDBUOWDecoder();
 

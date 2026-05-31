@@ -1,5 +1,12 @@
 import { expect, it } from "vitest";
 
+import superjson from "superjson";
+
+import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+
+import { internalSchema } from "../../fragments/internal-fragment.schema";
+import { getOutboxStateForAdapter } from "../../internal/outbox-state";
+import type { OutboxPayload } from "../../outbox/outbox";
 import {
   column,
   FragnoId,
@@ -9,6 +16,7 @@ import {
   schema,
 } from "../../schema/create";
 import { DynamoDBAdapter } from "./dynamodb-adapter";
+import { createDynamoDBLayout } from "./dynamodb-layout";
 import { describeDynamoDBLocal, getDynamoDBLocalTestContext } from "./test-utils";
 
 const executorSchema = schema("shop", (s) =>
@@ -62,6 +70,42 @@ async function createMigratedQueryTreeAdapter() {
   });
   await adapter.prepareMigrations(queryTreeSchema, "blog").execute(0);
   return adapter;
+}
+
+async function createMigratedOutboxAdapter(options: { enabled?: boolean } = {}) {
+  const context = getDynamoDBLocalTestContext();
+  expect(context).not.toBeNull();
+  const adapter = new DynamoDBAdapter({
+    client: context!.client,
+    tablePrefix: context!.tablePrefix,
+  });
+  await adapter.prepareMigrations(executorSchema, "shop").execute(0);
+  await adapter.prepareMigrations(internalSchema, null).execute(0);
+
+  if (options.enabled) {
+    enableOutboxForNamespace(adapter, "shop");
+  }
+
+  return { adapter, context: context! };
+}
+
+function enableOutboxForNamespace(adapter: DynamoDBAdapter, namespace: string) {
+  const outboxState = getOutboxStateForAdapter(adapter as never);
+  outboxState.config.enabled = true;
+  outboxState.enabledSchemaKeys.add(namespace);
+}
+
+async function listOutboxEntries(adapter: DynamoDBAdapter) {
+  const uow = adapter.createUnitOfWork(internalSchema, null);
+  const withEntries = uow.find("fragno_db_outbox", (b) =>
+    b.whereIndex("idx_outbox_versionstamp").orderByIndex("idx_outbox_versionstamp", "asc"),
+  );
+  const [entries] = await withEntries.executeRetrieve();
+  return entries;
+}
+
+function decodeOutboxPayload(entry: { payload: unknown }) {
+  return superjson.deserialize<OutboxPayload>(entry.payload as never);
 }
 
 async function createOrder(adapter: DynamoDBAdapter, id: string) {
@@ -427,5 +471,167 @@ describeDynamoDBLocal("DynamoDB UOW executor", () => {
     uow.create("posts", { id: "post_missing_ref", user_id: "missing_user", title: "Oops" });
 
     await expect(uow.executeMutations()).rejects.toThrow(/Foreign key constraint violation/);
+  });
+
+  it("does not write outbox entries when disabled", async () => {
+    const { adapter } = await createMigratedOutboxAdapter({ enabled: false });
+
+    const uow = adapter.createUnitOfWork(executorSchema, "shop");
+    uow.create("orders", { id: "order_outbox_disabled", status: "open", total: 1 });
+    await expect(uow.executeMutations()).resolves.toEqual({ success: true });
+
+    await expect(listOutboxEntries(adapter)).resolves.toHaveLength(0);
+  });
+
+  it("writes outbox entries for create, update, and delete UOWs", async () => {
+    const { adapter } = await createMigratedOutboxAdapter({ enabled: true });
+
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_outbox", status: "open", total: 1 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const order = await findOrder(adapter, "order_outbox");
+    const updateUow = adapter.createUnitOfWork(executorSchema, "shop");
+    updateUow.update("orders", order.id, (b) => b.set({ status: "paid" }).check());
+    await expect(updateUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const updated = await findOrder(adapter, "order_outbox");
+    const deleteUow = adapter.createUnitOfWork(executorSchema, "shop");
+    deleteUow.delete("orders", updated.id, (b) => b.check());
+    await expect(deleteUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const entries = await listOutboxEntries(adapter);
+    expect(entries).toHaveLength(3);
+    expect(entries.map((entry: { versionstamp: string }) => entry.versionstamp)).toEqual([
+      "000000000000000000000000",
+      "000000000000000000010000",
+      "000000000000000000020000",
+    ]);
+    expect(entries.map((entry) => decodeOutboxPayload(entry).mutations[0]?.op)).toEqual([
+      "create",
+      "update",
+      "delete",
+    ]);
+  });
+
+  it("writes outbox mutation rows in payload order", async () => {
+    const { adapter } = await createMigratedOutboxAdapter({ enabled: true });
+
+    const uow = adapter.createUnitOfWork(executorSchema, "shop");
+    uow.create("orders", { id: "order_outbox_a", status: "open", total: 1 });
+    uow.create("orders", { id: "order_outbox_b", status: "paid", total: 2 });
+    await expect(uow.executeMutations()).resolves.toEqual({ success: true });
+
+    const entries = await listOutboxEntries(adapter);
+    const payload = decodeOutboxPayload(entries[0]);
+    expect(payload.mutations.map((mutation) => mutation.externalId)).toEqual([
+      "order_outbox_a",
+      "order_outbox_b",
+    ]);
+
+    const mutationUow = adapter.createUnitOfWork(internalSchema, null);
+    const withMutations = mutationUow.find("fragno_db_outbox_mutations", (b) =>
+      b
+        .whereIndex("idx_outbox_mutations_entry", (eb) =>
+          eb("entryVersionstamp", "=", entries[0].versionstamp),
+        )
+        .orderByIndex("idx_outbox_mutations_entry", "asc"),
+    );
+    const [mutationRows] = await withMutations.executeRetrieve();
+    expect(mutationRows.map((row: { externalId: string }) => row.externalId)).toEqual([
+      "order_outbox_a",
+      "order_outbox_b",
+    ]);
+  });
+
+  it("does not write outbox rows for failed stale mutations", async () => {
+    const { adapter } = await createMigratedOutboxAdapter({ enabled: true });
+
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_outbox_stale", status: "open", total: 1 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+    const staleOrder = await findOrder(adapter, "order_outbox_stale");
+
+    const updateFirst = adapter.createUnitOfWork(executorSchema, "shop");
+    updateFirst.update("orders", staleOrder.id, (b) => b.set({ status: "paid" }).check());
+    await expect(updateFirst.executeMutations()).resolves.toEqual({ success: true });
+
+    const updateStale = adapter.createUnitOfWork(executorSchema, "shop");
+    updateStale.update("orders", staleOrder.id, (b) => b.set({ status: "closed" }).check());
+    await expect(updateStale.executeMutations()).resolves.toEqual({ success: false });
+
+    await expect(listOutboxEntries(adapter)).resolves.toHaveLength(2);
+  });
+
+  it("resolves outbox reference maps from stored internal IDs", async () => {
+    const context = getDynamoDBLocalTestContext();
+    expect(context).not.toBeNull();
+    const adapter = new DynamoDBAdapter({
+      client: context!.client,
+      tablePrefix: context!.tablePrefix,
+    });
+    await adapter.prepareMigrations(queryTreeSchema, "blog").execute(0);
+    await adapter.prepareMigrations(internalSchema, null).execute(0);
+    enableOutboxForNamespace(adapter, "blog");
+
+    const createUser = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    createUser.create("users", { id: "user_outbox_ref", name: "Ref" });
+    await expect(createUser.executeMutations()).resolves.toEqual({ success: true });
+
+    const readUser = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    const withUser = readUser.find("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", "user_outbox_ref")),
+    );
+    const [users] = await withUser.executeRetrieve();
+
+    expect(users[0].id.internalId).toBeDefined();
+    const createPost = adapter.createUnitOfWork(queryTreeSchema, "blog");
+    createPost.create("posts", {
+      id: "post_outbox_ref",
+      user_id: FragnoReference.fromInternal(users[0].id.internalId!),
+      title: "Ref post",
+    });
+    await expect(createPost.executeMutations()).resolves.toEqual({ success: true });
+
+    const entries = await listOutboxEntries(adapter);
+    expect(entries[1].refMap).toEqual({ "0.user_id": "user_outbox_ref" });
+  });
+
+  it("returns false when the outbox version row is contended", async () => {
+    const { context } = await createMigratedOutboxAdapter({ enabled: false });
+    const settingsTableName = createDynamoDBLayout({
+      schema: internalSchema,
+      namespace: null,
+      tablePrefix: context.tablePrefix,
+    }).settingsTableName;
+    let contendNextTransaction = true;
+    const contendingAdapter = new DynamoDBAdapter({
+      tablePrefix: context.tablePrefix,
+      client: {
+        send: async (command: object) => {
+          if (command.constructor.name === "TransactWriteCommand" && contendNextTransaction) {
+            contendNextTransaction = false;
+            await context.client.send(
+              new UpdateCommand({
+                TableName: settingsTableName,
+                Key: { pk: "outbox_version", sk: "global" },
+                UpdateExpression: "SET #value = :value",
+                ExpressionAttributeNames: { "#value": "value" },
+                ExpressionAttributeValues: { ":value": "99" },
+              }),
+            );
+          }
+          return context.client.send(command as never);
+        },
+      } as never,
+    });
+    const outboxState = getOutboxStateForAdapter(contendingAdapter as never);
+    outboxState.config.enabled = true;
+    outboxState.enabledSchemaKeys.add("shop");
+
+    const uow = contendingAdapter.createUnitOfWork(executorSchema, "shop");
+    uow.create("orders", { id: "order_outbox_contended", status: "open", total: 1 });
+    await expect(uow.executeMutations()).resolves.toEqual({ success: false });
+    await expect(listOutboxEntries(contendingAdapter)).resolves.toHaveLength(0);
   });
 });

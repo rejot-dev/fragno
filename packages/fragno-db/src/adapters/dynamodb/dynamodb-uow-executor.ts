@@ -1,3 +1,5 @@
+import superjson from "superjson";
+
 import {
   BatchGetCommand,
   GetCommand,
@@ -7,6 +9,21 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
+import { internalSchema } from "../../fragments/internal-fragment.schema";
+import { createId } from "../../id";
+import {
+  encodeVersionstamp,
+  parseOutboxVersionValue,
+  type OutboxConfig,
+  type OutboxRefLookup,
+  type OutboxRefMap,
+  versionstampToHex,
+} from "../../outbox/outbox";
+import {
+  buildOutboxPlan,
+  finalizeOutboxPayload,
+  type OutboxPlan,
+} from "../../outbox/outbox-builder";
 import type { Condition, Operator } from "../../query/condition-builder";
 import { decodeCursor } from "../../query/cursor";
 import {
@@ -20,7 +37,11 @@ import type {
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
+import {
+  encodeValuesWithDbDefaults,
+  ReferenceSubquery,
+  resolveFragnoIdValue,
+} from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../../schema/create";
 import {
@@ -52,6 +73,8 @@ export interface DynamoDBUOWExecutorOptions {
   consistentRead?: boolean;
   maxFilteredReadPages?: number;
   allowScans?: boolean;
+  outbox?: OutboxConfig;
+  internalTableLayouts?: Record<string, DynamoDBTableLayout>;
 }
 
 type DynamoDBSendableClient = {
@@ -70,6 +93,7 @@ type MutationPreflight =
       success: true;
       transactionActions: TransactionAction[];
       createdInternalIds: (bigint | null)[];
+      createReservations: CreateReservation[];
     }
   | { success: false };
 
@@ -109,6 +133,8 @@ type RowMutationGroup = {
 };
 
 const INTERNAL_ID_COUNTER_PK = "internal_id_counter";
+const OUTBOX_VERSION_PK = "outbox_version";
+const OUTBOX_VERSION_SK = "global";
 const PRIMARY_INDEX_NAME = "_primary";
 const DYNAMODB_TRANSACTION_ACTION_LIMIT = 100;
 
@@ -117,12 +143,16 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   readonly #settingsTableName: string;
   readonly #consistentRead: boolean;
   readonly #maxFilteredReadPages: number;
+  readonly #outbox?: OutboxConfig;
+  readonly #internalTableLayouts: Record<string, DynamoDBTableLayout>;
 
   constructor(options: DynamoDBUOWExecutorOptions) {
     this.#client = options.client as unknown as DynamoDBSendableClient;
     this.#settingsTableName = options.settingsTableName;
     this.#consistentRead = options.consistentRead ?? true;
     this.#maxFilteredReadPages = options.maxFilteredReadPages ?? 10;
+    this.#outbox = options.outbox;
+    this.#internalTableLayouts = options.internalTableLayouts ?? {};
   }
 
   async executeRetrievalPhase(retrievalBatch: DynamoDBCommandPlan[]): Promise<DynamoDBRawResult[]> {
@@ -152,29 +182,42 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return { success: true, createdInternalIds: [] };
     }
 
+    const outbox = this.#buildOutboxContext(mutationBatch);
     const preflight = await this.#preflightMutations(
       mutationBatch.map((mutation) => mutation.query),
     );
     if (!preflight.success) {
       return { success: false };
     }
-    if (preflight.transactionActions.length === 0) {
+
+    const transactionActions = [...preflight.transactionActions];
+    if (outbox.shouldWrite) {
+      transactionActions.push(
+        ...(await this.#createOutboxTransactItems(
+          mutationBatch,
+          outbox.plan,
+          preflight.createReservations,
+        )),
+      );
+    }
+
+    if (transactionActions.length === 0) {
       return { success: true, createdInternalIds: preflight.createdInternalIds };
     }
-    if (preflight.transactionActions.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
+    if (transactionActions.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
       throw new Error(
-        `DynamoDB transaction has ${preflight.transactionActions.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
+        `DynamoDB transaction has ${transactionActions.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
       );
     }
 
     try {
       await this.#client.send(
         new TransactWriteCommand({
-          TransactItems: preflight.transactionActions.map((action) => action.item),
+          TransactItems: transactionActions.map((action) => action.item),
         }),
       );
     } catch (error) {
-      if (isOccTransactionCancellation(error, preflight.transactionActions)) {
+      if (isOccTransactionCancellation(error, transactionActions)) {
         return { success: false };
       }
       throw error;
@@ -184,6 +227,32 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       success: true,
       createdInternalIds: preflight.createdInternalIds,
     };
+  }
+
+  #buildOutboxContext(
+    mutationBatch: readonly CompiledMutation<DynamoDBCommandPlan>[],
+  ): { shouldWrite: false; plan: null } | { shouldWrite: true; plan: OutboxPlan } {
+    const outboxEnabled = this.#outbox?.enabled ?? false;
+    if (!outboxEnabled) {
+      return { shouldWrite: false, plan: null };
+    }
+
+    const shouldInclude = this.#outbox?.shouldInclude;
+    const operations = mutationBatch.flatMap((mutation) => {
+      const operation = mutation.operation;
+      if (!operation) {
+        return [];
+      }
+      if (shouldInclude && !shouldInclude(operation)) {
+        return [];
+      }
+      return [operation];
+    });
+    const plan = operations.length > 0 ? buildOutboxPlan(operations) : null;
+    if (!plan || plan.drafts.length === 0) {
+      return { shouldWrite: false, plan: null };
+    }
+    return { shouldWrite: true, plan };
   }
 
   async #executeFind(plan: DynamoDBFindPlan): Promise<DynamoDBRawRow[]> {
@@ -495,7 +564,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       }
     }
 
-    return { success: true, transactionActions, createdInternalIds };
+    return { success: true, transactionActions, createdInternalIds, createReservations };
   }
 
   async #readExistingRows(
@@ -784,6 +853,179 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     ];
   }
 
+  async #createOutboxTransactItems(
+    mutationBatch: readonly CompiledMutation<DynamoDBCommandPlan>[],
+    outboxPlan: OutboxPlan,
+    createReservations: readonly CreateReservation[],
+  ): Promise<TransactionAction[]> {
+    const uowId = mutationBatch[0]?.uowId;
+    if (!uowId) {
+      throw new Error("Outbox mutation batch is missing uowId.");
+    }
+
+    const versionReservation = await this.#reserveOutboxVersionTransactItem();
+    const refMap = await this.#resolveOutboxRefMap(
+      outboxPlan.lookups,
+      mutationBatch,
+      createReservations,
+    );
+    const payload = finalizeOutboxPayload(outboxPlan, versionReservation.version);
+    const payloadSerialized = superjson.serialize(payload);
+    const versionstamp = versionstampToHex(encodeVersionstamp(versionReservation.version, 0));
+
+    const outboxPlans = [
+      ...payload.mutations.map((mutation) =>
+        this.#createInternalCreatePlan("fragno_db_outbox_mutations", {
+          entryVersionstamp: versionstamp,
+          mutationVersionstamp: mutation.versionstamp,
+          uowId,
+          schema: mutation.schema,
+          table: mutation.table,
+          externalId: mutation.externalId,
+          op: mutation.op,
+        }),
+      ),
+      this.#createInternalCreatePlan("fragno_db_outbox", {
+        versionstamp,
+        uowId,
+        payload: payloadSerialized,
+        refMap: refMap ?? null,
+      }),
+    ];
+    const outboxReservations = await this.#reserveInternalIds(outboxPlans);
+    const outboxCreatedReferences = createCreatedReferenceMap([
+      ...createReservations,
+      ...outboxReservations,
+    ]);
+    const actions: TransactionAction[] = [versionReservation.action];
+    for (const reservation of outboxReservations) {
+      actions.push(
+        ...(await this.#createTransactItems(
+          reservation.plan,
+          reservation.internalId,
+          outboxCreatedReferences,
+        )),
+      );
+    }
+    return actions;
+  }
+
+  async #reserveOutboxVersionTransactItem(): Promise<{
+    version: bigint;
+    action: TransactionAction;
+  }> {
+    const currentValue = await this.#readOutboxVersionValue();
+    const current = currentValue === undefined ? undefined : parseOutboxVersionValue(currentValue);
+    const next = current === undefined ? 0n : current + 1n;
+
+    return {
+      version: next,
+      action: {
+        conditionFailure: "occ",
+        item: {
+          Update: {
+            TableName: this.#settingsTableName,
+            Key: { pk: OUTBOX_VERSION_PK, sk: OUTBOX_VERSION_SK },
+            UpdateExpression: "SET #value = :next",
+            ConditionExpression:
+              currentValue === undefined ? "attribute_not_exists(#pk)" : "#value = :current",
+            ExpressionAttributeNames:
+              currentValue === undefined
+                ? { "#pk": "pk", "#value": "value" }
+                : { "#value": "value" },
+            ExpressionAttributeValues:
+              currentValue === undefined
+                ? { ":next": next.toString() }
+                : { ":next": next.toString(), ":current": currentValue },
+          },
+        },
+      },
+    };
+  }
+
+  async #readOutboxVersionValue(): Promise<string | undefined> {
+    const result = (await this.#client.send(
+      new GetCommand({
+        TableName: this.#settingsTableName,
+        Key: { pk: OUTBOX_VERSION_PK, sk: OUTBOX_VERSION_SK },
+        ConsistentRead: true,
+      }),
+    )) as { Item?: { value?: unknown } };
+
+    const value = result.Item?.value;
+    if (value === undefined) {
+      return undefined;
+    }
+    if (typeof value !== "string") {
+      throw new Error("DynamoDB outbox version value is not a string.");
+    }
+    return value;
+  }
+
+  #createInternalCreatePlan(
+    tableName: "fragno_db_outbox" | "fragno_db_outbox_mutations",
+    values: Record<string, unknown>,
+  ): DynamoDBCreatePlan {
+    const table = internalSchema.tables[tableName];
+    const layout = this.#internalTableLayouts[tableName];
+    if (!table || !layout) {
+      throw new Error(`Missing DynamoDB internal table layout for ${tableName}.`);
+    }
+    return {
+      kind: "create",
+      schemaName: internalSchema.name,
+      namespace: internalSchema.name,
+      tableName,
+      table,
+      layout,
+      tableLayouts: this.#internalTableLayouts,
+      externalId: createId(),
+      item: encodeDynamoDBCreateItem(values, table),
+    };
+  }
+
+  async #resolveOutboxRefMap(
+    lookups: readonly OutboxRefLookup[],
+    mutationBatch: readonly CompiledMutation<DynamoDBCommandPlan>[],
+    createReservations: readonly CreateReservation[],
+  ): Promise<OutboxRefMap | undefined> {
+    if (lookups.length === 0) {
+      return undefined;
+    }
+
+    const refMap: OutboxRefMap = {};
+    for (const lookup of lookups) {
+      const createdExternalId = findCreatedOutboxReference(lookup, createReservations);
+      if (createdExternalId !== undefined) {
+        refMap[lookup.key] = createdExternalId;
+        continue;
+      }
+
+      const layout = findOutboxLookupLayout(lookup, mutationBatch);
+      if (!layout) {
+        throw new Error(
+          `Failed to resolve DynamoDB layout for outbox lookup on ${lookup.table.name}.`,
+        );
+      }
+      const rows = await this.#queryRowsByIndex({
+        table: lookup.table,
+        layout,
+        indexName: PRIMARY_INDEX_NAME,
+        limit: 1,
+        predicate: (row) => row["_internalId"] === String(lookup.internalId),
+      });
+      const externalId = rows[0]?.[lookup.table.getIdColumn().name];
+      if (typeof externalId !== "string") {
+        throw new Error(
+          `Failed to resolve outbox reference for ${lookup.table.name}._internalId=${String(lookup.internalId)}`,
+        );
+      }
+      refMap[lookup.key] = externalId;
+    }
+
+    return Object.keys(refMap).length > 0 ? refMap : undefined;
+  }
+
   async #resolvePlanAttributes(
     plan: DynamoDBCreatePlan | DynamoDBUpdatePlan,
     values: Record<string, unknown>,
@@ -945,6 +1187,59 @@ function createCreatedReferenceMap(
 
 function createdReferenceKey(layout: DynamoDBTableLayout, externalId: string): string {
   return `${layout.baseTableName}\0${externalId}`;
+}
+
+function encodeDynamoDBCreateItem(
+  values: Record<string, unknown>,
+  table: AnyTable,
+): Record<string, DynamoDBAttributeValue> {
+  const encodedValues = encodeValuesWithDbDefaults(values, table);
+  const item: Record<string, DynamoDBAttributeValue> = {};
+  for (const [columnName, value] of Object.entries(encodedValues)) {
+    const column = table.columns[columnName];
+    if (!column) {
+      continue;
+    }
+    const encoded = encodeDynamoDBValue(value, column);
+    if (encoded !== undefined) {
+      item[columnName] = encoded;
+    }
+  }
+  return item;
+}
+
+function findCreatedOutboxReference(
+  lookup: OutboxRefLookup,
+  reservations: readonly CreateReservation[],
+): string | undefined {
+  const internalId = String(lookup.internalId);
+  const namespace = lookup.namespace ?? null;
+  return reservations.find(
+    (reservation) =>
+      reservation.plan.table === lookup.table &&
+      reservation.internalId.toString() === internalId &&
+      (reservation.plan.namespace === namespace || lookup.namespace === undefined),
+  )?.plan.externalId;
+}
+
+function findOutboxLookupLayout(
+  lookup: OutboxRefLookup,
+  mutationBatch: readonly CompiledMutation<DynamoDBCommandPlan>[],
+): DynamoDBTableLayout | undefined {
+  for (const mutation of mutationBatch) {
+    const operation = mutation.operation;
+    if (!operation) {
+      continue;
+    }
+    if ((operation.namespace ?? undefined) !== lookup.namespace) {
+      continue;
+    }
+    if (!Object.values(operation.schema.tables).some((table) => table === lookup.table)) {
+      continue;
+    }
+    return mutation.query.tableLayouts[lookup.table.name];
+  }
+  return undefined;
 }
 
 function createPutIndexActions(
