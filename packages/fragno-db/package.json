@@ -106,6 +106,10 @@
       "types": "./dist/dispatchers/cloudflare-do/index.d.ts",
       "default": "./dist/dispatchers/cloudflare-do/index.js"
     },
+    "./dispatchers/cloudflare-do/fragment-durable-object": {
+      "types": "./dist/dispatchers/cloudflare-do/fragment-durable-object.d.ts",
+      "default": "./dist/dispatchers/cloudflare-do/fragment-durable-object.js"
+    },
     "./generation-engine": {
       "types": "./dist/migration-engine/generation-engine.d.ts",
       "default": "./dist/migration-engine/generation-engine.js"

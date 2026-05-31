@@ -1,3 +1,4 @@
+import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
 import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
@@ -9,10 +10,6 @@ export type DurableHooksProcessorOptions = {
 };
 
 export type { DurableHooksDispatcher };
-
-type DurableHooksInternal = {
-  durableHooksToken?: object;
-};
 
 export function createDurableHooksProcessor(
   fragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
@@ -34,8 +31,7 @@ export function createDurableHooksProcessor(
   };
 
   for (const fragment of fragments) {
-    const internal = fragment.$internal as DurableHooksInternal | undefined;
-    const durableHooksToken = internal?.durableHooksToken;
+    const durableHooksToken = getDurableHooksToken(fragment);
     if (!durableHooksToken) {
       continue;
     }

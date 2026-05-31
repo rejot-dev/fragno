@@ -1,3 +1,4 @@
+import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
 import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
@@ -16,10 +17,6 @@ export type {
   DurableHooksDispatcherDurableObjectFactory,
   DurableHooksDispatcherDurableObjectHandler,
   DurableHooksDispatcherDurableObjectState,
-};
-
-type DurableHooksInternal = {
-  durableHooksToken?: object;
 };
 
 export function createDurableHooksProcessor<TEnv>(
@@ -46,8 +43,7 @@ export function createDurableHooksProcessor<TEnv>(
     };
 
     for (const fragment of fragments) {
-      const internal = fragment.$internal as DurableHooksInternal | undefined;
-      const durableHooksToken = internal?.durableHooksToken;
+      const durableHooksToken = getDurableHooksToken(fragment);
       if (!durableHooksToken) {
         continue;
       }

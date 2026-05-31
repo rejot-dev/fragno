@@ -1,5 +1,6 @@
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
+import { getDurableHooksToken } from "./hooks/durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 import type { HookStatus } from "./hooks/hooks";
 import { getInternalFragment } from "./internal/adapter-registry";
@@ -36,8 +37,7 @@ export type DurableHooksAccessor = {
 export function getDurableHooksService(
   fragment: AnyFragnoInstantiatedDatabaseFragment,
 ): DurableHooksAccessor {
-  const internal = fragment.$internal as { durableHooksToken?: object } | undefined;
-  const durableHooksToken = internal?.durableHooksToken;
+  const durableHooksToken = getDurableHooksToken(fragment);
   const runtime = durableHooksToken ? getDurableHooksRuntimeByToken(durableHooksToken) : undefined;
   const deps = fragment.$internal?.deps as
     | {
