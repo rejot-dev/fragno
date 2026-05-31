@@ -657,7 +657,7 @@ Tests:
 
 ### Slice 5 — Update, delete, check, and OCC conflicts end to end
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 12.2, 12.3, 12.4, 12.5.
 

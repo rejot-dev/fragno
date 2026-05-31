@@ -19,9 +19,12 @@ import { FragnoId, FragnoReference } from "../../schema/create";
 import { decodeDynamoDBIndexEntry, encodeDynamoDBIndexEntry } from "./dynamodb-index-codec";
 import type { DynamoDBRawResult, DynamoDBRawRow } from "./dynamodb-uow-decoder";
 import type {
+  DynamoDBCheckPlan,
   DynamoDBCommandPlan,
   DynamoDBCreatePlan,
+  DynamoDBDeletePlan,
   DynamoDBFindPlan,
+  DynamoDBUpdatePlan,
 } from "./dynamodb-uow-operation-compiler";
 import { assertDynamoDBItemSize, type BaseRowItem } from "./dynamodb-value-codec";
 
@@ -40,6 +43,35 @@ type DynamoDBSendableClient = {
 type CreateReservation = {
   plan: DynamoDBCreatePlan;
   internalId: bigint;
+};
+
+type MutationPreflight =
+  | {
+      success: true;
+      transactionActions: TransactionAction[];
+      createdInternalIds: (bigint | null)[];
+    }
+  | { success: false };
+
+type TransactionAction = {
+  item: object;
+  conditionFailure: "constraint" | "occ";
+};
+
+type ExistingRow = BaseRowItem & {
+  pk: string;
+  _internalId: string;
+  _version: number;
+};
+
+type BaseWritePlan = DynamoDBCreatePlan | DynamoDBUpdatePlan | DynamoDBDeletePlan;
+
+type RowMutationGroup = {
+  key: string;
+  tableName: string;
+  externalId: string;
+  writes: BaseWritePlan[];
+  checks: DynamoDBCheckPlan[];
 };
 
 const INTERNAL_ID_COUNTER_PK = "internal_id_counter";
@@ -87,30 +119,37 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return { success: true, createdInternalIds: [] };
     }
 
-    const unsupported = mutationBatch.find((mutation) => mutation.query.kind !== "create");
-    if (unsupported) {
-      throw new Error(
-        `DynamoDB ${unsupported.query.kind} mutation execution is not implemented until slice 5.`,
-      );
-    }
-
-    const createPlans = mutationBatch.map((mutation) => mutation.query as DynamoDBCreatePlan);
-    const reservations = await this.#reserveInternalIds(createPlans);
-    const transactItems = reservations.flatMap((reservation) =>
-      this.#createTransactItems(reservation.plan, reservation.internalId),
+    const preflight = await this.#preflightMutations(
+      mutationBatch.map((mutation) => mutation.query),
     );
-
-    if (transactItems.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
+    if (!preflight.success) {
+      return { success: false };
+    }
+    if (preflight.transactionActions.length === 0) {
+      return { success: true, createdInternalIds: preflight.createdInternalIds };
+    }
+    if (preflight.transactionActions.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
       throw new Error(
-        `DynamoDB transaction has ${transactItems.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
+        `DynamoDB transaction has ${preflight.transactionActions.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
       );
     }
 
-    await this.#client.send(new TransactWriteCommand({ TransactItems: transactItems }));
+    try {
+      await this.#client.send(
+        new TransactWriteCommand({
+          TransactItems: preflight.transactionActions.map((action) => action.item),
+        }),
+      );
+    } catch (error) {
+      if (isOccTransactionCancellation(error, preflight.transactionActions)) {
+        return { success: false };
+      }
+      throw error;
+    }
 
     return {
       success: true,
-      createdInternalIds: reservations.map((reservation) => reservation.internalId),
+      createdInternalIds: preflight.createdInternalIds,
     };
   }
 
@@ -208,6 +247,254 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     });
   }
 
+  async #preflightMutations(plans: readonly DynamoDBCommandPlan[]): Promise<MutationPreflight> {
+    const groups = groupMutationsByRow(plans);
+    const existingRows = await this.#readExistingRows(groups);
+    const transactionActions: TransactionAction[] = [];
+    const createdInternalIds: (bigint | null)[] = [];
+
+    const createPlans = plans.filter((plan): plan is DynamoDBCreatePlan => plan.kind === "create");
+    const createReservations = await this.#reserveInternalIds(createPlans);
+    const reservationByPlan = new Map(
+      createReservations.map((reservation) => [reservation.plan, reservation.internalId] as const),
+    );
+
+    for (const group of groups.values()) {
+      const write = group.writes[0];
+      const existingRow = existingRows.get(group.key);
+      if (!write) {
+        if (!this.#checksPass(group.checks, existingRow)) {
+          return { success: false };
+        }
+        transactionActions.push(this.#checkTransactItem(group.checks[0]!));
+        continue;
+      }
+
+      if (write.kind === "create") {
+        if (group.checks.length > 0) {
+          throw new Error(
+            `DynamoDB mutation batch cannot combine create and check for ${write.tableName}.${write.externalId}.`,
+          );
+        }
+        const internalId = reservationByPlan.get(write);
+        if (internalId === undefined) {
+          throw new Error(`Failed to reserve DynamoDB internal ID for ${write.tableName}.`);
+        }
+        transactionActions.push(...this.#createTransactItems(write, internalId));
+        continue;
+      }
+
+      if (!this.#writePreconditionsPass(write, group.checks, existingRow)) {
+        return { success: false };
+      }
+
+      if (write.kind === "update") {
+        if (!existingRow) {
+          continue;
+        }
+        transactionActions.push(this.#updateTransactItem(write, existingRow, group.checks));
+        continue;
+      }
+
+      if (write.kind === "delete") {
+        if (!existingRow) {
+          continue;
+        }
+        transactionActions.push(...this.#deleteTransactItems(write, group.checks));
+        continue;
+      }
+    }
+
+    for (const plan of plans) {
+      if (plan.kind === "create") {
+        createdInternalIds.push(reservationByPlan.get(plan) ?? null);
+      }
+    }
+
+    return { success: true, transactionActions, createdInternalIds };
+  }
+
+  async #readExistingRows(
+    groups: Map<string, RowMutationGroup>,
+  ): Promise<Map<string, ExistingRow>> {
+    const rows = new Map<string, ExistingRow>();
+    for (const group of groups.values()) {
+      if (group.writes[0]?.kind === "create") {
+        continue;
+      }
+      const plan = group.writes[0] ?? group.checks[0];
+      if (!plan) {
+        continue;
+      }
+      const row = await this.#getExistingRow(plan.layout.baseTableName, group.externalId);
+      if (row) {
+        rows.set(group.key, row);
+      }
+    }
+    return rows;
+  }
+
+  async #getExistingRow(baseTableName: string, externalId: string): Promise<ExistingRow | null> {
+    const result = (await this.#client.send(
+      new GetCommand({
+        TableName: baseTableName,
+        Key: { pk: externalId },
+        ConsistentRead: true,
+      }),
+    )) as { Item?: BaseRowItem };
+
+    if (!result.Item) {
+      return null;
+    }
+    return normalizeExistingRow(result.Item, baseTableName, externalId);
+  }
+
+  #checksPass(checks: readonly DynamoDBCheckPlan[], row: ExistingRow | null | undefined): boolean {
+    if (checks.length === 0) {
+      return true;
+    }
+    if (!row) {
+      return false;
+    }
+    return checks.every((check) => row._version === check.expectedVersion);
+  }
+
+  #writePreconditionsPass(
+    write: DynamoDBUpdatePlan | DynamoDBDeletePlan,
+    checks: readonly DynamoDBCheckPlan[],
+    row: ExistingRow | null | undefined,
+  ): boolean {
+    if (!row) {
+      return write.expectedVersion === undefined && checks.length === 0;
+    }
+    if (write.expectedVersion !== undefined && row._version !== write.expectedVersion) {
+      return false;
+    }
+    return this.#checksPass(checks, row);
+  }
+
+  #checkTransactItem(plan: DynamoDBCheckPlan): TransactionAction {
+    return {
+      conditionFailure: "occ",
+      item: {
+        ConditionCheck: {
+          TableName: plan.layout.baseTableName,
+          Key: { pk: plan.externalId },
+          ConditionExpression: "attribute_exists(#pk) AND #version = :expectedVersion",
+          ExpressionAttributeNames: { "#pk": "pk", "#version": "_version" },
+          ExpressionAttributeValues: { ":expectedVersion": plan.expectedVersion },
+        },
+      },
+    };
+  }
+
+  #updateTransactItem(
+    plan: DynamoDBUpdatePlan,
+    existingRow: ExistingRow,
+    checks: readonly DynamoDBCheckPlan[],
+  ): TransactionAction {
+    const forbiddenColumn = Object.keys(plan.set).find(
+      (columnName) =>
+        columnName === "id" || columnName === "_internalId" || columnName === "_version",
+    );
+    if (forbiddenColumn) {
+      throw new Error(
+        `DynamoDB update cannot change managed column ${plan.tableName}.${forbiddenColumn}.`,
+      );
+    }
+
+    const expressionAttributeNames: Record<string, string> = {
+      "#pk": "pk",
+      "#version": "_version",
+    };
+    const expressionAttributeValues: Record<string, unknown> = {
+      ":versionIncrement": 1,
+    };
+    const setExpressions = ["#version = #version + :versionIncrement"];
+
+    let index = 0;
+    for (const [columnName, value] of Object.entries(plan.set)) {
+      index += 1;
+      const nameKey = `#set${index}`;
+      const valueKey = `:set${index}`;
+      expressionAttributeNames[nameKey] = columnName;
+      expressionAttributeValues[valueKey] = value;
+      setExpressions.push(`${nameKey} = ${valueKey}`);
+    }
+
+    const expectedVersion = coalescedExpectedVersion(plan, checks);
+    const condition =
+      expectedVersion === undefined
+        ? "attribute_exists(#pk)"
+        : "attribute_exists(#pk) AND #version = :expectedVersion";
+    if (expectedVersion !== undefined) {
+      expressionAttributeValues[":expectedVersion"] = expectedVersion;
+    }
+
+    const nextRow = { ...existingRow, ...plan.set, _version: existingRow._version + 1 };
+    assertDynamoDBItemSize(nextRow);
+
+    return {
+      conditionFailure: "occ",
+      item: {
+        Update: {
+          TableName: plan.layout.baseTableName,
+          Key: { pk: plan.externalId },
+          UpdateExpression: `SET ${setExpressions.join(", ")}`,
+          ConditionExpression: condition,
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
+        },
+      },
+    };
+  }
+
+  #deleteTransactItems(
+    plan: DynamoDBDeletePlan,
+    checks: readonly DynamoDBCheckPlan[],
+  ): TransactionAction[] {
+    const expressionAttributeValues: Record<string, unknown> = {};
+    const expressionAttributeNames = { "#pk": "pk", "#version": "_version" };
+    const expectedVersion = coalescedExpectedVersion(plan, checks);
+    const condition =
+      expectedVersion === undefined
+        ? "attribute_exists(#pk)"
+        : "attribute_exists(#pk) AND #version = :expectedVersion";
+    if (expectedVersion !== undefined) {
+      expressionAttributeValues[":expectedVersion"] = expectedVersion;
+    }
+
+    return [
+      {
+        conditionFailure: "occ",
+        item: {
+          Delete: {
+            TableName: plan.layout.baseTableName,
+            Key: { pk: plan.externalId },
+            ConditionExpression: condition,
+            ExpressionAttributeNames:
+              expectedVersion === undefined ? { "#pk": "pk" } : expressionAttributeNames,
+            ...(Object.keys(expressionAttributeValues).length > 0
+              ? { ExpressionAttributeValues: expressionAttributeValues }
+              : {}),
+          },
+        },
+      },
+      {
+        conditionFailure: "constraint",
+        item: {
+          Delete: {
+            TableName: plan.layout.indexTableName,
+            Key: {
+              pk: `idx#${PRIMARY_INDEX_NAME}`,
+              sk: createPrimaryIndexSortKey(plan),
+            },
+          },
+        },
+      },
+    ];
+  }
+
   async #reserveInternalIds(plans: readonly DynamoDBCreatePlan[]): Promise<CreateReservation[]> {
     const byBaseTable = new Map<string, DynamoDBCreatePlan[]>();
     for (const plan of plans) {
@@ -245,7 +532,10 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
             UpdateExpression: "SET #value = :next",
             ConditionExpression:
               currentValue === undefined ? "attribute_not_exists(#pk)" : "#value = :current",
-            ExpressionAttributeNames: { "#pk": "pk", "#value": "value" },
+            ExpressionAttributeNames:
+              currentValue === undefined
+                ? { "#pk": "pk", "#value": "value" }
+                : { "#value": "value" },
             ExpressionAttributeValues:
               currentValue === undefined
                 ? { ":next": next.toString() }
@@ -282,7 +572,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     return value;
   }
 
-  #createTransactItems(plan: DynamoDBCreatePlan, internalId: bigint): object[] {
+  #createTransactItems(plan: DynamoDBCreatePlan, internalId: bigint): TransactionAction[] {
     const baseRow: BaseRowItem = {
       pk: plan.externalId,
       ...plan.item,
@@ -297,19 +587,25 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
 
     return [
       {
-        Put: {
-          TableName: plan.layout.baseTableName,
-          Item: baseRow,
-          ConditionExpression: "attribute_not_exists(#pk)",
-          ExpressionAttributeNames: { "#pk": "pk" },
+        conditionFailure: "constraint",
+        item: {
+          Put: {
+            TableName: plan.layout.baseTableName,
+            Item: baseRow,
+            ConditionExpression: "attribute_not_exists(#pk)",
+            ExpressionAttributeNames: { "#pk": "pk" },
+          },
         },
       },
       {
-        Put: {
-          TableName: plan.layout.indexTableName,
-          Item: primaryIndexEntry,
-          ConditionExpression: "attribute_not_exists(#pk) AND attribute_not_exists(#sk)",
-          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+        conditionFailure: "constraint",
+        item: {
+          Put: {
+            TableName: plan.layout.indexTableName,
+            Item: primaryIndexEntry,
+            ConditionExpression: "attribute_not_exists(#pk) AND attribute_not_exists(#sk)",
+            ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          },
         },
       },
     ];
@@ -327,17 +623,97 @@ function createPrimaryIndexEntry(
   plan: DynamoDBCreatePlan,
   internalId: bigint,
 ): DynamoDBIndexEntryItem {
-  const idColumn = plan.table.getIdColumn();
-  const sk = encodeDynamoDBIndexEntry(
-    [{ column: idColumn, value: plan.externalId }],
-    plan.externalId,
-  );
+  const sk = createPrimaryIndexSortKey(plan);
   return {
     pk: `idx#${PRIMARY_INDEX_NAME}`,
     sk,
     externalId: decodeDynamoDBIndexEntry(sk).externalId,
     internalId: internalId.toString(),
   };
+}
+
+function createPrimaryIndexSortKey(plan: DynamoDBCreatePlan | DynamoDBDeletePlan): string {
+  const idColumn = plan.table.getIdColumn();
+  return encodeDynamoDBIndexEntry([{ column: idColumn, value: plan.externalId }], plan.externalId);
+}
+
+function groupMutationsByRow(plans: readonly DynamoDBCommandPlan[]): Map<string, RowMutationGroup> {
+  const groups = new Map<string, RowMutationGroup>();
+
+  for (const plan of plans) {
+    if (plan.kind === "find" || plan.kind === "count") {
+      throw new Error(`DynamoDB ${plan.kind} plan cannot be executed in mutation phase.`);
+    }
+
+    const key = mutationRowKey(plan);
+    const group = groups.get(key) ?? {
+      key,
+      tableName: plan.tableName,
+      externalId: plan.externalId,
+      writes: [],
+      checks: [],
+    };
+
+    if (plan.kind === "check") {
+      if (group.checks.some((check) => check.expectedVersion !== plan.expectedVersion)) {
+        throw new Error(
+          `DynamoDB mutation batch contains conflicting checks for ${plan.tableName}.${plan.externalId}.`,
+        );
+      }
+      group.checks.push(plan);
+    } else {
+      group.writes.push(plan);
+      if (group.writes.length > 1) {
+        throw new Error(
+          `DynamoDB mutation batch contains multiple writes to ${plan.tableName}.${plan.externalId}; DynamoDB transactions cannot target the same item more than once.`,
+        );
+      }
+    }
+
+    groups.set(key, group);
+  }
+
+  return groups;
+}
+
+function mutationRowKey(
+  plan: DynamoDBCreatePlan | DynamoDBUpdatePlan | DynamoDBDeletePlan | DynamoDBCheckPlan,
+): string {
+  return `${plan.layout.baseTableName}\0${plan.externalId}`;
+}
+
+function normalizeExistingRow(
+  item: BaseRowItem,
+  baseTableName: string,
+  externalId: string,
+): ExistingRow {
+  if (typeof item.pk !== "string") {
+    throw new Error(`DynamoDB row ${baseTableName}.${externalId} has invalid pk.`);
+  }
+  if (typeof item._internalId !== "string") {
+    throw new Error(`DynamoDB row ${baseTableName}.${externalId} has invalid _internalId.`);
+  }
+  if (typeof item._version !== "number") {
+    throw new Error(`DynamoDB row ${baseTableName}.${externalId} has invalid _version.`);
+  }
+  return item as ExistingRow;
+}
+
+function coalescedExpectedVersion(
+  plan: DynamoDBUpdatePlan | DynamoDBDeletePlan,
+  checks: readonly DynamoDBCheckPlan[],
+): number | undefined {
+  const checkVersion = checks[0]?.expectedVersion;
+  if (
+    plan.expectedVersion !== undefined &&
+    checkVersion !== undefined &&
+    plan.expectedVersion !== checkVersion
+  ) {
+    throw new Error(
+      `DynamoDB mutation batch contains conflicting expected versions for ${plan.tableName}.${plan.externalId}.`,
+    );
+  }
+  return plan.expectedVersion ?? checkVersion;
 }
 
 function selectDynamoDBRow(
@@ -513,4 +889,51 @@ function evaluateStringComparison(left: string, operator: Operator, right: strin
 
 function isConditionalCheckFailed(error: unknown): boolean {
   return error instanceof Error && error.name === "ConditionalCheckFailedException";
+}
+
+function isOccTransactionCancellation(
+  error: unknown,
+  actions: readonly TransactionAction[],
+): boolean {
+  if (!(error instanceof Error) || error.name !== "TransactionCanceledException") {
+    return false;
+  }
+
+  const reasons = getCancellationReasons(error);
+  if (reasons.length === actions.length) {
+    let hasOccFailure = false;
+    for (let index = 0; index < reasons.length; index += 1) {
+      const reason = reasons[index];
+      if (!reason || reason.Code === "None") {
+        continue;
+      }
+      if (reason.Code !== "ConditionalCheckFailed") {
+        return false;
+      }
+      if (actions[index]?.conditionFailure === "constraint") {
+        return false;
+      }
+      hasOccFailure = true;
+    }
+    return hasOccFailure;
+  }
+
+  return (
+    actions.some((action) => action.conditionFailure === "occ") &&
+    actions.every((action) => action.conditionFailure === "occ")
+  );
+}
+
+function getCancellationReasons(error: Error): Array<{ Code?: string }> {
+  const reasons = (error as Error & { CancellationReasons?: unknown }).CancellationReasons;
+  if (!Array.isArray(reasons)) {
+    return [];
+  }
+  return reasons.filter(
+    (reason): reason is { Code?: string } =>
+      typeof reason === "object" &&
+      reason !== null &&
+      (!Object.prototype.hasOwnProperty.call(reason, "Code") ||
+        typeof (reason as { Code?: unknown }).Code === "string"),
+  );
 }

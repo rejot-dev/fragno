@@ -114,7 +114,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
   override compileFind(
     op: RetrievalOperation<AnySchema> & { type: "find" },
   ): DynamoDBCommandPlan | null {
-    const condition = this.#compileCondition(op.table, op.options.where);
+    const condition = this.#compileFindCondition(op);
     if (condition === false) {
       return null;
     }
@@ -233,6 +233,15 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
       table,
       layout: layout.getTableLayout(table),
     };
+  }
+
+  #compileFindCondition(
+    op: RetrievalOperation<AnySchema> & { type: "find" },
+  ): Condition | undefined | false {
+    if (op.options.queryTree?.where) {
+      return op.options.queryTree.where;
+    }
+    return this.#compileCondition(op.table, op.options.where);
   }
 
   #compileCondition(
