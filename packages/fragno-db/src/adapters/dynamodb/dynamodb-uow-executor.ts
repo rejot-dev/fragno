@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
+import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { createId } from "../../id";
 import {
@@ -225,6 +226,9 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       if (isOccTransactionCancellation(error, transactionActions)) {
         return { success: false };
       }
+      if (isConstraintTransactionCancellation(error, transactionActions)) {
+        throw new DatabaseConstraintError({ kind: "unique", cause: error });
+      }
       throw error;
     }
 
@@ -265,7 +269,13 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return this.#executeQueryTreeFind(plan, plan.queryTree);
     }
 
-    this.#assertQuerySupported(plan.table, plan.indexName, plan.condition);
+    this.#assertQuerySupported(
+      plan.table,
+      plan.indexName,
+      plan.condition,
+      Boolean(plan.after || plan.before),
+    );
+    const cursorPagination = createCursorPagination(plan);
     const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     const limit =
       plan.withCursor && plan.pageSize !== undefined ? plan.pageSize + 1 : plan.pageSize;
@@ -274,9 +284,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       layout: plan.layout,
       indexName: plan.indexName,
       orderDirection: plan.orderDirection,
-      exclusiveStartKey: createCursorExclusiveStartKey(plan),
+      exclusiveStartKey: cursorPagination.exclusiveStartKey,
       limit,
-      predicate: (row) => !condition || evaluateDynamoDBCondition(condition, plan.table, row),
+      predicate: (row) =>
+        (!cursorPagination.predicate || cursorPagination.predicate(row)) &&
+        (!condition || evaluateDynamoDBCondition(condition, plan.table, row)),
     });
 
     return rows.map((row) => selectDynamoDBRow(row, plan.table, plan.selectedColumns));
@@ -423,9 +435,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     table: AnyTable,
     indexName: string,
     condition: Condition | undefined,
+    hasCursor = false,
   ): void {
     if (
       this.#allowScans ||
+      hasCursor ||
       hasEqualityConditionForLeadingIndexColumn(table, indexName, condition)
     ) {
       return;
@@ -440,7 +454,13 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     plan: DynamoDBFindPlan,
     root: CompiledQueryTreeRootNode,
   ): Promise<DynamoDBRawRow[]> {
-    this.#assertQuerySupported(root.table, root.useIndex, root.where);
+    this.#assertQuerySupported(
+      root.table,
+      root.useIndex,
+      root.where,
+      Boolean(plan.after || plan.before),
+    );
+    const cursorPagination = createCursorPagination(plan);
     const condition = await this.#resolveReferenceCondition(plan, root.where);
     const limit =
       plan.withCursor && root.pageSize !== undefined ? root.pageSize + 1 : root.pageSize;
@@ -449,9 +469,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       layout: plan.layout,
       indexName: root.useIndex,
       orderDirection: root.orderByIndex?.direction ?? plan.orderDirection,
-      exclusiveStartKey: createCursorExclusiveStartKey(plan),
+      exclusiveStartKey: cursorPagination.exclusiveStartKey,
       limit,
-      predicate: (row) => !condition || evaluateDynamoDBCondition(condition, root.table, row),
+      predicate: (row) =>
+        (!cursorPagination.predicate || cursorPagination.predicate(row)) &&
+        (!condition || evaluateDynamoDBCondition(condition, root.table, row)),
     });
 
     const rawRows: DynamoDBRawRow[] = [];
@@ -901,15 +923,19 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
 
     const outboxPlans = [
       ...payload.mutations.map((mutation) =>
-        this.#createInternalCreatePlan("fragno_db_outbox_mutations", {
-          entryVersionstamp: versionstamp,
-          mutationVersionstamp: mutation.versionstamp,
-          uowId,
-          schema: mutation.schema,
-          table: mutation.table,
-          externalId: mutation.externalId,
-          op: mutation.op,
-        }),
+        this.#createInternalCreatePlan(
+          "fragno_db_outbox_mutations",
+          {
+            entryVersionstamp: versionstamp,
+            mutationVersionstamp: mutation.versionstamp,
+            uowId,
+            schema: mutation.schema,
+            table: mutation.table,
+            externalId: mutation.externalId,
+            op: mutation.op,
+          },
+          `outbox_mutation_${mutation.versionstamp}`,
+        ),
       ),
       this.#createInternalCreatePlan("fragno_db_outbox", {
         versionstamp,
@@ -991,6 +1017,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   #createInternalCreatePlan(
     tableName: "fragno_db_outbox" | "fragno_db_outbox_mutations",
     values: Record<string, unknown>,
+    externalId = createId(),
   ): DynamoDBCreatePlan {
     const table = internalSchema.tables[tableName];
     const layout = this.#internalTableLayouts[tableName];
@@ -1005,7 +1032,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       table,
       layout,
       tableLayouts: this.#internalTableLayouts,
-      externalId: createId(),
+      externalId,
       item: encodeDynamoDBCreateItem(values, table),
     };
   }
@@ -1095,9 +1122,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
 
     const row = await this.#getExistingRow(layout.baseTableName, reference.externalIdValue);
     if (!row) {
-      throw new Error(
-        `Foreign key constraint violation: referenced row ${reference.referencedTable.name}.${reference.externalIdValue} was not found.`,
-      );
+      throw new DatabaseConstraintError({
+        kind: "foreign-key",
+        table: reference.referencedTable.name,
+        message: `Foreign key constraint violation: referenced row ${reference.referencedTable.name}.${reference.externalIdValue} was not found.`,
+      });
     }
     return BigInt(row._internalId);
   }
@@ -1564,31 +1593,100 @@ function coalescedExpectedVersion(
   return plan.expectedVersion ?? checkVersion;
 }
 
-function createCursorExclusiveStartKey(
-  plan: DynamoDBFindPlan,
-): Record<string, unknown> | undefined {
-  if (plan.before) {
-    throw new Error("DynamoDB before cursor pagination is not implemented yet.");
-  }
-  if (!plan.after) {
-    return undefined;
+function createCursorPagination(plan: DynamoDBFindPlan): {
+  exclusiveStartKey?: Record<string, unknown>;
+  predicate?: (row: DynamoDBRawRow) => boolean;
+} {
+  const encodedCursor = plan.after ?? plan.before;
+  if (!encodedCursor) {
+    return {};
   }
 
-  const cursor = decodeCursor(plan.after);
-  const indexColumns = getIndexColumns(plan.table, plan.indexName);
-  const externalId = getCursorExternalId(plan, cursor.indexValues);
-  const segments = indexColumns.map((column) => ({
-    column,
-    value: coerceCursorIndexValue(cursor.indexValues[column.name], column),
-  }));
+  const cursor = decodeCursor(encodedCursor);
+  const tiebreaker = getCursorExternalId(plan, cursor.indexValues);
+  const hasPreciseStartKey = plan.after && tiebreaker !== undefined;
 
+  if (hasPreciseStartKey) {
+    return {
+      exclusiveStartKey: {
+        pk: `idx#${plan.indexName}`,
+        sk: createCursorComparisonKey(plan, cursor.indexValues, tiebreaker),
+      },
+    };
+  }
+
+  const boundary = plan.before ? "before" : "after";
+  const cursorKey = createCursorComparisonKey(plan, cursor.indexValues, tiebreaker);
+  const direction = cursor.orderDirection;
   return {
-    pk: `idx#${plan.indexName}`,
-    sk: encodeDynamoDBIndexEntry(segments, externalId),
+    predicate: (row) => {
+      const rowKey = createRowComparisonKey(
+        plan.table,
+        plan.indexName,
+        row,
+        tiebreaker !== undefined,
+      );
+      const comparison = rowKey.localeCompare(cursorKey);
+      if (boundary === "after") {
+        return direction === "asc" ? comparison > 0 : comparison < 0;
+      }
+      return direction === "asc" ? comparison < 0 : comparison > 0;
+    },
   };
 }
 
-function getCursorExternalId(plan: DynamoDBFindPlan, indexValues: Record<string, unknown>): string {
+function createCursorComparisonKey(
+  plan: DynamoDBFindPlan,
+  indexValues: Record<string, unknown>,
+  externalId: string | undefined,
+): string {
+  const indexColumns = getIndexColumns(plan.table, plan.indexName);
+  const segments = indexColumns.map((column) => ({
+    column,
+    value: coerceCursorIndexValue(cursorValueForColumn(indexValues, column), column),
+  }));
+  if (externalId !== undefined) {
+    return encodeDynamoDBIndexEntry(segments, externalId);
+  }
+  return encodeDynamoDBIndexTuple(segments);
+}
+
+function createRowComparisonKey(
+  table: AnyTable,
+  indexName: string,
+  row: DynamoDBRawRow,
+  includeExternalId: boolean,
+): string {
+  const segments = getIndexColumns(table, indexName).map((column) => ({
+    column,
+    value: row[column.name],
+  }));
+  if (includeExternalId) {
+    return encodeDynamoDBIndexEntry(segments, getRowExternalId(row, table));
+  }
+  return encodeDynamoDBIndexTuple(segments);
+}
+
+function cursorValueForColumn(indexValues: Record<string, unknown>, column: AnyColumn): unknown {
+  if (!Object.prototype.hasOwnProperty.call(indexValues, column.name)) {
+    throw new Error(`Cursor is missing value for DynamoDB index column ${column.name}.`);
+  }
+  return indexValues[column.name];
+}
+
+function getRowExternalId(row: DynamoDBRawRow, table: AnyTable): string {
+  const idColumnName = table.getIdColumn().name;
+  const value = row[idColumnName] ?? row["pk"];
+  if (typeof value !== "string") {
+    throw new Error(`DynamoDB row for ${table.name} is missing external ID.`);
+  }
+  return value;
+}
+
+function getCursorExternalId(
+  plan: DynamoDBFindPlan,
+  indexValues: Record<string, unknown>,
+): string | undefined {
   const tiebreaker = indexValues["__fragnoExternalId"];
   if (typeof tiebreaker === "string") {
     return tiebreaker;
@@ -1599,9 +1697,7 @@ function getCursorExternalId(plan: DynamoDBFindPlan, indexValues: Record<string,
       return value;
     }
   }
-  throw new Error(
-    `DynamoDB cursor for ${plan.tableName}.${plan.indexName} is missing its external ID tiebreaker.`,
-  );
+  return undefined;
 }
 
 function getIndexColumns(table: AnyTable, indexName: string): AnyColumn[] {
@@ -1921,6 +2017,32 @@ function evaluateStringComparison(left: string, operator: Operator, right: strin
 
 function isConditionalCheckFailed(error: unknown): boolean {
   return error instanceof Error && error.name === "ConditionalCheckFailedException";
+}
+
+function isConstraintTransactionCancellation(
+  error: unknown,
+  actions: readonly TransactionAction[],
+): boolean {
+  if (!(error instanceof Error) || error.name !== "TransactionCanceledException") {
+    return false;
+  }
+
+  const reasons = getCancellationReasons(error);
+  if (reasons.length === actions.length) {
+    for (let index = 0; index < reasons.length; index += 1) {
+      const reason = reasons[index];
+      if (!reason || reason.Code === "None") {
+        continue;
+      }
+      return (
+        reason.Code === "ConditionalCheckFailed" &&
+        actions[index]?.conditionFailure === "constraint"
+      );
+    }
+    return false;
+  }
+
+  return actions.some((action) => action.conditionFailure === "constraint");
 }
 
 function isOccTransactionCancellation(

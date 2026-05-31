@@ -25,7 +25,9 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "outputs": []
+      "outputs": [],
+      "env": ["FRAGNO_DYNAMODB_ENDPOINT", "AWS_REGION"],
+      "passThroughEnv": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     },
     "test:watch": {
       "cache": false,

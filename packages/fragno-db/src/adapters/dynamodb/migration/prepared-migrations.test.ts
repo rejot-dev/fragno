@@ -39,7 +39,7 @@ describeDynamoDBLocal("DynamoDB migrations", () => {
     await expect(adapter.getSchemaVersion("shop")).resolves.toBe(String(migrationSchema.version));
     await expect(adapter.isConnectionHealthy()).resolves.toBe(true);
 
-    const tables = (await client.send(new ListTablesCommand({}))).TableNames ?? [];
+    const tables = await listAllTableNames(client);
     expect(tables).toEqual(
       expect.arrayContaining([
         layout.settingsTableName,
@@ -92,3 +92,18 @@ describeDynamoDBLocal("DynamoDB migrations", () => {
     ]);
   });
 });
+
+async function listAllTableNames(client: {
+  send(command: object): Promise<unknown>;
+}): Promise<string[]> {
+  const tables: string[] = [];
+  let exclusiveStartTableName: string | undefined;
+  do {
+    const result = (await client.send(
+      new ListTablesCommand({ ExclusiveStartTableName: exclusiveStartTableName }),
+    )) as { TableNames?: string[]; LastEvaluatedTableName?: string };
+    tables.push(...(result.TableNames ?? []));
+    exclusiveStartTableName = result.LastEvaluatedTableName;
+  } while (exclusiveStartTableName);
+  return tables;
+}

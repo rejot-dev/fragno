@@ -3,11 +3,12 @@ title: Database Adapter
 description: Configure SqlAdapter, schema outputs, and driver configs
 ---
 
-Fragno uses a single runtime adapter for SQL databases: `SqlAdapter`.
+Fragno's default runtime adapter for SQL databases is `SqlAdapter`. Fragno also provides a DynamoDB
+runtime adapter for applications that want to store fragment data in AWS DynamoDB.
 
-At runtime, Fragno **always executes SQL via a Kysely `Dialect`**. Drizzle and Prisma are **schema
-output workflows**: the Fragno CLI can generate Drizzle or Prisma schema files, but the runtime
-adapter is still `SqlAdapter` + Kysely `Dialect` + a `DriverConfig`.
+For SQL databases, Fragno **always executes SQL via a Kysely `Dialect`**. Drizzle and Prisma are
+**schema output workflows**: the Fragno CLI can generate Drizzle or Prisma schema files, but the
+runtime adapter is still `SqlAdapter` + Kysely `Dialect` + a `DriverConfig`.
 
 ## Adapter setup
 
@@ -124,7 +125,17 @@ export const adapter = new SqlAdapter({
 });
 ```
 
+## DynamoDB
+
+Use `DynamoDBAdapter` from `@fragno-dev/db/adapters/dynamodb` when fragment data should live in AWS
+DynamoDB instead of a SQL database. The adapter uses a configured AWS SDK `DynamoDBDocumentClient`
+and creates Fragno base/index/settings tables during migrations.
+
+See [DynamoDB Adapter](/docs/fragno/for-users/database-fragments/dynamodb) for setup, limits, and
+local testing notes.
+
 ## Next steps
 
 - [Database fragments overview](/docs/fragno/for-users/database-fragments/overview)
+- [DynamoDB Adapter](/docs/fragno/for-users/database-fragments/dynamodb)
 - [CLI Reference](/docs/reference/cli)

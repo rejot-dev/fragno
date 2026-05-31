@@ -799,7 +799,7 @@ Tests:
 
 ### Slice 10 — Shared conformance, docs, and examples
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: all.
 

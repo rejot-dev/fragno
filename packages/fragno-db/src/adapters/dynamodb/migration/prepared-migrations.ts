@@ -74,12 +74,28 @@ export function createDynamoDBPreparedMigrations(
     validateVersions(config.schema, fromVersion, targetVersion);
 
     await ensureSettingsTable(client, layout.settingsTableName);
-    for (const tableLayout of layout.getAllTableLayouts()) {
-      await ensureBaseTable(client, tableLayout.baseTableName);
-      await ensureIndexTable(client, tableLayout.indexTableName);
-    }
+    const tableLayouts = layout.getAllTableLayouts();
+    const tableResults = await Promise.all(
+      tableLayouts.flatMap((tableLayout) => [
+        ensureBaseTable(client, tableLayout.baseTableName).then((created) => ({
+          created,
+          kind: "base" as const,
+          tableName: tableLayout.baseTableName,
+        })),
+        ensureIndexTable(client, tableLayout.indexTableName).then((created) => ({
+          created,
+          kind: "index" as const,
+          tableName: tableLayout.indexTableName,
+        })),
+      ]),
+    );
+    const newlyCreatedBaseTables = new Set(
+      tableResults
+        .filter((result) => result.kind === "base" && result.created)
+        .map((result) => result.tableName),
+    );
 
-    await backfillIndexes(client, config.schema, layout);
+    await backfillIndexes(client, config.schema, layout, newlyCreatedBaseTables);
 
     const updateVersion = options?.updateVersionInMigration ?? defaultUpdateVersion;
     if (updateVersion && targetVersion !== fromVersion) {
@@ -115,8 +131,8 @@ export function createDynamoDBPreparedMigrations(
 async function ensureSettingsTable(
   client: DynamoDBSendableClient,
   tableName: string,
-): Promise<void> {
-  await ensureTable(
+): Promise<boolean> {
+  return ensureTable(
     client,
     tableName,
     [
@@ -130,8 +146,11 @@ async function ensureSettingsTable(
   );
 }
 
-async function ensureBaseTable(client: DynamoDBSendableClient, tableName: string): Promise<void> {
-  await ensureTable(
+async function ensureBaseTable(
+  client: DynamoDBSendableClient,
+  tableName: string,
+): Promise<boolean> {
+  return ensureTable(
     client,
     tableName,
     [{ AttributeName: "pk", AttributeType: "S" }],
@@ -139,8 +158,11 @@ async function ensureBaseTable(client: DynamoDBSendableClient, tableName: string
   );
 }
 
-async function ensureIndexTable(client: DynamoDBSendableClient, tableName: string): Promise<void> {
-  await ensureTable(
+async function ensureIndexTable(
+  client: DynamoDBSendableClient,
+  tableName: string,
+): Promise<boolean> {
+  return ensureTable(
     client,
     tableName,
     [
@@ -159,10 +181,10 @@ async function ensureTable(
   tableName: string,
   attributeDefinitions: { AttributeName: string; AttributeType: "S" }[],
   keySchema: { AttributeName: string; KeyType: "HASH" | "RANGE" }[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     await client.send(new DescribeTableCommand({ TableName: tableName }));
-    return;
+    return false;
   } catch (error) {
     if (!isResourceNotFound(error)) {
       throw error;
@@ -177,15 +199,20 @@ async function ensureTable(
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
+  return true;
 }
 
 async function backfillIndexes(
   client: DynamoDBSendableClient,
   schema: AnySchema,
   layout: DynamoDBLayout,
+  newlyCreatedBaseTables: ReadonlySet<string>,
 ): Promise<void> {
   for (const table of Object.values(schema.tables)) {
     const tableLayout = layout.getTableLayout(table);
+    if (newlyCreatedBaseTables.has(tableLayout.baseTableName)) {
+      continue;
+    }
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     do {
       const result = (await client.send(
@@ -264,11 +291,15 @@ async function writeSchemaVersion(
       TableName: layout.settingsTableName,
       Item: {
         pk: SETTINGS_KEY,
-        sk: layout.namespace,
+        sk: toDynamoDBSettingsNamespace(layout.namespace),
         value: version,
       },
     }),
   );
+}
+
+function toDynamoDBSettingsNamespace(namespace: string): string {
+  return namespace === "" ? "empty" : namespace;
 }
 
 async function getSchemaVersion(
@@ -280,7 +311,7 @@ async function getSchemaVersion(
     const result = (await client.send(
       new GetCommand({
         TableName: settingsTableName,
-        Key: { pk: SETTINGS_KEY, sk: namespace },
+        Key: { pk: SETTINGS_KEY, sk: toDynamoDBSettingsNamespace(namespace) },
         ConsistentRead: true,
       }),
     )) as { Item?: { value?: unknown } };

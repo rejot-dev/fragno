@@ -2,9 +2,10 @@
 
 Optional, ORM-agnostic database layer for Fragno libraries.
 
-Library authors define a type-safe schema; users plug in the SqlAdapter (configured with Kysely
-dialects) so data is written directly into their database. Schema output can be generated for SQL
-migrations, Drizzle, or Prisma workflows.
+Library authors define a type-safe schema; users plug in a runtime adapter so data is written
+directly into their database. SQL users use `SqlAdapter` with Kysely dialects. DynamoDB users can
+use `DynamoDBAdapter` with an AWS SDK `DynamoDBDocumentClient`. Schema output can be generated for
+SQL migrations, Drizzle, or Prisma workflows.
 
 Full docs live at
 [Database integration for library authors](https://fragno.dev/docs/fragno/for-library-authors/database-integration/overview).
@@ -155,10 +156,12 @@ Notes:
 
 ## ORM and database support
 
-`@fragno-dev/db` works with Kysely dialects for runtime execution and supports SQL migrations plus
-Drizzle or Prisma schema outputs.
+`@fragno-dev/db` works with Kysely dialects for SQL runtime execution and supports SQL migrations
+plus Drizzle or Prisma schema outputs.
 
-Backed by Postgres and SQLite, including PGLite and Cloudflare Durable Objects.
+Backed by Postgres and SQLite, including PGLite and Cloudflare Durable Objects. The package also
+ships a DynamoDB adapter at `@fragno-dev/db/adapters/dynamodb`; install `@aws-sdk/client-dynamodb`
+and `@aws-sdk/lib-dynamodb` when using it.
 
 ## Docs and examples
 

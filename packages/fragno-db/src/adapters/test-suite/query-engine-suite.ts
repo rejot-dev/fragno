@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -11,7 +11,11 @@ import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-po
 import { FragnoId, type AnySchema } from "../../schema/create";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DatabaseAdapter } from "../adapters";
-import { suiteCapability, type QueryEngineSuiteHarness } from "./query-engine-harness";
+import {
+  suiteCapability,
+  type QueryEngineSuiteContext,
+  type QueryEngineSuiteHarness,
+} from "./query-engine-harness";
 import { queryEngineSuiteSchema, queryEngineSuiteSecondarySchema } from "./query-engine-schema";
 
 const namespace = "query_engine_suite";
@@ -33,25 +37,44 @@ const registerSuiteSchema = (
 
 export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void {
   describe(`query engine contract: ${harness.name}`, () => {
-    const createContext = async () => {
+    let sharedContext: QueryEngineSuiteContext | undefined;
+
+    const prepareContext = async () => {
       const context = await harness.createAdapter();
       const adapterDriver =
         "driver" in context.adapter && context.adapter.driver instanceof SqlDriverAdapter
           ? context.adapter.driver
           : undefined;
-      if (context.adapter.prepareMigrations && adapterDriver) {
-        await context.adapter
-          .prepareMigrations(internalSchema, "")
-          .executeWithDriver(adapterDriver, 0);
-        await context.adapter
-          .prepareMigrations(queryEngineSuiteSchema, namespace)
-          .executeWithDriver(adapterDriver, 0);
-        await context.adapter
-          .prepareMigrations(queryEngineSuiteSecondarySchema, secondaryNamespace)
-          .executeWithDriver(adapterDriver, 0);
+      if (context.adapter.prepareMigrations) {
+        const migrations = [
+          context.adapter.prepareMigrations(internalSchema, ""),
+          context.adapter.prepareMigrations(queryEngineSuiteSchema, namespace),
+          context.adapter.prepareMigrations(queryEngineSuiteSecondarySchema, secondaryNamespace),
+        ];
+        for (const migration of migrations) {
+          if (adapterDriver) {
+            await migration.executeWithDriver(adapterDriver, 0);
+          } else {
+            await migration.execute(0);
+          }
+        }
       }
       return context;
     };
+
+    const createContext = async () => {
+      if (!harness.reuseContext) {
+        return prepareContext();
+      }
+
+      sharedContext ??= await prepareContext();
+      await harness.resetContext?.(sharedContext);
+      return { adapter: sharedContext.adapter, close: undefined };
+    };
+
+    afterAll(async () => {
+      await sharedContext?.close?.();
+    });
 
     it("creates, reads, updates, and joins basic rows", async () => {
       const { adapter, close } = await createContext();

@@ -1,4 +1,4 @@
 {
   "title": "Database Integration",
-  "pages": ["overview", "database-adapter"]
+  "pages": ["overview", "database-adapter", "dynamodb"]
 }
