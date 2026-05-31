@@ -96,7 +96,7 @@ function enableOutboxForNamespace(adapter: DynamoDBAdapter, namespace: string) {
 }
 
 async function listOutboxEntries(adapter: DynamoDBAdapter) {
-  const uow = adapter.createUnitOfWork(internalSchema, null);
+  const uow = adapter.createUnitOfWork(internalSchema, null, undefined, { allowScans: true });
   const withEntries = uow.find("fragno_db_outbox", (b) =>
     b.whereIndex("idx_outbox_versionstamp").orderByIndex("idx_outbox_versionstamp", "asc"),
   );

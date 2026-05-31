@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import type { AnyColumn, AnyTable } from "../../schema/create";
+import { DynamoDBItemSizeError } from "./errors";
 
 export type DynamoDBAttributeValue =
   | string
@@ -157,7 +158,7 @@ export function estimateDynamoDBItemSizeBytes(item: unknown): number {
 export function assertDynamoDBItemSize(item: unknown, maxBytes = 400 * 1024): void {
   const estimated = estimateDynamoDBItemSizeBytes(item);
   if (estimated > maxBytes) {
-    throw new Error(
+    throw new DynamoDBItemSizeError(
       `DynamoDB item is too large: estimated ${estimated} bytes exceeds ${maxBytes} bytes.`,
     );
   }

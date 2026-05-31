@@ -771,7 +771,7 @@ Tests:
 
 ### Slice 9 — Limits, validation, errors, and observability
 
-- [ ] Complete this slice.
+- [x] Complete this slice.
 
 Spec sections: 12.5, 16.
 

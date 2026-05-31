@@ -63,9 +63,15 @@ import type {
 import {
   assertDynamoDBItemSize,
   encodeDynamoDBValue,
+  estimateDynamoDBItemSizeBytes,
   type BaseRowItem,
   type DynamoDBAttributeValue,
 } from "./dynamodb-value-codec";
+import {
+  DynamoDBReadLimitError,
+  DynamoDBTransactionLimitError,
+  DynamoDBUnsupportedQueryError,
+} from "./errors";
 
 export interface DynamoDBUOWExecutorOptions {
   client: DynamoDBDocumentClient;
@@ -137,12 +143,14 @@ const OUTBOX_VERSION_PK = "outbox_version";
 const OUTBOX_VERSION_SK = "global";
 const PRIMARY_INDEX_NAME = "_primary";
 const DYNAMODB_TRANSACTION_ACTION_LIMIT = 100;
+const DYNAMODB_TRANSACTION_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
 
 export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, DynamoDBRawResult> {
   readonly #client: DynamoDBSendableClient;
   readonly #settingsTableName: string;
   readonly #consistentRead: boolean;
   readonly #maxFilteredReadPages: number;
+  readonly #allowScans: boolean;
   readonly #outbox?: OutboxConfig;
   readonly #internalTableLayouts: Record<string, DynamoDBTableLayout>;
 
@@ -151,6 +159,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     this.#settingsTableName = options.settingsTableName;
     this.#consistentRead = options.consistentRead ?? true;
     this.#maxFilteredReadPages = options.maxFilteredReadPages ?? 10;
+    this.#allowScans = options.allowScans ?? false;
     this.#outbox = options.outbox;
     this.#internalTableLayouts = options.internalTableLayouts ?? {};
   }
@@ -204,11 +213,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     if (transactionActions.length === 0) {
       return { success: true, createdInternalIds: preflight.createdInternalIds };
     }
-    if (transactionActions.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
-      throw new Error(
-        `DynamoDB transaction has ${transactionActions.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
-      );
-    }
+    assertDynamoDBTransactionLimits(transactionActions);
 
     try {
       await this.#client.send(
@@ -260,6 +265,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return this.#executeQueryTreeFind(plan, plan.queryTree);
     }
 
+    this.#assertQuerySupported(plan.table, plan.indexName, plan.condition);
     const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     const limit =
       plan.withCursor && plan.pageSize !== undefined ? plan.pageSize + 1 : plan.pageSize;
@@ -277,6 +283,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   }
 
   async #executeCount(plan: DynamoDBCountPlan): Promise<{ count: number }[]> {
+    this.#assertQuerySupported(plan.table, plan.indexName, plan.condition);
     if (!plan.condition) {
       const result = (await this.#client.send(
         new QueryCommand({
@@ -298,7 +305,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     do {
       pagesRead += 1;
       if (pagesRead > this.#maxFilteredReadPages) {
-        throw new Error(
+        throw new DynamoDBReadLimitError(
           `DynamoDB read limit exceeded for ${plan.tableName}.${plan.indexName}; increase maxFilteredReadPages to count more filtered pages.`,
         );
       }
@@ -375,7 +382,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     do {
       pagesRead += 1;
       if (pagesRead > this.#maxFilteredReadPages) {
-        throw new Error(
+        throw new DynamoDBReadLimitError(
           `DynamoDB read limit exceeded for ${options.table.name}.${options.indexName}; increase maxFilteredReadPages to read more filtered pages.`,
         );
       }
@@ -412,10 +419,28 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     return matchedRows;
   }
 
+  #assertQuerySupported(
+    table: AnyTable,
+    indexName: string,
+    condition: Condition | undefined,
+  ): void {
+    if (
+      this.#allowScans ||
+      hasEqualityConditionForLeadingIndexColumn(table, indexName, condition)
+    ) {
+      return;
+    }
+
+    throw new DynamoDBUnsupportedQueryError(
+      `DynamoDB query for ${table.name}.${indexName} requires an equality condition on the leading index column; set allowScans to true to permit bounded index scans.`,
+    );
+  }
+
   async #executeQueryTreeFind(
     plan: DynamoDBFindPlan,
     root: CompiledQueryTreeRootNode,
   ): Promise<DynamoDBRawRow[]> {
+    this.#assertQuerySupported(root.table, root.useIndex, root.where);
     const condition = await this.#resolveReferenceCondition(plan, root.where);
     const limit =
       plan.withCursor && root.pageSize !== undefined ? root.pageSize + 1 : root.pageSize;
@@ -465,6 +490,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     if (!layout) {
       throw new Error(`Missing DynamoDB layout for query-tree table ${child.table.name}.`);
     }
+    this.#assertQuerySupported(child.table, child.onIndexName, child.onIndex);
     const onIndex = await this.#resolveReferenceConditionForTable(child.table, plan, child.onIndex);
     const where = await this.#resolveReferenceConditionForTable(child.table, plan, child.where);
     const orderByDifferentIndex =
@@ -1187,6 +1213,61 @@ function createCreatedReferenceMap(
 
 function createdReferenceKey(layout: DynamoDBTableLayout, externalId: string): string {
   return `${layout.baseTableName}\0${externalId}`;
+}
+
+function assertDynamoDBTransactionLimits(actions: readonly TransactionAction[]): void {
+  if (actions.length > DYNAMODB_TRANSACTION_ACTION_LIMIT) {
+    throw new DynamoDBTransactionLimitError(
+      `DynamoDB transaction has ${actions.length} actions; maximum is ${DYNAMODB_TRANSACTION_ACTION_LIMIT}.`,
+    );
+  }
+
+  const estimatedBytes = estimateDynamoDBItemSizeBytes(actions.map((action) => action.item));
+  if (estimatedBytes > DYNAMODB_TRANSACTION_SIZE_LIMIT_BYTES) {
+    throw new DynamoDBTransactionLimitError(
+      `DynamoDB transaction is too large: estimated ${estimatedBytes} bytes exceeds ${DYNAMODB_TRANSACTION_SIZE_LIMIT_BYTES} bytes.`,
+    );
+  }
+}
+
+function hasEqualityConditionForLeadingIndexColumn(
+  table: AnyTable,
+  indexName: string,
+  condition: Condition | undefined,
+): boolean {
+  const leadingColumnName = getLeadingIndexColumnName(table, indexName);
+  return (
+    leadingColumnName !== undefined && conditionHasLeadingEquality(condition, leadingColumnName)
+  );
+}
+
+function getLeadingIndexColumnName(table: AnyTable, indexName: string): string | undefined {
+  if (indexName === PRIMARY_INDEX_NAME) {
+    return table.getIdColumn().name;
+  }
+  return table.indexes[indexName]?.columnNames[0];
+}
+
+function conditionHasLeadingEquality(
+  condition: Condition | undefined,
+  leadingColumnName: string,
+): boolean {
+  if (!condition) {
+    return false;
+  }
+  switch (condition.type) {
+    case "compare":
+      return (
+        condition.a.name === leadingColumnName &&
+        (condition.operator === "=" || condition.operator === "is")
+      );
+    case "and":
+      return condition.items.some((item) => conditionHasLeadingEquality(item, leadingColumnName));
+    case "or":
+      return condition.items.every((item) => conditionHasLeadingEquality(item, leadingColumnName));
+    case "not":
+      return false;
+  }
 }
 
 function encodeDynamoDBCreateItem(
