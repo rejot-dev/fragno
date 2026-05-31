@@ -1,190 +1,65 @@
-# Correctness Test TODO (Expanded)
-
-This checklist captures **additional correctness scenarios** beyond the current smoke tests. Each
-item includes what to test, how to provoke the situation, and what invariants must hold.
-
-## [x] 1) Clock Skew / Time Drift Between Dispatchers
-
-**Goal:** Ensure leases, retries, and timeouts are robust when runner clocks disagree.
-
-**How to test**
-
-- Run 2+ dispatchers with different time offsets (e.g., `date` manipulation with `libfaketime` or
-  containerized clocks).
-- Use workflows with: retry/backoff (`parallel-steps-workflow`) and timeouts
-  (`wait-timeout-workflow`).
-- Force one dispatcher to be +60s ahead and another -60s behind.
-
-**Expected invariants**
-
-- No tasks are permanently stalled due to clock skew.
-- Retry/backoff remains bounded (no immediate rapid retries or excessive delays).
-- `waitForEvent` timeouts are respected relative to the **workflow’s own schedule**, not dependent
-  on which dispatcher happens to run the timeout tick.
-
-## [x] 2) Event Duplication / Idempotency
-
-**Goal:** Ensure duplicate events do not cause duplicate step executions or multiple completions.
-
-**How to test**
-
-- Send identical events (same `type` + same payload) multiple times to the same instance, including
-  while it is paused and immediately after resume.
-- Mix duplicates around restart boundaries (send duplicate approval for run 0, then restart, then
-  duplicates for run 1).
-
-**Expected invariants**
-
-- At most one event is consumed per `waitForEvent` step.
-- Step history should show a single wait step completion.
-- No duplicate outputs or double-complete states.
-
-## [x] 3) History Pagination / Cursor Correctness
-
-**Goal:** Ensure `/history` pagination does not drop or duplicate steps/events/logs.
-
-**How to test**
-
-- Create workflows with many steps and events (scripted).
-- Fetch history with small `pageSize` and walk cursors forward and backward.
-- Compare the full aggregated list to a direct DB query.
-
-**Expected invariants**
-
-- Full history reconstructed from cursors matches DB source (no gaps, no duplicates).
-- Ordering remains consistent with `order=asc|desc`.
-
-## [x] 4) Retention / GC Correctness
-
-**Goal:** Ensure completed instances are retained/removed according to retention policy without
-orphan rows.
-
-**How to test**
-
-- Configure a short retention window (if supported).
-- Complete instances, wait beyond retention, run GC (if manual).
-- Inspect DB tables for orphaned steps/events/tasks/logs.
-
-**Expected invariants**
-
-- After GC, no `workflow_step`, `workflow_event`, or `workflow_task` rows remain without a matching
-  instance.
-- Instances within retention are preserved.
-
-## [x] 5) Large Payload Handling
-
-**Goal:** Verify large params/event/output payloads are stored and retrieved correctly.
-
-**How to test**
-
-- Create instances with large params (hundreds of KB).
-- Send events with large payloads.
-- Return large outputs from `step.do`.
-
-**Expected invariants**
-
-- No truncation or serialization errors.
-- History and instance retrieval returns intact payloads.
-- System remains responsive under large payload load.
-
-## [x] 6) Out-of-Order + Interleaved Events Across Restarts
-
-**Goal:** Verify events are bound to the correct runNumber.
-
-**How to test**
-
-- Send `fulfillment` first, then `restart`, then send `approval` for run 1.
-- Send additional events late for run 0 after restart.
-
-**Expected invariants**
-
-- Events for run 0 do **not** complete run 1.
-- Only run 1 events are consumed after restart.
-
-## [x] 7) Concurrency + Authorization Hooks
-
-**Goal:** Ensure failed auth does not partially mutate workflow state.
-
-**How to test**
-
-- Add an authorize hook that rejects randomly (e.g., 30% failure).
-- Fire concurrent create/send-event/pause/resume calls.
-
-**Expected invariants**
-
-- Rejected requests leave no DB mutations.
-- Accepted requests behave normally under load.
-
-## [x] 8) Migration Edge Cases
-
-**Goal:** Confirm migrations are safe and idempotent under concurrency.
-
-**How to test**
-
-- Start multiple app servers concurrently with migrate enabled.
-- Run migrations while background dispatchers are active.
-
-**Expected invariants**
-
-- Schema ends in a consistent state.
-- No partial migrations, no deadlocks, no duplicate indexes.
-
-## [x] 9) Runner Tick Storms
-
-**Goal:** Ensure concurrent `_runner/tick` calls do not cause duplication or corruption.
-
-**How to test**
-
-- Spawn 10–20 concurrent requests to `_runner/tick`.
-- Combine with multiple dispatchers.
-
-**Expected invariants**
-
-- Each task/step is claimed once (no duplicate execution).
-- Attempts never exceed `maxAttempts`.
-
-## [x] 10) Database Restart Mid-Transaction
-
-**Goal:** Ensure tasks recover from DB restart without stalling or partial commits.
-
-**How to test**
-
-- Restart Postgres while workflows are actively running steps.
-- Bring Postgres back and continue dispatchers.
-
-**Expected invariants**
-
-- No tasks stuck in `processing` without recovery.
-- Steps eventually complete or retry according to policy.
-
-## [x] 11) Isolation Level Anomalies
-
-**Goal:** Test for correctness regressions under stricter/looser transaction isolation.
-
-**How to test**
-
-- Configure Postgres session isolation to `SERIALIZABLE` and `READ COMMITTED`.
-- Run concurrency tests and compare behavior.
-
-**Expected invariants**
-
-- No duplication, no deadlocks, no stalls beyond retry schedule.
-
-## [x] 12) API Cancellation Semantics (Pause/Resume/Terminate)
-
-**Goal:** Ensure cancellation requests are respected even mid‑step.
-
-**How to test**
-
-- Pause/resume rapidly while steps are running.
-- Terminate while a long-running step is mid-flight.
-
-**Expected invariants**
-
-- Pause prevents further progress until resume.
-- Terminate prevents later commits from overwriting terminal state.
-
----
-
-If you want, I can convert each section into runnable scripts and add them into
-`packages/fragment-workflows/workflows-smoke-artifacts/`.
+# Workflows Correctness Checklist (Current API)
+
+This checklist reflects the current workflow fragment source:
+
+- public routes: list workflows, list/create/batch instances, get instance, full history, pause,
+  resume, terminate, send event, and current-step emissions;
+- no public `restart` route or `runNumber` contract;
+- no public `_runner/tick` route; execution is driven by durable hook dispatchers;
+- history is returned as a full ordered snapshot, while instance listing is cursor-paginated;
+- no retention/GC policy is currently exposed.
+
+## Smoke scripts
+
+Run the example app first:
+
+```bash
+WF_EXAMPLE_DATABASE_URL=postgres://postgres:postgres@localhost:5436/wilco \
+  pnpm --filter @fragno-example/wf-example dev
+```
+
+Then run scripts with:
+
+```bash
+BASE_URL=http://localhost:5173/api/workflows \
+  node packages/fragment-workflows/workflows-smoke-artifacts/<script>.js
+```
+
+Some fault-injection scripts require `tsx`, `psql`, Docker, or `WF_DISABLE_INTERNAL_DISPATCHER=1`;
+see the script headers/env vars.
+
+## Checklist
+
+- [ ] API contract: list workflows, reject invalid identifiers, reject duplicate creates, validate
+      params, and page `GET /:workflowName/instances` with cursors.
+- [ ] Basic lifecycle: create active instance, wait for `waitForEvent`, send events, complete, and
+      verify status output/history metadata.
+- [ ] Batch create: create up to the route limit, skip duplicate IDs in a batch, and verify every
+      created instance emits exactly one create hook.
+- [ ] Event buffering/idempotency: send duplicate events before/after waits, while paused, and while
+      racing resume; only one event should be consumed per wait step.
+- [ ] Pause/resume: pause active and waiting instances, ensure no user event is consumed while
+      paused, resume, and verify progress resumes from the same step.
+- [ ] Termination: terminate active, waiting, and in-flight long steps; no later hook/tick may
+      overwrite the terminal `terminated` state.
+- [ ] Retry/backoff: drive retrying steps to success and exhaustion; attempts must never exceed
+      `maxAttempts`, retry hooks must honor `nextRetryAt`, and terminal errors must be stable.
+- [ ] Sleep/wake/timeout: sleep and `waitForEvent` timeout hooks should not fire early, should fire
+      after wake time, and should reject late events after timeout.
+- [ ] Parallel/nested/race semantics: `Promise.all`, `Promise.race`, and nested step trees should
+      keep stable step keys/parents and replay only incomplete work.
+- [ ] Step transaction semantics: `tx.mutate`, `tx.serviceCalls`, `tx.onTerminalError`, `tx.emit`,
+      `tx.previousEmissions`, and `tx.onEvent` should commit only under their documented outcome.
+- [ ] Current-step emissions: live and `once=true` streams should show in-flight emissions, support
+      remote observers, and clean up after completion/error/retry suspension.
+- [ ] Durable hook dispatcher concurrency: run multiple processors, duplicate hook/event storms, and
+      skewed clocks; state must remain idempotent with no attempt overflows.
+- [ ] Process/DB faults: kill dispatchers, kill the app during long steps, and restart Postgres;
+      work should recover or terminate according to status without partial commits.
+- [ ] Large payloads: hundreds of KB of params/event payload/output should round-trip through status
+      and history without truncation.
+- [ ] Migration safety: concurrent `migrate(fragment)` calls and dispatchers should be idempotent,
+      with no duplicate indexes or partial schema versions.
+- [ ] Client integration: React/Vue/Svelte/Solid/vanilla clients should invalidate
+      list/detail/history hooks after creates, batch creates, pause/resume/terminate, and send-event
+      mutators.

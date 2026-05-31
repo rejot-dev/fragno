@@ -59,10 +59,6 @@ async function resumeInstance(workflowName, id) {
   return request(`/${workflowName}/instances/${id}/resume`, { method: "POST" });
 }
 
-async function restartInstance(workflowName, id) {
-  return request(`/${workflowName}/instances/${id}/restart`, { method: "POST" });
-}
-
 async function terminateInstance(workflowName, id) {
   return request(`/${workflowName}/instances/${id}/terminate`, { method: "POST" });
 }
@@ -103,18 +99,13 @@ async function main() {
     (id) => sendEvent("approval-workflow", id, "fulfillment", { confirmationId: `conf_${id}` }),
     (id) => pauseInstance("approval-workflow", id),
     (id) => resumeInstance("approval-workflow", id),
-    (id) => restartInstance("approval-workflow", id),
     (id) => terminateInstance("approval-workflow", id),
   ];
 
-  const allParallelActions = [
-    (id) => restartInstance("parallel-steps-workflow", id),
-    (id) => terminateInstance("parallel-steps-workflow", id),
-  ];
+  const allParallelActions = [(id) => terminateInstance("parallel-steps-workflow", id)];
 
   const allWaitActions = [
     (id) => sendEvent("wait-timeout-workflow", id, "edge", { ok: true, source: "matrix" }),
-    (id) => restartInstance("wait-timeout-workflow", id),
     (id) => terminateInstance("wait-timeout-workflow", id),
   ];
 

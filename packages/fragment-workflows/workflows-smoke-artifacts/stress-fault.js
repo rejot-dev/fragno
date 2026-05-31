@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
@@ -14,10 +15,22 @@ if (!Number.isFinite(dispatcherCount) || dispatcherCount <= 0) {
 const dispatcherPath = path.resolve(
   "packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts",
 );
+const require = createRequire(import.meta.url);
 
 const logsDir = process.env.LOGS_DIR ?? "/tmp";
 
 const dispatchers = new Map();
+
+function buildTsxCommand() {
+  if (process.env.TSX_BIN) {
+    return { command: process.env.TSX_BIN, args: [dispatcherPath] };
+  }
+  require.resolve("tsx");
+  return {
+    command: process.execPath,
+    args: ["--conditions=development", "--import", "tsx", dispatcherPath],
+  };
+}
 
 function startDispatcher(index) {
   const logPath = path.join(logsDir, `wf-dispatcher-stress-${index}.log`);
@@ -27,8 +40,13 @@ function startDispatcher(index) {
     resolveExit = resolve;
   });
 
-  const proc = spawn("tsx", [dispatcherPath], {
-    env: { ...process.env, NODE_OPTIONS: "--conditions=development" },
+  const tsx = buildTsxCommand();
+  const proc = spawn(tsx.command, tsx.args, {
+    env: {
+      ...process.env,
+      WF_STUCK_PROCESSING_TIMEOUT_MINUTES:
+        process.env.WF_STUCK_PROCESSING_TIMEOUT_MINUTES ?? "0.05",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   proc.stdout?.pipe(out);

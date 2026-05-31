@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
@@ -16,6 +17,7 @@ if (!Number.isFinite(crashCount) || crashCount < 0) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const require = createRequire(import.meta.url);
 
 async function request(pathname, options = {}) {
   const response = await fetch(`${baseUrl}${pathname}`, {
@@ -50,23 +52,50 @@ async function getStatus(workflow, id) {
   return request(`/${workflow}/instances/${id}`);
 }
 
+function buildTsxCommand(dispatcherPath) {
+  if (process.env.TSX_BIN) {
+    return { command: process.env.TSX_BIN, args: [dispatcherPath] };
+  }
+  require.resolve("tsx");
+  return {
+    command: process.execPath,
+    args: ["--conditions=development", "--import", "tsx", dispatcherPath],
+  };
+}
+
 function spawnDispatcher(label) {
   const dispatcherPath = path.resolve(
     "packages/fragment-workflows/workflows-smoke-artifacts/dispatcher.ts",
   );
-  const proc = spawn("tsx", [dispatcherPath], {
-    env: { ...process.env, NODE_OPTIONS: "--conditions=development" },
+  const tsx = buildTsxCommand(dispatcherPath);
+  const proc = spawn(tsx.command, tsx.args, {
+    env: {
+      ...process.env,
+      WF_STUCK_PROCESSING_TIMEOUT_MINUTES:
+        process.env.WF_STUCK_PROCESSING_TIMEOUT_MINUTES ?? "0.05",
+    },
     stdio: "ignore",
   });
-  proc.on("exit", (code, signal) => {
-    if (code !== null && code !== 0) {
-      console.warn(`[dispatcher ${label}] exited with code ${code}`);
-    }
-    if (signal) {
-      console.warn(`[dispatcher ${label}] exited with signal ${signal}`);
-    }
+  proc.exitPromise = new Promise((resolve) => {
+    proc.on("exit", (code, signal) => {
+      if (code !== null && code !== 0) {
+        console.warn(`[dispatcher ${label}] exited with code ${code}`);
+      }
+      if (signal) {
+        console.warn(`[dispatcher ${label}] exited with signal ${signal}`);
+      }
+      resolve();
+    });
   });
   return proc;
+}
+
+async function stopDispatcher(proc, signal = "SIGTERM") {
+  if (!proc || proc.killed) {
+    return;
+  }
+  proc.kill(signal);
+  await Promise.race([proc.exitPromise, sleep(3000)]);
 }
 
 async function main() {
@@ -150,7 +179,7 @@ async function main() {
     pendingCrash.forEach((id) => console.error(`- ${id}`));
   }
 
-  dispatcher.kill("SIGTERM");
+  await stopDispatcher(dispatcher);
 
   if (pendingApproval.size || pendingCrash.size) {
     process.exit(1);

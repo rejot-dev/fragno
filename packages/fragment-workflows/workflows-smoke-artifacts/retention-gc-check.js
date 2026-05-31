@@ -1,66 +1,49 @@
-const baseUrl = process.env.BASE_URL ?? "http://localhost:5173/api/workflows";
-const workflowName = process.env.WORKFLOW_NAME ?? "demo-data-workflow";
-const pollTimeoutMs = Number(process.env.POLL_TIMEOUT_MS ?? 20000);
-const pollIntervalMs = Number(process.env.POLL_INTERVAL_MS ?? 300);
+import {
+  assert,
+  baseUrl,
+  completeApprovalWorkflow,
+  getCurrentStepEmissionsOnce,
+  getHistory,
+  runId,
+} from "./smoke-support.js";
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function request(path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...options.headers,
-    },
-  });
-  const text = await response.text();
-  let body = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
-  }
-  if (!response.ok) {
-    const error = new Error(`${options.method ?? "GET"} ${path} -> ${response.status}: ${text}`);
-    error.status = response.status;
-    error.body = body;
-    throw error;
-  }
-  return body;
-}
-
-async function createInstance(id) {
-  return request(`/${workflowName}/instances`, {
-    method: "POST",
-    body: JSON.stringify({ id, params: {} }),
-  });
-}
-
-async function getStatus(id) {
-  return request(`/${workflowName}/instances/${id}`);
-}
-
-async function waitForTerminal(id) {
-  const start = Date.now();
-  while (Date.now() - start < pollTimeoutMs) {
-    const status = await getStatus(id);
-    if (["complete", "errored", "terminated"].includes(status?.details?.status)) {
-      return status;
-    }
-    await sleep(pollIntervalMs);
-  }
-  throw new Error(`Timed out waiting for ${id} to reach terminal state`);
-}
+const workflowName = process.env.WORKFLOW_NAME ?? "approval-workflow";
 
 async function main() {
-  const runId = Date.now().toString(36);
-  const id = `retention_${runId}`;
-  console.log(`Creating ${workflowName} instance ${id}...`);
-  await createInstance(id);
-  const status = await waitForTerminal(id);
-  console.log(`Terminal status for ${id}: ${status.details.status}`);
-  console.log(`InstanceId: ${id}`);
-  console.log(`CompletedAt: ${status.details.completedAt ?? "(none)"}`);
+  if (workflowName !== "approval-workflow") {
+    throw new Error(
+      "retention-gc-check currently drives approval-workflow; set WORKFLOW_NAME only after updating the driver flow",
+    );
+  }
+
+  const id = runId("integrity");
+  console.log(`[retention-gc-check] baseUrl=${baseUrl} instance=${id}`);
+  await completeApprovalWorkflow(id, { requestedBy: "integrity-check" });
+
+  const history = await getHistory(workflowName, id);
+  assert(history.steps.length >= 3, `expected multiple steps, got ${history.steps.length}`);
+  assert(
+    history.events.length >= 2,
+    `expected approval/fulfillment events, got ${history.events.length}`,
+  );
+
+  const consumed = history.events.filter((event) => event.consumedByStepKey);
+  const stepKeys = new Set(history.steps.map((step) => step.stepKey));
+  const missingConsumers = consumed.filter((event) => !stepKeys.has(event.consumedByStepKey));
+  assert(
+    missingConsumers.length === 0,
+    `events reference missing consumedByStepKey values: ${missingConsumers.map((event) => `${event.type}:${event.consumedByStepKey}`).join(", ")}`,
+  );
+
+  const emissions = await getCurrentStepEmissionsOnce(workflowName, id);
+  assert(
+    emissions.length === 0,
+    `terminal instance should not expose live step emissions, got ${emissions.length}`,
+  );
+
+  console.log(
+    "[retention-gc-check] current source has no retention/GC API; integrity checks passed",
+  );
 }
 
 main().catch((error) => {
