@@ -306,8 +306,35 @@ export class RunnerStep implements WorkflowStep {
       throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
     }
 
-    const attempt = (snapshot?.attempts ?? 0) + 1;
-    const maxAttempts = config?.retries ? config.retries.limit + 1 : 1;
+    const configuredMaxAttempts = config?.retries ? config.retries.limit + 1 : 1;
+    const maxAttempts = snapshot?.maxAttempts ?? configuredMaxAttempts;
+    const previousAttempts = snapshot?.attempts ?? 0;
+
+    if (snapshot?.status === "waiting" && snapshot.nextRetryAt && previousAttempts >= maxAttempts) {
+      const error = buildErrorFromSnapshot({
+        ...snapshot,
+        errorName: snapshot.errorName ?? "Error",
+        errorMessage: snapshot.errorMessage ?? "WORKFLOW_STEP_RETRY_EXHAUSTED",
+      });
+      this.#upsertStep(stepKey, {
+        name,
+        type: "do",
+        status: "errored",
+        attempts: previousAttempts,
+        maxAttempts,
+        timeoutMs: snapshot.timeoutMs ?? null,
+        parentStepKey: identity.parentStepKey,
+        depth: identity.depth,
+        errorName: error.name,
+        errorMessage: error.message,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+      });
+      throw error;
+    }
+
+    const attempt = previousAttempts + 1;
     const timeoutMs = snapshot?.timeoutMs ?? null;
     const txQueue = this.#createStepTxQueue(identity);
     const pendingEventConsumptions = new Map<string, WorkflowEventRecord>();

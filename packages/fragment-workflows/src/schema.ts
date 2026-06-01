@@ -39,11 +39,11 @@ export const workflowsSchema = schema("workflows", (s) => {
             .createIndex("idx_workflow_instance_workflowName_id", ["workflowName", "id"], {
               unique: true,
             })
-            // Powers list queries by status + recency.
-            .createIndex("idx_workflow_instance_workflowName_status_updatedAt", [
+            // Powers status-filtered list queries with cursor-safe string/id ordering.
+            .createIndex("idx_workflow_instance_workflowName_status_id", [
               "workflowName",
               "status",
-              "updatedAt",
+              "id",
             ])
         );
       })

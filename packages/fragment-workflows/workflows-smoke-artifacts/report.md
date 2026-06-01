@@ -887,5 +887,43 @@ Status update:
   overlapping ticks that collide on an already-open live step scope no longer terminal-error the
   workflow with `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
 - Remaining broader concurrency risks still need separate coverage/fixes: cross-process duplicated
-  side effects before OCC loss, retry attempt overflow, and eventual instance-level runner
-  serialization/keyed durable-hook processing.
+  side effects before OCC loss and eventual instance-level runner serialization/keyed durable-hook
+  processing.
+
+### 2026-06-01 fix: retry attempt overflow and status pagination skips
+
+Implementation changes kept:
+
+- `RunnerStep.do()` now treats persisted `maxAttempts` as the source of truth for existing retrying
+  steps and refuses to execute a retry tick when `attempts >= maxAttempts`.
+- A stale/extra retry hook for an already-exhausted step now marks the step and workflow errored
+  using the persisted step error, without running user code again or incrementing attempts beyond
+  `maxAttempts`.
+- Status-filtered instance list pagination no longer orders by `updatedAt`. The workflow instance
+  schema now uses `workflowName,status,id` for status list cursors, and `listInstances()` orders by
+  that cursor-safe index.
+
+Regression coverage added:
+
+- `packages/fragment-workflows/src/runner.test.ts` now includes
+  `does not execute a retry tick when persisted attempts already reached maxAttempts`.
+- `packages/fragment-workflows/src/services.test.ts` now includes
+  `status-filtered list pagination does not skip rows sharing updatedAt`.
+
+Verification:
+
+```bash
+pnpm exec turbo types:check --filter=@fragno-dev/workflows --output-logs=errors-only
+pnpm exec turbo test --filter=@fragno-dev/workflows --output-logs=errors-only
+```
+
+Both commands passed after the fix.
+
+Status update:
+
+- Finding J / P retry overflow is fixed for stale or duplicate retry hooks that reach an already
+  exhausted persisted step: user code is not executed and `attempts` remains bounded by
+  `maxAttempts`.
+- Finding B / N timestamp-cursor skip is fixed for workflow status-filtered instance listing by
+  removing timestamp precision from the public cursor path. Status-filtered pages are now stable by
+  workflow name, status, and instance id rather than recency.
