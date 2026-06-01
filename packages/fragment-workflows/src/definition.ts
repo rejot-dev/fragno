@@ -529,13 +529,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             uow.findWithCursor("workflow_instance", (b) => {
               if (status) {
                 const query = b
-                  .whereIndex("idx_workflow_instance_workflowName_status_updatedAt", (eb) =>
+                  .whereIndex("idx_workflow_instance_workflowName_status_id", (eb) =>
                     eb.and(eb("workflowName", "=", workflowName), eb("status", "=", status)),
                   )
-                  .orderByIndex(
-                    "idx_workflow_instance_workflowName_status_updatedAt",
-                    effectiveOrder,
-                  )
+                  .orderByIndex("idx_workflow_instance_workflowName_status_id", effectiveOrder)
                   .pageSize(effectivePageSize);
 
                 return cursor ? query.after(cursor) : query;

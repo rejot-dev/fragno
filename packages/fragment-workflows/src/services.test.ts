@@ -2,7 +2,7 @@
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import type { TxResult } from "@fragno-dev/db";
+import type { Cursor, TxResult } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
@@ -104,6 +104,60 @@ describe("Workflows Fragment Services", () => {
         .executeRetrieve()
     )[0];
     expect(instances).toHaveLength(2);
+  });
+
+  test("status-filtered list pagination does not skip rows sharing updatedAt", async () => {
+    const ids = ["page-0", "page-1", "page-2", "page-3", "page-4"];
+    await runService<{ id: string }[]>(() =>
+      fragment.services.createBatch(
+        "demo-workflow",
+        ids.map((id) => ({ id })),
+      ),
+    );
+
+    const sameUpdatedAt = new Date("2026-01-01T00:00:00.123Z");
+    {
+      const uow = db.createUnitOfWork("complete-for-pagination").forSchema(workflowsSchema);
+      const instances = (
+        await db
+          .createUnitOfWork("read-created-for-pagination")
+          .forSchema(workflowsSchema)
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+      for (const instance of instances) {
+        uow.update("workflow_instance", instance.id, (b) =>
+          b.set({ status: "complete", updatedAt: sameUpdatedAt, completedAt: sameUpdatedAt }),
+        );
+      }
+      const { success } = await uow.executeMutations();
+      expect(success).toBe(true);
+    }
+
+    const seen: string[] = [];
+    let cursor: Cursor | undefined;
+    do {
+      const page = await runService<{
+        instances: { id: string }[];
+        cursor?: Cursor;
+        hasNextPage: boolean;
+      }>(() =>
+        fragment.services.listInstances({
+          workflowName: "demo-workflow",
+          status: "complete",
+          pageSize: 2,
+          cursor,
+        }),
+      );
+      seen.push(...page.instances.map((instance) => instance.id));
+      cursor = page.cursor;
+      if (!page.hasNextPage) {
+        break;
+      }
+    } while (cursor);
+
+    expect(new Set(seen)).toEqual(new Set(ids));
+    expect(seen).toHaveLength(ids.length);
   });
 
   test("pause and resume should update status", async () => {

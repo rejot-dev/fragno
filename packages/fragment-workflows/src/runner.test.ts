@@ -1059,6 +1059,90 @@ describe("Workflows Runner", () => {
     });
   });
 
+  test("does not execute a retry tick when persisted attempts already reached maxAttempts", async () => {
+    let attempts = 0;
+    const RetryCapWorkflow = defineWorkflow(
+      { name: "retry-cap-workflow" },
+      async (_event, step) => {
+        await step.do("flaky", { retries: { limit: 2, delay: 0, backoff: "constant" } }, () => {
+          attempts += 1;
+          throw new Error("SHOULD_NOT_RUN");
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RETRY_CAP: RetryCapWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("RETRY_CAP", { id: "retry-cap-1" });
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    {
+      const uow = harness.db.createUnitOfWork("seed-retry-cap").forSchema(workflowsSchema);
+      uow.update("workflow_instance", instance!.id, (b) =>
+        b.set({ status: "waiting", updatedAt: new Date() }),
+      );
+      uow.create("workflow_step", {
+        instanceRef: instance!.id,
+        stepKey: "do:flaky",
+        name: "flaky",
+        type: "do",
+        status: "waiting",
+        attempts: 3,
+        maxAttempts: 3,
+        timeoutMs: null,
+        nextRetryAt: new Date(Date.now() - 1_000),
+        wakeAt: null,
+        waitEventType: null,
+        result: null,
+        errorName: "Error",
+        errorMessage: "RETRY_EXHAUSTED",
+      });
+      const { success } = await uow.executeMutations();
+      expect(success).toBe(true);
+    }
+
+    const processed = await harness.tick({
+      workflowName: "retry-cap-workflow",
+      instanceId,
+      instanceRef: String(instance!.id),
+      reason: "retry",
+    });
+    expect(processed).toBe(1);
+    expect(attempts).toBe(0);
+
+    const status = await harness.getStatus("RETRY_CAP", instanceId);
+    expect(status.status).toBe("errored");
+    expect(status.error?.message).toBe("RETRY_EXHAUSTED");
+
+    const [stepRecord] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(stepRecord).toMatchObject({
+      stepKey: "do:flaky",
+      status: "errored",
+      attempts: 3,
+      maxAttempts: 3,
+      errorMessage: "RETRY_EXHAUSTED",
+    });
+  });
+
   test("pausing during an in-flight tick pauses on the next tick", async () => {
     // report: pausing mid-tick should not interrupt the current work but should take effect next tick.
     let runs = 0;
