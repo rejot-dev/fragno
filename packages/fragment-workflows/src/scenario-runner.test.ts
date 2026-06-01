@@ -1682,6 +1682,127 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("concurrent event ticks for one waiting instance do not terminal-error the workflow", async () => {
+    const runtime = createWorkflowsTestRuntime();
+    let consumeCount = 0;
+
+    const ConcurrentEventTickWorkflow = defineWorkflow(
+      { name: "scenario-concurrent-event-ticks" },
+      async (_event, step) => {
+        const ready = await step.waitForEvent<{ ok: true }>("ready", {
+          type: "ready",
+          onConsume: async () => {
+            consumeCount += 1;
+            runtime.controls.resolve(`consume:${consumeCount}:started`);
+            if (consumeCount === 1) {
+              await runtime.controls.wait("consume:first:release");
+            }
+          },
+        });
+
+        return { ready: ready.payload };
+      },
+    );
+
+    const workflows = { CONCURRENT_EVENT_TICK: ConcurrentEventTickWorkflow };
+    type ScenarioVars = {
+      tickResults?: PromiseSettledResult<number>[];
+    };
+
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "scenario-concurrent-event-ticks",
+      workflows,
+      harness: {
+        runtime,
+        fragmentConfig: {
+          stepEmissions: new BufferedPumpRegistry<WorkflowStepLivePump>(),
+        },
+      },
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "CONCURRENT_EVENT_TICK",
+          id: "concurrent-event-tick-1",
+        }),
+        workflow.event({
+          workflow: "CONCURRENT_EVENT_TICK",
+          instanceId: "concurrent-event-tick-1",
+          event: { type: "ready", payload: { ok: true } },
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            const workflowName = "scenario-concurrent-event-ticks";
+            const rows = (
+              await ctx.harness.db
+                .createUnitOfWork("concurrent-event-tick-instance")
+                .forSchema(workflowsSchema)
+                .find("workflow_instance", (b) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("id", "=", "concurrent-event-tick-1"),
+                    ),
+                  ),
+                )
+                .executeRetrieve()
+            )[0];
+            const instance = rows[0];
+            expect(instance).toBeDefined();
+            const payload = {
+              workflowName,
+              instanceId: instance.id.toString(),
+              instanceRef: String(instance.id),
+              reason: "event",
+            } as const;
+
+            const first = ctx.harness.createRunner().tick(payload);
+            await runtime.controls.wait("consume:1:started");
+
+            const second = ctx.harness.createRunner().tick(payload);
+            await new Promise((resolve) => setTimeout(resolve, 10));
+
+            runtime.controls.resolve("consume:first:release");
+            return await Promise.allSettled([first, second]);
+          },
+          storeAs: "tickResults",
+        }),
+        workflow.assert((ctx) => {
+          const tickResults = ctx.vars.tickResults ?? [];
+          expect(tickResults.every((result) => result.status === "fulfilled")).toBe(true);
+          expect(
+            tickResults
+              .map((result) => (result.status === "fulfilled" ? result.value : -1))
+              .sort((a, b) => a - b),
+          ).toEqual([0, 1]);
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("CONCURRENT_EVENT_TICK", "concurrent-event-tick-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { ready: { ok: true } },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEvents("CONCURRENT_EVENT_TICK", "concurrent-event-tick-1"),
+          assert: (events) => {
+            expect(events).toEqual([
+              expect.objectContaining({
+                type: "ready",
+                consumedByStepKey: "waitForEvent:ready",
+              }),
+            ]);
+          },
+        }),
+        workflow.assert(() => {
+          expect(consumeCount).toBe(1);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("same step can run concurrently and persist duplicate emissions in separate epochs", async () => {
     const runtime = createWorkflowsTestRuntime();
     let invocationCount = 0;

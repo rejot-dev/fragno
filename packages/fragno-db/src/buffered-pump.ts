@@ -26,6 +26,16 @@ import type { DatabaseHandlerTx } from "./db-fragment-definition-builder";
  *    only routes those deliveries to registered scope handlers.
  */
 
+export class BufferedPumpScopeAlreadyOpenError extends Error {
+  readonly scopeKey: string;
+
+  constructor(scopeKey: string) {
+    super("BUFFERED_PUMP_SCOPE_ALREADY_OPEN");
+    this.name = "BufferedPumpScopeAlreadyOpenError";
+    this.scopeKey = scopeKey;
+  }
+}
+
 const DEFAULT_BUFFERED_PUMP_INTERVAL_MS = 100;
 
 type QueuedBufferedItem<TItem, TOutgoing, TScopeMeta> =
@@ -326,7 +336,7 @@ export class BufferedDatabasePump<
     meta?: TOpenScopeMeta,
   ): BufferedPumpScope<TOutgoing, TScopeDelivery, TScopeMeta> {
     if (this.#scopes.has(key)) {
-      throw new Error("BUFFERED_PUMP_SCOPE_ALREADY_OPEN");
+      throw new BufferedPumpScopeAlreadyOpenError(key);
     }
 
     const scopeMeta = this.#resolveScopeMeta
