@@ -1,12 +1,13 @@
+import {
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
-
-import { migrate } from "@fragno-dev/db";
 
 import { createOrgFileSystem } from "@/files";
 import type { AutomationEvent, AutomationIngestResult } from "@/fragno/automation";
 import {
   buildNotConfiguredResponse,
-  createAutomationsDispatcher,
   createAutomationsRuntime,
   type AutomationsRuntime,
 } from "@/fragno/automation/automations";
@@ -48,42 +49,49 @@ export class Automations extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
   #runtime: AutomationsRuntime | null = null;
-  private initPromise: Promise<void>;
+  #host: FragmentDurableObjectHost<void, AutomationsRuntime>;
   private readonly automationRoutePrefix = "/api/automations/bindings";
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
-    this.initPromise = this.#state.blockConcurrencyWhile(async () => {
-      this.#runtime = createAutomationsRuntime(state, {
-        env: this.#env,
-        createPiAutomationContext: this.#createPiAutomationContext.bind(this),
-        getAutomationFileSystem: ({ orgId }) => this.#createAutomationFileSystem(orgId),
-      });
-      await migrate(this.#runtime.workflowsFragment);
-      await migrate(this.#runtime.automationFragment);
-      this.#runtime.dispatcher = createAutomationsDispatcher(
-        this.#runtime.workflowsFragment,
-        this.#runtime.automationFragment,
-        state,
-        env,
-      );
+    this.#host = createFragmentDurableObjectHost({
+      name: "Automations",
+      state,
+      env,
+      createRuntime: () => {
+        const runtime: AutomationsRuntime = createAutomationsRuntime(state, {
+          env: this.#env,
+          createPiAutomationContext: this.#createPiAutomationContext.bind(this),
+          getAutomationFileSystem: ({ orgId }) => this.#createAutomationFileSystem(orgId),
+        });
+        return runtime;
+      },
+      getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.automationFragment],
+      hostRuntime: (runtime, { hostFragment }) => ({
+        ...runtime,
+        workflowsFragment: hostFragment(runtime.workflowsFragment),
+        automationFragment: hostFragment(runtime.automationFragment),
+      }),
+      mounts: [
+        {
+          id: "automation",
+          match: ({ pathname }) => pathname.startsWith(this.automationRoutePrefix),
+          target: (runtime) => runtime.automationFragment,
+        },
+        { id: "workflows", target: (runtime) => runtime.workflowsFragment },
+      ],
+      onProcessError: (error) => {
+        console.error("Automations durable hook processor error", error);
+      },
+      onDispatcherError: (error) => {
+        console.warn("Automations durable hook processor disabled", error);
+      },
     });
-  }
 
-  async #ensureRuntime() {
-    await this.initPromise;
-  }
-
-  async #notifyDispatcher() {
-    if (!this.#runtime?.dispatcher?.notify) {
-      return;
-    }
-
-    await this.#runtime.dispatcher.notify({
-      source: "request",
-      waitUntil: this.#state.waitUntil.bind(this.#state),
+    void state.blockConcurrencyWhile(async () => {
+      this.#runtime = await this.#host.initialize(undefined);
     });
   }
 
@@ -121,8 +129,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
   }
 
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
-    await this.#ensureRuntime();
-
     if (!this.#runtime?.automationFragment) {
       throw new Error("Automations runtime is not ready.");
     }
@@ -131,7 +137,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
       this.#runtime!.automationFragment.services.ingestEvent(event),
     );
 
-    await this.#notifyDispatcher();
     return result;
   }
 
@@ -140,8 +145,7 @@ export class Automations extends DurableObject<CloudflareEnv> {
   }
 
   async alarm() {
-    await this.#ensureRuntime();
-    await this.#runtime?.dispatcher?.alarm?.();
+    await this.#host.alarm();
   }
 
   async getHookQueue(
@@ -149,8 +153,6 @@ export class Automations extends DurableObject<CloudflareEnv> {
       fragment?: "workflows" | "automation";
     },
   ): Promise<DurableHookQueueResponse> {
-    await this.#ensureRuntime();
-
     if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
       return {
         configured: false,
@@ -170,18 +172,11 @@ export class Automations extends DurableObject<CloudflareEnv> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.#ensureRuntime();
-
     if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
       return buildNotConfiguredResponse();
     }
 
-    const url = new URL(request.url);
-    const targetFragment = url.pathname.startsWith(this.automationRoutePrefix)
-      ? this.#runtime.automationFragment
-      : this.#runtime.workflowsFragment;
-
-    return targetFragment.handler(request, {
+    return await this.#host.fetch(this.#runtime, request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
   }

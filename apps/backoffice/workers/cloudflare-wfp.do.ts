@@ -1,21 +1,18 @@
-import {
-  createDurableHooksProcessor,
-  type DurableHooksDispatcherDurableObjectHandler,
-} from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { DurableObject } from "cloudflare:workers";
+import { z } from "zod";
 
-import {
-  resolveCloudflareDispatchNamespaceName,
-  type CloudflareFragmentConfig,
-} from "@fragno-dev/cloudflare-fragment";
-import { migrate } from "@fragno-dev/db";
+import type { CloudflareFragmentConfig } from "@fragno-dev/cloudflare-fragment";
 
 import { createCloudflareServer, type CloudflareFragment } from "@/fragno/cloudflare";
 import {
-  loadDurableHookQueue,
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
 
 type StoredCloudflareWorkersConfig = {
   orgId: string;
@@ -42,66 +39,27 @@ type CloudflareWorkersHookQueueInput = DurableHookQueueOptions & {
   orgId: string;
 };
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
+const storedCloudflareWorkersConfigSchema: z.ZodType<StoredCloudflareWorkersConfig> = z.object({
+  orgId: z
+    .string()
+    .trim()
+    .min(1, "Stored Cloudflare Workers config is missing an organisation id."),
+});
 
-const sameStringList = (left?: string[], right?: string[]) => {
-  const normalizedLeft = left ?? [];
-  const normalizedRight = right ?? [];
-
-  if (normalizedLeft.length !== normalizedRight.length) {
-    return false;
-  }
-
-  return normalizedLeft.every((entry, index) => entry === normalizedRight[index]);
-};
-
-const resolveDispatcherConfig = (config: CloudflareFragmentConfig) => {
-  if ("dispatcher" in config && config.dispatcher !== undefined) {
-    return config.dispatcher;
-  }
-
-  if ("dispatchNamespace" in config && config.dispatchNamespace !== undefined) {
-    return config.dispatchNamespace;
-  }
-
-  return null;
-};
-
-const resolveDispatcherNamespaceName = (config: CloudflareFragmentConfig) => {
-  const dispatcher = resolveDispatcherConfig(config);
-  return dispatcher ? resolveCloudflareDispatchNamespaceName(dispatcher) : null;
-};
-
-const readApiToken = (config: CloudflareFragmentConfig) => {
-  return "apiToken" in config ? config.apiToken : null;
-};
-
-const configsEqual = (left: CloudflareFragmentConfig, right: CloudflareFragmentConfig) => {
-  const leftDispatcherNamespace = resolveDispatcherNamespaceName(left);
-  const rightDispatcherNamespace = resolveDispatcherNamespaceName(right);
-
-  return (
-    left.accountId === right.accountId &&
-    readApiToken(left) === readApiToken(right) &&
-    leftDispatcherNamespace !== null &&
-    rightDispatcherNamespace !== null &&
-    leftDispatcherNamespace === rightDispatcherNamespace &&
-    left.compatibilityDate === right.compatibilityDate &&
-    sameStringList(left.compatibilityFlags, right.compatibilityFlags) &&
-    sameStringList(left.scriptTags, right.scriptTags) &&
-    left.deploymentTagPrefix === right.deploymentTagPrefix &&
-    left.scriptNamePrefix === right.scriptNamePrefix &&
-    left.scriptNameSuffix === right.scriptNameSuffix &&
-    left.scriptNameSeparator === right.scriptNameSeparator &&
-    left.maxScriptNameLength === right.maxScriptNameLength
-  );
-};
+const hookQueueInputSchema = z.object({
+  orgId: z.string().trim().min(1, "Missing organisation id."),
+  cursor: z
+    .string()
+    .trim()
+    .transform((value) => value || undefined)
+    .optional(),
+  pageSize: z
+    .number()
+    .refine((value) => Number.isFinite(value) && Number.isInteger(value), {
+      message: "pageSize must be an integer.",
+    })
+    .optional(),
+});
 
 const resolveCloudflareWorkersConfig = (
   env: CloudflareEnv,
@@ -143,153 +101,136 @@ const resolveCloudflareWorkersConfig = (
   };
 };
 
+const resolveRequestOrgId = (request: Request) =>
+  new URL(request.url).searchParams.get("orgId")?.trim() || null;
+
+const notConfiguredResponse = (
+  resolution: Exclude<CloudflareWorkersConfigResolution, { ok: true }> | null,
+) =>
+  Response.json(
+    {
+      message: resolution?.error ?? "Cloudflare Workers is not configured for this environment.",
+      code: "NOT_CONFIGURED",
+      missing: resolution?.missing ?? [],
+    },
+    { status: 400 },
+  );
+
+const orgMismatchResponse = (expectedOrgId: string, orgId: string) =>
+  Response.json(
+    {
+      message: `Cloudflare Workers Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`,
+      code: "ORG_ID_MISMATCH",
+      expectedOrgId,
+      orgId,
+    },
+    { status: 409 },
+  );
+
 export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
-  #fragment: CloudflareFragment | null = null;
-  #fragmentConfig: CloudflareFragmentConfig | null = null;
-  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
-  #migrated = false;
+  #host: BackofficeFragmentDurableObject<
+    StoredCloudflareWorkersConfig,
+    CloudflareFragmentConfig,
+    CloudflareFragment
+  >;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
+    this.#host = createBackofficeFragmentDurableObject({
+      name: "Cloudflare Workers",
+      state,
+      env,
+      configKey: CONFIG_KEY,
+      parseStored: (raw) => storedCloudflareWorkersConfigSchema.parse(raw),
+      isConfigured: (stored): stored is StoredCloudflareWorkersConfig => {
+        if (!stored) {
+          return false;
+        }
+        return resolveCloudflareWorkersConfig(env, stored.orgId).ok;
+      },
+      toSource: (stored) => {
+        const resolution = resolveCloudflareWorkersConfig(env, stored.orgId);
+        if (!resolution.ok) {
+          throw new Error(
+            resolution.error ??
+              `Cloudflare Workers configuration is missing: ${resolution.missing.join(", ")}`,
+          );
+        }
+        return resolution.config;
+      },
+      createRuntime: (config) => createCloudflareServer(config, state),
+    });
+
+    void state.blockConcurrencyWhile(async () => {
+      await this.#host.initializeFromStored(await this.#host.loadStored());
+    });
   }
 
-  async #loadConfig() {
-    const config = await this.#state.storage.get<StoredCloudflareWorkersConfig>(CONFIG_KEY);
-    return config ?? null;
-  }
+  async #configureOrgIfNeeded(orgId: string) {
+    const stored = await this.#host.loadStored();
+    this.#host.assertSameOrg(stored, orgId);
 
-  #getStoredOrgId(config: StoredCloudflareWorkersConfig | null) {
-    if (!config || typeof config.orgId !== "string") {
-      return null;
-    }
-
-    const storedOrgId = config.orgId.trim();
-    return storedOrgId ? storedOrgId : null;
-  }
-
-  async #resolveOrgId(request?: Request, orgIdHint?: string) {
-    const config = await this.#loadConfig();
-    const storedOrgId = this.#getStoredOrgId(config);
-
-    const requestedOrgId =
-      orgIdHint?.trim() ||
-      new URL(request?.url ?? "https://workers.do").searchParams.get("orgId")?.trim() ||
-      null;
-
-    if (storedOrgId && requestedOrgId && storedOrgId !== requestedOrgId) {
-      throw new Error(
-        `Cloudflare Workers Durable Object is already bound to organisation "${storedOrgId}".`,
-      );
-    }
-
-    if (storedOrgId) {
-      return storedOrgId;
-    }
-
-    if (!requestedOrgId) {
-      return null;
-    }
-
-    await this.#state.storage.put(CONFIG_KEY, { orgId: requestedOrgId });
-    return requestedOrgId;
-  }
-
-  async #ensureFragment(request?: Request, orgIdHint?: string) {
-    const orgId = await this.#resolveOrgId(request, orgIdHint);
-    if (!orgId) {
-      return {
-        fragment: null,
-        resolution: {
-          ok: false,
-          missing: [],
-          error: "Missing organisation id for Cloudflare Workers runtime.",
-        } satisfies CloudflareWorkersConfigResolution,
-      };
-    }
-
-    const resolution = resolveCloudflareWorkersConfig(this.#env, orgId);
-    if (!resolution.ok) {
-      return { fragment: null, resolution };
-    }
-
-    if (
-      !this.#fragment ||
-      !this.#fragmentConfig ||
-      !configsEqual(this.#fragmentConfig, resolution.config)
-    ) {
-      this.#fragment = createCloudflareServer(resolution.config, this.#state);
-      this.#fragmentConfig = resolution.config;
-      this.#migrated = false;
-      this.#dispatcher = null;
-    }
-
-    if (!this.#migrated && this.#fragment) {
-      await migrate(this.#fragment);
-      this.#migrated = true;
-    }
-
-    if (this.#fragment && !this.#dispatcher) {
-      try {
-        const dispatcherFactory = createDurableHooksProcessor([this.#fragment], {
-          onProcessError: (error) => {
-            console.error("Cloudflare Workers hook processor error", error);
-          },
-        });
-        this.#dispatcher = dispatcherFactory(this.#state, this.#env);
-      } catch (error) {
-        console.warn("Cloudflare Workers hook processor disabled", error);
-        this.#dispatcher = null;
-      }
-    }
-
-    return { fragment: this.#fragment, resolution };
-  }
-
-  async alarm() {
-    const ensured = await this.#ensureFragment();
-    const dispatcher = this.#dispatcher;
-    if (!ensured.fragment || !dispatcher?.alarm) {
+    if (stored) {
+      await this.#host.initializeFromStored(stored);
       return;
     }
 
-    await dispatcher.alarm();
+    await this.#host.storeAndInitialize({ orgId });
+  }
+
+  async alarm() {
+    await this.#host.alarm();
   }
 
   async getHookQueue(input: CloudflareWorkersHookQueueInput): Promise<DurableHookQueueResponse> {
-    const ensured = await this.#ensureFragment(undefined, input.orgId);
-    if (!ensured.fragment) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
-    }
+    const parsed = hookQueueInputSchema.parse(input);
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#configureOrgIfNeeded(parsed.orgId);
+    });
 
-    return await loadDurableHookQueue(ensured.fragment, input);
+    return await this.#host.getHookQueue(parsed, ({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {
-    const ensured = await this.#ensureFragment(request);
-    if (!ensured.fragment) {
-      return jsonResponse(
-        {
-          message:
-            ensured.resolution.error ??
-            "Cloudflare Workers is not configured for this environment.",
-          code: "NOT_CONFIGURED",
-          missing: ensured.resolution.ok ? [] : ensured.resolution.missing,
-        },
-        400,
-      );
+    const orgId = resolveRequestOrgId(request);
+    const stored = await this.#host.loadStored();
+    const storedOrgId = this.#host.getStoredOrgId(stored);
+
+    if (!storedOrgId && !orgId) {
+      return notConfiguredResponse({
+        ok: false,
+        missing: [],
+        error: "Missing organisation id for Cloudflare Workers runtime.",
+      });
     }
 
-    return ensured.fragment.handler(request);
+    if (storedOrgId && orgId && storedOrgId !== orgId) {
+      return orgMismatchResponse(storedOrgId, orgId);
+    }
+
+    if (orgId) {
+      await this.#state.blockConcurrencyWhile(async () => {
+        await this.#configureOrgIfNeeded(orgId);
+      });
+    } else if (stored) {
+      await this.#host.initializeFromStored(stored);
+    }
+
+    const configured = this.#host.getConfigured();
+    if (!configured) {
+      const effectiveOrgId = storedOrgId ?? orgId;
+      const resolution = effectiveOrgId
+        ? resolveCloudflareWorkersConfig(this.#env, effectiveOrgId)
+        : null;
+      return notConfiguredResponse(resolution?.ok ? null : (resolution ?? null));
+    }
+
+    return await this.#host.fetch(request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }

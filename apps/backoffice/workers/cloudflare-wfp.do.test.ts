@@ -62,8 +62,12 @@ const createState = (initialStorage?: Record<string, unknown>) => {
       store.set(key, value);
     }),
   };
+  const waitUntil = vi.fn();
+  const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
+    return callback();
+  });
 
-  return { storage } as unknown as DurableObjectState;
+  return { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState;
 };
 
 describe("CloudflareWorkers Durable Object", () => {
@@ -110,6 +114,23 @@ describe("CloudflareWorkers Durable Object", () => {
     );
 
     expect(state.storage.get).toHaveBeenCalledWith(CONFIG_KEY);
+    expect(state.storage.put).not.toHaveBeenCalled();
+  });
+
+  test("returns a standard org mismatch response for fetch requests", async () => {
+    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
+    const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
+
+    const response = await workers.fetch(
+      new Request("https://example.com/api/cloudflare/workers?orgId=other-org"),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ORG_ID_MISMATCH",
+      expectedOrgId: "acme",
+      orgId: "other-org",
+    });
     expect(state.storage.put).not.toHaveBeenCalled();
   });
 });
