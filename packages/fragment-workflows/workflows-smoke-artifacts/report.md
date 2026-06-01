@@ -852,3 +852,40 @@ The same probe submitted 101 batch-create items. The route returned HTTP `400` w
 
 This is consistent with Finding R rather than a separate product finding, but it adds batch max-size
 behavior to the list of route-level errors that need contract documentation.
+
+### 2026-06-01 fix: same-process buffered-pump scope collision no longer terminal-errors instances
+
+Implementation change kept:
+
+- `@fragno-dev/db/buffered-pump` now throws a typed `BufferedPumpScopeAlreadyOpenError` instead of a
+  generic `Error("BUFFERED_PUMP_SCOPE_ALREADY_OPEN")` when a second same-key scope opens.
+- The workflow runner classifies that typed error as runner contention and returns `0` from the
+  losing tick, rather than converting it into a workflow `errored` outcome.
+
+Regression coverage added:
+
+- `packages/fragment-workflows/src/scenario-runner.test.ts` now includes
+  `concurrent event ticks for one waiting instance do not terminal-error the workflow`.
+- The test reproduces two concurrent event ticks for the same waiting instance with a shared step
+  emission pump registry. The expected behavior is now: one tick processes, one tick exits as
+  contention, the instance completes, and the user event is consumed exactly once.
+
+Verification:
+
+```bash
+pnpm exec turbo types:check --filter=@fragno-dev/workflows --output-logs=errors-only
+pnpm exec turbo test --filter=@fragno-dev/workflows --output-logs=errors-only
+pnpm exec turbo types:check --filter=@fragno-dev/db --output-logs=errors-only
+pnpm exec turbo test --filter=@fragno-dev/db --output-logs=errors-only
+```
+
+All commands passed after the fix.
+
+Status update:
+
+- Finding I / Q class issue is fixed for same-process buffered-pump scope contention: duplicate or
+  overlapping ticks that collide on an already-open live step scope no longer terminal-error the
+  workflow with `BUFFERED_PUMP_SCOPE_ALREADY_OPEN`.
+- Remaining broader concurrency risks still need separate coverage/fixes: cross-process duplicated
+  side effects before OCC loss, retry attempt overflow, and eventual instance-level runner
+  serialization/keyed durable-hook processing.

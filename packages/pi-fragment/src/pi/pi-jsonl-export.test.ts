@@ -109,7 +109,25 @@ describe("pi JSONL export route", () => {
       });
 
       const messages = lines.filter((line) => line["type"] === "message");
-      expect(messages).toEqual([]);
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({
+        type: "message",
+        id: "00000004",
+        parentId: "00000003",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "hello export" }],
+        },
+      });
+      expect(messages[1]).toMatchObject({
+        type: "message",
+        id: "00000005",
+        parentId: "00000004",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "assistant:init" }],
+        },
+      });
     } finally {
       await harness.test.cleanup();
     }

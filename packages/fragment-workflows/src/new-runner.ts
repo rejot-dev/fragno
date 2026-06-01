@@ -1,6 +1,7 @@
 // New single-transaction runner scaffold (no task claiming, OCC-only coordination).
 
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
+import { BufferedPumpScopeAlreadyOpenError } from "@fragno-dev/db/buffered-pump";
 
 import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
@@ -63,6 +64,14 @@ type RunnerTickSelectionResult = {
   events: WorkflowEventRecord[];
   stepEmissions: WorkflowStepEmissionRecord[];
 };
+
+class WorkflowRunnerConcurrencyConflict extends Error {
+  constructor(cause: unknown) {
+    super("WORKFLOW_RUNNER_CONCURRENCY_CONFLICT");
+    this.name = "WorkflowRunnerConcurrencyConflict";
+    this.cause = cause;
+  }
+}
 
 class WorkflowOutputValidationError extends Error {
   readonly workflowName: string;
@@ -413,6 +422,10 @@ async function runTask(
     );
     return { type: "completed", output };
   } catch (err) {
+    if (err instanceof BufferedPumpScopeAlreadyOpenError) {
+      throw new WorkflowRunnerConcurrencyConflict(err);
+    }
+
     if (err instanceof RunnerStepSuspended) {
       return { type: "suspended", reason: err.reason };
     }
@@ -604,7 +617,7 @@ export async function runWorkflowsTick(options: {
       )
       .execute();
   } catch (err) {
-    if (isConcurrencyConflictError(err)) {
+    if (err instanceof WorkflowRunnerConcurrencyConflict || isConcurrencyConflictError(err)) {
       return 0;
     }
     if (mutatePhase) {

@@ -290,7 +290,7 @@ describe("pi-fragment Pi-shaped routes", () => {
     expect(detail.data).not.toHaveProperty("waitingFor");
   });
 
-  it("accepts prompt commands without projecting in-flight events into session detail", async () => {
+  it("projects completed prompt messages into session detail", async () => {
     const sessionId = await createSession();
     await runSessionUntilIdle(sessionId);
 
@@ -312,7 +312,7 @@ describe("pi-fragment Pi-shaped routes", () => {
     });
     for (
       let attempt = 0;
-      attempt < 20 && detail.type === "json" && detail.data.agent.state.messages.length === 0;
+      attempt < 20 && detail.type === "json" && detail.data.agent.state.messages.length < 2;
       attempt += 1
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -325,9 +325,20 @@ describe("pi-fragment Pi-shaped routes", () => {
       throw new Error("expected json response");
     }
 
-    expect(textMessages(detail.data.agent.state.messages, "user")).toEqual([]);
-    expect(textMessages(detail.data.agent.state.messages, "assistant")).toEqual([]);
-    expect(detail.data.agent.events).toEqual([]);
+    expect(textMessages(detail.data.agent.state.messages, "user")).toEqual(["hello"]);
+    expect(textMessages(detail.data.agent.state.messages, "assistant")).toEqual(["assistant:init"]);
+    expect(detail.data.agent.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "message_end",
+          message: expect.objectContaining({ role: "user" }),
+        }),
+        expect.objectContaining({
+          type: "message_end",
+          message: expect.objectContaining({ role: "assistant" }),
+        }),
+      ]),
+    );
   });
 
   it("streams an initial snapshot from /events", async () => {
