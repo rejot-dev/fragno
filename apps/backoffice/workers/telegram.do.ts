@@ -1,16 +1,10 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
-import type { TelegramMessageHookPayload } from "@fragno-dev/telegram-fragment";
 
 import type { TelegramAutomationFileMetadata } from "@/fragno/bash-runtime/telegram-bash-runtime";
 import {
-  loadDurableHookQueue,
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
@@ -21,21 +15,17 @@ import {
   type TelegramFragment,
 } from "@/fragno/telegram";
 
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
+
 type StoredTelegramConfig = TelegramConfig & {
   orgId: string;
   webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
 };
-
-type TelegramRuntime =
-  | { configured: false }
-  | {
-      configured: true;
-      stored: StoredTelegramConfig;
-      config: TelegramFragmentConfig;
-      fragment: TelegramFragment;
-    };
 
 type ConfigResponse = {
   configured: boolean;
@@ -54,7 +44,6 @@ type ConfigResponse = {
   };
 };
 
-const CONFIG_KEY = "telegram-config";
 const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
 
 const maskSecret = (value: string) => {
@@ -203,15 +192,18 @@ const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string, or
   let response: Response;
 
   try {
-    response = await fetch(`https://api.telegram.org/bot${config.botToken}/setWebhook`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        url: webhookUrl,
-        secret_token: config.webhookSecretToken,
-      }),
-      signal: controller.signal,
-    });
+    response = await fetch(
+      `${normalizeTelegramApiBaseUrl(config.apiBaseUrl)}/bot${config.botToken}/setWebhook`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: webhookUrl,
+          secret_token: config.webhookSecretToken,
+        }),
+        signal: controller.signal,
+      },
+    );
   } catch (error) {
     if (error && typeof error === "object" && "name" in error) {
       const name = String((error as { name?: string }).name);
@@ -259,140 +251,65 @@ const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string, or
 export class Telegram extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
-  #host: FragmentDurableObjectHost<TelegramFragmentConfig, TelegramFragment>;
-  #runtime: TelegramRuntime = { configured: false };
+  #host: BackofficeFragmentDurableObject<
+    StoredTelegramConfig,
+    TelegramFragmentConfig,
+    TelegramFragment
+  >;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = createBackofficeFragmentDurableObject({
       name: "Telegram",
       state,
       env,
+      toSource: (stored) => ({
+        botToken: stored.botToken,
+        webhookSecretToken: stored.webhookSecretToken,
+        botUsername: stored.botUsername,
+        apiBaseUrl: stored.apiBaseUrl,
+      }),
       createRuntime: (config) =>
         createTelegramServer(config, state, {
           hooks: {
-            onMessageReceived: this.#handleMessageReceived.bind(this),
+            onMessageReceived: async (payload) => {
+              const runtime = this.#host.getConfigured();
+              if (!runtime) {
+                console.warn(
+                  "Ignoring Telegram message because automations routing is unavailable",
+                  {
+                    orgId: null,
+                    updateId: payload.updateId,
+                    messageId: payload.messageId,
+                  },
+                );
+                return;
+              }
+
+              const orgId = this.#host.getStoredOrgId(runtime.stored);
+              if (!orgId) {
+                throw new Error("Stored Telegram config is missing an organisation id.");
+              }
+
+              const automationsDo = this.#env.AUTOMATIONS.get(
+                this.#env.AUTOMATIONS.idFromName(orgId),
+              );
+
+              await automationsDo.triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
+            },
           },
         }),
-      onProcessError: (error) => {
-        console.error("Telegram hook processor error", error);
-      },
-      onDispatcherError: (error) => {
-        console.warn("Telegram hook processor disabled", error);
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
-      try {
-        const stored = await this.#loadConfig();
-        if (!stored) {
-          this.#runtime = { configured: false };
-          return;
-        }
-
-        this.#getStoredOrgId(stored, { required: true });
-        this.#runtime = {
-          configured: true,
-          stored,
-          config: stored,
-          fragment: await this.#host.initialize(stored),
-        };
-      } catch (error) {
-        console.log("Migration failed", { error });
-        throw error;
-      }
+      await this.#host.initializeFromStored(await this.#host.loadStored());
     });
   }
 
-  async #loadConfig() {
-    const config = await this.#state.storage.get<StoredTelegramConfig>(CONFIG_KEY);
-    return config ?? null;
-  }
-
-  #getStoredOrgId(config: StoredTelegramConfig | null, options: { required: true }): string;
-  #getStoredOrgId(
-    config: StoredTelegramConfig | null,
-    options?: { required?: false },
-  ): string | null;
-  #getStoredOrgId(config: StoredTelegramConfig | null, options: { required?: boolean } = {}) {
-    const storedOrgId = typeof config?.orgId === "string" ? config.orgId.trim() : "";
-    if (storedOrgId) {
-      return storedOrgId;
-    }
-
-    if (options.required) {
-      throw new Error("Stored Telegram config is missing an organisation id.");
-    }
-
-    return null;
-  }
-
-  #assertRequestOrgIdMatchesConfig(request: Request, config: StoredTelegramConfig) {
-    const storedOrgId = this.#getStoredOrgId(config);
-    if (!storedOrgId) {
-      return;
-    }
-
-    const requestOrgId = new URL(request.url).searchParams.get("orgId")?.trim();
-    if (!requestOrgId) {
-      return;
-    }
-
-    if (requestOrgId !== storedOrgId) {
-      throw new Error(`Telegram Durable Object is already bound to organisation "${storedOrgId}".`);
-    }
-  }
-
-  async #handleMessageReceived(payload: TelegramMessageHookPayload) {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      console.warn("Ignoring Telegram message because automations routing is unavailable", {
-        orgId: null,
-        updateId: payload.updateId,
-        messageId: payload.messageId,
-      });
-      return;
-    }
-
-    const orgId = this.#getStoredOrgId(runtime.stored, { required: true });
-    const automationsDo = this.#env.AUTOMATIONS.get(this.#env.AUTOMATIONS.idFromName(orgId));
-
-    await automationsDo.triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
-  }
-
-  async #setRuntimeFromStoredConfig(stored: StoredTelegramConfig | null) {
-    if (!stored) {
-      this.#runtime = { configured: false };
-      return;
-    }
-
-    this.#getStoredOrgId(stored, { required: true });
-    const fragment = await this.#host.initialize(stored);
-    this.#runtime = {
-      configured: true,
-      stored,
-      config: stored,
-      fragment,
-    };
-  }
-
-  #getConfiguredRuntime() {
-    return this.#runtime.configured ? this.#runtime : null;
-  }
-
-  #getConfiguredRuntimeOrThrow() {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      throw new Error("Telegram is unavailable.");
-    }
-
-    return runtime;
-  }
-
   async getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata> {
-    const { config } = this.#getConfiguredRuntimeOrThrow();
+    const { source: config } = this.#host.requireConfigured();
     const { fileId } = automationFileInputSchema.parse(input);
 
     const controller = new AbortController();
@@ -435,7 +352,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
-    const { config } = this.#getConfiguredRuntimeOrThrow();
+    const { source: config } = this.#host.requireConfigured();
     const metadata = await this.getAutomationFile(input);
     if (!metadata.filePath) {
       throw new Error("Telegram file metadata did not include a file path.");
@@ -474,10 +391,10 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     chatId: string;
     text: string;
   }): Promise<{ ok: boolean; queued: boolean }> {
-    const runtime = this.#getConfiguredRuntimeOrThrow();
+    const { runtime } = this.#host.requireConfigured();
     const { chatId, text } = automationReplyInputSchema.parse(input);
 
-    const response = await runtime.fragment.callRoute("POST", "/chats/:chatId/send", {
+    const response = await runtime.callRoute("POST", "/chats/:chatId/send", {
       pathParams: { chatId },
       body: { text },
     });
@@ -490,7 +407,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async getAdminConfig(): Promise<ConfigResponse> {
-    const config = await this.#loadConfig();
+    const config = await this.#host.loadStored();
     return buildConfigResponse(config);
   }
 
@@ -498,13 +415,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     const parsed = setAdminConfigInputSchema.parse(payload);
     const normalizedOrgId = parsed.orgId;
 
-    const existing = await this.#loadConfig();
-    const existingOrgId = this.#getStoredOrgId(existing);
-    if (existingOrgId && existingOrgId !== normalizedOrgId) {
-      throw new Error(
-        `Telegram Durable Object is already bound to organisation "${existingOrgId}".`,
-      );
-    }
+    const existing = await this.#host.loadStored();
+    this.#host.assertSameOrg(existing, normalizedOrgId);
 
     const now = new Date().toISOString();
     const stored: StoredTelegramConfig = {
@@ -515,11 +427,9 @@ export class Telegram extends DurableObject<CloudflareEnv> {
       updatedAt: now,
     };
 
-    await this.#state.storage.put(CONFIG_KEY, stored);
-
     try {
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#setRuntimeFromStoredConfig(stored);
+        await this.#host.storeAndInitialize(stored);
       });
     } catch (error) {
       console.log("Migration failed", { error });
@@ -533,39 +443,10 @@ export class Telegram extends DurableObject<CloudflareEnv> {
   }
 
   async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
-    }
-
-    return await loadDurableHookQueue(runtime.fragment, options);
+    return await this.#host.getHookQueue(options, ({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {
-    const runtime = this.#getConfiguredRuntime();
-    if (runtime) {
-      this.#assertRequestOrgIdMatchesConfig(request, runtime.stored);
-    }
-
-    if (!runtime) {
-      return Response.json(
-        {
-          message: "Telegram is not configured for this organisation.",
-          code: "NOT_CONFIGURED",
-        },
-        { status: 400 },
-      );
-    }
-
-    return this.#host.fetch(runtime.fragment, request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(request);
   }
 }
