@@ -1,10 +1,9 @@
 import {
-  createDurableHooksProcessor,
-  type DurableHooksDispatcherDurableObjectHandler,
-} from "@fragno-dev/db/dispatchers/cloudflare-do";
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
-
-import { migrate } from "@fragno-dev/db";
+import { z } from "zod";
 
 import {
   loadDurableHookQueue,
@@ -24,22 +23,48 @@ import {
 } from "@/fragno/upload";
 import { createUploadServerForProvider, type UploadFragment } from "@/fragno/upload-server";
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
-
 const hasOwn = (record: Record<string, unknown>, key: string) =>
   Object.prototype.hasOwnProperty.call(record, key);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isUploadProvider = (value: string): value is UploadProvider =>
-  value === UPLOAD_PROVIDER_R2 || value === UPLOAD_PROVIDER_R2_BINDING;
+type ProviderResolution = {
+  provider: UploadProvider | null;
+  invalidProvider: string | null;
+};
+
+const uploadProviderSchema = z.enum([UPLOAD_PROVIDER_R2, UPLOAD_PROVIDER_R2_BINDING]);
+
+const uploadProviderInputSchema = z.string().trim().pipe(uploadProviderSchema);
+
+const setAdminConfigArgsSchema = z.object({
+  orgId: z.string().trim().min(1, "Missing organisation id."),
+});
+
+const hookQueueOptionsSchema = z
+  .object({
+    cursor: z
+      .string()
+      .trim()
+      .transform((value) => value || undefined)
+      .optional(),
+    pageSize: z
+      .number()
+      .refine((value) => Number.isFinite(value) && Number.isInteger(value), {
+        message: "pageSize must be an integer.",
+      })
+      .optional(),
+  })
+  .optional();
+
+const parseUploadProviderInput = (value: string): ProviderResolution => {
+  const parsed = uploadProviderInputSchema.safeParse(value);
+  if (!parsed.success) {
+    return { provider: null, invalidProvider: value.trim() || value };
+  }
+  return { provider: parsed.data, invalidProvider: null };
+};
 
 const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): UploadProvider[] => {
   const providers: UploadProvider[] = [];
@@ -55,24 +80,57 @@ const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): U
 const resolveHooksProvider = (response: UploadAdminConfigResponse): UploadProvider | null =>
   response.defaultProvider ?? configuredProvidersFromResponse(response)[0] ?? null;
 
-type ProviderResolution = {
-  provider: UploadProvider | null;
-  invalidProvider: string | null;
+type UploadRuntime = {
+  config: StoredUploadAdminConfig;
+  response: UploadAdminConfigResponse;
+  fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
 export class Upload extends DurableObject<CloudflareEnv> {
   #state: DurableObjectState;
   #env: CloudflareEnv;
-  #fragmentsByProvider = new Map<UploadProvider, UploadFragment>();
-  #fragmentConfigHash: string | null = null;
-  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
-  #dispatcherProvider: UploadProvider | null = null;
-  #migrated = false;
+  #host: FragmentDurableObjectHost<StoredUploadAdminConfig, UploadRuntime>;
+  #runtime: UploadRuntime | null = null;
+  #runtimeConfigHash: string | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#state = state;
     this.#env = env;
+    this.#host = createFragmentDurableObjectHost<
+      CloudflareEnv,
+      StoredUploadAdminConfig,
+      UploadRuntime
+    >({
+      name: "Upload",
+      state,
+      env,
+      createRuntime: (stored) => this.#createRuntime(stored),
+      getMigrationFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
+      getHookFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
+      hostRuntime: (runtime, { hostFragment }) => ({
+        ...runtime,
+        fragmentsByProvider: new Map(
+          [...runtime.fragmentsByProvider].map(([provider, fragment]) => [
+            provider,
+            hostFragment(fragment),
+          ]),
+        ),
+      }),
+      onProcessError: (error) => {
+        console.error("Upload hook processor error", error);
+      },
+      onDispatcherError: (error) => {
+        console.warn("Upload hook processor disabled", error);
+      },
+    });
+
+    void state.blockConcurrencyWhile(async () => {
+      const stored = await this.#loadConfig();
+      if (stored) {
+        await this.#initializeFromStored(stored);
+      }
+    });
   }
 
   async #loadConfig() {
@@ -97,6 +155,42 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return normalized;
   }
 
+  #createRuntime(stored: StoredUploadAdminConfig): UploadRuntime {
+    const response = buildUploadAdminConfigResponse(stored);
+    const fragmentsByProvider = new Map<UploadProvider, UploadFragment>();
+
+    for (const provider of configuredProvidersFromResponse(response)) {
+      fragmentsByProvider.set(
+        provider,
+        createUploadServerForProvider(stored, provider, this.#state, this.#env),
+      );
+    }
+
+    return {
+      config: stored,
+      response,
+      fragmentsByProvider,
+    };
+  }
+
+  async #initializeFromStored(stored: StoredUploadAdminConfig) {
+    const nextConfigHash = JSON.stringify(stored);
+    if (this.#runtime && this.#runtimeConfigHash === nextConfigHash) {
+      return this.#runtime;
+    }
+
+    const response = buildUploadAdminConfigResponse(stored);
+    if (configuredProvidersFromResponse(response).length === 0) {
+      this.#runtime = null;
+      this.#runtimeConfigHash = null;
+      return null;
+    }
+
+    this.#runtime = await this.#host.initialize(stored);
+    this.#runtimeConfigHash = nextConfigHash;
+    return this.#runtime;
+  }
+
   async #resolveProviderFromRequest(
     request: Request,
     defaultProvider: UploadProvider | null,
@@ -104,10 +198,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
     const url = new URL(request.url);
     const queryProvider = url.searchParams.get("provider")?.trim();
     if (queryProvider) {
-      if (!isUploadProvider(queryProvider)) {
-        return { provider: null, invalidProvider: queryProvider };
-      }
-      return { provider: queryProvider, invalidProvider: null };
+      return parseUploadProviderInput(queryProvider);
     }
 
     const method = request.method.toUpperCase();
@@ -125,11 +216,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
             typeof payload.provider === "string" &&
             payload.provider.trim()
           ) {
-            const bodyProvider = payload.provider.trim();
-            if (!isUploadProvider(bodyProvider)) {
-              return { provider: null, invalidProvider: bodyProvider };
-            }
-            return { provider: bodyProvider, invalidProvider: null };
+            return parseUploadProviderInput(payload.provider);
           }
         } catch {
           // Ignore invalid JSON and continue with fallback/default provider behavior.
@@ -142,11 +229,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
           const formData = await request.clone().formData();
           const providerValue = formData.get("provider");
           if (typeof providerValue === "string" && providerValue.trim()) {
-            const bodyProvider = providerValue.trim();
-            if (!isUploadProvider(bodyProvider)) {
-              return { provider: null, invalidProvider: bodyProvider };
-            }
-            return { provider: bodyProvider, invalidProvider: null };
+            return parseUploadProviderInput(providerValue);
           }
         } catch {
           // Ignore form parsing errors and continue with fallback/default provider behavior.
@@ -157,90 +240,18 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return { provider: defaultProvider, invalidProvider: null };
   }
 
-  async #ensureFragments() {
+  async #ensureRuntime() {
     const stored = await this.#loadConfig();
     const response = buildUploadAdminConfigResponse(stored);
     const configuredProviders = configuredProvidersFromResponse(response);
 
     if (!stored || configuredProviders.length === 0) {
-      this.#fragmentsByProvider.clear();
-      this.#fragmentConfigHash = null;
-      this.#dispatcher = null;
-      this.#dispatcherProvider = null;
-      this.#migrated = false;
+      this.#runtime = null;
+      this.#runtimeConfigHash = null;
       return null;
     }
 
-    const nextConfigHash = JSON.stringify(stored);
-    if (
-      !this.#fragmentConfigHash ||
-      this.#fragmentConfigHash !== nextConfigHash ||
-      this.#fragmentsByProvider.size !== configuredProviders.length
-    ) {
-      const nextFragments = new Map<UploadProvider, UploadFragment>();
-      for (const provider of configuredProviders) {
-        nextFragments.set(
-          provider,
-          createUploadServerForProvider(stored, provider, this.#state, this.#env),
-        );
-      }
-      this.#fragmentsByProvider = nextFragments;
-      this.#fragmentConfigHash = nextConfigHash;
-      this.#dispatcher = null;
-      this.#dispatcherProvider = null;
-      this.#migrated = false;
-    }
-
-    if (!this.#migrated && this.#fragmentsByProvider.size > 0) {
-      const migrationTarget =
-        (response.defaultProvider && this.#fragmentsByProvider.get(response.defaultProvider)) ||
-        this.#fragmentsByProvider.values().next().value;
-      if (migrationTarget) {
-        await migrate(migrationTarget);
-      }
-      this.#migrated = true;
-    }
-
-    this.#ensureDispatcher(response);
-
-    return {
-      config: stored,
-      response,
-    };
-  }
-
-  #ensureDispatcher(response: UploadAdminConfigResponse) {
-    const provider = resolveHooksProvider(response);
-    if (!provider) {
-      this.#dispatcher = null;
-      this.#dispatcherProvider = null;
-      return;
-    }
-
-    if (this.#dispatcher && this.#dispatcherProvider === provider) {
-      return;
-    }
-
-    const fragment = this.#fragmentsByProvider.get(provider);
-    if (!fragment) {
-      this.#dispatcher = null;
-      this.#dispatcherProvider = null;
-      return;
-    }
-
-    try {
-      const dispatcherFactory = createDurableHooksProcessor([fragment], {
-        onProcessError: (error) => {
-          console.error("Upload hook processor error", error);
-        },
-      });
-      this.#dispatcher = dispatcherFactory(this.#state, this.#env);
-      this.#dispatcherProvider = provider;
-    } catch (error) {
-      console.warn("Upload hook processor disabled", error);
-      this.#dispatcher = null;
-      this.#dispatcherProvider = null;
-    }
+    return await this.#initializeFromStored(stored);
   }
 
   async getAdminConfig(): Promise<UploadAdminConfigResponse> {
@@ -253,10 +264,11 @@ export class Upload extends DurableObject<CloudflareEnv> {
     orgId: string,
     _origin?: string,
   ): Promise<UploadAdminConfigResponse> {
+    const args = setAdminConfigArgsSchema.parse({ orgId });
     const existing = await this.#loadConfig();
     const resolved = resolveUploadAdminConfigInput({
       payload,
-      orgId,
+      orgId: args.orgId,
       existing,
     });
 
@@ -264,16 +276,11 @@ export class Upload extends DurableObject<CloudflareEnv> {
       throw new Error(resolved.message);
     }
 
-    await this.#state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, resolved.config);
-
-    this.#fragmentsByProvider.clear();
-    this.#fragmentConfigHash = null;
-    this.#dispatcher = null;
-    this.#dispatcherProvider = null;
-    this.#migrated = false;
-
     try {
-      await this.#ensureFragments();
+      await this.#state.blockConcurrencyWhile(async () => {
+        await this.#state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, resolved.config);
+        await this.#initializeFromStored(resolved.config);
+      });
     } catch (error) {
       console.log("Upload migration failed", { error });
       throw new Error("Failed to migrate Upload schema.");
@@ -283,8 +290,9 @@ export class Upload extends DurableObject<CloudflareEnv> {
   }
 
   async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const ensured = await this.#ensureFragments();
-    if (!ensured) {
+    const parsedOptions = hookQueueOptionsSchema.parse(options);
+    const runtime = await this.#ensureRuntime();
+    if (!runtime) {
       return {
         configured: false,
         hooksEnabled: false,
@@ -295,7 +303,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
       };
     }
 
-    const provider = resolveHooksProvider(ensured.response);
+    const provider = resolveHooksProvider(runtime.response);
     if (!provider) {
       return {
         configured: false,
@@ -307,7 +315,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
       };
     }
 
-    const fragment = this.#fragmentsByProvider.get(provider);
+    const fragment = runtime.fragmentsByProvider.get(provider);
     if (!fragment) {
       return {
         configured: false,
@@ -319,67 +327,57 @@ export class Upload extends DurableObject<CloudflareEnv> {
       };
     }
 
-    return await loadDurableHookQueue(fragment, options);
+    return await loadDurableHookQueue(fragment, parsedOptions);
   }
 
   async alarm(): Promise<void> {
-    const ensured = await this.#ensureFragments();
-    const dispatcher = this.#dispatcher;
-    if (!ensured || !dispatcher?.alarm) {
-      return;
-    }
-
-    await dispatcher.alarm();
+    await this.#ensureRuntime();
+    await this.#host.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
-    const ensured = await this.#ensureFragments();
-    if (!ensured) {
-      return jsonResponse(
+    const runtime = await this.#ensureRuntime();
+    if (!runtime) {
+      return Response.json(
         { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        400,
+        { status: 400 },
       );
     }
 
     const providerResolution = await this.#resolveProviderFromRequest(
       request,
-      ensured.response.defaultProvider,
+      runtime.response.defaultProvider,
     );
     if (providerResolution.invalidProvider) {
-      return jsonResponse(
+      return Response.json(
         {
           message: `Upload provider '${providerResolution.invalidProvider}' is not supported.`,
           code: "INVALID_PROVIDER",
         },
-        400,
+        { status: 400 },
       );
     }
 
     if (!providerResolution.provider) {
-      return jsonResponse(
+      return Response.json(
         { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        400,
+        { status: 400 },
       );
     }
 
-    const fragment = this.#fragmentsByProvider.get(providerResolution.provider);
+    const fragment = runtime.fragmentsByProvider.get(providerResolution.provider);
     if (!fragment) {
-      return jsonResponse(
+      return Response.json(
         {
           message: `Upload provider '${providerResolution.provider}' is not configured for this organisation.`,
           code: "PROVIDER_NOT_CONFIGURED",
         },
-        400,
+        { status: 400 },
       );
     }
 
-    const waitUntil = this.#state.waitUntil.bind(this.#state);
-    try {
-      return await fragment.handler(request, { waitUntil });
-    } finally {
-      if (providerResolution.provider !== this.#dispatcherProvider && this.#dispatcher?.notify) {
-        void this.#dispatcher.notify({ source: "request", waitUntil });
-      }
-    }
+    return await fragment.handler(request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }

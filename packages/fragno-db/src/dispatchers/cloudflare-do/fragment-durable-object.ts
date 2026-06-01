@@ -81,7 +81,12 @@ type MultiFragmentHostOptions<TEnv, TSource, TRuntime> = CommonHostOptions<
   getMigrationFragments: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
 };
 
-const methodsThatNotifyHooks = new Set<PropertyKey>(["callRoute", "callRouteRaw", "callServices"]);
+const methodsThatNotifyHooks = new Set<PropertyKey>([
+  "callRoute",
+  "callRouteRaw",
+  "callServices",
+  "handler",
+]);
 
 const isFetchTarget = (value: unknown): value is FragmentDurableObjectFetchTarget => {
   return (

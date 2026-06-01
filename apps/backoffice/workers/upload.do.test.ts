@@ -55,8 +55,11 @@ const createState = () => {
     }),
   };
   const waitUntil = vi.fn();
+  const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
+    return callback();
+  });
 
-  return { storage, waitUntil } as unknown as DurableObjectState;
+  return { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState;
 };
 
 const VALID_R2_PAYLOAD = {
@@ -177,7 +180,7 @@ describe("Upload Durable Object", () => {
     );
     expect(dispatcherNotifyMock).toHaveBeenCalledTimes(1);
     expect(dispatcherNotifyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ source: "request", waitUntil: expect.any(Function) }),
+      expect.objectContaining({ source: "request" }),
     );
   });
 
@@ -259,7 +262,7 @@ describe("Upload Durable Object", () => {
     });
     expect(loadDurableHookQueueMock).toHaveBeenCalledTimes(1);
     expect(loadDurableHookQueueMock).toHaveBeenCalledWith(
-      expect.objectContaining(fragment),
+      expect.objectContaining({ handler: expect.any(Function) }),
       expect.objectContaining({ pageSize: 10 }),
     );
   });

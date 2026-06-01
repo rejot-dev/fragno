@@ -1,10 +1,10 @@
 import {
-  createDurableHooksProcessor,
-  type DurableHooksDispatcherDurableObjectHandler,
-} from "@fragno-dev/db/dispatchers/cloudflare-do";
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
+import { z } from "zod";
 
-import { migrate } from "@fragno-dev/db";
 import type { ResolvedOtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import {
@@ -22,14 +22,6 @@ import {
   identityClaimPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
-
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
 
 export type IssueIdentityClaimInput = {
   orgId: string;
@@ -63,26 +55,68 @@ export type ConfirmIdentityClaimResult =
       error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED";
     };
 
-const emptyQueue = {
-  configured: true,
-  hooksEnabled: false,
-  namespace: null,
-  items: [],
-  cursor: undefined,
-  hasNextPage: false,
-} satisfies DurableHookQueueResponse;
+const issueIdentityClaimInputSchema = z.object({
+  orgId: z
+    .string()
+    .trim()
+    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+  linkSource: z
+    .string()
+    .trim()
+    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+  externalActorId: z
+    .string()
+    .trim()
+    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+  expiresInMinutes: z
+    .number()
+    .refine((value) => Number.isFinite(value), {
+      message: "expiresInMinutes must be finite.",
+    })
+    .optional(),
+  publicBaseUrl: z
+    .string()
+    .trim()
+    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+});
+
+const confirmIdentityClaimInputSchema = z.object({
+  externalId: z.string().trim().min(1),
+  code: z.string().trim().min(1),
+  subjectUserId: z.string().trim().min(1),
+});
 
 export class Otp extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
+  #host: FragmentDurableObjectHost<void, OtpFragment>;
   #fragment: OtpFragment | null = null;
-  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
-  #migrated = false;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
+    this.#host = createFragmentDurableObjectHost({
+      name: "OTP",
+      state,
+      env,
+      createRuntime: () =>
+        createOtpServer(state, {
+          hooks: {
+            onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
+          },
+        }),
+      onProcessError: (error) => {
+        console.error("OTP hook processor error", error);
+      },
+      onDispatcherError: (error) => {
+        console.warn("OTP hook processor disabled", error);
+      },
+    });
+
+    void state.blockConcurrencyWhile(async () => {
+      this.#fragment = await this.#host.initialize(undefined);
+    });
   }
 
   async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload) {
@@ -127,94 +161,39 @@ export class Otp extends DurableObject<CloudflareEnv> {
     );
   }
 
-  async #ensureFragment() {
+  #getFragment() {
     if (!this.#fragment) {
-      this.#fragment = createOtpServer(this.#state, {
-        hooks: {
-          onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
-        },
-      });
-      this.#migrated = false;
-      this.#dispatcher = null;
+      throw new Error("OTP is unavailable.");
     }
-
-    if (!this.#migrated) {
-      await migrate(this.#fragment);
-      this.#migrated = true;
-    }
-
-    if (!this.#dispatcher) {
-      try {
-        const dispatcherFactory = createDurableHooksProcessor([this.#fragment], {
-          onProcessError: (error) => {
-            console.error("OTP hook processor error", error);
-          },
-        });
-        this.#dispatcher = dispatcherFactory(this.#state, this.#env);
-      } catch (error) {
-        console.warn("OTP hook processor disabled", error);
-        this.#dispatcher = null;
-      }
-    }
-
     return this.#fragment;
   }
 
-  async #notifyDispatcher() {
-    if (!this.#dispatcher?.notify) {
-      return;
-    }
-
-    await this.#dispatcher.notify({
-      source: "request",
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
-  }
-
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
-    const orgId = input.orgId.trim();
-    const linkSource = input.linkSource.trim();
-    const externalActorId = input.externalActorId.trim();
-    const publicBaseUrl = input.publicBaseUrl.trim();
-
-    if (!orgId || !linkSource || !externalActorId || !publicBaseUrl) {
-      throw new Error("orgId, linkSource, externalActorId, and publicBaseUrl are required.");
-    }
-
-    const fragment = await this.#ensureFragment();
+    const parsed = issueIdentityClaimInputSchema.parse(input);
+    const fragment = this.#getFragment();
     const expiresInMinutes =
-      typeof input.expiresInMinutes === "number" && Number.isFinite(input.expiresInMinutes)
-        ? Math.max(1, Math.floor(input.expiresInMinutes))
+      typeof parsed.expiresInMinutes === "number"
+        ? Math.max(1, Math.floor(parsed.expiresInMinutes))
         : DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
 
-    const issued = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              fragment.services.otp.issueOtp(
-                externalActorId,
-                IDENTITY_LINK_TYPE,
-                expiresInMinutes,
-                {
-                  orgId,
-                  linkSource,
-                  externalActorId,
-                },
-              ),
-            ] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    await this.#notifyDispatcher();
+    const issued = await fragment.callServices(() =>
+      fragment.services.otp.issueOtp(parsed.externalActorId, IDENTITY_LINK_TYPE, expiresInMinutes, {
+        orgId: parsed.orgId,
+        linkSource: parsed.linkSource,
+        externalActorId: parsed.externalActorId,
+      }),
+    );
 
     return {
       ok: true,
       externalId: issued.externalId,
       code: issued.code,
-      url: buildIdentityClaimCompletionUrl(publicBaseUrl, orgId, issued.externalId, issued.code),
+      url: buildIdentityClaimCompletionUrl(
+        parsed.publicBaseUrl,
+        parsed.orgId,
+        issued.externalId,
+        issued.code,
+      ),
       type: IDENTITY_LINK_TYPE,
     };
   }
@@ -222,34 +201,22 @@ export class Otp extends DurableObject<CloudflareEnv> {
   async confirmIdentityClaim(
     input: ConfirmIdentityClaimInput,
   ): Promise<ConfirmIdentityClaimResult> {
-    const externalId = input.externalId.trim();
-    const code = input.code.trim();
-    const subjectUserId = input.subjectUserId.trim();
-
-    if (!externalId || !code || !subjectUserId) {
+    const parsed = confirmIdentityClaimInputSchema.safeParse(input);
+    if (!parsed.success) {
       return { ok: false, error: "INVALID_INPUT" };
     }
 
-    const fragment = await this.#ensureFragment();
-    const confirmation = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              fragment.services.otp.confirmOtp(externalId, code, IDENTITY_LINK_TYPE, {
-                subjectUserId,
-              }),
-            ] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
+    const { externalId, code, subjectUserId } = parsed.data;
+    const fragment = this.#getFragment();
+    const confirmation = await fragment.callServices(() =>
+      fragment.services.otp.confirmOtp(externalId, code, IDENTITY_LINK_TYPE, {
+        subjectUserId,
+      }),
+    );
 
     if (!confirmation.confirmed) {
       return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
     }
-
-    await this.#notifyDispatcher();
 
     return {
       ok: true,
@@ -258,27 +225,15 @@ export class Otp extends DurableObject<CloudflareEnv> {
   }
 
   async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const fragment = await this.#ensureFragment();
-    if (!fragment) {
-      return emptyQueue;
-    }
-
-    return await loadDurableHookQueue(fragment, options);
+    return await loadDurableHookQueue(this.#getFragment(), options);
   }
 
   async alarm(): Promise<void> {
-    if (this.#dispatcher?.alarm) {
-      await this.#dispatcher.alarm();
-    }
+    await this.#host.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
-    const fragment = await this.#ensureFragment();
-    if (!fragment) {
-      return jsonResponse({ message: "OTP is unavailable.", code: "NOT_CONFIGURED" }, 400);
-    }
-
-    return fragment.handler(request, {
+    return await this.#host.fetch(this.#getFragment(), request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
   }

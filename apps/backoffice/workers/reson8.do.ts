@@ -1,8 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
+import { z } from "zod";
 
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
+
 type StoredReson8Config = {
+  orgId: string;
   apiKey: string;
   createdAt: string;
   updatedAt: string;
@@ -28,14 +35,6 @@ export type Reson8RealtimeOriginDiagnostic = {
 const CONFIG_KEY = "reson8-config";
 const RESON8_API_BASE_URL = "https://api.reson8.dev/v1";
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
-
 const maskSecret = (value: string) => {
   if (!value) {
     return "";
@@ -46,37 +45,22 @@ const maskSecret = (value: string) => {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 };
 
-const parseConfigInput = async (
-  payload: unknown,
-  existing?: StoredReson8Config | null,
-): Promise<
-  | {
-      ok: true;
-      data: {
-        apiKey: string;
-      };
-    }
-  | { ok: false; message: string }
-> => {
-  if (!payload || typeof payload !== "object") {
-    return { ok: false, message: "Request body must be a JSON object." };
-  }
+const storedReson8ConfigSchema: z.ZodType<StoredReson8Config> = z.object({
+  orgId: z.string().trim().min(1, "Stored Reson8 config is missing an organisation id."),
+  apiKey: z.string().trim().min(1, "Stored Reson8 config is missing an API key."),
+  createdAt: z.string().trim().min(1, "Stored Reson8 config is missing createdAt."),
+  updatedAt: z.string().trim().min(1, "Stored Reson8 config is missing updatedAt."),
+});
 
-  const record = payload as Record<string, unknown>;
-  const apiKeyRaw = typeof record.apiKey === "string" ? record.apiKey.trim() : "";
-  const apiKey = apiKeyRaw || existing?.apiKey || "";
+const setAdminConfigInputSchema = z.object({
+  apiKey: z
+    .string()
+    .trim()
+    .transform((value) => value || undefined)
+    .optional(),
+});
 
-  if (!apiKey) {
-    return { ok: false, message: "Reson8 API key is required." };
-  }
-
-  return {
-    ok: true,
-    data: {
-      apiKey,
-    },
-  };
-};
+type Reson8Source = Pick<StoredReson8Config, "apiKey">;
 
 const buildConfigResponse = (config: StoredReson8Config | null): ConfigResponse => {
   if (!config) {
@@ -103,43 +87,39 @@ const buildRealtimeDiagnosticUrl = () => {
 
 export class Reson8 extends DurableObject<CloudflareEnv> {
   #state: DurableObjectState;
-  #fragment: Reson8Fragment | null = null;
-  #fragmentApiKey: string | null = null;
+  #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#state = state;
-  }
+    this.#host = createBackofficeFragmentDurableObject({
+      name: "Reson8",
+      state,
+      env,
+      configKey: CONFIG_KEY,
+      parseStored: (raw) => storedReson8ConfigSchema.parse(raw),
+      isConfigured: (stored): stored is StoredReson8Config =>
+        Boolean(stored?.orgId && stored.apiKey),
+      toSource: (stored) => ({ apiKey: stored.apiKey }),
+      createRuntime: (source) => createReson8Server(source),
+      getMigrationFragments: () => [],
+      getHookFragments: () => [],
+    });
 
-  async #loadConfig() {
-    const config = await this.#state.storage.get<StoredReson8Config>(CONFIG_KEY);
-    return config ?? null;
-  }
-
-  async #ensureFragment() {
-    const stored = await this.#loadConfig();
-    if (!stored?.apiKey) {
-      return null;
-    }
-
-    if (!this.#fragment || this.#fragmentApiKey !== stored.apiKey) {
-      this.#fragment = createReson8Server({ apiKey: stored.apiKey });
-      this.#fragmentApiKey = stored.apiKey;
-    }
-
-    return this.#fragment;
+    void state.blockConcurrencyWhile(async () => {
+      await this.#host.initializeFromStored(await this.#host.loadStored());
+    });
   }
 
   async getAdminConfig(): Promise<ConfigResponse> {
-    const config = await this.#loadConfig();
+    const config = await this.#host.loadStored();
     return buildConfigResponse(config);
   }
 
   async getRealtimeOriginDiagnostic(origin: string): Promise<Reson8RealtimeOriginDiagnostic> {
-    const config = await this.#loadConfig();
-    if (!config?.apiKey) {
-      throw new Error("Reson8 is not configured for this organisation.");
-    }
+    const { source: config } = this.#host.requireConfigured(
+      "Reson8 is not configured for this organisation.",
+    );
 
     const tokenResponse = await fetch(`${RESON8_API_BASE_URL}/auth/token`, {
       method: "POST",
@@ -219,38 +199,37 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
     };
   }
 
-  async setAdminConfig(payload: unknown, _orgId: string): Promise<ConfigResponse> {
-    const existing = await this.#loadConfig();
-    const parsed = await parseConfigInput(payload, existing);
-    if (!parsed.ok) {
-      throw new Error(parsed.message);
+  async setAdminConfig(payload: unknown, orgId: string): Promise<ConfigResponse> {
+    const normalizedOrgId = orgId.trim();
+    if (!normalizedOrgId) {
+      throw new Error("Missing organisation id.");
+    }
+
+    const existing = await this.#host.loadStored();
+    this.#host.assertSameOrg(existing, normalizedOrgId);
+
+    const parsed = setAdminConfigInputSchema.parse(payload);
+    const apiKey = parsed.apiKey ?? existing?.apiKey ?? "";
+    if (!apiKey) {
+      throw new Error("Reson8 API key is required.");
     }
 
     const now = new Date().toISOString();
     const stored: StoredReson8Config = {
-      apiKey: parsed.data.apiKey,
+      orgId: normalizedOrgId,
+      apiKey,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
 
-    await this.#state.storage.put(CONFIG_KEY, stored);
-    await this.#ensureFragment();
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.storeAndInitialize(stored);
+    });
 
     return buildConfigResponse(stored);
   }
 
   async fetch(request: Request): Promise<Response> {
-    const fragment = await this.#ensureFragment();
-    if (!fragment) {
-      return jsonResponse(
-        {
-          message: "Reson8 is not configured for this organisation.",
-          code: "NOT_CONFIGURED",
-        },
-        400,
-      );
-    }
-
-    return fragment.handler(request);
+    return await this.#host.fetch(request);
   }
 }

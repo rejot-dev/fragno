@@ -1,21 +1,22 @@
-import {
-  createDurableHooksProcessor,
-  type DurableHooksDispatcherDurableObjectHandler,
-} from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { DurableObject } from "cloudflare:workers";
 import { Resend as ResendClient } from "resend";
+import { z } from "zod";
 
-import { migrate } from "@fragno-dev/db";
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
 import {
-  loadDurableHookQueue,
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
 
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
+
 type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
+  orgId: string;
   webhookBaseUrl?: string;
   webhookId?: string;
   webhookSecret?: string;
@@ -61,14 +62,6 @@ const WEBHOOK_EVENTS = [
   "email.received",
 ] as const;
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json",
-    },
-  });
-
 const maskSecret = (value: string) => {
   if (!value) {
     return "";
@@ -92,6 +85,38 @@ const normalizeReplyTo = (value?: string | string[]) => {
     .filter(Boolean);
   return entries.length > 0 ? entries : undefined;
 };
+
+const optionalTrimmedStringSchema = z
+  .string()
+  .trim()
+  .transform((value) => value || undefined)
+  .optional();
+
+const stringListSchema = z
+  .union([
+    z.string(),
+    z
+      .array(z.string())
+      .transform((entries) =>
+        entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+      ),
+  ])
+  .transform(normalizeReplyTo)
+  .optional();
+
+const storedResendConfigSchema: z.ZodType<StoredResendConfig> = z.object({
+  orgId: z.string().trim().min(1, "Stored Resend config is missing an organisation id."),
+  apiKey: z.string().trim().min(1, "Stored Resend config is missing an API key."),
+  defaultFrom: z.string().trim().min(1, "Stored Resend config is missing defaultFrom."),
+  defaultReplyTo: stringListSchema,
+  defaultTags: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+  defaultHeaders: z.record(z.string(), z.string()).optional(),
+  webhookBaseUrl: optionalTrimmedStringSchema,
+  webhookId: optionalTrimmedStringSchema,
+  webhookSecret: optionalTrimmedStringSchema,
+  createdAt: z.string().trim().min(1, "Stored Resend config is missing createdAt."),
+  updatedAt: z.string().trim().min(1, "Stored Resend config is missing updatedAt."),
+});
 
 const parseConfigInput = async (
   payload: unknown,
@@ -252,224 +277,129 @@ const updateWebhook = async (
 };
 
 export class Resend extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
   #state: DurableObjectState;
-  #fragment: ResendFragment | null = null;
-  #fragmentConfig: ResendFragmentConfig | null = null;
-  #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
-  #migrated = false;
+  #host: BackofficeFragmentDurableObject<StoredResendConfig, ResendFragmentConfig, ResendFragment>;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#env = env;
     this.#state = state;
-  }
+    this.#host = createBackofficeFragmentDurableObject({
+      name: "Resend",
+      state,
+      env,
+      configKey: CONFIG_KEY,
+      parseStored: (raw) => storedResendConfigSchema.parse(raw),
+      isConfigured: (stored): stored is StoredResendConfig =>
+        Boolean(stored?.orgId && stored.apiKey && stored.webhookSecret && stored.defaultFrom),
+      toSource: (stored) => ({
+        apiKey: stored.apiKey,
+        webhookSecret: stored.webhookSecret ?? "",
+        defaultFrom: stored.defaultFrom,
+        defaultReplyTo: stored.defaultReplyTo,
+        defaultTags: stored.defaultTags,
+        defaultHeaders: stored.defaultHeaders,
+      }),
+      fingerprint: (config) => JSON.stringify(config),
+      createRuntime: (config) => createResendServer(config, state),
+    });
 
-  async #loadConfig() {
-    const config = await this.#state.storage.get<StoredResendConfig>(CONFIG_KEY);
-    return config ?? null;
-  }
-
-  #extractFragmentConfig(config: StoredResendConfig): ResendFragmentConfig | null {
-    if (!config.webhookSecret) {
-      return null;
-    }
-
-    return {
-      apiKey: config.apiKey,
-      webhookSecret: config.webhookSecret,
-      defaultFrom: config.defaultFrom,
-      defaultReplyTo: config.defaultReplyTo,
-      defaultTags: config.defaultTags,
-      defaultHeaders: config.defaultHeaders,
-    };
-  }
-
-  #configsEqual(a: ResendFragmentConfig, b: ResendFragmentConfig) {
-    const normalize = (value?: string | string[]) => {
-      if (!value) {
-        return [] as string[];
-      }
-      return Array.isArray(value) ? value : [value];
-    };
-
-    const replyToEqual = (() => {
-      const aReply = normalize(a.defaultReplyTo);
-      const bReply = normalize(b.defaultReplyTo);
-      if (aReply.length !== bReply.length) {
-        return false;
-      }
-      return aReply.every((entry, index) => entry === bReply[index]);
-    })();
-
-    return (
-      a.apiKey === b.apiKey &&
-      a.webhookSecret === b.webhookSecret &&
-      a.defaultFrom === b.defaultFrom &&
-      replyToEqual
-    );
-  }
-
-  async #ensureFragment() {
-    const stored = await this.#loadConfig();
-    if (!stored) {
-      return null;
-    }
-
-    const config = this.#extractFragmentConfig(stored);
-    if (!config) {
-      return null;
-    }
-
-    if (
-      !this.#fragment ||
-      !this.#fragmentConfig ||
-      !this.#configsEqual(this.#fragmentConfig, config)
-    ) {
-      this.#fragment = createResendServer(config, this.#state);
-      this.#fragmentConfig = config;
-      this.#migrated = false;
-      this.#dispatcher = null;
-    }
-
-    if (!this.#migrated && this.#fragment) {
-      await migrate(this.#fragment);
-      this.#migrated = true;
-    }
-
-    if (this.#fragment && !this.#dispatcher) {
-      try {
-        const dispatcherFactory = createDurableHooksProcessor([this.#fragment], {
-          onProcessError: (error) => {
-            console.error("Resend hook processor error", error);
-          },
-        });
-        this.#dispatcher = dispatcherFactory(this.#state, this.#env);
-      } catch (error) {
-        console.warn("Resend hook processor disabled", error);
-        this.#dispatcher = null;
-      }
-    }
-
-    return this.#fragment;
+    void state.blockConcurrencyWhile(async () => {
+      await this.#host.initializeFromStored(await this.#host.loadStored());
+    });
   }
 
   async alarm() {
-    const fragment = await this.#ensureFragment();
-    const dispatcher = this.#dispatcher;
-    if (!fragment || !dispatcher?.alarm) {
-      return;
-    }
-
-    await dispatcher.alarm();
+    await this.#host.alarm();
   }
 
   async getAdminConfig(): Promise<ConfigResponse> {
-    const config = await this.#loadConfig();
+    const config = await this.#host.loadStored();
     return buildConfigResponse(config);
   }
 
   async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
-    const existing = await this.#loadConfig();
-    const parsed = await parseConfigInput(payload, existing);
-    if (!parsed.ok) {
-      throw new Error(parsed.message);
-    }
-
-    if (!orgId) {
+    const normalizedOrgId = orgId.trim();
+    if (!normalizedOrgId) {
       throw new Error("Missing organisation id.");
     }
 
-    const now = new Date().toISOString();
-    const defaultReplyTo =
-      parsed.data.defaultReplyTo === undefined
-        ? existing?.defaultReplyTo
-        : (parsed.data.defaultReplyTo ?? undefined);
-    const webhookBaseUrl =
-      parsed.data.webhookBaseUrl === undefined
-        ? existing?.webhookBaseUrl
-        : (parsed.data.webhookBaseUrl ?? undefined);
-    const stored: StoredResendConfig = {
-      apiKey: parsed.data.apiKey,
-      defaultFrom: parsed.data.defaultFrom,
-      defaultReplyTo,
-      webhookBaseUrl,
-      webhookId: existing?.webhookId,
-      webhookSecret: existing?.webhookSecret,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+    return await this.#state.blockConcurrencyWhile(async () => {
+      const existing = await this.#host.loadStored();
+      this.#host.assertSameOrg(existing, normalizedOrgId);
 
-    const client = new ResendClient(stored.apiKey);
-    const webhookUrl = resolveWebhookUrl(origin, orgId, stored.webhookBaseUrl);
-
-    let webhookResult: WebhookResult;
-
-    if (stored.webhookId && stored.webhookSecret) {
-      webhookResult = await updateWebhook(client, stored.webhookId, webhookUrl, orgId);
-      if (!webhookResult.ok) {
-        const fallback = await createWebhook(client, webhookUrl, orgId);
-        if (fallback.ok) {
-          webhookResult = fallback;
-        }
+      const parsed = await parseConfigInput(payload, existing);
+      if (!parsed.ok) {
+        throw new Error(parsed.message);
       }
-    } else {
-      webhookResult = await createWebhook(client, webhookUrl, orgId);
-    }
 
-    if (webhookResult.ok) {
-      stored.webhookId = webhookResult.webhookId ?? stored.webhookId;
-      stored.webhookSecret = webhookResult.webhookSecret ?? stored.webhookSecret;
-      await this.#state.storage.put(CONFIG_KEY, stored);
+      const now = new Date().toISOString();
+      const defaultReplyTo =
+        parsed.data.defaultReplyTo === undefined
+          ? existing?.defaultReplyTo
+          : (parsed.data.defaultReplyTo ?? undefined);
+      const webhookBaseUrl =
+        parsed.data.webhookBaseUrl === undefined
+          ? existing?.webhookBaseUrl
+          : (parsed.data.webhookBaseUrl ?? undefined);
+      const stored: StoredResendConfig = {
+        orgId: normalizedOrgId,
+        apiKey: parsed.data.apiKey,
+        defaultFrom: parsed.data.defaultFrom,
+        defaultReplyTo,
+        webhookBaseUrl,
+        webhookId: existing?.webhookId,
+        webhookSecret: existing?.webhookSecret,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
 
-      try {
-        await this.#ensureFragment();
-      } catch (error) {
-        console.log("Migration failed", { error });
-        throw new Error("Failed to migrate Resend schema.");
+      const client = new ResendClient(stored.apiKey);
+      const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
+
+      let webhookResult: WebhookResult;
+
+      if (stored.webhookId && stored.webhookSecret) {
+        webhookResult = await updateWebhook(client, stored.webhookId, webhookUrl, normalizedOrgId);
+        if (!webhookResult.ok) {
+          const fallback = await createWebhook(client, webhookUrl, normalizedOrgId);
+          if (fallback.ok) {
+            webhookResult = fallback;
+          }
+        }
+      } else {
+        webhookResult = await createWebhook(client, webhookUrl, normalizedOrgId);
+      }
+
+      if (webhookResult.ok) {
+        stored.webhookId = webhookResult.webhookId ?? stored.webhookId;
+        stored.webhookSecret = webhookResult.webhookSecret ?? stored.webhookSecret;
+
+        try {
+          await this.#host.storeAndInitialize(stored);
+        } catch (error) {
+          console.log("Migration failed", { error });
+          throw new Error("Failed to migrate Resend schema.");
+        }
+
+        return {
+          ...buildConfigResponse(stored),
+          webhook: { ok: webhookResult.ok, message: webhookResult.message },
+        };
       }
 
       return {
-        ...buildConfigResponse(stored),
+        ...buildConfigResponse(existing ?? null),
         webhook: { ok: webhookResult.ok, message: webhookResult.message },
       };
-    }
-
-    return {
-      ...buildConfigResponse(existing ?? null),
-      webhook: { ok: webhookResult.ok, message: webhookResult.message },
-    };
+    });
   }
 
   async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const fragment = await this.#ensureFragment();
-    if (!fragment) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
-    }
-
-    return await loadDurableHookQueue(fragment, options);
+    return await this.#host.getHookQueue(options, ({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {
-    const fragment = await this.#ensureFragment();
-    if (!fragment) {
-      return jsonResponse(
-        {
-          message: "Resend is not configured for this organisation.",
-          code: "NOT_CONFIGURED",
-        },
-        400,
-      );
-    }
-
-    return fragment.handler(request, {
+    return await this.#host.fetch(request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
   }
