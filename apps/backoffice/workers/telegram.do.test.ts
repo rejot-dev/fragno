@@ -163,6 +163,21 @@ describe("Telegram Durable Object", () => {
     );
   });
 
+  test("uses the configured Telegram API base URL when registering the webhook", async () => {
+    const { state } = createState();
+    const telegram = new Telegram(state, {} as CloudflareEnv);
+
+    await telegram.setAdminConfig(
+      { ...VALID_PAYLOAD, apiBaseUrl: "https://telegram.example" },
+      "https://example.com",
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://telegram.example/bot123456:telegram-bot-token/setWebhook",
+      expect.any(Object),
+    );
+  });
+
   test("rejects attempts to rebind admin config to a different organisation", async () => {
     const { state } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
@@ -180,9 +195,16 @@ describe("Telegram Durable Object", () => {
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
-    await expect(
-      telegram.fetch(new Request("https://example.com/api/telegram/webhook?orgId=other-org")),
-    ).rejects.toThrowError('Telegram Durable Object is already bound to organisation "acme".');
+    const response = await telegram.fetch(
+      new Request("https://example.com/api/telegram/webhook?orgId=other-org"),
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ORG_ID_MISMATCH",
+      expectedOrgId: "acme",
+      orgId: "other-org",
+    });
+    expect(response.status).toBe(409);
   });
 
   test("rejects stored config without an org id during initialization", async () => {

@@ -1,13 +1,8 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { MasterFileSystem } from "@/files";
 import {
-  loadDurableHookQueue,
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
@@ -27,21 +22,16 @@ import {
   type StoredPiConfig,
 } from "@/fragno/pi/pi-shared";
 
-const CONFIG_KEY = "pi-config";
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
+
 type PiHookQueueFragment = "pi" | "workflows";
 
 type PiHookQueueOptions = DurableHookQueueOptions & {
   fragment?: PiHookQueueFragment;
 };
-
-type PiRuntime =
-  | { configured: false }
-  | {
-      configured: true;
-      stored: StoredPiConfig;
-      config: StoredPiConfig;
-      fragments: PiRuntimeFragments;
-    };
 
 const apiKeySchema = z
   .string()
@@ -130,19 +120,8 @@ const hookQueueOptionsSchema = z
   })
   .optional();
 
-const buildOrgIdMismatchMessage = (expectedOrgId: string, orgId: string) =>
-  `Pi Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`;
-
-const buildOrgIdMismatchResponse = (expectedOrgId: string, orgId: string) =>
-  Response.json(
-    {
-      message: buildOrgIdMismatchMessage(expectedOrgId, orgId),
-      code: "ORG_ID_MISMATCH",
-      expectedOrgId,
-      orgId,
-    },
-    { status: 409 },
-  );
+const hasOwn = (record: object | null | undefined, key: PropertyKey) =>
+  Boolean(record && Object.prototype.hasOwnProperty.call(record, key));
 
 const maskSecret = (value?: string) => {
   if (!value) {
@@ -204,110 +183,52 @@ const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
 export class Pi extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
   #state: DurableObjectState;
-  #host: FragmentDurableObjectHost<StoredPiConfig, PiRuntimeFragments>;
-  #runtime: PiRuntime = { configured: false };
+  #host: BackofficeFragmentDurableObject<StoredPiConfig, StoredPiConfig, PiRuntimeFragments>;
   #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
     this.#state = state;
-    this.#host = createFragmentDurableObjectHost<CloudflareEnv, StoredPiConfig, PiRuntimeFragments>(
-      {
-        name: "Pi",
-        state,
-        env,
-        createRuntime: (config) => this.#createRuntime(config),
-        getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.piFragment],
-        hostRuntime: (runtime, { hostFragment }) => ({
-          ...runtime,
-          workflowsFragment: hostFragment(runtime.workflowsFragment),
-          piFragment: hostFragment(runtime.piFragment),
+    this.#host = createBackofficeFragmentDurableObject({
+      name: "Pi",
+      state,
+      env,
+      parseStored: (raw) => storedPiConfigSchema.parse(raw),
+      isConfigured: (stored): stored is StoredPiConfig => isConfigured(stored),
+      fingerprint: (config) =>
+        JSON.stringify({
+          orgId: config.orgId,
+          apiKeys: config.apiKeys,
+          harnesses: resolvePiHarnesses(config.harnesses),
         }),
-        mounts: [
-          {
-            id: "workflows",
-            match: ({ pathname }) => pathname.startsWith("/api/workflows"),
-            target: (runtime) => runtime.workflowsFragment,
-          },
-          { id: "pi", target: (runtime) => runtime.piFragment },
-        ],
-        onProcessError: (error) => {
-          console.error("Pi hook processor error", error);
+      createRuntime: (config) => this.#createRuntime(config),
+      getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.piFragment],
+      hostRuntime: (runtime, { hostFragment }) => ({
+        ...runtime,
+        workflowsFragment: hostFragment(runtime.workflowsFragment),
+        piFragment: hostFragment(runtime.piFragment),
+      }),
+      mounts: [
+        {
+          id: "workflows",
+          match: ({ pathname }) => pathname.startsWith("/api/workflows"),
+          target: (runtime) => runtime.workflowsFragment,
         },
-        onDispatcherError: (error) => {
-          console.warn("Pi hook processor disabled", error);
-        },
-      },
-    );
+        { id: "pi", target: (runtime) => runtime.piFragment },
+      ],
+    });
 
     void state.blockConcurrencyWhile(async () => {
-      try {
-        const stored = await this.#loadConfig();
-        if (!stored || !isConfigured(stored)) {
-          this.#runtime = { configured: false };
-          return;
-        }
-
-        this.#getStoredOrgId(stored, { required: true });
-        const fragments = await this.#host.initialize(stored);
-        this.#runtime = {
-          configured: true,
-          stored,
-          config: stored,
-          fragments,
-        };
-      } catch (error) {
-        console.log("Migration failed", { error });
-        throw error;
-      }
+      await this.#host.initializeFromStored(await this.#host.loadStored());
     });
   }
 
-  async #loadConfig() {
-    const config = await this.#state.storage.get<unknown>(CONFIG_KEY);
-    if (config === undefined || config === null) {
-      return null;
-    }
-
-    return storedPiConfigSchema.parse(config);
-  }
-
-  #getStoredOrgId(config: StoredPiConfig | null, options: { required: true }): string;
-  #getStoredOrgId(config: StoredPiConfig | null, options?: { required?: false }): string | null;
-  #getStoredOrgId(config: StoredPiConfig | null, options: { required?: boolean } = {}) {
-    const storedOrgId = typeof config?.orgId === "string" ? config.orgId.trim() : "";
-    if (storedOrgId) {
-      return storedOrgId;
-    }
-
-    if (options.required) {
+  #createRuntime(config: StoredPiConfig) {
+    const orgId = this.#host.getStoredOrgId(config);
+    if (!orgId) {
       throw new Error("Stored Pi config is missing an organisation id.");
     }
-
-    return null;
-  }
-
-  #assertRequestOrgIdMatchesConfig(request: Request, config: StoredPiConfig): Response | null {
-    const expectedOrgId = this.#getStoredOrgId(config);
-    if (!expectedOrgId) {
-      return null;
-    }
-
-    const requestOrgId = new URL(request.url).searchParams.get("orgId")?.trim();
-    if (!requestOrgId) {
-      return null;
-    }
-
-    if (requestOrgId !== expectedOrgId) {
-      return buildOrgIdMismatchResponse(expectedOrgId, requestOrgId);
-    }
-
-    return null;
-  }
-
-  #createRuntime(config: StoredPiConfig) {
-    const orgId = this.#getStoredOrgId(config, { required: true });
 
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       orgId,
@@ -327,41 +248,12 @@ export class Pi extends DurableObject<CloudflareEnv> {
     });
   }
 
-  async #setRuntimeFromStoredConfig(stored: StoredPiConfig | null) {
-    if (!stored || !isConfigured(stored)) {
-      this.#runtime = { configured: false };
-      return;
-    }
-
-    this.#getStoredOrgId(stored, { required: true });
-    const fragments = await this.#host.initialize(stored);
-    this.#runtime = {
-      configured: true,
-      stored,
-      config: stored,
-      fragments,
-    };
-  }
-
-  #getConfiguredRuntime() {
-    return this.#runtime.configured ? this.#runtime : null;
-  }
-
-  #getConfiguredRuntimeOrThrow() {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      throw new Error("Pi is unavailable.");
-    }
-
-    return runtime;
-  }
-
   async alarm() {
     await this.#host.alarm();
   }
 
   async getAdminConfig(): Promise<PiConfigState> {
-    const config = await this.#loadConfig();
+    const config = await this.#host.loadStored();
     return buildConfigState(config);
   }
 
@@ -369,19 +261,19 @@ export class Pi extends DurableObject<CloudflareEnv> {
     const parsed = setAdminConfigInputSchema.parse(payload);
     const normalizedOrgId = parsed.orgId;
 
-    const existing = await this.#loadConfig();
-    const existingOrgId = this.#getStoredOrgId(existing);
-    if (existingOrgId && existingOrgId !== normalizedOrgId) {
-      throw new Error(buildOrgIdMismatchMessage(existingOrgId, normalizedOrgId));
-    }
+    const existing = await this.#host.loadStored();
+    this.#host.assertSameOrg(existing, normalizedOrgId);
 
     const now = new Date().toISOString();
+    const parsedApiKeys = parsed.apiKeys ?? {};
     const stored: StoredPiConfig = {
       orgId: normalizedOrgId,
       apiKeys: {
-        openai: parsed.apiKeys?.openai || existing?.apiKeys.openai,
-        anthropic: parsed.apiKeys?.anthropic || existing?.apiKeys.anthropic,
-        gemini: parsed.apiKeys?.gemini || existing?.apiKeys.gemini,
+        openai: hasOwn(parsedApiKeys, "openai") ? parsedApiKeys.openai : existing?.apiKeys.openai,
+        anthropic: hasOwn(parsedApiKeys, "anthropic")
+          ? parsedApiKeys.anthropic
+          : existing?.apiKeys.anthropic,
+        gemini: hasOwn(parsedApiKeys, "gemini") ? parsedApiKeys.gemini : existing?.apiKeys.gemini,
       },
       harnesses:
         parsed.harnesses === undefined
@@ -391,11 +283,9 @@ export class Pi extends DurableObject<CloudflareEnv> {
       updatedAt: now,
     };
 
-    await this.#state.storage.put(CONFIG_KEY, storedPiConfigSchema.parse(stored));
-
     try {
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#setRuntimeFromStoredConfig(stored);
+        await this.#host.storeAndInitialize(storedPiConfigSchema.parse(stored));
       });
     } catch (error) {
       console.log("Migration failed", { error });
@@ -406,48 +296,13 @@ export class Pi extends DurableObject<CloudflareEnv> {
   }
 
   async getHookQueue(options?: PiHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
-    }
-
-    const configuredRuntime = this.#getConfiguredRuntimeOrThrow();
     const parsedOptions = hookQueueOptionsSchema.parse(options) ?? {};
-    const targetFragmentId = parsedOptions.fragment === "workflows" ? "workflows" : "pi";
-    const targetFragment =
-      targetFragmentId === "workflows"
-        ? configuredRuntime.fragments.workflowsFragment
-        : configuredRuntime.fragments.piFragment;
-
-    return await loadDurableHookQueue(targetFragment, {
-      cursor: parsedOptions.cursor,
-      pageSize: parsedOptions.pageSize,
-    });
+    return await this.#host.getHookQueue(parsedOptions, ({ runtime }, queueOptions) =>
+      queueOptions?.fragment === "workflows" ? runtime.workflowsFragment : runtime.piFragment,
+    );
   }
 
   async fetch(request: Request): Promise<Response> {
-    const runtime = this.#getConfiguredRuntime();
-    if (!runtime) {
-      return Response.json(
-        { message: "Pi is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        { status: 400 },
-      );
-    }
-
-    const orgIdMismatchResponse = this.#assertRequestOrgIdMatchesConfig(request, runtime.stored);
-    if (orgIdMismatchResponse) {
-      return orgIdMismatchResponse;
-    }
-
-    return this.#host.fetch(runtime.fragments, request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(request);
   }
 }
