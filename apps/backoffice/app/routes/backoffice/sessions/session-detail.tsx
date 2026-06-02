@@ -17,11 +17,17 @@ import {
 import type { PiSessionsOutletContext } from "./sessions";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.sessionId) {
+  if (!params.orgId || !params.workflowName || !params.sessionId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const detail = await fetchPiSessionDetail(request, context, params.orgId, params.sessionId);
+  const detail = await fetchPiSessionDetail(
+    request,
+    context,
+    params.orgId,
+    params.workflowName,
+    params.sessionId,
+  );
   if (detail.sessionError || !detail.session) {
     throw Response.json(detail.sessionError ?? { message: "Not Found", code: "NOT_FOUND" }, {
       status: detail.status ?? 404,
@@ -47,7 +53,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
 
   const pi = useMemo(() => createOrgPiClient(orgId), [orgId]);
   const liveSession = pi.useSession({
-    path: { sessionId: session.id },
+    path: { workflowName: session.workflowName, sessionId: session.id },
     initialData: session,
   });
   const displaySession = liveSession.session ?? session;
@@ -120,7 +126,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
         modelLabel={modelLabel}
         options={
           <SessionDisplayOptions
-            exportHref={`/api/pi/${orgId}/sessions/${displaySession.id}/export/pi-jsonl`}
+            exportHref={`/api/pi/${orgId}/workflows/${encodeURIComponent(displaySession.workflowName)}/sessions/${encodeURIComponent(displaySession.id)}/export/pi-jsonl`}
             exportFilename={`pi-session-${displaySession.id}.jsonl`}
             showToolCalls={displayOptions.showToolCalls}
             showThinking={displayOptions.showThinking}

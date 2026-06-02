@@ -52,7 +52,7 @@ describe("sessions actions", () => {
     expect(exitCode).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions?limit=5`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions?limit=5`);
     expect(init?.method).toBe("GET");
     expect(logger.log.mock.calls[0]?.[0]).toContain("ID");
   });
@@ -71,11 +71,11 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions`);
     expect(init?.method).toBe("POST");
     expect(init?.headers).toMatchObject({ "content-type": "application/json" });
     expect(JSON.parse(String(init?.body))).toEqual({
-      agent: "agent-1",
+      input: { agentName: "agent-1" },
       name: "New Session",
     });
   });
@@ -108,7 +108,7 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-2`);
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(JSON.parse(output)).toEqual({
       status: "running",
@@ -174,7 +174,7 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2/events`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-2/events`);
     expect(init?.method).toBe("GET");
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const output = logger.log.mock.calls.map((call) => call[0]);
@@ -213,7 +213,7 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-2`);
     const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
     expect(output).toMatchObject({
       id: "session-2",
@@ -269,7 +269,7 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-2`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-2`);
 
     const output = logger.log.mock.calls[0]?.[0] ?? "";
     expect(output).toContain("Session");
@@ -331,7 +331,7 @@ describe("sessions actions", () => {
 
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(url).toBe(`${BASE_URL}/sessions/session-3/command`);
+    expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-3/command`);
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({
       kind: "prompt",
@@ -371,7 +371,9 @@ describe("sessions actions", () => {
 
       expect(exitCode).toBe(0);
       const [url, init] = fetchMock.mock.calls[0] ?? [];
-      expect(url).toBe(`${BASE_URL}/sessions/session-4/command`);
+      expect(url).toBe(
+        `${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-4/command`,
+      );
       expect(JSON.parse(String(init?.body))).toEqual({
         kind: "prompt",
         input: { text: "From file" },

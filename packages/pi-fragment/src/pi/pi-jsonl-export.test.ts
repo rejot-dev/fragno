@@ -35,13 +35,17 @@ describe("pi JSONL export route", () => {
   it("exports a deterministic Pi v3 NDJSON attachment", async () => {
     const harness = await startHarness();
     try {
-      const create = await harness.fragments.pi.callRoute("POST", "/sessions", {
-        body: {
-          workflow: interactiveChatWorkflow.name,
-          name: "Command Session",
-          input: { agentName: "default" },
+      const create = await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name },
+          body: {
+            name: "Command Session",
+            input: { agentName: "default" },
+          },
         },
-      });
+      );
       expect(create.type).toBe("json");
       if (create.type !== "json") {
         throw new Error(`Expected json response, got ${create.type}`);
@@ -52,26 +56,31 @@ describe("pi JSONL export route", () => {
       await harness.workflows.runUntilIdle({
         workflowName: interactiveChatWorkflow.name,
         instanceId: sessionId,
-        instanceRef: sessionId,
         reason: "create",
       });
 
-      await harness.fragments.pi.callRoute("POST", "/sessions/:sessionId/command", {
-        pathParams: { sessionId },
-        body: { kind: "prompt", input: { text: "hello export" } },
-      });
+      await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions/:sessionId/command",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          body: { kind: "prompt", input: { text: "hello export" } },
+        },
+      );
       await drainDurableHooks(harness.workflows.fragment, { mode: "singlePass" });
       await harness.workflows.runUntilIdle({
         workflowName: interactiveChatWorkflow.name,
         instanceId: sessionId,
-        instanceRef: sessionId,
         reason: "event",
       });
 
       const response = await harness.fragments.pi.callRouteRaw(
         "GET",
-        "/sessions/:sessionId/export/pi-jsonl",
-        { pathParams: { sessionId }, query: { cwd: "/tmp/evil" } },
+        "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          query: { cwd: "/tmp/evil" },
+        },
       );
 
       expect(response.status).toBe(200);
@@ -138,9 +147,9 @@ describe("pi JSONL export route", () => {
     try {
       const response = await harness.fragments.pi.callRoute(
         "GET",
-        "/sessions/:sessionId/export/pi-jsonl",
+        "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
         {
-          pathParams: { sessionId: "missing" },
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId: "missing" },
         },
       );
       expect(response.type).toBe("error");

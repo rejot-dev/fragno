@@ -1,6 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
+import { interactiveChatWorkflow } from "@fragno-dev/pi-fragment";
 import type {
   createPiFragment,
   PiSession,
@@ -88,7 +89,8 @@ export async function fetchPiSessions(
         : DEFAULT_PAGE_SIZE;
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
 
-    const response = await callRoute("GET", "/sessions", {
+    const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
+      pathParams: { workflowName: interactiveChatWorkflow.name },
       query: { limit: String(limit) },
     });
 
@@ -116,11 +118,12 @@ export async function fetchPiSessionDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
+  workflowName: string,
   sessionId: string,
 ): Promise<PiSessionDetailResult> {
   const callRoute = createPiRouteCaller(request, context, orgId);
-  const response = await callRoute("GET", "/sessions/:sessionId", {
-    pathParams: { sessionId },
+  const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+    pathParams: { workflowName, sessionId },
   });
   if (response.type === "json") {
     return { session: response.data as PiSessionDetail, sessionError: null };
@@ -149,7 +152,7 @@ export async function createPiSession(
   context: Readonly<RouterContextProvider>,
   orgId: string,
   payload: {
-    workflow: string;
+    workflowName?: string;
     input: {
       agentName: string;
       systemPrompt?: string;
@@ -159,8 +162,10 @@ export async function createPiSession(
 ): Promise<PiCreateSessionResult> {
   try {
     const callRoute = createPiRouteCaller(request, context, orgId);
-    const response = await callRoute("POST", "/sessions", {
-      body: payload,
+    const { workflowName = interactiveChatWorkflow.name, ...body } = payload;
+    const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
+      pathParams: { workflowName },
+      body,
     });
 
     if (response.type === "json") {
@@ -187,6 +192,7 @@ export async function sendPiSessionMessage(
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
+  workflowName: string,
   sessionId: string,
   payload: {
     text: string;
@@ -196,12 +202,16 @@ export async function sendPiSessionMessage(
 ): Promise<PiSendMessageResult> {
   try {
     const callRoute = createPiRouteCaller(request, context, orgId);
-    const response = await callRoute("POST", "/sessions/:sessionId/command", {
-      pathParams: { sessionId },
-      body: payload.done
-        ? { kind: "complete", reason: payload.text }
-        : { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
-    });
+    const response = await callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName, sessionId },
+        body: payload.done
+          ? { kind: "complete", reason: payload.text }
+          : { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
+      },
+    );
 
     if (response.type === "json") {
       return { status: response.data.status, error: null };

@@ -1,3 +1,4 @@
+import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -43,17 +44,19 @@ export const piFragmentDefinition = defineFragment<PiFragmentConfig>("pi-fragmen
   .usesService<"workflows", WorkflowsFragmentServices>("workflows")
   .providesBaseService(({ defineService, serviceDeps }) =>
     defineService({
-      getSessionDetailSnapshot: function (sessionId: string) {
+      getSessionDetailSnapshot: function (workflowName: string, sessionId: string) {
         return this.serviceTx(piSchema)
           .withServiceCalls(() =>
             serviceCalls(
-              serviceDeps.workflows.getInstanceStatusById(sessionId),
-              serviceDeps.workflows.listHistoryById(sessionId),
+              serviceDeps.workflows.getInstanceStatus(workflowName, sessionId),
+              serviceDeps.workflows.listHistory({ workflowName, instanceId: sessionId }),
             ),
           )
           .retrieve((uow) =>
             uow.findFirst("session", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
+              b.whereIndex("idx_session_workflow_session", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("sessionId", "=", sessionId)),
+              ),
             ),
           )
           .transform(({ retrieveResult: [sessionRow], serviceResult }) => {
@@ -62,7 +65,7 @@ export const piFragmentDefinition = defineFragment<PiFragmentConfig>("pi-fragmen
             }
 
             const session: PiSession = {
-              id: sessionRow.id.valueOf(),
+              id: sessionRow.sessionId,
               name: sessionRow.name ?? null,
               status: sessionRow.status as PiSession["status"],
               agent: sessionRow.agent,
@@ -102,7 +105,8 @@ export const piFragmentDefinition = defineFragment<PiFragmentConfig>("pi-fragmen
         return this.serviceTx(piSchema)
           .mutate(({ uow }) => {
             uow.create("session", {
-              id: values.id,
+              id: buildScopedInstanceRowId(values.workflowName, values.id),
+              sessionId: values.id,
               name: values.name ?? null,
               agent: values.agent,
               workflowName: values.workflowName,
@@ -130,7 +134,8 @@ export const piFragmentDefinition = defineFragment<PiFragmentConfig>("pi-fragmen
           ])
           .mutate(({ uow }) => {
             uow.create("session", {
-              id: values.id,
+              id: buildScopedInstanceRowId(values.workflowName, values.id),
+              sessionId: values.id,
               name: values.name ?? null,
               agent: values.agent,
               workflowName: values.workflowName,

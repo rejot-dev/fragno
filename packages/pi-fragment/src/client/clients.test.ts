@@ -25,24 +25,30 @@ describe("pi-fragment client exports", () => {
   it("exposes hooks and mutators for pi routes", () => {
     const clients = createPiFragmentClients(clientConfig);
 
-    expect(clients.useSessions.route.path).toBe("/sessions");
+    expect(clients.useSessions.route.path).toBe("/workflows/:workflowName/sessions");
     expect(clients.useSessions.route.method).toBe("GET");
     expect(typeof clients.useSessions.store).toBe("function");
 
-    expect(clients.useSessionDetail.route.path).toBe("/sessions/:sessionId");
+    expect(clients.useSessionDetail.route.path).toBe(
+      "/workflows/:workflowName/sessions/:sessionId",
+    );
     expect(clients.useSessionDetail.route.method).toBe("GET");
     expect(typeof clients.useSessionDetail.store).toBe("function");
 
-    expect(clients.useCreateSession.route.path).toBe("/sessions");
+    expect(clients.useCreateSession.route.path).toBe("/workflows/:workflowName/sessions");
     expect(clients.useCreateSession.route.method).toBe("POST");
     expect(typeof clients.useCreateSession.mutateQuery).toBe("function");
     expect(clients.useCreateSession.mutatorStore).toBeDefined();
 
-    expect(clients.useSessionEvents.route.path).toBe("/sessions/:sessionId/events");
+    expect(clients.useSessionEvents.route.path).toBe(
+      "/workflows/:workflowName/sessions/:sessionId/events",
+    );
     expect(clients.useSessionEvents.route.method).toBe("GET");
     expect(typeof clients.useSessionEvents.store).toBe("function");
 
-    expect(clients.useCommandSession.route.path).toBe("/sessions/:sessionId/command");
+    expect(clients.useCommandSession.route.path).toBe(
+      "/workflows/:workflowName/sessions/:sessionId/command",
+    );
     expect(clients.useCommandSession.route.method).toBe("POST");
     expect(typeof clients.useCommandSession.mutateQuery).toBe("function");
     expect(clients.useCommandSession.mutatorStore).toBeDefined();

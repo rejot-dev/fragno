@@ -501,9 +501,9 @@ export const createPiRouteBashRuntime = ({
 
   return {
     createSession: async (args) => {
-      const response = await callRoute("POST", "/sessions", {
+      const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
         body: {
-          workflow: INTERACTIVE_CHAT_WORKFLOW_NAME,
           name: args.name,
           input: {
             agentName: args.agent,
@@ -531,8 +531,8 @@ export const createPiRouteBashRuntime = ({
         query.turns = String(turns);
       }
 
-      const response = await callRoute("GET", "/sessions/:sessionId", {
-        pathParams: { sessionId },
+      const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME, sessionId },
         query,
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -549,7 +549,10 @@ export const createPiRouteBashRuntime = ({
         query.limit = String(limit);
       }
 
-      const response = await callRoute("GET", "/sessions", { query });
+      const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+        query,
+      });
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
@@ -569,9 +572,16 @@ export const createPiRouteBashRuntime = ({
         throw new Error("pi.session.turn requires non-empty text");
       }
 
-      const activeRoute = await callRoute("GET", "/sessions/:sessionId/events", {
-        pathParams: { sessionId: normalizedSessionId },
-      });
+      const activeRoute = await callRoute(
+        "GET",
+        "/workflows/:workflowName/sessions/:sessionId/events",
+        {
+          pathParams: {
+            workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+            sessionId: normalizedSessionId,
+          },
+        },
+      );
       if (!isSuccessStatus(activeRoute.status)) {
         return throwOnRouteRuntimeError(activeRoute, {
           runtimeLabel: "Pi fragment",
@@ -585,13 +595,20 @@ export const createPiRouteBashRuntime = ({
       }
 
       try {
-        const promptResponse = await callRoute("POST", "/sessions/:sessionId/command", {
-          pathParams: { sessionId: normalizedSessionId },
-          body: {
-            kind: "prompt",
-            input: { text: normalizedText },
+        const promptResponse = await callRoute(
+          "POST",
+          "/workflows/:workflowName/sessions/:sessionId/command",
+          {
+            pathParams: {
+              workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+              sessionId: normalizedSessionId,
+            },
+            body: {
+              kind: "prompt",
+              input: { text: normalizedText },
+            },
           },
-        });
+        );
         if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
           return throwOnRouteRuntimeError(promptResponse, {
             runtimeLabel: "Pi fragment",
@@ -601,9 +618,16 @@ export const createPiRouteBashRuntime = ({
 
         const { frames } = await consumeActiveStream(activeRoute.stream);
 
-        const detailResponse = await callRoute("GET", "/sessions/:sessionId", {
-          pathParams: { sessionId: normalizedSessionId },
-        });
+        const detailResponse = await callRoute(
+          "GET",
+          "/workflows/:workflowName/sessions/:sessionId",
+          {
+            pathParams: {
+              workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+              sessionId: normalizedSessionId,
+            },
+          },
+        );
         if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
           return throwOnRouteRuntimeError(detailResponse, {
             runtimeLabel: "Pi fragment",

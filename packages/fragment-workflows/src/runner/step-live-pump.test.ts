@@ -116,7 +116,15 @@ describe("WorkflowStepLivePump", () => {
       await flushBus(harness, emissionBus);
 
       expect(
-        (await readStepEmissionRows(harness, instanceId)).map((row) => row.actor).sort(),
+        (
+          await readStepEmissionRows(
+            harness,
+            "step-emission-bus-flush-running-workflow",
+            instanceId,
+          )
+        )
+          .map((row) => row.actor)
+          .sort(),
       ).toEqual(["system", "user"]);
     } finally {
       releaseStep.resolve();
@@ -170,7 +178,13 @@ describe("WorkflowStepLivePump", () => {
       await stepEntered.promise;
       await flushBus(harness, emissionBus);
 
-      expect(await readStepEmissionRows(harness, instanceId)).toMatchObject([
+      expect(
+        await readStepEmissionRows(
+          harness,
+          "step-emission-bus-control-output-workflow",
+          instanceId,
+        ),
+      ).toMatchObject([
         {
           actor: "system",
           payload: { control: "step-started" },
@@ -680,20 +694,41 @@ const readInstance = async (harness: WorkflowsTestHarness) => {
   return instance!;
 };
 
-const readStepEmissionRows = async (harness: WorkflowsTestHarness, instanceId: string) =>
-  (
+const readStepEmissionRows = async (
+  harness: WorkflowsTestHarness,
+  workflowName: string,
+  instanceId: string,
+) => {
+  const [instance] = (
+    await harness.db
+      .createUnitOfWork("read-instance")
+      .forSchema(workflowsSchema)
+      .find("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+        ),
+      )
+      .executeRetrieve()
+  )[0];
+
+  if (!instance) {
+    return [];
+  }
+
+  return (
     await harness.db
       .createUnitOfWork("read")
       .forSchema(workflowsSchema)
       .find("workflow_step_emission", (b) =>
         b
           .whereIndex("idx_workflow_step_emission_instance_actor_createdAt_sequence_id", (eb) =>
-            eb("instanceRef", "=", instanceId),
+            eb("instanceRef", "=", instance.id),
           )
           .orderByIndex("idx_workflow_step_emission_instance_actor_createdAt_sequence_id", "asc"),
       )
       .executeRetrieve()
   )[0];
+};
 
 const sendEventAndFlush = async (
   harness: WorkflowsTestHarness,
@@ -759,11 +794,11 @@ const createAsyncQueue = <T>() => {
 };
 
 const buildPayload = (
-  instance: { id: { toString(): string }; workflowName: string },
+  instance: { id: { toString(): string }; instanceId: string; workflowName: string },
   reason: WorkflowEnqueuedHookPayload["reason"],
 ): WorkflowEnqueuedHookPayload => ({
   workflowName: instance.workflowName,
-  instanceId: instance.id.toString(),
+  instanceId: instance.instanceId,
   instanceRef: String(instance.id),
   reason,
 });

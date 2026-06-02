@@ -21,6 +21,7 @@ export type PiLiveToolExecution = {
 
 export type PiSessionStoreArgs = {
   path: {
+    workflowName: string | ReadableAtom<string>;
     sessionId: string | ReadableAtom<string>;
   };
   initialData?: PiSessionDetail;
@@ -28,6 +29,7 @@ export type PiSessionStoreArgs = {
 
 export type PiSessionStoreState = {
   connectionStatus: PiSessionConnectionStatus;
+  workflowName: string;
   sessionId: string;
   agent: PiAgentStateSnapshot | null;
   snapshotAgent: PiAgentStateSnapshot | null;
@@ -45,10 +47,12 @@ export type PiSessionStoreState = {
 
 export type PiSessionTransport = {
   openEvents(args: {
+    workflowName: string;
     sessionId: string;
     signal: AbortSignal;
   }): Promise<AsyncIterable<PiSessionEventStreamItem>>;
   sendCommand(args: {
+    workflowName: string;
     sessionId: string;
     command: PiSessionCommandInput;
     signal?: AbortSignal;
@@ -74,7 +78,7 @@ type EventsStore = {
 };
 
 type StoreTransportOptions = {
-  openEventsStore: (args: { sessionId: string }) => EventsStore;
+  openEventsStore: (args: { workflowName: string; sessionId: string }) => EventsStore;
   sendCommand: PiSessionTransport["sendCommand"];
 };
 
@@ -158,9 +162,11 @@ const reduceMessages = (
 };
 
 export const createInitialPiSessionStoreState = (options: {
+  workflowName: string;
   sessionId: string;
 }): PiSessionStoreState => ({
   connectionStatus: "idle",
+  workflowName: options.workflowName,
   sessionId: options.sessionId,
   agent: null,
   snapshotAgent: null,
@@ -387,8 +393,8 @@ export const createStorePiSessionTransport = ({
   openEventsStore,
   sendCommand,
 }: StoreTransportOptions): PiSessionTransport => ({
-  openEvents: async ({ sessionId, signal }) =>
-    eventsStoreToAsyncIterable(openEventsStore({ sessionId }), signal),
+  openEvents: async ({ workflowName, sessionId, signal }) =>
+    eventsStoreToAsyncIterable(openEventsStore({ workflowName, sessionId }), signal),
   sendCommand,
 });
 
@@ -442,22 +448,34 @@ const runningToolsFromEvents = (
 };
 
 export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionStoreDeps) => {
-  const sessionId = readAtom(args.path.sessionId);
   const now = deps.now ?? (() => Date.now());
   const retryDelay = deps.retryDelay ?? defaultRetryDelay;
-  const initialState = createInitialPiSessionStoreState({ sessionId });
+  const readPath = () => ({
+    workflowName: readAtom(args.path.workflowName),
+    sessionId: readAtom(args.path.sessionId),
+  });
+  const initialDataForPath = (path: { workflowName: string; sessionId: string }) =>
+    args.initialData?.workflowName === path.workflowName && args.initialData.id === path.sessionId
+      ? args.initialData
+      : undefined;
+  const createInitialStateForPath = (path: { workflowName: string; sessionId: string }) => {
+    const initialState = createInitialPiSessionStoreState(path);
+    const initialData = initialDataForPath(path);
+    return {
+      ...initialState,
+      agent: initialData?.agent.state ?? initialState.agent,
+      snapshotAgent: initialData?.agent.state ?? initialState.snapshotAgent,
+      events: initialData?.agent.events ?? initialState.events,
+    };
+  };
+  const createInitialState = () => createInitialStateForPath(readPath());
   const staleCheckNow = atom(now());
   onMount(staleCheckNow, () => {
     const interval = setInterval(() => staleCheckNow.set(now()), 1_000);
     return () => clearInterval(interval);
   });
 
-  const state = atom<PiSessionStoreState>({
-    ...initialState,
-    agent: args.initialData?.agent.state ?? initialState.agent,
-    snapshotAgent: args.initialData?.agent.state ?? initialState.snapshotAgent,
-    events: args.initialData?.agent.events ?? initialState.events,
-  });
+  const state = atom<PiSessionStoreState>(createInitialState());
 
   let stopController: AbortController | null = null;
   let streamController: AbortController | null = null;
@@ -466,6 +484,17 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
 
   const setState = (updater: (current: PiSessionStoreState) => PiSessionStoreState) => {
     state.set(updater(state.get()));
+  };
+
+  const pathMatchesState = (path: { workflowName: string; sessionId: string }) => {
+    const current = state.get();
+    return current.workflowName === path.workflowName && current.sessionId === path.sessionId;
+  };
+
+  const resetStateForCurrentPath = () => {
+    if (!pathMatchesState(readPath())) {
+      state.set(createInitialState());
+    }
   };
 
   const run = async () => {
@@ -485,19 +514,26 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
         const abortCurrentStream = () => streamController?.abort();
         stopSignal.addEventListener("abort", abortCurrentStream, { once: true });
 
-        setState((current) => ({
-          ...current,
-          connectionStatus: attempt === 0 ? "connecting" : "retrying",
-          reconnectAttempt: attempt,
-          streamError: undefined,
-        }));
+        const path = readPath();
+        setState((current) => {
+          const next =
+            current.workflowName === path.workflowName && current.sessionId === path.sessionId
+              ? current
+              : createInitialStateForPath(path);
+          return {
+            ...next,
+            connectionStatus: attempt === 0 ? "connecting" : "retrying",
+            reconnectAttempt: attempt,
+            streamError: undefined,
+          };
+        });
 
         let sawSnapshot = false;
         let streamError: unknown;
 
         try {
           const frames = await deps.transport.openEvents({
-            sessionId,
+            ...path,
             signal: streamController.signal,
           });
 
@@ -602,18 +638,49 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
     }
     return null;
   });
-  const session = computed([agentState, events, state], ($agent, $events) =>
-    args.initialData
+  const session = computed([agentState, events, state], ($agent, $events, $state) => {
+    const initialData = initialDataForPath({
+      workflowName: $state.workflowName,
+      sessionId: $state.sessionId,
+    });
+    return initialData
       ? {
-          ...args.initialData,
+          ...initialData,
           agent: { state: $agent, events: $events },
         }
-      : null,
-  );
+      : null;
+  });
+
+  const reconnectToCurrentPath = () => {
+    const wasRunning = !stopped;
+    resetStateForCurrentPath();
+    if (!wasRunning) {
+      return;
+    }
+    stop();
+    void (async () => {
+      while (running) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      await run();
+    })();
+  };
+
+  const listenPathAtom = <T>(value: T | ReadableAtom<T>) =>
+    value && typeof value === "object" && "listen" in value && typeof value.listen === "function"
+      ? value.listen(reconnectToCurrentPath)
+      : undefined;
 
   onMount(state, () => {
+    const unlistenWorkflowName = listenPathAtom(args.path.workflowName);
+    const unlistenSessionId = listenPathAtom(args.path.sessionId);
+    resetStateForCurrentPath();
     void run();
-    return stop;
+    return () => {
+      unlistenWorkflowName?.();
+      unlistenSessionId?.();
+      stop();
+    };
   });
 
   return {
@@ -648,8 +715,14 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
       }));
 
       try {
+        const path = readPath();
+        setState((current) =>
+          current.workflowName === path.workflowName && current.sessionId === path.sessionId
+            ? current
+            : { ...createInitialStateForPath(path), command: current.command },
+        );
         const ack = await deps.transport.sendCommand({
-          sessionId,
+          ...path,
           command,
           signal: options?.signal,
         });

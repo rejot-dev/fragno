@@ -1,3 +1,4 @@
+import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import {
   type WorkflowEvent,
   type WorkflowStep,
@@ -141,8 +142,10 @@ export const runPiAgentStep = async (
     const finish = (result: PiAgentRunResult) => {
       tx.mutate(({ forSchema }) => {
         const uow = forSchema(piSchema);
-        uow.update("session", runtime.event.instanceId, (builder) =>
-          builder.set({ status: "waiting", updatedAt: uow.now() }),
+        uow.update(
+          "session",
+          buildScopedInstanceRowId(runtime.session.workflowName, runtime.event.instanceId),
+          (builder) => builder.set({ status: "waiting", updatedAt: uow.now() }),
         );
       });
 

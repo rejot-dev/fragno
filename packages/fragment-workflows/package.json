@@ -31,6 +31,10 @@
       "types": "./dist/node/stream-step-emissions.d.ts",
       "default": "./dist/node/stream-step-emissions.js"
     },
+    "./instance-ref": {
+      "types": "./dist/node/instance-ref.d.ts",
+      "default": "./dist/node/instance-ref.js"
+    },
     "./step-live-pump": {
       "types": "./dist/node/runner/step-live-pump.d.ts",
       "default": "./dist/node/runner/step-live-pump.js"

@@ -11,25 +11,32 @@ export type CliActionResult = {
   output?: RenderOutput;
 };
 
+const DEFAULT_WORKFLOW_NAME = "interactive-chat-workflow";
+
 export type SessionsListArgs = {
+  workflowName?: string;
   limit?: number;
 };
 
 export type SessionsCreateArgs = {
+  workflowName?: string;
   agent: string;
   name?: string;
 };
 
 export type SessionsGetArgs = {
+  workflowName?: string;
   sessionId: string;
   statusOnly?: boolean;
 };
 
 export type SessionsFollowArgs = {
+  workflowName?: string;
   sessionId: string;
 };
 
 export type SessionsSendMessageArgs = {
+  workflowName?: string;
   sessionId: string;
   text?: string;
   file?: string;
@@ -89,23 +96,31 @@ Global options:
   -h, --help                  Show this help message
 
 sessions list:
+  --workflow <name>           Workflow name (default: interactive-chat-workflow)
   --limit <n>                 Limit results (default server: 50)
 
 sessions create:
+  --workflow <name>           Workflow name (default: interactive-chat-workflow)
   --agent <name>              Agent name (required)
   --name <label>              Session label
 
 sessions get:
+  --workflow <name>           Workflow name (default: interactive-chat-workflow)
   -s, --session <id>          Session id (or positional)
   --status-only               Only output status, workflow, and compact agent state fields
 
 sessions follow:
+  --workflow <name>           Workflow name (default: interactive-chat-workflow)
   -s, --session <id>          Session id (or positional)
 
 sessions prompt:
+  --workflow <name>           Workflow name (default: interactive-chat-workflow)
   -s, --session <id>          Session id (or positional)
   --text <message>            Prompt text
   --file <path>               Read prompt text from file`;
+
+const workflowPathSegment = (workflowName?: string) =>
+  encodeURIComponent(workflowName?.trim() || DEFAULT_WORKFLOW_NAME);
 
 const buildErrorResult = (message: string, usage = USAGE): CliActionResult => ({
   stderr: `${message}\n\n${usage}`,
@@ -653,7 +668,8 @@ const defaultActions: CliActions = {
     if (args.limit !== undefined) {
       query.set("limit", String(args.limit));
     }
-    const path = query.size ? `/sessions?${query.toString()}` : "/sessions";
+    const basePath = `/workflows/${workflowPathSegment(args.workflowName)}/sessions`;
+    const path = query.size ? `${basePath}?${query.toString()}` : basePath;
     const response = await requestJson(ctx.config, ctx.logger, { method: "GET", path });
     if (!response.ok) {
       return response.error;
@@ -661,13 +677,13 @@ const defaultActions: CliActions = {
     return buildSessionsListOutput(response.data, ctx.config.json);
   },
   sessionsCreate: async (args, ctx) => {
-    const body: Record<string, unknown> = { agent: args.agent };
+    const body: Record<string, unknown> = { input: { agentName: args.agent } };
     if (args.name) {
       body["name"] = args.name;
     }
     const response = await requestJson(ctx.config, ctx.logger, {
       method: "POST",
-      path: "/sessions",
+      path: `/workflows/${workflowPathSegment(args.workflowName)}/sessions`,
       body,
     });
     if (!response.ok) {
@@ -676,7 +692,9 @@ const defaultActions: CliActions = {
     return buildDetailOutput(response.data, ctx.config.json);
   },
   sessionsGet: async (args, ctx) => {
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}`;
+    const path = `/workflows/${workflowPathSegment(args.workflowName)}/sessions/${encodeURIComponent(
+      args.sessionId,
+    )}`;
     const response = await requestJson(ctx.config, ctx.logger, { method: "GET", path });
     if (!response.ok) {
       return response.error;
@@ -708,7 +726,9 @@ const defaultActions: CliActions = {
       return baseError;
     }
 
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}/events`;
+    const path = `/workflows/${workflowPathSegment(args.workflowName)}/sessions/${encodeURIComponent(
+      args.sessionId,
+    )}/events`;
     const client = buildClient(ctx.config);
     let index = 0;
 
@@ -751,7 +771,9 @@ const defaultActions: CliActions = {
       return resolved.error;
     }
     const body: Record<string, unknown> = { kind: "prompt", input: { text: resolved.text } };
-    const path = `/sessions/${encodeURIComponent(args.sessionId)}/command`;
+    const path = `/workflows/${workflowPathSegment(args.workflowName)}/sessions/${encodeURIComponent(
+      args.sessionId,
+    )}/command`;
     const response = await requestJson(ctx.config, ctx.logger, { method: "POST", path, body });
     if (!response.ok) {
       return response.error;
@@ -776,6 +798,7 @@ const VALUE_OPTIONS = new Set([
   "retries",
   "retry-delay",
   "limit",
+  "workflow",
   "agent",
   "name",
   "session",
@@ -1087,7 +1110,10 @@ export async function run(
         switch (action) {
           case "list": {
             const limit = parseNumberOption(opts, "limit");
-            result = await actions.sessionsList({ limit }, ctx);
+            result = await actions.sessionsList(
+              { workflowName: getStringOption(opts, "workflow"), limit },
+              ctx,
+            );
             break;
           }
           case "create": {
@@ -1098,6 +1124,7 @@ export async function run(
             }
             result = await actions.sessionsCreate(
               {
+                workflowName: getStringOption(opts, "workflow"),
                 agent,
                 name: getStringOption(opts, "name"),
               },
@@ -1113,6 +1140,7 @@ export async function run(
             }
             result = await actions.sessionsGet(
               {
+                workflowName: getStringOption(opts, "workflow"),
                 sessionId,
                 statusOnly: getBooleanOption(opts, "status-only"),
               },
@@ -1126,7 +1154,10 @@ export async function run(
               result = buildErrorResult("Missing required option: --session");
               break;
             }
-            result = await actions.sessionsFollow({ sessionId }, ctx);
+            result = await actions.sessionsFollow(
+              { workflowName: getStringOption(opts, "workflow"), sessionId },
+              ctx,
+            );
             break;
           }
           case "prompt": {
@@ -1141,7 +1172,10 @@ export async function run(
               result = buildErrorResult("Missing required option: --text (or --file)");
               break;
             }
-            result = await actions.sessionsSendMessage({ sessionId, text, file }, ctx);
+            result = await actions.sessionsSendMessage(
+              { workflowName: getStringOption(opts, "workflow"), sessionId, text, file },
+              ctx,
+            );
             break;
           }
           default: {

@@ -6,6 +6,7 @@ import type { Cursor, TxResult } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
+import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsSchema } from "./schema";
 import { defineWorkflow } from "./workflow";
 import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
@@ -76,7 +77,7 @@ describe("Workflows Fragment Services", () => {
       workflowName: "demo-workflow",
       status: "active",
     });
-    expect(instance.id.toString()).toBe(result.id);
+    expect(instance.instanceId).toBe(result.id);
   });
 
   test("createBatch should skip existing instance IDs", async () => {
@@ -271,7 +272,8 @@ describe("Workflows Fragment Services", () => {
     await (async () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
-        id: "terminate-1",
+        id: buildScopedInstanceRowId("demo-workflow", "terminate-1"),
+        instanceId: "terminate-1",
         workflowName: "demo-workflow",
         status: "active",
         params: {},
@@ -310,7 +312,7 @@ describe("Workflows Fragment Services", () => {
       workflowName: "demo-workflow",
       status: "terminated",
     });
-    expect(instance.id.toString()).toBe("terminate-1");
+    expect(instance.instanceId).toBe("terminate-1");
     expect(instance.completedAt).toBeInstanceOf(Date);
     await drainDurableHooks(fragment);
   });
@@ -425,6 +427,33 @@ describe("Workflows Fragment Services", () => {
     expect(events[0]?.id.toString()).toBe("evt-idempotent-1");
   });
 
+  test("sendEvent should reject a reused event id for another instance", async () => {
+    const first = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "event-conflict-1" }),
+    );
+    const second = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "event-conflict-2" }),
+    );
+
+    await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("demo-workflow", first.id, {
+        id: "evt-conflict-1",
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+
+    await expect(
+      runService<{ status: string }>(() =>
+        fragment.services.sendEvent("demo-workflow", second.id, {
+          id: "evt-conflict-1",
+          type: "approval",
+          payload: { approved: true },
+        }),
+      ),
+    ).rejects.toThrow("EVENT_ID_CONFLICT");
+  });
+
   test("sendEvent idempotent retry should work after the instance becomes terminal", async () => {
     const created = await runService<{ id: string }>(() =>
       fragment.services.createInstance("demo-workflow", { id: "event-terminal-retry-1" }),
@@ -458,7 +487,8 @@ describe("Workflows Fragment Services", () => {
     const instanceRef = await (async () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
-        id: instanceId,
+        id: buildScopedInstanceRowId("demo-workflow", instanceId),
+        instanceId: instanceId,
         workflowName: "demo-workflow",
         status: "waiting",
         params: {},
@@ -669,7 +699,7 @@ describe("Workflows Fragment Services", () => {
     expect(meta.startedAt).toBeInstanceOf(Date);
 
     const currentStep = await runService<WorkflowInstanceCurrentStep | undefined>(() =>
-      fragment.services.getInstanceCurrentStep(created.id),
+      fragment.services.getInstanceCurrentStep("demo-workflow", created.id),
     );
 
     expect(currentStep).toMatchObject({
@@ -687,7 +717,8 @@ describe("Workflows Fragment Services", () => {
     const instanceRef = await (async () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
-        id: "history-2",
+        id: buildScopedInstanceRowId("demo-workflow", "history-2"),
+        instanceId: "history-2",
         workflowName: "demo-workflow",
         status: "active",
         params: {},

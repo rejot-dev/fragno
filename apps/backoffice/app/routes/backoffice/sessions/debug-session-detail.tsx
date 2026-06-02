@@ -34,14 +34,16 @@ const JsonPanel = ({ title, value }: { title: string; value: unknown }) => (
 );
 
 export default function BackofficeOrganisationPiDebugSessionDetail() {
-  const { orgId, sessionId } = useParams();
+  const { orgId, workflowName, sessionId } = useParams();
   const resolvedOrgId = orgId ?? "";
+  const resolvedWorkflowName = workflowName ?? "";
   const resolvedSessionId = sessionId ?? "";
   const pi = useMemo(() => createOrgPiClient(resolvedOrgId), [resolvedOrgId]);
-  const sessionDetail = pi.useSessionDetail({ path: { sessionId: resolvedSessionId } });
-  const sessionEvents = pi.useSessionEvents({ path: { sessionId: resolvedSessionId } });
+  const sessionPath = { workflowName: resolvedWorkflowName, sessionId: resolvedSessionId };
+  const sessionDetail = pi.useSessionDetail({ path: sessionPath });
+  const sessionEvents = pi.useSessionEvents({ path: sessionPath });
 
-  if (!orgId || !sessionId) {
+  if (!orgId || !workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
   }
 

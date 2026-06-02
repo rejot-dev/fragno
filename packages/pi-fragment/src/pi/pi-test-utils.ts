@@ -5,6 +5,7 @@ import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-d
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
+import { workflowsSchema } from "@fragno-dev/workflows";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -227,6 +228,30 @@ const createTestWorkflows = (options: {
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;
 
 type WorkflowsHarness = WorkflowsTestHarness<ReturnType<typeof createTestWorkflows>>;
+
+export const getWorkflowInstanceRef = async (
+  workflows: WorkflowsHarness,
+  workflowName: string,
+  instanceId: string,
+): Promise<string> => {
+  const [instance] = (
+    await workflows.db
+      .createUnitOfWork("read-workflow-instance-ref")
+      .forSchema(workflowsSchema)
+      .find("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+        ),
+      )
+      .executeRetrieve()
+  )[0];
+
+  if (!instance) {
+    throw new Error(`Workflow instance ${workflowName}/${instanceId} not found.`);
+  }
+
+  return instance.id.toString();
+};
 
 type DatabaseFragmentsTest = {
   fragments: {
