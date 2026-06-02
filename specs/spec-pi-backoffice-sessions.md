@@ -48,7 +48,7 @@ Key constraints:
 - **Model catalog**: The static, code-defined list of provider + model choices exposed in the UI.
 - **Tool registry**: The static code-defined set of tool implementations available to harnesses.
 - **VFS**: In-memory virtual filesystem used by the bash tool for sandboxed command execution.
-- **Trace**: Agent execution events returned in `GET /sessions/:sessionId`.
+- **Trace**: Agent execution events returned in `GET /workflows/:workflowName/sessions/:sessionId`.
 - **Tool call**: A content block with `type: "toolCall"` inside assistant content or tool result
   messages.
 
@@ -69,7 +69,8 @@ Key constraints:
 
 ### Non-goals (v1)
 
-- Manual message sending to a session (no `POST /sessions/:id/messages` from UI).
+- Manual message sending to a session (no `POST /workflows/:workflowName/sessions/:id/messages` from
+  UI).
 - Streaming/auto-refresh. Manual refresh only.
 - Exposing the Workflows HTTP API publicly.
 - Harness CRUD (Harnesses tab is read-only).
@@ -144,7 +145,7 @@ Create a backoffice module (e.g., `apps/docs/app/fragno/pi.ts`) to build the run
 - Model catalog is static in code; UI uses it to populate provider/model dropdowns.
 - Agents are generated as the Cartesian product of harnesses × model catalog.
   - Agent name format: `${harnessId}::${provider}::${model}`.
-  - Session creation uses this agent name in `POST /sessions`.
+  - Session creation uses this agent name in `POST /workflows/:workflowName/sessions`.
 - `model` resolved via `@mariozechner/pi-ai` `getModel(provider, modelName)`.
 - `getApiKey` (if needed) closes over the per-org API key config stored in DO storage.
 - Bash tool uses a per-session in-memory filesystem. Store a `Map<sessionId, InMemoryFs>` inside the
@@ -227,10 +228,10 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
 
 Mount the Pi fragment at `/api/pi` inside the DO and proxy requests from the app route:
 
-- `POST /api/pi/:orgId/sessions`
-- `GET /api/pi/:orgId/sessions`
-- `GET /api/pi/:orgId/sessions/:sessionId`
-- `POST /api/pi/:orgId/sessions/:sessionId/messages` (not used by UI in v1)
+- `POST /api/pi/:orgId/workflows/:workflowName/sessions`
+- `GET /api/pi/:orgId/workflows/:workflowName/sessions`
+- `GET /api/pi/:orgId/workflows/:workflowName/sessions/:sessionId`
+- `POST /api/pi/:orgId/workflows/:workflowName/sessions/:sessionId/messages` (not used by UI in v1)
 
 Implementation mirrors `apps/docs/app/routes/api/telegram.ts`.
 
@@ -303,7 +304,8 @@ Add a form at the top of Sessions list view:
 - Tags (optional)
 - Metadata (optional JSON)
 
-Submit to `POST /sessions` using computed agent name and redirect to the new session detail.
+Submit to `POST /workflows/:workflowName/sessions` using computed agent name and redirect to the new
+session detail.
 
 No UI for sending messages in v1.
 
