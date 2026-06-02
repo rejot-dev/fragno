@@ -12,12 +12,12 @@ import { PGLiteDriverConfig, SQLocalDriverConfig } from "../adapters/generic-sql
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { internalSchema, type InternalFragmentInstance } from "../fragments/internal-fragment";
 import { getInternalFragment } from "../internal/adapter-registry";
-import type { AnyFragnoInstantiatedDatabaseFragment, DatabaseRequestContext } from "../mod";
+import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
 import type { AnySchema } from "../schema/create";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
+import { resolveShardValue } from "../sharding";
 import { withDatabase } from "../with-database";
 import type { OutboxEntry, OutboxPayload } from "./outbox";
-
 const outboxSchema = schema("outbox", (s) => {
   return s
     .addTable("users", (t) => {
@@ -56,6 +56,7 @@ type OutboxAdapterConfig =
   | { type: "kysely-pglite"; outboxEnabled?: boolean };
 
 type OutboxTestContext = {
+  adapter: SqlAdapter;
   fragment: AnyFragnoInstantiatedDatabaseFragment;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
@@ -110,7 +111,9 @@ async function createAdapter(config: OutboxAdapterConfig): Promise<{
   };
 }
 
-async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<OutboxTestContext> {
+async function buildOutboxTest(
+  adapterConfig: OutboxAdapterConfig & { shardingStrategy?: { mode: "row" } },
+): Promise<OutboxTestContext> {
   const { adapter, cleanup } = await createAdapter(adapterConfig);
   const fragment = instantiate(outboxFragmentDef)
     .withConfig({})
@@ -118,10 +121,12 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
     .withOptions({
       databaseAdapter: adapter,
       outbox: adapterConfig.outboxEnabled ? { enabled: true } : undefined,
+      shardingStrategy: adapterConfig.shardingStrategy,
     })
     .build();
 
   return {
+    adapter,
     fragment,
     internalFragment: getInternalFragment(adapter),
     cleanup,
@@ -131,8 +136,15 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
 async function listOutbox(
   internalFragment: InternalFragmentInstance,
   options?: { afterVersionstamp?: string; limit?: number },
+  shardOptions?: { shard?: string | null; shardScope?: "scoped" | "global" },
 ): Promise<OutboxEntry[]> {
-  return internalFragment.inContext(async function (this: DatabaseRequestContext) {
+  return internalFragment.inContext(async function () {
+    if (shardOptions?.shardScope) {
+      this.setShardScope(shardOptions.shardScope);
+    }
+    if (shardOptions && "shard" in shardOptions) {
+      this.setShard(shardOptions.shard ?? null);
+    }
     return (await this.handlerTx()
       .withServiceCalls(() => [internalFragment.services.outboxService.list(options)] as const)
       .transform(({ serviceResult: [result] }) => result)
@@ -140,7 +152,65 @@ async function listOutbox(
   });
 }
 
-async function listOutboxMutations(internalFragment: InternalFragmentInstance): Promise<
+async function assignOutboxShards(
+  adapter: SqlAdapter,
+  shards: Array<string | null>,
+): Promise<void> {
+  const entryQuery = adapter
+    .createBaseUnitOfWork(undefined, {
+      queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+    })
+    .forSchema(internalSchema);
+  entryQuery.find("fragno_db_outbox", (b) =>
+    b.whereIndex("idx_outbox_versionstamp").orderByIndex("idx_outbox_versionstamp", "asc"),
+  );
+  const [entries] = (await entryQuery.executeRetrieve()) as unknown as [
+    Array<{ id: unknown; versionstamp: string }>,
+  ];
+
+  const shardByVersion = new Map<string, string | null>();
+  for (const [index, entry] of entries.entries()) {
+    const shard = shards[index] ?? null;
+    shardByVersion.set(entry.versionstamp, shard);
+
+    const updateUow = adapter
+      .createBaseUnitOfWork(undefined, {
+        queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+      })
+      .forSchema(internalSchema);
+    updateUow.update("fragno_db_outbox", entry.id as never, (b) =>
+      b.set({ _shard: resolveShardValue(shard) } as never),
+    );
+    await updateUow.executeMutations();
+  }
+
+  const mutationQuery = adapter
+    .createBaseUnitOfWork(undefined, {
+      queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+    })
+    .forSchema(internalSchema);
+  mutationQuery.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+  const [mutations] = (await mutationQuery.executeRetrieve()) as unknown as [
+    Array<{ id: unknown; entryVersionstamp: string }>,
+  ];
+
+  for (const mutation of mutations) {
+    const shard = shardByVersion.get(mutation.entryVersionstamp) ?? null;
+    const updateUow = adapter
+      .createBaseUnitOfWork(undefined, {
+        queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+      })
+      .forSchema(internalSchema);
+    updateUow.update("fragno_db_outbox_mutations", mutation.id as never, (b) =>
+      b.set({ _shard: resolveShardValue(shard) } as never),
+    );
+    await updateUow.executeMutations();
+  }
+}
+
+async function listOutboxMutations(adapter: SqlAdapter): Promise<
   Array<{
     entryVersionstamp: string;
     mutationVersionstamp: string;
@@ -151,22 +221,30 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
     op: string;
   }>
 > {
-  return internalFragment.inContext(async function (this: DatabaseRequestContext) {
-    return await this.handlerTx()
-      .retrieve(({ forSchema }) =>
-        forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
-          b
-            .whereIndex("idx_outbox_mutations_entry")
-            .orderByIndex("idx_outbox_mutations_entry", "asc"),
-        ),
-      )
-      .transformRetrieve(([result]) => result)
-      .execute();
-  });
+  const uow = adapter
+    .createBaseUnitOfWork(undefined, {
+      queryPolicies: [{ policy: { name: "sharding" }, getContext: () => ({}) }],
+    })
+    .forSchema(internalSchema);
+  uow.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+  const [result] = (await uow.executeRetrieve()) as unknown as [
+    Array<{
+      entryVersionstamp: string;
+      mutationVersionstamp: string;
+      uowId: string;
+      schema: string;
+      table: string;
+      externalId: string;
+      op: string;
+    }>,
+  ];
+  return result;
 }
 
 async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email: string) {
-  return fragment.inContext(async function (this: DatabaseRequestContext) {
+  return fragment.inContext(async function () {
     await this.handlerTx()
       .mutate(({ forSchema }) => forSchema(outboxSchema).create("users", { email }))
       .execute();
@@ -193,7 +271,7 @@ async function createPost(
   title: string,
   authorId: FragnoReference,
 ) {
-  return fragment.inContext(async function (this: DatabaseRequestContext) {
+  return fragment.inContext(async function () {
     return await this.handlerTx()
       .mutate(({ forSchema }) => forSchema(outboxSchema).create("posts", { title, authorId }))
       .transform(({ mutateResult }) => mutateResult)
@@ -204,8 +282,37 @@ async function createPost(
 const adapterConfigs = [{ type: "kysely-sqlite" as const }, { type: "kysely-pglite" as const }];
 
 describe("Fragno DB Outbox", () => {
-  it("does not write outbox entries when disabled", async () => {
+  it.each(adapterConfigs)("persists shard on outbox rows (%s)", async (config) => {
     const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      type: config.type,
+      outboxEnabled: true,
+      shardingStrategy: { mode: "row" },
+    });
+
+    await fragment.inContext(async function () {
+      await fragment.$internal.deps.shardContext.with("shard-alpha", () =>
+        this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(outboxSchema);
+            uow.create("users", { email: "shard-alpha@example.com" });
+          })
+          .execute(),
+      );
+    });
+
+    const shardEntries = await listOutbox(internalFragment, undefined, { shard: "shard-alpha" });
+    expect(shardEntries).toHaveLength(1);
+
+    const otherShardEntries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-beta",
+    });
+    expect(otherShardEntries).toHaveLength(0);
+
+    await cleanup();
+  });
+
+  it("does not write outbox entries when disabled", async () => {
+    const { adapter, fragment, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
     });
 
@@ -213,14 +320,14 @@ describe("Fragno DB Outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(0);
-    const mutations = await listOutboxMutations(internalFragment);
+    const mutations = await listOutboxMutations(adapter);
     expect(mutations).toHaveLength(0);
 
     await cleanup();
   });
 
   it("stores refMap placeholders and lists entries in order", async () => {
-    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+    const { adapter, fragment, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
       outboxEnabled: true,
     });
@@ -255,7 +362,26 @@ describe("Fragno DB Outbox", () => {
       "0.authorId": userId.externalId,
     });
 
-    await internalFragment.inContext(async function (this: DatabaseRequestContext) {
+    await assignOutboxShards(adapter, ["shard-a", null]);
+
+    const shardAEntries = await listOutbox(internalFragment, undefined, { shard: "shard-a" });
+    expect(shardAEntries).toHaveLength(1);
+    expect(shardAEntries[0].versionstamp).toBe(entries[0].versionstamp);
+
+    const shardNullEntries = await listOutbox(internalFragment, undefined, {
+      shard: null,
+      shardScope: "scoped",
+    });
+    expect(shardNullEntries).toHaveLength(1);
+    expect(shardNullEntries[0].versionstamp).toBe(entries[1].versionstamp);
+
+    const globalEntries = await listOutbox(internalFragment, undefined, {
+      shard: "shard-a",
+      shardScope: "global",
+    });
+    expect(globalEntries).toHaveLength(2);
+
+    await internalFragment.inContext(async function () {
       await this.handlerTx()
         .withServiceCalls(() => [
           internalFragment.services.settingsService.set("outbox-test", "noop", "1"),
@@ -263,14 +389,17 @@ describe("Fragno DB Outbox", () => {
         .execute();
     });
 
-    const afterInternal = await listOutbox(internalFragment);
-    expect(afterInternal).toHaveLength(2);
+    const afterInternal = await listOutbox(internalFragment, undefined, {
+      shard: "shard-a",
+      shardScope: "global",
+    });
+    expect(afterInternal).toHaveLength(globalEntries.length);
 
     await cleanup();
   });
 
   it("writes mutation log rows for each outbox entry", async () => {
-    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+    const { adapter, fragment, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
       outboxEnabled: true,
     });
@@ -281,7 +410,7 @@ describe("Fragno DB Outbox", () => {
     await createPost(fragment, "Log", FragnoReference.fromInternal(userId.internalId!));
 
     const entries = await listOutbox(internalFragment);
-    const mutations = await listOutboxMutations(internalFragment);
+    const mutations = await listOutboxMutations(adapter);
 
     expect(entries).toHaveLength(2);
     expect(mutations).toHaveLength(2);
@@ -315,20 +444,22 @@ describe("Fragno DB Outbox", () => {
       outboxEnabled: true,
     });
 
-    const createUow = fragment.$internal.deps.createUnitOfWork;
-    const uow1 = createUow();
-    const uow2 = createUow();
-    const uow1Id = uow1.idempotencyKey;
-    const uow2Id = uow2.idempotencyKey;
-
-    uow1.forSchema(outboxSchema).create("users", { email: "order-1@example.com" });
-    uow2.forSchema(outboxSchema).create("users", { email: "order-2@example.com" });
-
     const completionOrder: string[] = [];
-    await Promise.all([
-      uow1.executeMutations().then(() => completionOrder.push(uow1Id)),
-      uow2.executeMutations().then(() => completionOrder.push(uow2Id)),
-    ]);
+    await fragment.inContext(async function () {
+      const createUow = fragment.$internal.deps.createUnitOfWork;
+      const uow1 = createUow();
+      const uow2 = createUow();
+      const uow1Id = uow1.idempotencyKey;
+      const uow2Id = uow2.idempotencyKey;
+
+      uow1.forSchema(outboxSchema).create("users", { email: "order-1@example.com" });
+      uow2.forSchema(outboxSchema).create("users", { email: "order-2@example.com" });
+
+      await Promise.all([
+        uow1.executeMutations().then(() => completionOrder.push(uow1Id)),
+        uow2.executeMutations().then(() => completionOrder.push(uow2Id)),
+      ]);
+    });
 
     const entries = await listOutbox(internalFragment);
     expect(entries.map((entry) => entry.uowId)).toEqual(completionOrder);
@@ -364,7 +495,7 @@ describe("Fragno DB Outbox", () => {
         .withOptions({ databaseAdapter: adapter })
         .build();
 
-      await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await alphaFragment.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) =>
             forSchema(alphaSchema).create("alpha_items", { name: "alpha" }),
@@ -372,7 +503,7 @@ describe("Fragno DB Outbox", () => {
           .execute();
       });
 
-      await betaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await betaFragment.inContext(async function () {
         await this.handlerTx()
           .mutate(({ forSchema }) => forSchema(betaSchema).create("beta_items", { title: "beta" }))
           .execute();

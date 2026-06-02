@@ -145,6 +145,7 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
         if (!workflowName || !instanceId) {
           return;
         }
+        invalidate("GET", "/", {});
         invalidate("GET", "/:workflowName/instances/:instanceId", {
           pathParams: { workflowName, instanceId },
         });

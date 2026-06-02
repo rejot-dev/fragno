@@ -1,12 +1,15 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 
+import { stripShardField } from "../system-columns";
 import type { LofiMutation } from "../types";
 
 export function outboxMutationsToUowOperations(
   mutations: LofiMutation[],
   schemaMap: Record<string, AnySchema>,
 ): MutationOperation<AnySchema>[] {
+  const shardMetadata = { shard: null, shardScope: "scoped" as const, policyWhere: null };
+
   return mutations.map((mutation) => {
     const schema = schemaMap[mutation.schema];
     if (!schema) {
@@ -18,8 +21,9 @@ export function outboxMutationsToUowOperations(
         type: "create",
         schema,
         table: mutation.table,
-        values: mutation.values,
+        values: stripShardField(mutation.values) ?? mutation.values,
         generatedExternalId: mutation.externalId,
+        ...shardMetadata,
       };
     }
 
@@ -30,7 +34,8 @@ export function outboxMutationsToUowOperations(
         table: mutation.table,
         id: mutation.externalId,
         checkVersion: false,
-        set: mutation.set,
+        set: stripShardField(mutation.set) ?? mutation.set,
+        ...shardMetadata,
       };
     }
 
@@ -40,6 +45,7 @@ export function outboxMutationsToUowOperations(
       table: mutation.table,
       id: mutation.externalId,
       checkVersion: false,
+      ...shardMetadata,
     };
   });
 }

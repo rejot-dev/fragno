@@ -2,9 +2,10 @@ import { describe, expectTypeOf, it } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import type { FragnoId, FragnoReference } from "../../schema/create";
+import type { Condition } from "../condition-builder";
 import { QueryTreeFindBuilder, QueryTreeJoinBuilder, type ParentColumnRef } from "./query-tree";
 import { UnitOfWork } from "./unit-of-work";
-
+import type { QueryPolicySchemaContext } from "./unit-of-work";
 type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
@@ -485,6 +486,29 @@ describe("UnitOfWork type tests", () => {
         eb("title", "=", "Hello");
         return eb("userId", "=", eb.parent("id"));
       });
+    }
+  });
+
+  it("QueryPolicy schema helpers are table-specific and index-restricted", () => {
+    const policyCtx = null as unknown as QueryPolicySchemaContext<typeof testSchema>;
+    type IndexedCols =
+      (typeof testSchema.tables.users.indexes)[keyof typeof testSchema.tables.users.indexes]["columnNames"][number];
+
+    if (Math.random() > 1) {
+      const usersTable: typeof testSchema.tables.users = policyCtx.table("users");
+      const postsTable: typeof testSchema.tables.posts = policyCtx.table("posts");
+      const commentsTable: typeof testSchema.tables.comments = policyCtx.table("comments");
+      void usersTable;
+      void postsTable;
+      void commentsTable;
+      type InvalidTable = "nope" extends keyof typeof testSchema.tables ? true : false;
+      expectTypeOf<InvalidTable>().toEqualTypeOf<false>();
+
+      const whereResult: Condition | null = policyCtx.where("users", (eb) => {
+        expectTypeOf(eb).parameter(0).toEqualTypeOf<IndexedCols>();
+        return eb("email", "=", "test@example.com");
+      });
+      void whereResult;
     }
   });
 });

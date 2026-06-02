@@ -14,7 +14,7 @@ import {
   parseOutboxVersionValue,
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
-import { buildCondition } from "../../query/condition-builder";
+import { buildCondition, type Condition } from "../../query/condition-builder";
 import {
   createCursorFromRecord,
   decodeCursor,
@@ -40,6 +40,7 @@ import {
 } from "../../query/value-encoding";
 import type { AnySchema, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference, getTableRelations } from "../../schema/create";
+import { resolveShardValue } from "../../sharding";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { evaluateCondition } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
@@ -54,7 +55,6 @@ import type {
 } from "./store";
 import { buildIndexKey, ensureNamespaceStore, normalizeIndexValue } from "./store";
 import { compareNormalizedValues } from "./value-comparison";
-
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
 type CursorInput = string | Cursor | undefined;
@@ -149,6 +149,21 @@ const selectRow = (
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
+
+const matchesPolicyWhere = (
+  policyWhere: Condition | null | undefined,
+  table: AnyTable,
+  row: InMemoryRow,
+  namespaceStore: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): boolean => {
+  if (!policyWhere) {
+    return true;
+  }
+
+  return evaluateCondition(policyWhere, table, row, namespaceStore, resolver, now);
+};
 
 const prefixSelection = (
   row: InMemoryRow,
@@ -718,7 +733,10 @@ const findRows = (
     return [];
   }
 
-  const condition = whereResult === true ? undefined : whereResult;
+  let condition: Condition | undefined = whereResult === true ? undefined : whereResult;
+  if (op.policyWhere) {
+    condition = condition ? { type: "and", items: [condition, op.policyWhere] } : op.policyWhere;
+  }
   const results: InMemoryRow[] = [];
 
   for (const entry of entries) {
@@ -798,7 +816,10 @@ const countRows = (
     return 0;
   }
 
-  const condition = whereResult === true ? undefined : whereResult;
+  let condition: Condition | undefined = whereResult === true ? undefined : whereResult;
+  if (op.policyWhere) {
+    condition = condition ? { type: "and", items: [condition, op.policyWhere] } : op.policyWhere;
+  }
   let count = 0;
 
   for (const row of tableStore.rows.values()) {
@@ -932,6 +953,21 @@ const updateRow = (
     }
     return null;
   }
+  if (
+    !matchesPolicyWhere(
+      op.policyWhere,
+      table,
+      existing.row,
+      namespaceStore,
+      resolver,
+      options.clock.now,
+    )
+  ) {
+    if (versionToCheck !== undefined) {
+      throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
+    }
+    return null;
+  }
 
   const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
   const currentVersion = Number(existing.row[versionColumnName] ?? 0);
@@ -1014,6 +1050,21 @@ const deleteRow = (
     }
     return null;
   }
+  if (
+    !matchesPolicyWhere(
+      op.policyWhere,
+      table,
+      existing.row,
+      namespaceStore,
+      resolver,
+      options.clock.now,
+    )
+  ) {
+    if (versionToCheck !== undefined) {
+      throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
+    }
+    return null;
+  }
 
   const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
   const currentVersion = Number(existing.row[versionColumnName] ?? 0);
@@ -1058,12 +1109,17 @@ const deleteRow = (
 
 const checkRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "check" }>,
+  namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
   table: AnyTable,
   resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): void => {
   const existing = findRowByExternalId(tableStore, table, op.id.externalId, resolver);
-  if (!existing) {
+  if (
+    !existing ||
+    !matchesPolicyWhere(op.policyWhere, table, existing.row, namespaceStore, resolver, now)
+  ) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" not found.`);
   }
 
@@ -1105,6 +1161,7 @@ const reserveOutboxVersion = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
 ): { version: bigint; rollback: () => void } => {
+  // TODO(db-sharding): keep outbox versioning global for now; revisit per-shard versions (specs/spec-db-sharding.md §9.3).
   const resolver = getResolver(internalSchema, null, resolverFactory);
   const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
   const settingsTable = internalSchema.tables[SETTINGS_TABLE_NAME];
@@ -1141,6 +1198,7 @@ const reserveOutboxVersion = (
       id: externalId,
       checkVersion: false,
       set: { value: next.toString() },
+      policyWhere: null,
     };
     const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
     return { version: next, rollback: rollback ?? (() => {}) };
@@ -1151,8 +1209,9 @@ const reserveOutboxVersion = (
     schema: internalSchema,
     namespace: null,
     table: settingsTable.name,
-    values: { key: OUTBOX_VERSION_KEY, value: "0" },
+    values: { key: OUTBOX_VERSION_KEY, value: "0", _shard: resolveShardValue(null) },
     generatedExternalId: options.idGenerator(),
+    policyWhere: null,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1236,6 +1295,7 @@ const insertOutboxRow = (
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
+    shard: string | null;
   },
 ): (() => void) => {
   const resolver = getResolver(internalSchema, null, resolverFactory);
@@ -1254,9 +1314,11 @@ const insertOutboxRow = (
       versionstamp: payload.versionstamp,
       uowId: payload.uowId,
       payload: payload.payload,
+      _shard: resolveShardValue(payload.shard),
       ...(payload.refMap ? { refMap: payload.refMap } : {}),
     },
     generatedExternalId: options.idGenerator(),
+    policyWhere: null,
   };
   const previousInternalId = tableStore.nextInternalId;
   const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
@@ -1288,6 +1350,7 @@ const insertOutboxMutationRows = (
       externalId: string;
       op: string;
     }[];
+    shard: string | null;
   },
 ): Array<() => void> => {
   if (payload.mutations.length === 0) {
@@ -1318,8 +1381,10 @@ const insertOutboxMutationRows = (
           table: mutation.table,
           externalId: mutation.externalId,
           op: mutation.op,
+          _shard: resolveShardValue(payload.shard),
         },
         generatedExternalId: options.idGenerator(),
+        policyWhere: null,
       };
 
       const previousInternalId = tableStore.nextInternalId;
@@ -1369,6 +1434,7 @@ export const createInMemoryUowExecutor = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
   schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
+  getShard?: () => string | null,
 ): UOWExecutor<InMemoryCompiledQuery, InMemoryRawResult> => ({
   async executeRetrievalPhase(
     retrievalBatch: InMemoryCompiledQuery[],
@@ -1424,6 +1490,7 @@ export const createInMemoryUowExecutor = (
     const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
     let outboxVersion: bigint | null = null;
+    const outboxShard = resolveOutboxShard(getShard);
 
     try {
       if (shouldWriteOutbox) {
@@ -1525,7 +1592,7 @@ export const createInMemoryUowExecutor = (
             throw new Error(`Invalid table name ${operation.table}.`);
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
-          checkRow(operation, tableStore, table, resolver);
+          checkRow(operation, namespaceStore, tableStore, table, resolver, options.clock.now);
           continue;
         }
 
@@ -1552,6 +1619,7 @@ export const createInMemoryUowExecutor = (
             entryVersionstamp: versionstamp,
             uowId,
             mutations: payload.mutations,
+            shard: outboxShard,
           }),
         );
         const rollback = insertOutboxRow(store, options, resolverFactory, {
@@ -1559,6 +1627,7 @@ export const createInMemoryUowExecutor = (
           uowId,
           payload: payloadSerialized,
           refMap,
+          shard: outboxShard,
         });
         rollbackActions.push(rollback);
       }
@@ -1575,6 +1644,18 @@ export const createInMemoryUowExecutor = (
     return { success: true, createdInternalIds };
   },
 });
+
+const resolveOutboxShard = (getShard?: () => string | null): string => {
+  if (!getShard) {
+    return resolveShardValue(null);
+  }
+
+  try {
+    return resolveShardValue(getShard() ?? null);
+  } catch {
+    return resolveShardValue(null);
+  }
+};
 
 export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
   readonly #resolverFactory?: ResolverFactory;

@@ -2,11 +2,13 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 
 import { FragnoDatabase } from "../../fragno-database";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
+import type { SystemMigration } from "../../migration-engine/system-migrations";
 import {
   createNamingResolver,
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { createShardQueryPolicy } from "../../query/unit-of-work/query-policies";
 import type {
   CompiledMutation,
   UOWExecutor,
@@ -14,6 +16,7 @@ import type {
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
+import type { QueryPolicyEntry } from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
 import { sql } from "../../sql-driver/sql";
 import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
@@ -29,16 +32,20 @@ import {
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
 import type { DriverConfig } from "./driver-config";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
+import {
+  createPreparedMigrations,
+  type PrepareMigrationsOptions,
+  type PreparedMigrations,
+} from "./migration/prepared-migrations";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import { UnitOfWorkDecoder } from "./uow-decoder";
-
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
   instrumentation?: UOWInstrumentation;
+  queryPolicies?: QueryPolicyEntry[];
 }
 
 export interface SqlAdapterOptions {
@@ -48,6 +55,7 @@ export interface SqlAdapterOptions {
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
+  systemMigrations?: SystemMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -72,6 +80,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
+  readonly systemMigrations?: SystemMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -85,6 +94,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
+    systemMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
@@ -113,6 +123,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
+    this.systemMigrations = systemMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -141,7 +152,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+  prepareMigrations<T extends AnySchema>(
+    schema: T,
+    namespace: string | null,
+    options?: PrepareMigrationsOptions,
+  ): PreparedMigrations {
     const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
@@ -151,6 +166,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
+      systemMigrations: options?.systemMigrations ?? this.systemMigrations,
     });
   }
 
@@ -236,16 +252,60 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         dryRun: false,
         outbox: getOutboxConfigForAdapter(this),
         namingStrategy: this.namingStrategy,
+        getShard: () =>
+          this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
       },
     );
     const decoder = new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode);
+
+    const shardPolicy = createShardQueryPolicy({
+      shardingStrategy: undefined,
+      getShard: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shard : null,
+      getShardScope: () =>
+        this.#contextStorage.hasStore() ? this.#contextStorage.getStore().shardScope : "scoped",
+    });
+    const shardPolicyEntry: QueryPolicyEntry = { policy: shardPolicy, getContext: () => ({}) };
+
+    const mergedQueryPolicies = [...(this.uowConfig?.queryPolicies ?? [])];
+    if (config?.queryPolicies && config.queryPolicies.length > 0) {
+      const indexByName = new Map<string, number>();
+      for (let i = 0; i < mergedQueryPolicies.length; i += 1) {
+        indexByName.set(mergedQueryPolicies[i]!.policy.name, i);
+      }
+
+      for (const policy of config.queryPolicies) {
+        const existingIndex = indexByName.get(policy.policy.name);
+        if (existingIndex === undefined) {
+          indexByName.set(policy.policy.name, mergedQueryPolicies.length);
+          mergedQueryPolicies.push(policy);
+        } else {
+          mergedQueryPolicies[existingIndex] = policy;
+        }
+      }
+    }
+
+    const normalizedConfig = this.#normalizeUowConfig({
+      ...this.uowConfig,
+      ...config,
+      queryPolicies: mergedQueryPolicies.length > 0 ? mergedQueryPolicies : undefined,
+    });
+    const hasShardPolicy = normalizedConfig?.queryPolicies?.some(
+      (entry) => entry.policy.name === "sharding",
+    );
+    const mergedConfig = hasShardPolicy
+      ? normalizedConfig
+      : {
+          ...normalizedConfig,
+          queryPolicies: [...(normalizedConfig?.queryPolicies ?? []), shardPolicyEntry],
+        };
 
     return new UnitOfWork(
       compiler,
       executor,
       decoder,
       name,
-      this.#normalizeUowConfig({ ...this.uowConfig, ...config }),
+      mergedConfig,
       this.#schemaNamespaceMap,
     );
   }

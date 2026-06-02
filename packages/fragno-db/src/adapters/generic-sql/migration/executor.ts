@@ -18,6 +18,7 @@ export interface CompiledMigration {
  * @param driver - The SQL driver adapter to execute queries
  * @param migration - The compiled migration containing SQL statements
  */
+
 export async function executeMigration(
   driver: SqlDriverAdapter,
   migration: CompiledMigration,

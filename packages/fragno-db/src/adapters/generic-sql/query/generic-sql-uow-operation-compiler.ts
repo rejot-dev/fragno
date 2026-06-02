@@ -90,6 +90,12 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
+    if (op.policyWhere) {
+      conditions = conditions
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
+    }
+
     return sqlCompiler.compileCount(op.table, { where: conditions });
   }
 
@@ -110,10 +116,20 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     if (queryTree) {
       const queryTreeCompiler = this.getQueryTreeCompiler(op.schema, op.namespace);
-      return queryTreeCompiler.compile(queryTree, {
-        readTracking: op.readTracking,
-        withCursor: op.withCursor,
-      });
+      return queryTreeCompiler.compile(
+        {
+          ...queryTree,
+          where: queryTree.where
+            ? op.policyWhere
+              ? { type: "and", items: [queryTree.where, op.policyWhere] }
+              : queryTree.where
+            : (op.policyWhere ?? undefined),
+        },
+        {
+          readTracking: op.readTracking,
+          withCursor: op.withCursor,
+        },
+      );
     }
 
     // Get index columns for ordering and cursor pagination
@@ -177,6 +193,12 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       } else {
         combinedWhere = cursorCondition;
       }
+    }
+
+    if (op.policyWhere) {
+      combinedWhere = combinedWhere
+        ? { type: "and", items: [combinedWhere, op.policyWhere] }
+        : op.policyWhere;
     }
 
     // For cursor pagination, fetch one extra item to determine if there's a next page
@@ -250,8 +272,14 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
+    let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
+
+    if (op.policyWhere) {
+      conditions = conditions
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
+    }
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -298,8 +326,14 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
+    let conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
+
+    if (op.policyWhere) {
+      conditions = conditions
+        ? { type: "and", items: [conditions, op.policyWhere] }
+        : op.policyWhere;
+    }
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -334,12 +368,16 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const version = op.id.version;
 
     // Build a SELECT 1 query to check if the row exists with the correct version
-    const condition = buildCondition(table.columns, (eb) =>
+    let condition = buildCondition(table.columns, (eb) =>
       eb.and(eb(idColumn.name, "=", externalId), eb(versionColumn.name, "=", version)),
     );
 
     if (typeof condition === "boolean") {
       throw new Error("Condition is a boolean, but should be a condition object.");
+    }
+
+    if (op.policyWhere) {
+      condition = { type: "and", items: [condition, op.policyWhere] };
     }
 
     return {

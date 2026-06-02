@@ -369,14 +369,15 @@ describe("db-fragment-instantiator", () => {
 
   describe("UOW isolation per request", () => {
     it("should create fresh UOW for each request", async () => {
-      let createBaseUowCallCount = 0;
+      let createUowCallCount = 0;
       const mockAdapter = createMockAdapter();
+      const queryEngine = mockAdapter.createQueryEngine(testSchema, "test");
 
       // Track how many times createBaseUnitOfWork is called
-      const originalCreateBaseUow = mockAdapter.createBaseUnitOfWork;
-      mockAdapter.createBaseUnitOfWork = vi.fn((name, config) => {
-        createBaseUowCallCount++;
-        return originalCreateBaseUow(name, config);
+      const originalCreateUow = queryEngine.createBaseUnitOfWork;
+      queryEngine.createBaseUnitOfWork = vi.fn((...args: Parameters<typeof originalCreateUow>) => {
+        createUowCallCount++;
+        return originalCreateUow(...args);
       });
 
       const definition = defineFragment("test-db-fragment")
@@ -409,8 +410,8 @@ describe("db-fragment-instantiator", () => {
       await fragment.handler(new Request("http://localhost/api/test"));
 
       // Verify that createBaseUnitOfWork was called twice (once per request)
-      expect(createBaseUowCallCount).toBe(2);
-      expect(mockAdapter.createBaseUnitOfWork).toHaveBeenCalledTimes(2);
+      expect(createUowCallCount).toBe(2);
+      expect(queryEngine.createBaseUnitOfWork).toHaveBeenCalledTimes(2);
     });
   });
 

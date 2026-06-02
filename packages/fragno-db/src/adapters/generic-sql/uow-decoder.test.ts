@@ -29,7 +29,6 @@ describe("UnitOfWorkDecoder", () => {
   });
 
   const decoder = new UnitOfWorkDecoder(driverConfig);
-
   describe("decode", () => {
     it("should decode regular find operations", () => {
       const operation: RetrievalOperation<AnySchema> = {

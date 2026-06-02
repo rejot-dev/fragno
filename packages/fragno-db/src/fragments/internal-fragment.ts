@@ -3,23 +3,26 @@ import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 
 import {
   DatabaseFragmentDefinitionBuilder,
-  type DatabaseHandlerContext,
   type DatabaseRequestStorage,
-  type DatabaseServiceContext,
+  type DatabaseHandlerContextWithShard,
+  type DatabaseServiceContextWithShard,
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { isHookStatus, type HookStatus } from "../hooks/hooks";
+import type { ConditionBuilder } from "../query/condition-builder";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
-import { FragnoId } from "../schema/create";
+import { FragnoId, type AnyColumn } from "../schema/create";
+import { resolveShardValue, type ShardScope, type ShardingStrategy } from "../sharding";
 import {
   internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
-
 type AdapterRegistry = {
   listSchemas: () => Array<{
     name: string;
@@ -34,6 +37,7 @@ type AdapterRegistry = {
     schemaName: string,
     commandName: string,
   ) => { command: unknown; namespace: string | null } | undefined;
+  shardingStrategy?: ShardingStrategy;
 };
 
 export class SchemaRegistryCollisionError extends Error {
@@ -65,7 +69,16 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export {
+  internalSchema,
+  FRAGNO_DB_PACKAGE_VERSION_KEY,
+  SYSTEM_MIGRATION_VERSION_KEY,
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+};
+
+type InternalServiceContext = DatabaseServiceContextWithShard<{}>;
+type InternalHandlerContext = DatabaseHandlerContextWithShard;
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
@@ -103,11 +116,15 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     {},
     {},
     {},
-    DatabaseServiceContext<{}>,
-    DatabaseHandlerContext,
+    InternalServiceContext,
+    InternalHandlerContext,
     DatabaseRequestStorage
   >("$fragno-internal-fragment"),
   internalSchema,
+  undefined,
+  undefined,
+  undefined,
+  { exposeShardContext: true },
 )
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
@@ -349,10 +366,53 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       },
 
       /**
+       * Get the next time a processing hook becomes stale.
+       */
+      getNextProcessingStaleAt(namespace: string, timeoutMinutes: number, now?: Date) {
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_hooks", (b) =>
+              b.whereIndex("idx_namespace_status_retry", (eb) =>
+                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
+              ),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            if (events.length === 0) {
+              return null;
+            }
+
+            const baseNow = now ?? new Date();
+            const nowMs = baseNow.getTime();
+            const timeoutMs = timeoutMinutes * 60_000;
+            let earliestStaleAt: Date | null = null;
+
+            for (const event of events) {
+              if (!event.lastAttemptAt) {
+                return baseNow;
+              }
+
+              const staleAtMs = event.lastAttemptAt.getTime() + timeoutMs;
+              if (staleAtMs <= nowMs) {
+                return baseNow;
+              }
+
+              const staleAt = new Date(staleAtMs);
+              if (!earliestStaleAt || staleAt < earliestStaleAt) {
+                earliestStaleAt = staleAt;
+              }
+            }
+
+            return earliestStaleAt;
+          })
+          .build();
+      },
+
+      /**
        * Get the earliest pending hook wake time for a namespace.
        * Optionally considers processing hooks becoming stale when timeoutMinutes is provided.
        */
-      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false) {
+      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false, nowOverride?: Date) {
         const timeoutMinutesValue =
           typeof timeoutMinutes === "number" && timeoutMinutes > 0 ? timeoutMinutes : 0;
         const includeProcessing = timeoutMinutesValue > 0;
@@ -361,7 +421,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         // Sentinel to keep query shape stable when processing checks are disabled.
         const processingStatus = includeProcessing ? "processing" : "__disabled__";
         const staleBefore = now.plus({ minutes: -timeoutMinutesValue });
-
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow
@@ -422,7 +481,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               const hasProcessingImmediate = includeProcessing && processingImmediate.length > 0;
 
               if (pendingImmediate.length > 0 || hasProcessingImmediate) {
-                return new Date();
+                return nowOverride ?? new Date();
               }
 
               const pendingNextAt = pendingNext[0]?.nextRetryAt ?? null;
@@ -573,23 +632,57 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .providesService("outboxService", ({ defineService }) => {
+    const buildShardCondition = (
+      eb: ConditionBuilder<Record<string, AnyColumn>>,
+      shard: string | null,
+      shardScope: ShardScope,
+    ) => {
+      if (shardScope !== "scoped") {
+        return null;
+      }
+      return eb("_shard", "=", resolveShardValue(shard));
+    };
+
     return defineService({
       /**
        * List outbox entries ordered by versionstamp (ascending).
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
+        const shard = this.getShard();
+        const shardScope = this.getShardScope();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              let builder = afterValue
-                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterValue),
-                  )
-                : b.whereIndex("idx_outbox_versionstamp");
+              let builder;
+              const indexName =
+                shardScope === "scoped"
+                  ? "idx_outbox_shard_versionstamp"
+                  : "idx_outbox_versionstamp";
 
-              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+              if (afterValue || shardScope === "scoped") {
+                builder = b.whereIndex(indexName, ((
+                  eb: ConditionBuilder<Record<string, AnyColumn>>,
+                ) => {
+                  const conditions: Array<ReturnType<typeof eb>> = [];
+                  const shardCondition = buildShardCondition(eb, shard, shardScope);
+                  if (shardCondition) {
+                    conditions.push(shardCondition);
+                  }
+                  if (afterValue) {
+                    conditions.push(eb("versionstamp", ">", afterValue));
+                  }
+                  if (conditions.length === 1) {
+                    return conditions[0];
+                  }
+                  return eb.and(...conditions);
+                }) as never);
+              } else {
+                builder = b.whereIndex(indexName);
+              }
+
+              builder = builder.orderByIndex(indexName, "asc");
               if (limit !== undefined) {
                 builder = builder.pageSize(limit);
               }
@@ -620,29 +713,38 @@ export type InternalFragmentInstance = InstantiatedFragmentFromDefinition<
   typeof internalFragmentDef
 >;
 
+const SCHEMA_VERSION_KEY = "schema_version";
+
+async function readNumericSetting(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+  key: string,
+): Promise<number | undefined> {
+  const setting = await fragment.inContext(async function () {
+    return await this.withShardScope("global", () =>
+      this.withShard(null, () =>
+        this.handlerTx()
+          .withServiceCalls(() => [fragment.services.settingsService.get(namespace, key)] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute(),
+      ),
+    );
+  });
+
+  if (!setting) {
+    return undefined;
+  }
+
+  const parsed = parseInt(setting.value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 export async function getSchemaVersionFromDatabase(
   fragment: InternalFragmentInstance,
   namespace: string,
 ): Promise<number> {
   try {
-    const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
-      const setting = await fragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(
-            () =>
-              [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
-      if (!setting) {
-        return undefined;
-      }
-      const parsed = parseInt(setting.value, 10);
-      return Number.isNaN(parsed) ? undefined : parsed;
-    };
-
-    const primary = await readSchemaVersion(namespace);
+    const primary = await readNumericSetting(fragment, namespace, SCHEMA_VERSION_KEY);
     if (primary !== undefined) {
       return primary;
     }
@@ -652,13 +754,25 @@ export async function getSchemaVersionFromDatabase(
     const legacyNamespace =
       namespace === "" ? internalSchema.name : namespace === internalSchema.name ? "" : null;
     if (legacyNamespace !== null) {
-      const legacy = await readSchemaVersion(legacyNamespace);
+      const legacy = await readNumericSetting(fragment, legacyNamespace, SCHEMA_VERSION_KEY);
       if (legacy !== undefined) {
         return legacy;
       }
     }
 
     return 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function getSystemMigrationVersionFromDatabase(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+): Promise<number> {
+  try {
+    const primary = await readNumericSetting(fragment, namespace, SYSTEM_MIGRATION_VERSION_KEY);
+    return primary ?? 0;
   } catch {
     return 0;
   }

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 
 import {
   createUnitOfWork,
+  UnitOfWork,
+  type QueryPolicy,
   type UOWCompiler,
   type UOWDecoder,
   type UOWExecutor,
@@ -236,6 +238,35 @@ describe("read tracking", () => {
     ).toBeUndefined();
   });
 
+  it("collects query-tree read scopes with the query-tree filter", () => {
+    const compiler = createMockCompiler();
+    const executor = createMockExecutor();
+    const decoder = createMockDecoder();
+    const schemaNamespaceMap: WeakMap<AnySchema, string | null> = new WeakMap();
+    schemaNamespaceMap.set(testSchema, "tenant");
+
+    const baseUow = createUnitOfWork(compiler, executor, decoder, schemaNamespaceMap);
+    baseUow.enableReadTracking();
+
+    baseUow
+      .forSchema(testSchema)
+      .find("users", (q) => q.whereIndex("name_idx", (eb) => eb("name", "=", "author")));
+
+    const [scope] = collectReadScopes(baseUow.getRetrievalOperations());
+    expect(scope).toBeDefined();
+    expect(scope).toMatchObject({
+      schema: "tenant",
+      table: testSchema.tables.users,
+      indexName: "name_idx",
+      condition: {
+        type: "compare",
+        a: testSchema.tables.users.columns.name,
+        operator: "=",
+        b: "author",
+      },
+    });
+  });
+
   it("collects write keys from mutation operations", () => {
     const compiler = createMockCompiler();
     const executor = createMockExecutor();
@@ -254,5 +285,60 @@ describe("read tracking", () => {
     expect(keys).toEqual(
       expect.arrayContaining([expect.objectContaining({ table: "users", schema: "tenant" })]),
     );
+  });
+
+  it("includes policy filters in read scopes", () => {
+    const compiler = createMockCompiler();
+    const executor = createMockExecutor();
+    const decoder = createMockDecoder();
+    const schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
+    schemaNamespaceMap.set(testSchema, "tenant");
+
+    const policy: QueryPolicy = {
+      name: "policy",
+      extraWhere: ({ forSchema, table }) => {
+        if (table.name !== "users") {
+          return null;
+        }
+        return forSchema(testSchema).where("users", (eb) => eb("name", "=", "scoped"));
+      },
+    };
+
+    const baseUow = new UnitOfWork(
+      compiler,
+      executor,
+      decoder,
+      undefined,
+      {
+        queryPolicies: [{ policy, getContext: () => ({}) }],
+      },
+      schemaNamespaceMap,
+    );
+
+    baseUow.enableReadTracking();
+
+    baseUow
+      .forSchema(testSchema)
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "user")));
+
+    const [scope] = collectReadScopes(baseUow.getRetrievalOperations());
+    expect(scope).toBeDefined();
+    expect(scope!.condition).toEqual({
+      type: "and",
+      items: [
+        {
+          type: "compare",
+          a: testSchema.tables.users.columns.name,
+          operator: "=",
+          b: "user",
+        },
+        {
+          type: "compare",
+          a: testSchema.tables.users.columns.name,
+          operator: "=",
+          b: "scoped",
+        },
+      ],
+    });
   });
 });

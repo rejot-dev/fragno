@@ -27,9 +27,10 @@ const runInternalFragmentMigrations = async (
     options: { databaseAdapter: adapter, databaseNamespace: null },
   });
   if (databaseDeps?.schema) {
-    const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
-    await migrations.executeWithDriver(adapter.driver, 0);
-    return { schema: databaseDeps.schema, namespace: databaseDeps.namespace };
+    const namespace = databaseDeps.namespace ?? "";
+    const migrations = adapter.prepareMigrations(databaseDeps.schema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0, undefined, { systemFromVersion: 0 });
+    return { schema: databaseDeps.schema, namespace };
   }
   return undefined;
 };

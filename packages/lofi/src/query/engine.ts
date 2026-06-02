@@ -11,6 +11,7 @@ import {
 import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
 
 import type { ReferenceTarget } from "../indexeddb/types";
+import { shouldIgnoreSystemColumn } from "../system-columns";
 import type { LofiQueryInterface } from "../types";
 import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";
 import { normalizeValue } from "./normalize";
@@ -20,7 +21,6 @@ import {
   type LofiExecutableQueryInterface,
   type LofiReadPlan,
 } from "./read-plan";
-
 const ROWS_STORE = "lofi_rows";
 const INDEX_SCHEMA_TABLE = "idx_schema_table";
 
@@ -195,10 +195,16 @@ const buildSelection = (
 
   if (!select || select === true) {
     for (const columnName of Object.keys(table.columns)) {
+      if (shouldIgnoreSystemColumn(columnName)) {
+        continue;
+      }
       selection.add(columnName);
     }
   } else {
     for (const columnName of select) {
+      if (shouldIgnoreSystemColumn(columnName)) {
+        continue;
+      }
       selection.add(columnName);
     }
   }
@@ -232,6 +238,9 @@ const selectRow = (
   const selected: RowSelection = {};
 
   for (const columnName of selection) {
+    if (shouldIgnoreSystemColumn(columnName)) {
+      continue;
+    }
     if (columnName === "_internalId") {
       selected[columnName] = row._lofi.internalId;
       continue;

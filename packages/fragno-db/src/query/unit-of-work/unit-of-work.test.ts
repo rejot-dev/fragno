@@ -1,17 +1,21 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
 
-import { column, schema, idColumn, FragnoId } from "../../schema/create";
+import { internalSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment.schema";
+import { column, schema, idColumn, referenceColumn, FragnoId } from "../../schema/create";
+import { GLOBAL_SHARD_SENTINEL } from "../../sharding";
 import { createIndexedBuilder } from "../condition-builder";
 import { Cursor } from "../cursor";
+import type { TableToInsertValues, TableToUpdateValues } from "../mod";
+import { createShardQueryPolicy } from "./query-policies";
 import {
   type UOWCompiler,
   type UOWDecoder,
   createUnitOfWork,
   UnitOfWork,
+  type QueryPolicy,
   type InferIdColumnName,
   type IndexColumns,
 } from "./unit-of-work";
-
 // Mock compiler and executor for testing
 function createMockCompiler(): UOWCompiler<unknown> {
   return {
@@ -882,6 +886,320 @@ describe("DeleteBuilder with string ID", () => {
     }).toThrow(
       'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
     );
+  });
+});
+
+describe("Shard policy", () => {
+  const shardSchema = schema("shard", (s) =>
+    s
+      .addTable("users", (t) =>
+        t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
+      )
+      .addTable("posts", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("authorId", referenceColumn({ table: "users" }))
+          .addColumn("title", "string")
+          .createIndex("idx_author", ["authorId"]),
+      ),
+  );
+
+  const createShardPolicyUow = (options: {
+    shardingStrategy?: { mode: "row" } | { mode: "adapter"; identifier: string };
+    shard: string | null;
+    shardScope: "scoped" | "global";
+  }) =>
+    new UnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder(), undefined, {
+      queryPolicies: [
+        {
+          policy: createShardQueryPolicy({
+            shardingStrategy: options.shardingStrategy,
+            getShard: () => options.shard,
+            getShardScope: () => options.shardScope,
+          }),
+          getContext: () => ({}),
+        },
+      ],
+    });
+
+  it("injects _shard on create when shardingStrategy is set", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: "tenant-a" });
+    expect(op.policyWhere).not.toBeNull();
+  });
+
+  it("rejects explicit _shard writes", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    expect(() => {
+      uow.forSchema(shardSchema).create("users", {
+        email: "user@example.com",
+        name: "User",
+        _shard: "override",
+      } as unknown as TableToInsertValues<typeof shardSchema.tables.users>);
+    }).toThrow(/_shard/i);
+  });
+
+  it("rejects explicit _shard updates", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    expect(() => {
+      uow
+        .forSchema(shardSchema)
+        .update("users", FragnoId.fromExternal("user-1", 0), (b) =>
+          b.set({ _shard: "override" } as unknown as TableToUpdateValues<
+            typeof shardSchema.tables.users
+          >),
+        );
+    }).toThrow(/_shard/i);
+  });
+
+  it("requires shard in adapter mode unless shardScope is global", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+      shard: null,
+      shardScope: "scoped",
+    });
+
+    expect(() => {
+      uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+    }).toThrow(/shard must be set/i);
+  });
+
+  it("allows null shard in adapter mode when shardScope is global", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "adapter", identifier: "adapter-1" },
+      shard: null,
+      shardScope: "global",
+    });
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
+    expect(op.policyWhere).toBeNull();
+  });
+
+  it("injects global shard sentinel when no shardingStrategy is set", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: undefined,
+      shard: null,
+      shardScope: "scoped",
+    });
+
+    uow.forSchema(shardSchema).create("users", { email: "user@example.com", name: "User" });
+
+    const ops = uow.getMutationOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "create");
+    expect(op.values).toMatchObject({ _shard: GLOBAL_SHARD_SENTINEL });
+  });
+
+  it("applies shard policy where filters in row mode", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    uow.forSchema(shardSchema).find("users", (b) => b.whereIndex("primary"));
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    expect(op.policyWhere?.type).toBe("compare");
+    if (op.policyWhere?.type === "compare") {
+      expect(op.policyWhere.a.name).toBe("_shard");
+      expect(op.policyWhere.b).toBe("tenant-a");
+    }
+  });
+
+  it("skips shard policy for adapter-scoped tables", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    uow.forSchema(internalSchema).find(SETTINGS_TABLE_NAME, (b) => b.whereIndex("primary"));
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops[0]?.policyWhere).toBeNull();
+  });
+
+  it("applies shard policy to query-tree joins", () => {
+    const uow = createShardPolicyUow({
+      shardingStrategy: { mode: "row" },
+      shard: "tenant-a",
+      shardScope: "scoped",
+    });
+
+    uow
+      .forSchema(shardSchema)
+      .find("posts", (q) =>
+        q
+          .whereIndex("primary")
+          .joinOne("author", "users", (author) =>
+            author
+              .onIndex("primary", (eb) => eb("id", "=", eb.parent("authorId")))
+              .select(["name"]),
+          ),
+      );
+
+    const [op] = uow.getRetrievalOperations();
+    assert(op?.type === "find");
+    assert(op.options.queryTree);
+    const [author] = op.options.queryTree.children;
+
+    const shardColumn = shardSchema.tables.users.getColumnByName("_shard");
+    expect(shardColumn).toBeDefined();
+    expect(author?.where).toEqual({
+      type: "compare",
+      a: shardColumn,
+      operator: "=",
+      b: "tenant-a",
+    });
+  });
+});
+
+describe("Query policies", () => {
+  const policySchema = schema("policy", (s) =>
+    s.addTable("projects", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("orgId", column("string").nullable())
+        .addColumn("name", column("string"))
+        .createIndex("idx_org", ["orgId"]),
+    ),
+  );
+
+  const orgPolicy: QueryPolicy = {
+    name: "org-policy",
+    mutateCreate: ({ ctx }, values) => {
+      const orgCtx = ctx as { orgId: string };
+      return {
+        ...values,
+        orgId: orgCtx.orgId,
+      };
+    },
+    extraWhere: ({ ctx, table, forSchema, schema }) => {
+      const orgCtx = ctx as { orgId: string };
+      const s = forSchema(schema as typeof policySchema);
+      if (table !== s.table("projects")) {
+        return null;
+      }
+      return s.where("projects", (eb) => eb("orgId", "=", orgCtx.orgId));
+    },
+  };
+
+  it("applies extraWhere and mutateCreate from policies", () => {
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        queryPolicies: [
+          {
+            policy: orgPolicy,
+            getContext: () => ({ orgId: "org-1" }),
+          },
+        ],
+      },
+    );
+
+    uow.forSchema(policySchema).create("projects", { name: "Project" });
+
+    const createOp = uow.getMutationOperations().find((op) => op.type === "create");
+    assert(createOp && createOp.type === "create");
+    expect(createOp.values).toMatchObject({ orgId: "org-1" });
+
+    uow.forSchema(policySchema).find("projects", (b) => b.whereIndex("idx_org"));
+    const retrieveOp = uow.getRetrievalOperations()[0];
+    expect(retrieveOp?.policyWhere?.type).toBe("compare");
+    if (retrieveOp?.policyWhere?.type === "compare") {
+      expect(retrieveOp.policyWhere.a.name).toBe("orgId");
+      expect(retrieveOp.policyWhere.b).toBe("org-1");
+    }
+
+    const updateId = FragnoId.fromExternal("project-1", 0);
+    uow.forSchema(policySchema).update("projects", updateId, (b) => b.set({ name: "Updated" }));
+    const updateOp = uow.getMutationOperations().find((op) => op.type === "update");
+    expect(updateOp?.policyWhere).not.toBeNull();
+  });
+
+  it("forSchema().where returns null for true and throws on false", () => {
+    const allowPolicy: QueryPolicy = {
+      name: "allow",
+      extraWhere: ({ forSchema, schema }) =>
+        forSchema(schema as typeof policySchema).where("projects", () => true),
+    };
+    const allowUow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        queryPolicies: [
+          {
+            policy: allowPolicy,
+            getContext: () => ({}),
+          },
+        ],
+      },
+    );
+
+    allowUow.forSchema(policySchema).find("projects", (b) => b.whereIndex("idx_org"));
+    const allowOp = allowUow.getRetrievalOperations()[0];
+    expect(allowOp?.policyWhere).toBeNull();
+
+    const denyPolicy: QueryPolicy = {
+      name: "deny",
+      extraWhere: ({ forSchema, schema }) =>
+        forSchema(schema as typeof policySchema).where("projects", () => false),
+    };
+    const denyUow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      {
+        queryPolicies: [
+          {
+            policy: denyPolicy,
+            getContext: () => ({}),
+          },
+        ],
+      },
+    );
+
+    expect(() => {
+      denyUow.forSchema(policySchema).find("projects", (b) => b.whereIndex("idx_org"));
+    }).toThrow(/assertContext/);
   });
 });
 

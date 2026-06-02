@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
+import { mysqlTable, varchar, text, bigint, int, uniqueIndex, index, json, datetime, foreignKey, boolean } from "drizzle-orm/mysql-core"
 import { createId } from "@fragno-dev/db/id"
 import { sql, relations } from "drizzle-orm"
 
@@ -11,9 +11,11 @@ export const fragno_db_settings = mysqlTable("fragno_db_settings", {
   key: varchar("key", { length: 191 }).notNull(),
   value: text("value").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
-  uniqueIndex("uidx_fragno_db_settings_unique_key_09269db3").on(table.key)
+  uniqueIndex("uidx_fragno_db_settings_unique_key_09269db3").on(table.key),
+  index("idx_fragno_db_settings_idx_fragno_db_settings_shard_371d1d84").on(table._shard)
 ])
 
 export const fragno_hooks = mysqlTable("fragno_hooks", {
@@ -29,11 +31,14 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
   error: text("error"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   nonce: varchar("nonce", { length: 191 }).notNull(),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
+  index("idx_fragno_hooks_idx_hooks_shard_status_retry_1c3479a0").on(table._shard, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),
+  index("idx_fragno_hooks_idx_fragno_hooks_shard_bbecb878").on(table._shard),
   index("idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3").on(table.namespace, table.status, table.lastAttemptAt),
   index("idx_fragno_hooks_idx_namespace_created_at_e489a066").on(table.namespace, table.createdAt, table.id)
 ])
@@ -45,11 +50,14 @@ export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
   payload: json("payload").notNull(),
   refMap: json("refMap"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_fragno_db_outbox_idx_outbox_versionstamp_37972a68").on(table.versionstamp),
-  index("idx_fragno_db_outbox_idx_outbox_uow_733c7f90").on(table.uowId)
+  index("idx_fragno_db_outbox_idx_outbox_shard_versionstamp_37351b94").on(table._shard, table.versionstamp),
+  index("idx_fragno_db_outbox_idx_outbox_uow_733c7f90").on(table.uowId),
+  index("idx_fragno_db_outbox_idx_fragno_db_outbox_shard_34a60945").on(table._shard)
 ])
 
 export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations", {
@@ -62,12 +70,15 @@ export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations
   externalId: varchar("externalId", { length: 191 }).notNull(),
   op: varchar("op", { length: 191 }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d").on(table.entryVersionstamp),
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_sha907bae61").on(table._shard, table.entryVersionstamp),
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
-  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId)
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId),
+  index("idx_fragno_db_outbox_mutations_idx_fragno_db_outbox_mut00539742").on(table._shard)
 ])
 
 export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
@@ -79,10 +90,13 @@ export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {
   baseVersionstamp: varchar("baseVersionstamp", { length: 191 }),
   lastVersionstamp: varchar("lastVersionstamp", { length: 191 }),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb").on(table.requestId)
+  uniqueIndex("uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb").on(table.requestId),
+  index("idx_fragno_db_sync_requests_idx_sync_requests_shard_reqf51b10f2").on(table._shard, table.requestId),
+  index("idx_fragno_db_sync_requests_idx_fragno_db_sync_requests0a0340ad").on(table._shard)
 ])
 
 // ============================================================================
@@ -97,10 +111,12 @@ export const user_auth = mysqlTable("user_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   bannedAt: datetime("bannedAt")
 }, (table) => [
   index("idx_user_idx_user_email_auth_47062eb8").on(table.email),
   uniqueIndex("uidx_user_idx_user_id_auth_1370c3c6").on(table.id),
+  index("idx_user_idx_user_shard_auth_8d9c7da6").on(table._shard),
   index("idx_user_idx_user_createdAt_auth_3290a418").on(table.createdAt)
 ])
 
@@ -111,6 +127,7 @@ export const session_auth = mysqlTable("session_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   activeOrganizationId: bigint("activeOrganizationId", { mode: "number" })
 }, (table) => [
   foreignKey({
@@ -124,6 +141,7 @@ export const session_auth = mysqlTable("session_auth", {
     name: "fk_session_organization_session_activeOrganizationId_fkaa5effd7"
   }),
   index("idx_session_idx_session_user_auth_0748231c").on(table.userId),
+  index("idx_session_idx_session_shard_auth_99c8a8f6").on(table._shard),
   index("idx_session_idx_session_id_expiresAt_auth_2345cc9f").on(table.id, table.expiresAt)
 ])
 
@@ -138,7 +156,8 @@ export const organization_auth = mysqlTable("organization_auth", {
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   deletedAt: datetime("deletedAt"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.createdBy],
@@ -146,7 +165,8 @@ export const organization_auth = mysqlTable("organization_auth", {
     name: "fk_organization_user_organization_createdBy_fk_auth_3a721c70"
   }),
   uniqueIndex("uidx_organization_idx_organization_slug_auth_9b82968a").on(table.slug),
-  index("idx_organization_idx_organization_createdBy_auth_e893279c").on(table.createdBy)
+  index("idx_organization_idx_organization_createdBy_auth_e893279c").on(table.createdBy),
+  index("idx_organization_idx_organization_shard_auth_fec76d75").on(table._shard)
 ])
 
 export const organizationMember_auth = mysqlTable("organizationMember_auth", {
@@ -156,7 +176,8 @@ export const organizationMember_auth = mysqlTable("organizationMember_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -170,7 +191,8 @@ export const organizationMember_auth = mysqlTable("organizationMember_auth", {
   }),
   uniqueIndex("uidx_organizationMember_idx_org_member_org_user_auth_abbf915f").on(table.organizationId, table.userId),
   index("idx_organizationMember_idx_org_member_user_auth_1cd12c0f").on(table.userId),
-  index("idx_organizationMember_idx_org_member_org_auth_42b9e50d").on(table.organizationId)
+  index("idx_organizationMember_idx_org_member_org_auth_42b9e50d").on(table.organizationId),
+  index("idx_organizationMember_idx_organizationMember_shard_aut9c2fa48f").on(table._shard)
 ])
 
 export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_auth", {
@@ -179,7 +201,8 @@ export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_au
   role: varchar("role", { length: 191 }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.memberId],
@@ -188,7 +211,8 @@ export const organizationMemberRole_auth = mysqlTable("organizationMemberRole_au
   }),
   uniqueIndex("uidx_organizationMemberRole_idx_org_member_role_member_e45d22f1").on(table.memberId, table.role),
   index("idx_organizationMemberRole_idx_org_member_role_member_a2a65acd6").on(table.memberId),
-  index("idx_organizationMemberRole_idx_org_member_role_role_autd88fe146").on(table.role)
+  index("idx_organizationMemberRole_idx_org_member_role_role_autd88fe146").on(table.role),
+  index("idx_organizationMemberRole_idx_organizationMemberRole_s4eb7df82").on(table._shard)
 ])
 
 export const organizationInvitation_auth = mysqlTable("organizationInvitation_auth", {
@@ -203,7 +227,8 @@ export const organizationInvitation_auth = mysqlTable("organizationInvitation_au
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   respondedAt: datetime("respondedAt"),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.organizationId],
@@ -218,7 +243,8 @@ export const organizationInvitation_auth = mysqlTable("organizationInvitation_au
   uniqueIndex("uidx_organizationInvitation_idx_org_invitation_token_au93b35818").on(table.token),
   index("idx_organizationInvitation_idx_org_invitation_org_statu68f8a9be").on(table.organizationId, table.status),
   index("idx_organizationInvitation_idx_org_invitation_email_autbd56612d").on(table.email),
-  index("idx_organizationInvitation_idx_org_invitation_email_sta22e04868").on(table.email, table.status)
+  index("idx_organizationInvitation_idx_org_invitation_email_sta22e04868").on(table.email, table.status),
+  index("idx_organizationInvitation_idx_organizationInvitation_s1e904ac6").on(table._shard)
 ])
 
 export const oauthAccount_auth = mysqlTable("oauthAccount_auth", {
@@ -239,7 +265,8 @@ export const oauthAccount_auth = mysqlTable("oauthAccount_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.userId],
@@ -248,7 +275,8 @@ export const oauthAccount_auth = mysqlTable("oauthAccount_auth", {
   }),
   uniqueIndex("uidx_oauthAccount_idx_oauth_account_provider_account_au229618a4").on(table.provider, table.providerAccountId),
   index("idx_oauthAccount_idx_oauth_account_user_auth_98049852").on(table.userId),
-  index("idx_oauthAccount_idx_oauth_account_provider_auth_7425dccd").on(table.provider)
+  index("idx_oauthAccount_idx_oauth_account_provider_auth_7425dccd").on(table.provider),
+  index("idx_oauthAccount_idx_oauthAccount_shard_auth_3724caad").on(table._shard)
 ])
 
 export const oauthState_auth = mysqlTable("oauthState_auth", {
@@ -263,6 +291,7 @@ export const oauthState_auth = mysqlTable("oauthState_auth", {
   expiresAt: datetime("expiresAt").notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   sessionSeed: json("sessionSeed")
 }, (table) => [
   foreignKey({
@@ -272,7 +301,8 @@ export const oauthState_auth = mysqlTable("oauthState_auth", {
   }),
   uniqueIndex("uidx_oauthState_idx_oauth_state_state_auth_f65e8ad2").on(table.state),
   index("idx_oauthState_idx_oauth_state_provider_auth_2c66010f").on(table.provider),
-  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt)
+  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt),
+  index("idx_oauthState_idx_oauthState_shard_auth_d490d744").on(table._shard)
 ])
 
 export const user_authRelations = relations(user_auth, ({ many }) => ({
@@ -429,6 +459,7 @@ export const comment_comment = mysqlTable("comment_comment", {
   parentId: bigint("parentId", { mode: "number" }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__"),
   rating: int("rating").notNull().default(0)
 }, (table) => [
   foreignKey({
@@ -436,7 +467,8 @@ export const comment_comment = mysqlTable("comment_comment", {
     foreignColumns: [table._internalId],
     name: "fk_comment_comment_comment_parentId_fk_comment_d0862848"
   }),
-  index("idx_comment_idx_comment_post_comment_c75acad5").on(table.postReference)
+  index("idx_comment_idx_comment_post_comment_c75acad5").on(table.postReference),
+  index("idx_comment_idx_comment_shard_comment_b03b6ce4").on(table._shard)
 ])
 
 export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
@@ -470,9 +502,11 @@ export const upvote_upvote = mysqlTable("upvote_upvote", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   note: varchar("note", { length: 191 }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
-  index("idx_upvote_idx_upvote_reference_upvote_94fd688f").on(table.reference, table.ownerReference)
+  index("idx_upvote_idx_upvote_reference_upvote_94fd688f").on(table.reference, table.ownerReference),
+  index("idx_upvote_idx_upvote_shard_upvote_1a79a11f").on(table._shard)
 ])
 
 export const upvote_total_upvote = mysqlTable("upvote_total_upvote", {
@@ -480,9 +514,11 @@ export const upvote_total_upvote = mysqlTable("upvote_total_upvote", {
   reference: varchar("reference", { length: 191 }).notNull(),
   total: int("total").notNull().default(0),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
-  uniqueIndex("uidx_upvote_total_idx_upvote_total_reference_upvote_b702eb9a").on(table.reference)
+  uniqueIndex("uidx_upvote_total_idx_upvote_total_reference_upvote_b702eb9a").on(table.reference),
+  index("idx_upvote_total_idx_upvote_total_shard_upvote_2933f337").on(table._shard)
 ])
 
 export const upvote_schema = {
@@ -510,10 +546,12 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   errorName: varchar("errorName", { length: 191 }),
   errorMessage: varchar("errorMessage", { length: 191 }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNamdd6fe562").on(table.workflowName, table.status, table.updatedAt)
+  index("idx_workflow_instance_idx_workflow_instance_workflowNamdd6fe562").on(table.workflowName, table.status, table.updatedAt),
+  index("idx_workflow_instance_idx_workflow_instance_shard_workf42bb60e9").on(table._shard)
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
@@ -537,7 +575,8 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -546,7 +585,8 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   }),
   uniqueIndex("uidx_workflow_step_idx_workflow_step_instanceRef_stepKe162ea092").on(table.instanceRef, table.stepKey),
   index("idx_workflow_step_idx_workflow_step_instanceRef_created6b466127").on(table.instanceRef, table.createdAt),
-  index("idx_workflow_step_idx_workflow_step_instanceRef_status_8e044a37").on(table.instanceRef, table.status, table.wakeAt)
+  index("idx_workflow_step_idx_workflow_step_instanceRef_status_8e044a37").on(table.instanceRef, table.status, table.wakeAt),
+  index("idx_workflow_step_idx_workflow_step_shard_workflows_35617304").on(table._shard)
 ])
 
 export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
@@ -559,14 +599,16 @@ export const workflow_event_workflows = mysqlTable("workflow_event_workflows", {
   deliveredAt: datetime("deliveredAt"),
   consumedByStepKey: varchar("consumedByStepKey", { length: 191 }),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
     name: "fk_workflow_event_workflow_instance_workflow_event_inst3029c2ed"
   }),
-  index("idx_workflow_event_idx_workflow_event_instanceRef_creat86cb7414").on(table.instanceRef, table.createdAt)
+  index("idx_workflow_event_idx_workflow_event_instanceRef_creat86cb7414").on(table.instanceRef, table.createdAt),
+  index("idx_workflow_event_idx_workflow_event_shard_workflows_6fe6f981").on(table._shard)
 ])
 
 export const workflow_step_emission_workflows = mysqlTable("workflow_step_emission_workflows", {
@@ -579,7 +621,8 @@ export const workflow_step_emission_workflows = mysqlTable("workflow_step_emissi
   payload: json("payload"),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  _shard: varchar("_shard", { length: 128 }).notNull().default("__fragno_global__")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -588,7 +631,8 @@ export const workflow_step_emission_workflows = mysqlTable("workflow_step_emissi
   }),
   index("idx_workflow_step_emission_idx_workflow_step_emission_i1ae99c17").on(table.instanceRef, table.createdAt, table.sequence, table.id),
   index("idx_workflow_step_emission_idx_workflow_step_emission_if42e82f2").on(table.instanceRef, table.stepKey, table.epoch, table.createdAt, table.sequence, table.id),
-  index("idx_workflow_step_emission_idx_workflow_step_emission_i3b95bbf7").on(table.instanceRef, table.actor, table.createdAt, table.sequence, table.id)
+  index("idx_workflow_step_emission_idx_workflow_step_emission_i3b95bbf7").on(table.instanceRef, table.actor, table.createdAt, table.sequence, table.id),
+  index("idx_workflow_step_emission_idx_workflow_step_emission_s282cddef").on(table._shard)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
