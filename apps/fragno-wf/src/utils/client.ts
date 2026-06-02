@@ -159,7 +159,7 @@ export function createClient(config: ClientConfig) {
     listInstances: (params: ListInstancesParams) =>
       requestJson<{
         instances: Array<{ id: string; details: Record<string, unknown> }>;
-        cursor?: string;
+        nextCursor?: string;
         hasNextPage: boolean;
       }>(config, `/${params.workflowName}/instances`, {
         query: {

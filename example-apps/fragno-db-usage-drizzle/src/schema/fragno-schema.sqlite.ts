@@ -529,7 +529,7 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   _version: integer("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNamdd6fe562").on(table.workflowName, table.status, table.updatedAt),
+  index("idx_workflow_instance_idx_workflow_instance_workflowNam38b77dcb").on(table.workflowName, table.status, table.id),
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_external_i88920a7e").on(table.id)
 ])
 

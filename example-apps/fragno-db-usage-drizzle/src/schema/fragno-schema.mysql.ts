@@ -513,7 +513,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   _version: int("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNamdd6fe562").on(table.workflowName, table.status, table.updatedAt)
+  index("idx_workflow_instance_idx_workflow_instance_workflowNam38b77dcb").on(table.workflowName, table.status, table.id)
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
