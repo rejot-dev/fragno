@@ -3,7 +3,11 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor, isUniqueConstraintError } from "@fragno-dev/db";
 
-import { validateWorkflowParams, workflowsFragmentDefinition } from "./definition";
+import {
+  buildInstanceStatus,
+  validateWorkflowParams,
+  workflowsFragmentDefinition,
+} from "./definition";
 import { workflowsSchema } from "./schema";
 import { streamWorkflowStepEmissions } from "./stream-step-emissions";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
@@ -338,14 +342,48 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               workflowName,
               payload.params,
             );
+            if (!payload.id) {
+              const result = await this.handlerTx()
+                .withServiceCalls(() => [
+                  services.createInstance(workflowName, {
+                    params,
+                  }),
+                ])
+                .transform(({ serviceResult: [createdInstance] }) => createdInstance)
+                .execute();
+
+              return json(result);
+            }
+
+            const requestedInstanceId = payload.id;
             const result = await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("id", "=", requestedInstanceId),
+                    ),
+                  ),
+                ),
+              )
+              .earlyReturn(({ retrieveResult: [existingInstance], control }) => {
+                if (!existingInstance) {
+                  return control.continue();
+                }
+
+                return control.return({
+                  id: existingInstance.id.toString(),
+                  details: buildInstanceStatus(existingInstance),
+                });
+              })
               .withServiceCalls(() => [
                 services.createInstance(workflowName, {
-                  id: payload.id,
+                  id: requestedInstanceId,
                   params,
                 }),
               ])
-              .transform(({ serviceResult: [result] }) => result)
+              .transform(({ serviceResult: [createdInstance] }) => createdInstance)
               .execute();
 
             return json(result);

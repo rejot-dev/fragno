@@ -322,22 +322,74 @@ describe("Workflows Fragment", () => {
       expect(instance?.id.toString()).toBe("route-1");
     });
 
-    test("POST /:workflowName/instances should return conflict for duplicate instance id", async () => {
+    test("POST /:workflowName/instances should be idempotent for duplicate instance id", async () => {
       const first = await fragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
-        body: { id: "route-duplicate" },
+        body: { id: "route-duplicate", params: { source: "first" } },
       });
       assert(first.type === "json");
 
       const second = await fragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
-        body: { id: "route-duplicate" },
+        body: { id: "route-duplicate", params: { source: "second" } },
       });
 
-      expect(second.type).toBe("error");
-      if (second.type === "error") {
-        expect(second.status).toBe(409);
-        expect(second.error.code).toBe("INSTANCE_ID_ALREADY_EXISTS");
+      expect(second.type).toBe("json");
+      if (second.type === "json") {
+        expect(second.data).toEqual(first.data);
+      }
+
+      const instances = (
+        await db
+          .createUnitOfWork("read-route-idempotent-create")
+          .forSchema(workflowsSchema)
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+      expect(instances).toHaveLength(1);
+      expect(instances[0]?.params).toEqual({ source: "first" });
+    });
+
+    test("POST /:workflowName/instances should return existing terminal status for duplicate instance id", async () => {
+      const first = await fragment.callRoute("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        body: { id: "route-duplicate-terminal" },
+      });
+      assert(first.type === "json");
+
+      const [instance] = (
+        await db
+          .createUnitOfWork("read-route-duplicate-terminal")
+          .forSchema(workflowsSchema)
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+
+      const completedAt = new Date("2026-01-01T00:00:00.000Z");
+      const uow = db
+        .createUnitOfWork("complete-route-duplicate-terminal")
+        .forSchema(workflowsSchema);
+      uow.update("workflow_instance", instance.id, (b) =>
+        b.set({
+          status: "complete",
+          output: { ok: true },
+          updatedAt: completedAt,
+          completedAt,
+        }),
+      );
+      expect((await uow.executeMutations()).success).toBe(true);
+
+      const second = await fragment.callRoute("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        body: { id: "route-duplicate-terminal", params: { ignored: true } },
+      });
+
+      expect(second.type).toBe("json");
+      if (second.type === "json") {
+        expect(second.data).toEqual({
+          id: "route-duplicate-terminal",
+          details: { status: "complete", output: { ok: true } },
+        });
       }
     });
 
