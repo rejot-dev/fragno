@@ -336,6 +336,8 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       getWorkflowEntry(workflowName);
     };
 
+    const normalizeEventPayload = (payload: unknown) => payload ?? null;
+
     return defineService({
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         assertWorkflowName(workflowName);
@@ -808,9 +810,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       sendEvent: function (
         workflowName: string,
         instanceId: string,
-        options: { type: string; payload?: unknown; createdAt?: Date },
+        options: { id?: string; type: string; payload?: unknown; createdAt?: Date },
       ) {
         assertWorkflowName(workflowName);
+        const eventId = options.id ?? randomUuid();
+
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow
@@ -818,6 +822,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
                   eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
                 ),
+              )
+              .findFirst("workflow_event", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
               )
               .find("workflow_step", (b) =>
                 b.whereIndex("idx_workflow_step_instanceRef_status_wakeAt", (eb) =>
@@ -829,9 +836,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [instance, steps] }) => {
+          .mutate(({ uow, retrieveResult: [instance, existingEvent, steps] }) => {
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            if (existingEvent) {
+              return buildInstanceStatus(instance);
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
@@ -840,10 +851,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }
 
             uow.create("workflow_event", {
+              ...(options.id ? { id: options.id } : {}),
               instanceRef: instance.id,
               actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
-              payload: options.payload ?? null,
+              payload: normalizeEventPayload(options.payload),
               ...(options.createdAt ? { createdAt: options.createdAt } : {}),
               deliveredAt: null,
               consumedByStepKey: null,
@@ -870,13 +882,18 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       },
       sendEventById: function (
         instanceId: string,
-        options: { type: string; payload?: unknown; createdAt?: Date },
+        options: { id?: string; type: string; payload?: unknown; createdAt?: Date },
       ) {
+        const eventId = options.id ?? randomUuid();
+
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow
               .findFirst("workflow_instance", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", instanceId)),
+              )
+              .findFirst("workflow_event", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
               )
               .find("workflow_step", (b) =>
                 b.whereIndex("idx_workflow_step_instanceRef_status_wakeAt", (eb) =>
@@ -888,9 +905,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [instance, steps] }) => {
+          .mutate(({ uow, retrieveResult: [instance, existingEvent, steps] }) => {
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            if (existingEvent) {
+              return buildInstanceStatus(instance);
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
@@ -899,10 +920,11 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }
 
             uow.create("workflow_event", {
+              ...(options.id ? { id: options.id } : {}),
               instanceRef: instance.id,
               actor: WORKFLOW_EVENT_ACTOR_USER,
               type: options.type,
-              payload: options.payload ?? null,
+              payload: normalizeEventPayload(options.payload),
               ...(options.createdAt ? { createdAt: options.createdAt } : {}),
               deliveredAt: null,
               consumedByStepKey: null,

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   defineScenario,
   runScenario,
+  type WorkflowScenarioEventRow,
   type WorkflowScenarioHookRow,
   type WorkflowScenarioStepRow,
 } from "./scenario";
@@ -129,6 +130,72 @@ describe("workflows scenario DSL", () => {
 
     const result = await runScenario(scenario);
     expect(result.vars.sleepHistory).toBeDefined();
+  });
+
+  test("treats repeated event ids as idempotent sends", async () => {
+    const workflows = {
+      events: EventWorkflow,
+    };
+
+    type ScenarioVars = {
+      eventsBeforeRun?: WorkflowScenarioEventRow[];
+      statusAfterDuplicate?: { status: string };
+      finalStatus?: { status: string };
+      eventsAfterRun?: WorkflowScenarioEventRow[];
+    };
+
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "event-idempotency",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "events",
+          id: "event-idempotency-1",
+        }),
+        workflow.event({
+          workflow: "events",
+          instanceId: "event-idempotency-1",
+          event: { id: "evt-ready-1", type: "ready", payload: { ok: true } },
+        }),
+        workflow.event({
+          workflow: "events",
+          instanceId: "event-idempotency-1",
+          event: { id: "evt-ready-1", type: "ready", payload: { ok: true } },
+          storeAs: "statusAfterDuplicate",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEvents("events", "event-idempotency-1"),
+          storeAs: "eventsBeforeRun",
+        }),
+        runner.runUntilIdle({
+          workflow: "events",
+          instanceId: "event-idempotency-1",
+          reason: "event",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("events", "event-idempotency-1"),
+          storeAs: "finalStatus",
+        }),
+        workflow.event({
+          workflow: "events",
+          instanceId: "event-idempotency-1",
+          event: { id: "evt-ready-1", type: "ready", payload: { ok: true } },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEvents("events", "event-idempotency-1"),
+          storeAs: "eventsAfterRun",
+        }),
+        workflow.assert((ctx) => {
+          expect(ctx.vars.statusAfterDuplicate?.status).toBe("waiting");
+          expect(ctx.vars.eventsBeforeRun).toHaveLength(1);
+          expect(ctx.vars.finalStatus?.status).toBe("complete");
+          expect(ctx.vars.eventsAfterRun).toHaveLength(1);
+          expect(ctx.vars.eventsAfterRun?.[0]?.consumedByStepKey).toBe("waitForEvent:ready");
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
   });
 
   test("schedules retries relative to failure time", async () => {

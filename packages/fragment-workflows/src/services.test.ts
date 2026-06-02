@@ -392,6 +392,67 @@ describe("Workflows Fragment Services", () => {
     await drainDurableHooks(fragment);
   });
 
+  test("sendEvent should be idempotent when an event id is provided", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "event-idempotent-1" }),
+    );
+    await drainDurableHooks(fragment);
+
+    const first = await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("demo-workflow", created.id, {
+        id: "evt-idempotent-1",
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+    const second = await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("demo-workflow", created.id, {
+        id: "evt-idempotent-1",
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+
+    expect(first.status).toBe("active");
+    expect(second.status).toBe("active");
+
+    const [events] = await db
+      .createUnitOfWork("read")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.id.toString()).toBe("evt-idempotent-1");
+  });
+
+  test("sendEvent idempotent retry should work after the instance becomes terminal", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "event-terminal-retry-1" }),
+    );
+    await drainDurableHooks(fragment);
+
+    await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("demo-workflow", created.id, {
+        id: "evt-terminal-retry-1",
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+    await runService<{ status: string }>(() =>
+      fragment.services.terminateInstance("demo-workflow", created.id),
+    );
+
+    const retry = await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("demo-workflow", created.id, {
+        id: "evt-terminal-retry-1",
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+
+    expect(retry.status).toBe("terminated");
+  });
+
   test("sendEvent should not wake when waitForEvent has timed out", async () => {
     const instanceId = "event-timeout";
     const instanceRef = await (async () => {

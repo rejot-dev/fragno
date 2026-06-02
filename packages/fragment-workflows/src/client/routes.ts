@@ -240,9 +240,7 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
     method: "POST",
     path: "/:workflowName/instances/:instanceId/events",
     inputSchema: sendEventSchema,
-    outputSchema: z.object({
-      status: instanceStatusOutputSchema,
-    }),
+    outputSchema: z.object({ accepted: z.literal(true) }),
     errorCodes: [
       "WORKFLOW_NOT_FOUND",
       "INVALID_INSTANCE_ID",

@@ -705,7 +705,7 @@ export type WorkflowScenarioSendEventStep<
   type: "event";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
-  event: ScenarioInput<{ type: string; payload?: unknown }, TRegistry, TVars>;
+  event: ScenarioInput<{ id?: string; type: string; payload?: unknown }, TRegistry, TVars>;
   /**
    * When set, used as createdAt for the event. Makes ordering deterministic and tests non-flaky.
    */
@@ -720,7 +720,7 @@ export type WorkflowScenarioEventAndRunUntilIdleStep<
   type: "eventAndRunUntilIdle";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
-  event: ScenarioInput<{ type: string; payload?: unknown }, TRegistry, TVars>;
+  event: ScenarioInput<{ id?: string; type: string; payload?: unknown }, TRegistry, TVars>;
   /**
    * When set, used as createdAt for the event. Makes ordering deterministic and tests non-flaky.
    */
