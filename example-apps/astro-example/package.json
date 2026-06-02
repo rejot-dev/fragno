@@ -17,7 +17,8 @@
   "dependencies": {
     "@fragno-dev/example-fragment": "workspace:*",
     "@typescript/native-preview": "catalog:",
-    "astro": "^5.16.11"
+    "astro": "^5.16.11",
+    "typescript": "catalog:"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.6",
