@@ -252,6 +252,217 @@ describe("Unified Tx API", () => {
       expect(txResult._internal.callbacks.retrieveSuccess).toBeDefined();
     });
 
+    it("should early-return after retrieve before processing already-declared serviceCalls", async () => {
+      const compiler = createMockCompiler();
+      const existingUser = {
+        id: FragnoId.fromExternal("existing", 1),
+        email: "existing@example.com",
+        name: "Existing",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[existingUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let currentUow: IUnitOfWork | undefined;
+      const serviceMutate = vi.fn();
+
+      const createUserService = (): TxResult<unknown, unknown> =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(() => {
+            serviceMutate();
+            throw new Error("SERVICE_CREATE_WAS_STILL_EXECUTED");
+          })
+          .build() as unknown as TxResult<unknown, unknown>;
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .earlyReturn(({ retrieveResult: [users], control }) => {
+          const existing = users[0];
+          if (!existing) {
+            return control.continue();
+          }
+          return control.return({ id: existing.id.toString() });
+        })
+        .withServiceCalls(() => [createUserService()] as const)
+        .execute();
+
+      expect(result).toEqual({ id: existingUser.id.toString() });
+      expect(serviceMutate).not.toHaveBeenCalled();
+    });
+
+    it("should continue normally when earlyReturn returns control.continue", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let currentUow: IUnitOfWork | undefined;
+      const serviceMutate = vi.fn();
+
+      const createUserService = (): TxResult<unknown, unknown> =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(() => {
+            serviceMutate();
+            return { id: "created" };
+          })
+          .build() as unknown as TxResult<unknown, unknown>;
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .earlyReturn(({ control }) => control.continue())
+        .withServiceCalls(() => [createUserService()] as const)
+        .transform(({ serviceResult: [created] }) => created)
+        .execute();
+
+      expect(result).toEqual({ id: "created" });
+      expect(serviceMutate).toHaveBeenCalledOnce();
+    });
+
+    it("should prove onAfterRetrieve cannot skip an already-declared serviceCall", async () => {
+      const compiler = createMockCompiler();
+      const existingUser = {
+        id: FragnoId.fromExternal("existing", 1),
+        email: "existing@example.com",
+        name: "Existing",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[existingUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let currentUow: IUnitOfWork | undefined;
+
+      const createUserService = (): TxResult<unknown, unknown> =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(() => {
+            throw new Error("SERVICE_CREATE_WAS_STILL_EXECUTED");
+          })
+          .build() as unknown as TxResult<unknown, unknown>;
+
+      const onAfterRetrieve = vi.fn((_uow: IUnitOfWork, results: unknown[]) => {
+        expect(results).toEqual([[existingUser]]);
+        // onAfterRetrieve is typed as void-returning, so it can observe but cannot return the
+        // handler response or mark an already-declared service call as skipped.
+      });
+
+      await expect(
+        createHandlerTxBuilder({
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+          onAfterRetrieve,
+        })
+          .retrieve(({ forSchema }) =>
+            forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+          )
+          .withServiceCalls(() => [createUserService()] as const)
+          .execute(),
+      ).rejects.toThrow("SERVICE_CREATE_WAS_STILL_EXECUTED");
+      expect(onAfterRetrieve).toHaveBeenCalledOnce();
+    });
+
+    it("should prove throwing in onAfterRetrieve aborts instead of returning an early success", async () => {
+      const compiler = createMockCompiler();
+      const existingUser = {
+        id: FragnoId.fromExternal("existing", 1),
+        email: "existing@example.com",
+        name: "Existing",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[existingUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let currentUow: IUnitOfWork | undefined;
+      const serviceMutate = vi.fn();
+
+      const createUserService = (): TxResult<unknown, unknown> =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(() => {
+            serviceMutate();
+          })
+          .build() as unknown as TxResult<unknown, unknown>;
+
+      await expect(
+        createHandlerTxBuilder({
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+          onAfterRetrieve: () => {
+            throw new Error("EARLY_ABORT_FROM_ON_AFTER_RETRIEVE");
+          },
+        })
+          .retrieve(({ forSchema }) =>
+            forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+          )
+          .withServiceCalls(() => [createUserService()] as const)
+          .execute(),
+      ).rejects.toThrow("EARLY_ABORT_FROM_ON_AFTER_RETRIEVE");
+      expect(serviceMutate).not.toHaveBeenCalled();
+    });
+
+    it("should prove onBeforeMutate cannot skip an already-declared serviceCall", async () => {
+      const compiler = createMockCompiler();
+      const existingUser = {
+        id: FragnoId.fromExternal("existing", 1),
+        email: "existing@example.com",
+        name: "Existing",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[existingUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let currentUow: IUnitOfWork | undefined;
+
+      const createUserService = (): TxResult<unknown, unknown> =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .mutate(() => {
+            throw new Error("SERVICE_CREATE_WAS_STILL_EXECUTED");
+          })
+          .build() as unknown as TxResult<unknown, unknown>;
+
+      const onBeforeMutate = vi.fn();
+
+      await expect(
+        createHandlerTxBuilder({
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+          onBeforeMutate,
+        })
+          .retrieve(({ forSchema }) =>
+            forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+          )
+          .withServiceCalls(() => [createUserService()] as const)
+          .execute(),
+      ).rejects.toThrow("SERVICE_CREATE_WAS_STILL_EXECUTED");
+      expect(onBeforeMutate).not.toHaveBeenCalled();
+    });
+
     it("should create a TxResult with serviceCalls", () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
