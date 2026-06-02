@@ -12,6 +12,7 @@ export default mergeConfig(
       name: "node",
       environment: "node",
       include: ["app/**/*.test.ts", "workers/**/*.test.ts", "scripts/**/*.test.ts"],
+      exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
     },
   }),
 );
