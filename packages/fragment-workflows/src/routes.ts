@@ -50,6 +50,7 @@ const createBatchSchema = z.object({
 });
 
 const sendEventSchema = z.object({
+  id: identifierSchema.optional(),
   type: identifierSchema,
   payload: z.unknown().optional(),
 });
@@ -767,9 +768,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "POST",
         path: "/:workflowName/instances/:instanceId/events",
         inputSchema: sendEventSchema,
-        outputSchema: z.object({
-          status: instanceStatusOutputSchema,
-        }),
+        outputSchema: z.object({ accepted: z.literal(true) }),
         errorCodes: [
           "WORKFLOW_NOT_FOUND",
           "INVALID_INSTANCE_ID",
@@ -795,18 +794,21 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const status = await this.handlerTx()
+            await this.handlerTx()
               .withServiceCalls(() => [
                 services.sendEvent(workflowName, instanceId, {
+                  id: payload.id,
                   type: payload.type,
                   payload: payload.payload,
                 }),
               ])
-              .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json({ status });
+            return json({ accepted: true });
           } catch (err) {
+            if (payload.id && isUniqueConstraintError(err)) {
+              return json({ accepted: true });
+            }
             return handleServiceError(err, errorResponder);
           }
         },
