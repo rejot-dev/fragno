@@ -51,6 +51,11 @@
       "remote": true,
     },
   ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER",
+    },
+  ],
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/

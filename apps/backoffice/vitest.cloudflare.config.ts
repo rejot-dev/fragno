@@ -20,7 +20,7 @@ export default mergeConfig(
     resolve: docsVitestResolveConfig,
     test: {
       name: "cloudflare",
-      include: ["test/cloudflare/**/*.test.ts"],
+      include: ["app/**/*.cloudflare.test.ts"],
       deps: {
         optimizer: {
           ssr: {

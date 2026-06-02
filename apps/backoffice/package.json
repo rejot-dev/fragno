@@ -20,7 +20,9 @@
   "dependencies": {
     "@base-ui/react": "^1.2.0",
     "@cfworker/json-schema": "^4.1.1",
+    "@cloudflare/codemode": "^0.3.8",
     "@cloudflare/sandbox": "^0.7.12",
+    "@cloudflare/shell": "^0.3.8",
     "@earendil-works/pi-agent-core": "^0.75.4",
     "@earendil-works/pi-ai": "^0.75.4",
     "@fragno-dev/auth": "workspace:*",
