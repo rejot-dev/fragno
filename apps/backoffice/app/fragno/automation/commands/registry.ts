@@ -1,8 +1,10 @@
-import { automationsCommandSpecs } from "./specs/automations";
+import { automationsRuntimeTools } from "@/fragno/runtime-tools/families/automations";
+import type { AnyBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
+
+import { parseCliTokens, readOutputOptions } from "./cli";
 import { eventCommandSpecs } from "./specs/events";
 import { otpCommandSpecs } from "./specs/otp";
 import {
-  AUTOMATIONS_COMMANDS,
   EVENT_COMMANDS,
   OTP_COMMANDS,
   type AutomationCommandSpecs,
@@ -12,10 +14,23 @@ import {
   type ParsedCommandByName,
 } from "./types";
 
-const AUTOMATIONS_COMMAND_SPECS: AutomationCommandSpecs<
-  ParsedCommandByName,
-  AutomationsCommandName
-> = automationsCommandSpecs;
+const toCommandSpec = (tool: AnyBackofficeRuntimeTool) => {
+  if (!tool.bash) {
+    throw new Error(`Runtime tool ${tool.id} does not define a bash command`);
+  }
+
+  const { command, help, parse } = tool.bash;
+  return {
+    name: command,
+    help,
+    parse: (args: string[]) => ({
+      name: command,
+      args: parse(args),
+      output: readOutputOptions(parseCliTokens(args)),
+      rawArgs: args,
+    }),
+  };
+};
 
 const OTP_COMMAND_SPECS: AutomationCommandSpecs<ParsedCommandByName, OtpCommandName> =
   otpCommandSpecs;
@@ -23,8 +38,8 @@ const OTP_COMMAND_SPECS: AutomationCommandSpecs<ParsedCommandByName, OtpCommandN
 const EVENT_COMMAND_SPECS: AutomationCommandSpecs<ParsedCommandByName, EventCommandName> =
   eventCommandSpecs;
 
-export const AUTOMATIONS_COMMAND_SPEC_LIST = AUTOMATIONS_COMMANDS.map(
-  (name) => AUTOMATIONS_COMMAND_SPECS[name],
+export const AUTOMATIONS_COMMAND_SPEC_LIST = automationsRuntimeTools.map(
+  toCommandSpec,
 ) as readonly AutomationCommandSpecs<
   ParsedCommandByName,
   AutomationsCommandName

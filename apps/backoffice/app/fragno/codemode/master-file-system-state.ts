@@ -1,6 +1,6 @@
 import { InMemoryFs, type FileSystem } from "@cloudflare/shell";
 
-import type { IFileSystem } from "@/files/interface";
+import type { FsStat, IFileSystem } from "@/files/interface";
 
 export class BackofficeStateFileSystem implements FileSystem {
   readonly #fs: IFileSystem;
@@ -121,23 +121,49 @@ export class BackofficeStateFileSystem implements FileSystem {
   async glob(pattern: string): Promise<string[]> {
     const globFs = new InMemoryFs();
 
-    for (const path of this.#fs.getAllPaths()) {
+    await this.#walkGlobRoot("/", async (path, stat) => {
       if (path === "/") {
-        continue;
+        return;
       }
 
-      const stat = await this.#withEnoent(path, "glob", () => this.#fs.lstat(path));
       if (stat.isDirectory) {
         await globFs.mkdir(path, { recursive: true });
-        continue;
+        return;
       }
 
       if (stat.isFile) {
         await globFs.writeFile(path, "");
       }
-    }
+    });
 
     return globFs.glob(pattern);
+  }
+
+  async #walkGlobRoot(
+    root: string,
+    visit: (path: string, stat: FsStat) => Promise<void> | void,
+  ): Promise<void> {
+    if (!(await this.#fs.exists(root))) {
+      return;
+    }
+
+    const stat = await this.#withEnoent(root, "glob", () => this.#fs.lstat(root));
+    await visit(root, stat);
+
+    if (!stat.isDirectory) {
+      return;
+    }
+
+    const entries = await this.readdirWithFileTypes(root);
+    for (const entry of entries) {
+      const childPath = this.resolvePath(root, entry.name);
+      const childStat = await this.#withEnoent(childPath, "glob", () => this.#fs.lstat(childPath));
+      await visit(childPath, childStat);
+
+      if (childStat.isDirectory) {
+        await this.#walkGlobRoot(childPath, visit);
+      }
+    }
   }
 
   async #withEnoent<T>(path: string, operation: string, run: () => Promise<T>): Promise<T> {

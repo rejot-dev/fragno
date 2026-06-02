@@ -17,9 +17,7 @@ import {
 
 import {
   createStorageBackedAutomationsBashRuntime,
-  type AutomationIdentityBindingRecord,
   type AutomationIdentityStorageContext,
-  type AutomationsBashRuntime,
 } from "../../bash-runtime/automations-bash-runtime";
 import {
   createEventBashRuntime,
@@ -31,6 +29,10 @@ import {
   type AutomationIdentityClaimRecord,
   type OtpBashRuntime,
 } from "../../bash-runtime/otp-bash-runtime";
+import type {
+  AutomationIdentityBindingRecord,
+  AutomationsBashRuntime,
+} from "../../runtime-tools/families/automations";
 import type {
   AutomationCommandContext,
   AutomationTriggerBinding,

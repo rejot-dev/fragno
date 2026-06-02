@@ -15,17 +15,14 @@ export type AutomationCommandExecutionResult<TData = unknown> = {
   stdoutEncoding?: "binary";
 };
 
-export const AUTOMATIONS_COMMANDS = [
-  "automations.identity.lookup-binding",
-  "automations.identity.bind-actor",
-  "scripts.run",
-] as const;
+export type AutomationsCommandName =
+  | "automations.identity.lookup-binding"
+  | "automations.identity.bind-actor"
+  | "scripts.run";
 
 export const OTP_COMMANDS = ["otp.identity.create-claim"] as const;
 
 export const EVENT_COMMANDS = ["event.emit"] as const;
-
-export type AutomationsCommandName = (typeof AUTOMATIONS_COMMANDS)[number];
 export type OtpCommandName = (typeof OTP_COMMANDS)[number];
 export type EventCommandName = (typeof EVENT_COMMANDS)[number];
 

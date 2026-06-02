@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { AutomationsBashRuntime } from "./automations-bash-runtime";
+import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
 import { createBashHost } from "./bash-host";
 import {
   createPiRouteBashRuntime,
