@@ -75,6 +75,55 @@ describe("BackofficeStateFileSystem", () => {
     ]);
   });
 
+  test("glob traverses the filesystem instead of relying on sparse known paths", async () => {
+    const masterFs = createTestMasterFileSystem({
+      "/workspace/docs/one.md": "one",
+      "/workspace/docs/nested/two.md": "two",
+      "/workspace/docs/nested/ignored.txt": "ignored",
+    });
+    const stateFs = new BackofficeStateFileSystem(masterFs);
+
+    const originalGetAllPaths = masterFs.getAllPaths.bind(masterFs);
+    masterFs.getAllPaths = () => originalGetAllPaths().filter((path) => !path.includes("nested"));
+
+    await expect(stateFs.glob("/workspace/**/*.md")).resolves.toEqual([
+      "/workspace/docs/nested/two.md",
+      "/workspace/docs/one.md",
+    ]);
+  });
+
+  test("glob supports *, ?, globstar, and simple brace alternates", async () => {
+    const masterFs = createTestMasterFileSystem({
+      "/workspace/src/app.ts": "app",
+      "/workspace/src/app.tsx": "appx",
+      "/workspace/src/a.test.ts": "test",
+      "/workspace/src/deep/view.tsx": "view",
+      "/workspace/src/deep/view.jsx": "view jsx",
+      "/workspace/src/deep/view.md": "view md",
+    });
+    const stateFs = new BackofficeStateFileSystem(masterFs);
+
+    await expect(stateFs.glob("/workspace/src/*.ts")).resolves.toEqual([
+      "/workspace/src/a.test.ts",
+      "/workspace/src/app.ts",
+    ]);
+    await expect(stateFs.glob("/workspace/src/app.ts?")).resolves.toEqual([
+      "/workspace/src/app.tsx",
+    ]);
+    await expect(stateFs.glob("/workspace/src/**/*.{ts,tsx}")).resolves.toEqual([
+      "/workspace/src/a.test.ts",
+      "/workspace/src/app.ts",
+      "/workspace/src/app.tsx",
+      "/workspace/src/deep/view.tsx",
+    ]);
+  });
+
+  test("glob returns an empty result when its literal root does not exist", async () => {
+    const stateFs = new BackofficeStateFileSystem(createTestMasterFileSystem({}));
+
+    await expect(stateFs.glob("/missing/**/*.ts")).resolves.toEqual([]);
+  });
+
   test("creates a FileSystemStateBackend for state.* operations", async () => {
     const masterFs = createTestMasterFileSystem({
       "/workspace/input.json": JSON.stringify({ count: 1 }),

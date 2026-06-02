@@ -17,7 +17,6 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
-import type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
 import {
   createInteractiveBashHost,
   createRouteBackedInteractiveBashContext,
@@ -28,6 +27,7 @@ import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import type { ResendBashRuntime } from "../bash-runtime/resend-bash-runtime";
 import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
 import type { TelegramBashRuntime } from "../bash-runtime/telegram-bash-runtime";
+import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
 import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,

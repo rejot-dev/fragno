@@ -1,41 +1,29 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { HookContext } from "@fragno-dev/db";
+import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
 
-import { createAutomationCommands } from "../automation/commands/bash-adapter";
-import { AUTOMATIONS_COMMAND_SPEC_LIST } from "../automation/commands/registry";
 import type {
-  AutomationsCommandHandlers,
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
-  ScriptRunnerRuntime,
 } from "../automation/commands/types";
 import type { createAutomationFragment } from "../automation/index";
 import { automationFragmentSchema } from "../automation/schema";
+import { automationsRuntimeTools } from "../runtime-tools/families/automations";
+import type {
+  AutomationIdentityBindingRecord,
+  AutomationsBashRuntime,
+  ScriptRunnerRuntime,
+} from "../runtime-tools/families/automations";
+import { createBackofficeBashCommands } from "../runtime-tools/runtime-tools";
 import type { BashCommandFactoryInput } from "./bash-host";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
-export type AutomationIdentityBindingRecord = {
-  id?: unknown;
-  source: string;
-  key: string;
-  value: string;
-  description?: string | null;
-  status: string;
-  linkedAt?: unknown;
-  createdAt?: unknown;
-  updatedAt?: unknown;
-};
-
-export type AutomationsBashRuntime = {
-  lookupBinding: (
-    input: IdentityLookupBindingArgs,
-  ) => Promise<AutomationIdentityBindingRecord | null>;
-  bindActor: (input: IdentityBindActorArgs) => Promise<AutomationIdentityBindingRecord>;
-};
-
-export type { ScriptRunnerRuntime };
+export type {
+  AutomationIdentityBindingRecord,
+  AutomationsBashRuntime,
+  ScriptRunnerRuntime,
+} from "../runtime-tools/families/automations";
 
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationsBashRuntime;
@@ -44,87 +32,22 @@ export type RegisteredAutomationsBashCommandContext = {
 
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
 
-const automationsCommandHandlers: AutomationsCommandHandlers<RegisteredAutomationsBashCommandContext> =
-  {
-    "automations.identity.lookup-binding": async (command, context) => {
-      const binding = await context.runtime.lookupBinding(command.args);
-      if (!binding || binding.status !== "linked") {
-        return {
-          exitCode: 1,
-        };
-      }
-
-      return {
-        data: binding,
-      };
-    },
-    "automations.identity.bind-actor": async (command, context) => {
-      return {
-        data: await context.runtime.bindActor(command.args),
-      };
-    },
-    "scripts.run": async (command, context) => {
-      if (!context.scriptRunner) {
-        throw new Error("scripts.run is not available in this execution context");
-      }
-
-      const result = await context.scriptRunner.runScript(command.args);
-      const hasExplicitFormat = command.output.format === "json" || !!command.output.print;
-      const data = {
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        commandCalls: result.commandCalls,
-      };
-
-      if (result.exitCode !== 0) {
-        return {
-          data,
-          ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
-          stderr: result.stderr || `Script exited with code ${result.exitCode}`,
-          exitCode: result.exitCode,
-        };
-      }
-
-      return {
-        data,
-        ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
-      };
-    },
-  };
-
 export const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
   const automationsContext = input.context.automations;
   if (!automationsContext) {
     return [];
   }
 
-  return createAutomationCommands(
-    AUTOMATIONS_COMMAND_SPEC_LIST,
-    automationsCommandHandlers,
-    automationsContext,
-    input.commandCallsResult,
-  );
-};
-
-const isDuplicateIdentityBindingError = (error: unknown): boolean => {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const name = "name" in error ? String(error.name) : "";
-  const code = "code" in error ? String(error.code) : "";
-  const message = "message" in error ? String(error.message).toLowerCase() : "";
-
-  if (name === "UniqueConstraintError") {
-    return true;
-  }
-
-  if (code === "SQLITE_CONSTRAINT" || code === "23505") {
-    return message.includes("identity_binding") || message.includes("unique");
-  }
-
-  return message.includes("duplicate") || message.includes("unique constraint");
+  return createBackofficeBashCommands({
+    tools: automationsRuntimeTools,
+    context: {
+      runtimes: {
+        automations: automationsContext.runtime,
+      },
+      scriptRunner: automationsContext.scriptRunner,
+    },
+    commandCallsResult: input.commandCallsResult,
+  });
 };
 
 export const lookupAutomationIdentityBinding = async (
@@ -224,7 +147,7 @@ export const bindAutomationIdentityActor = async (
         .transform(({ mutateResult }) => mutateResult)
         .execute();
     } catch (error) {
-      if (attempt === 0 && isDuplicateIdentityBindingError(error)) {
+      if (attempt === 0 && isUniqueConstraintError(error)) {
         continue;
       }
       throw error;

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 
-import { InMemoryAdapter } from "@fragno-dev/db";
+import { DatabaseConstraintError, InMemoryAdapter } from "@fragno-dev/db";
 
 import type { AutomationWorkflowsService } from "./definition";
 import {
@@ -160,7 +160,7 @@ describe("automation routes /bindings", () => {
     }
   });
 
-  test("retries duplicate insert errors from concurrent identity binds", async () => {
+  test("retries after a concurrent insert wins the identity binding unique key", async () => {
     const binding = {
       id: "binding-concurrent-1",
       source: "telegram",
@@ -171,26 +171,32 @@ describe("automation routes /bindings", () => {
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     };
-
-    const execute = vi
-      .fn<() => Promise<typeof binding>>()
-      .mockRejectedValueOnce({
-        name: "UniqueConstraintError",
-        message: "Unique constraint violation for key [telegram, chat-concurrent-1].",
-      })
-      .mockResolvedValueOnce(binding);
-
+    const uniqueIdentityKeyError = new DatabaseConstraintError({
+      kind: "unique",
+      table: "identity_binding",
+      columns: ["source", "key"],
+    });
+    let transactionAttempts = 0;
+    let executeAttempts = 0;
     const txBuilder = {
-      retrieve: vi.fn(() => txBuilder),
-      mutate: vi.fn(() => txBuilder),
-      transform: vi.fn(() => txBuilder),
-      execute,
+      retrieve: () => txBuilder,
+      mutate: () => txBuilder,
+      transform: () => txBuilder,
+      execute: async () => {
+        executeAttempts += 1;
+        if (executeAttempts === 1) {
+          throw uniqueIdentityKeyError;
+        }
+        return binding;
+      },
     };
-    const handlerTx = vi.fn(() => txBuilder);
 
     const result = await bindAutomationIdentityActor(
       {
-        handlerTx,
+        handlerTx: () => {
+          transactionAttempts += 1;
+          return txBuilder;
+        },
       } as never,
       {
         source: "telegram",
@@ -200,11 +206,8 @@ describe("automation routes /bindings", () => {
     );
 
     expect(result).toBe(binding);
-    expect(handlerTx).toHaveBeenCalledTimes(2);
-    expect(txBuilder.retrieve).toHaveBeenCalledTimes(2);
-    expect(txBuilder.mutate).toHaveBeenCalledTimes(2);
-    expect(txBuilder.transform).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(transactionAttempts).toBe(2);
+    expect(executeAttempts).toBe(2);
   });
 
   test("revokes an existing identity binding", async () => {

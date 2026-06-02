@@ -133,7 +133,7 @@ export type {
   AutomationEmitEventResult,
   AutomationIdentityBindingRecord,
 } from "./engine/bash";
-export type { AutomationsBashRuntime } from "../bash-runtime/automations-bash-runtime";
+export type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
 export type { EventBashRuntime } from "../bash-runtime/event-bash-runtime";
 export type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 export type {

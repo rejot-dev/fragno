@@ -391,7 +391,7 @@ switch (binding.scriptEngine) {
 Every slice should be independently testable and leave the app in a workable state. Avoid long
 infrastructure-only phases that cannot prove value on their own.
 
-### Slice 1: Minimal codemode execution against the backoffice filesystem
+### [x] Slice 1: Minimal codemode execution against the backoffice filesystem
 
 Goal: prove dynamic-worker execution and `state.*` work against the existing mounted filesystem.
 
@@ -412,7 +412,18 @@ Tests:
   from a mounted test filesystem.
 - Confirm dynamic worker execution has no direct network access by default.
 
-### Slice 2: First runtime-aware tool family, usable from both runtimes
+Implemented:
+
+- Added `@cloudflare/codemode` and `@cloudflare/shell` dependencies to backoffice.
+- Added the `LOADER` Worker Loader binding in `apps/backoffice/wrangler.jsonc`.
+- Added `app/fragno/codemode/master-file-system-state.ts` to adapt the existing backoffice
+  `IFileSystem` / `MasterFileSystem` to `@cloudflare/shell`'s `FileSystemStateBackend`.
+- Added `app/fragno/codemode/execute.ts` with `runBackofficeCodemode(...)`, using
+  `DynamicWorkerExecutor` with `globalOutbound: null` by default.
+- Added colocated Cloudflare tests under `app/**/*.cloudflare.test.ts` so editor TypeScript support
+  sees them through `tsconfig.cloudflare.json`.
+
+### [x] Slice 2: First runtime-aware tool family, usable from both runtimes
 
 Goal: validate the new breaking tool definition model with one small family before migrating all
 commands.
@@ -434,6 +445,30 @@ Tests:
 - Bash test calls the generated legacy commands and verifies the same semantic runtime method was
   invoked.
 - Type test or snapshot verifies generated codemode names are camelCase.
+
+Implemented:
+
+- Added the runtime tool model in `app/fragno/runtime-tools/runtime-tools.ts`.
+  - `BackofficeRuntimeTool` is the source-of-truth shape.
+  - `defineBackofficeRuntimeTool(...)` preserves schema-derived input/output typing.
+  - `createBackofficeCodemodeProviders(...)` maps runtime tools to codemode providers.
+  - `createBackofficeBashCommands(...)` maps the same runtime tools to `just-bash` commands.
+- Migrated the automations family to `app/fragno/runtime-tools/families/automations.ts`.
+  - `automations.identity.lookup-binding` maps to codemode as `automations.lookupBinding(...)`.
+  - `automations.identity.bind-actor` maps to codemode as `automations.bindActor(...)`.
+  - `scripts.run` was migrated too, so the old `automation/commands/specs/automations.ts` file was
+    removed instead of keeping a second automations command source of truth.
+- Removed the separate runtime-tool helper files after consolidation:
+  - `runtime-tools/definition.ts`
+  - `runtime-tools/bash-commands.ts`
+  - `runtime-tools/codemode-provider.ts`
+  - `runtime-tools/registry.ts`
+- Kept the old bash host working, but the automations-family bash commands now come from
+  `createBackofficeBashCommands(...)` over `automationsRuntimeTools`.
+- Updated the legacy automation command registry to derive automations command specs from
+  `automationsRuntimeTools`, so scenario/test support follows the same source of truth.
+- Replaced the local duplicate unique-constraint matcher with `isUniqueConstraintError` from
+  `@fragno-dev/db`.
 
 ### Slice 3: Pi codemode harness with filesystem-only `runStateCode`
 
