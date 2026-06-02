@@ -26,11 +26,11 @@ async function collectInstancePages(workflowName, status) {
       ids.push(instance.id);
     }
     if (response.hasNextPage) {
-      assert(response.cursor, `page ${page} hasNextPage=true without cursor`);
-      assert(!seenCursors.has(response.cursor), `cursor repeated on page ${page}`);
-      seenCursors.add(response.cursor);
+      assert(response.nextCursor, `page ${page} hasNextPage=true without cursor`);
+      assert(!seenCursors.has(response.nextCursor), `cursor repeated on page ${page}`);
+      seenCursors.add(response.nextCursor);
     }
-    cursor = response.hasNextPage ? response.cursor : undefined;
+    cursor = response.hasNextPage ? response.nextCursor : undefined;
   } while (cursor);
   return ids;
 }

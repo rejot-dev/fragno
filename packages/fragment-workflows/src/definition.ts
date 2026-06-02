@@ -716,6 +716,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
+            if (isTerminalStatus(currentStatus)) {
+              throw new Error("INSTANCE_TERMINAL");
+            }
+
             if (currentStatus !== "paused") {
               return buildInstanceStatus(instance);
             }

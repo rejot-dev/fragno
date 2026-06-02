@@ -521,7 +521,7 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   _version: integer("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("idx_workflow_instance_workflowName_id").on(table.workflowName, table.id),
-  index("idx_workflow_instance_workflowName_status_updatedAt").on(table.workflowName, table.status, table.updatedAt)
+  index("idx_workflow_instance_workflowName_status_id").on(table.workflowName, table.status, table.id)
 ])
 
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {

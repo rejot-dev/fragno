@@ -264,7 +264,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               createdAt: z.date(),
             }),
           ),
-          cursor: z.string().optional(),
+          nextCursor: z.string().optional(),
           hasNextPage: z.boolean(),
         }),
         handler: async function (context, { json, error }) {
@@ -300,7 +300,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
 
             return json({
               instances: result.instances,
-              cursor: result.cursor?.encode(),
+              nextCursor: result.cursor?.encode(),
               hasNextPage: result.hasNextPage,
             });
           } catch (err) {
@@ -690,7 +690,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "POST",
         path: "/:workflowName/instances/:instanceId/pause",
         outputSchema: z.object({ ok: z.literal(true) }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "INSTANCE_NOT_FOUND",
+          "INSTANCE_TERMINAL",
+        ],
         handler: async function (context, { json, error }) {
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
@@ -716,7 +721,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "POST",
         path: "/:workflowName/instances/:instanceId/resume",
         outputSchema: z.object({ ok: z.literal(true) }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "INSTANCE_NOT_FOUND",
+          "INSTANCE_TERMINAL",
+        ],
         handler: async function (context, { json, error }) {
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
@@ -742,7 +752,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         method: "POST",
         path: "/:workflowName/instances/:instanceId/terminate",
         outputSchema: z.object({ ok: z.literal(true) }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "INSTANCE_NOT_FOUND",
+          "INSTANCE_TERMINAL",
+        ],
         handler: async function (context, { json, error }) {
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;

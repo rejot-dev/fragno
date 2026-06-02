@@ -55,7 +55,7 @@ export const instancesListCommand = define({
 
     if (response.hasNextPage) {
       console.log("");
-      console.log(`Next cursor: ${response.cursor ?? ""}`);
+      console.log(`Next cursor: ${response.nextCursor ?? ""}`);
     }
   },
 });
