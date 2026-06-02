@@ -48,21 +48,20 @@ export FRAGNO_PI_RETRY_DELAY_MS=250
 List sessions:
 
 ```bash
-fragno-pi sessions list --limit 10
+fragno-pi sessions list --workflow interactive-chat-workflow --limit 10
 ```
 
 Create a session:
 
 ```bash
-fragno-pi sessions create --agent reviewer --name "Review Run" --tag alpha --tag beta \
-  --metadata '{"priority":2}' --steering-mode all
+fragno-pi sessions create --workflow interactive-chat-workflow --agent reviewer --name "Review Run"
 ```
 
 Get session detail (positional or explicit session id):
 
 ```bash
-fragno-pi sessions get --session session-123
-fragno-pi sessions get session-123 --status-only
+fragno-pi sessions get --workflow interactive-chat-workflow --session session-123
+fragno-pi sessions get --workflow interactive-chat-workflow session-123 --status-only
 ```
 
 `sessions get` reads the restored current-run detail payload directly from the server. By default it
@@ -72,15 +71,15 @@ status, workflow state, turn, phase, and waiting markers.
 Send a message:
 
 ```bash
-fragno-pi sessions send-message --session session-123 --text "Hello from CLI"
-fragno-pi sessions send-message session-123 --file ./message.txt --done
+fragno-pi sessions prompt --workflow interactive-chat-workflow --session session-123 --text "Hello from CLI"
+fragno-pi sessions prompt --workflow interactive-chat-workflow session-123 --file ./message.txt
 ```
 
-`send-message` is asynchronous. It returns a 202 ACK with status only. Use `sessions get` to fetch
-the restored current-run detail once the workflow finishes.
+`sessions prompt` is asynchronous. It returns a 202 ACK with status only. Use `sessions get` to
+fetch the restored current-run detail once the workflow finishes.
 
 Use headers or env vars for auth:
 
 ```bash
-fragno-pi -H "Authorization: Bearer abc123" sessions list
+fragno-pi -H "Authorization: Bearer abc123" sessions list --workflow interactive-chat-workflow
 ```

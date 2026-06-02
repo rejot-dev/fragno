@@ -225,28 +225,28 @@ const parallelReviewWorkflow = definePiWorkflow(
 
 ## Routes
 
-- `POST /sessions`
-- `GET /sessions`
-- `GET /sessions/:sessionId`
-- `GET /sessions/:sessionId/events`
-- `GET /sessions/:sessionId/export/pi-jsonl`
-- `POST /sessions/:sessionId/command`
+- `POST /workflows/:workflowName/sessions`
+- `GET /workflows/:workflowName/sessions`
+- `GET /workflows/:workflowName/sessions/:sessionId`
+- `GET /workflows/:workflowName/sessions/:sessionId/events`
+- `GET /workflows/:workflowName/sessions/:sessionId/export/pi-jsonl`
+- `POST /workflows/:workflowName/sessions/:sessionId/command`
 
-`POST /sessions/:sessionId/command` accepts a discriminated command body such as
-`{ kind: "prompt", input: { text: "hello" } }`, `{ kind: "continue" }`, or
+`POST /workflows/:workflowName/sessions/:sessionId/command` accepts a discriminated command body
+such as `{ kind: "prompt", input: { text: "hello" } }`, `{ kind: "continue" }`, or
 `{ kind: "complete", reason: "done" }`. It returns `202 Accepted` with a status-only ACK payload.
-Fetch `GET /sessions/:sessionId` to read the Pi-shaped session detail payload:
-`agent.state.messages` plus persisted `agent.events`. Durable resume is based on the agent
+Fetch `GET /workflows/:workflowName/sessions/:sessionId` to read the Pi-shaped session detail
+payload: `agent.state.messages` plus persisted `agent.events`. Durable resume is based on the agent
 configuration/system prompt and the latest committed `AgentMessage[]` transcript.
 
-Use `GET /sessions/:sessionId/events` with `Accept: application/x-ndjson` to stream live raw Pi
-`AgentEvent` frames. Fragment-owned stream control frames are limited to `snapshot`, `settled`, and
-`inactive`.
+Use `GET /workflows/:workflowName/sessions/:sessionId/events` with `Accept: application/x-ndjson` to
+stream live raw Pi `AgentEvent` frames. Fragment-owned stream control frames are limited to
+`snapshot`, `settled`, and `inactive`.
 
 Export a session as a Pi-compatible JSONL file:
 
 ```sh
-curl "$BASE_URL/sessions/$SESSION_ID/export/pi-jsonl" \
+curl "$BASE_URL/workflows/$WORKFLOW_NAME/sessions/$SESSION_ID/export/pi-jsonl" \
   -o "pi-session-$SESSION_ID.jsonl"
 ```
 
@@ -260,7 +260,7 @@ import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
 
 const pi = createPiFragmentClient({ baseUrl: "/" });
 
-const { data: sessions } = pi.useSessions();
+const { data: sessions } = pi.useSessions({ path: { workflowName: "interactive-chat-workflow" } });
 const createSession = pi.useCreateSession();
 const sendMessage = pi.useSendMessage();
 ```
