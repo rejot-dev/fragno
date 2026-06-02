@@ -21,7 +21,10 @@ describe("http client", () => {
       fetch: fetchMock,
     });
 
-    const response = await client.request({ method: "GET", path: "/sessions" });
+    const response = await client.request({
+      method: "GET",
+      path: "/workflows/interactive-chat-workflow/sessions",
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(response.status).toBe(200);
@@ -68,7 +71,10 @@ describe("http client", () => {
       fetch: fetchMock,
     });
 
-    const promise = client.request({ method: "GET", path: "/sessions" });
+    const promise = client.request({
+      method: "GET",
+      path: "/workflows/interactive-chat-workflow/sessions",
+    });
     const assertion = expect(promise).rejects.toThrow("Request timed out after 10ms");
 
     await vi.advanceTimersByTimeAsync(10);
@@ -87,7 +93,10 @@ describe("http client", () => {
       fetch: fetchMock,
     });
 
-    const response = await client.request({ method: "GET", path: "/sessions" });
+    const response = await client.request({
+      method: "GET",
+      path: "/workflows/interactive-chat-workflow/sessions",
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(400);

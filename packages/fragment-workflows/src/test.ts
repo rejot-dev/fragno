@@ -29,6 +29,7 @@ export type {
 } from "./definition";
 export type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
+import { buildScopedInstanceRowId } from "./instance-ref";
 import { runWorkflowsTick } from "./new-runner";
 import { workflowsRoutesFactory } from "./routes";
 import { parseDurationMs } from "./utils";
@@ -128,13 +129,17 @@ export type WorkflowsTestHarnessOptions<
   fragmentOptions?: FragnoPublicConfigWithDatabase;
 };
 
+export type WorkflowsTestRunPayload = Omit<WorkflowEnqueuedHookPayload, "instanceRef"> & {
+  instanceRef?: string;
+};
+
 export type WorkflowsTestRunner<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
 > = {
-  tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
+  tick: (payload: WorkflowsTestRunPayload) => Promise<number>;
   runUntilIdle: (
-    payload: WorkflowEnqueuedHookPayload,
+    payload: WorkflowsTestRunPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
   callRoute: WorkflowsFragment<TRegistry>["callRoute"];
@@ -225,9 +230,9 @@ export type WorkflowsTestHarness<
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
   };
-  tick: (payload: WorkflowEnqueuedHookPayload) => Promise<number>;
+  tick: (payload: WorkflowsTestRunPayload) => Promise<number>;
   runUntilIdle: (
-    payload: WorkflowEnqueuedHookPayload,
+    payload: WorkflowsTestRunPayload,
     options?: RunUntilIdleOptions,
   ) => Promise<{ processed: number; ticks: number }>;
   createRunner: () => WorkflowsTestRunner<TRegistry, TFragments>;
@@ -492,9 +497,15 @@ export async function createWorkflowsTestHarness<
   const getWorkflowFragmentFromRuntime = (runnerRuntime: RunnerRuntime) =>
     runnerRuntime.fragments.workflows.fragment;
 
+  const completePayload = (payload: WorkflowsTestRunPayload): WorkflowEnqueuedHookPayload => ({
+    ...payload,
+    instanceRef:
+      payload.instanceRef ?? buildScopedInstanceRowId(payload.workflowName, payload.instanceId),
+  });
+
   const runTick = async (
     runnerRuntime: RunnerRuntime,
-    payload: WorkflowEnqueuedHookPayload,
+    payload: WorkflowsTestRunPayload,
     stepEmissions: WorkflowsFragmentConfig<TRegistry>["stepEmissions"],
   ) => {
     const workflowFragment = getWorkflowFragmentFromRuntime(runnerRuntime);
@@ -510,7 +521,7 @@ export async function createWorkflowsTestHarness<
         workflows,
         workflowsByName,
         stepEmissions,
-        payload: { ...payload, timestamp: clock.now() },
+        payload: { ...completePayload(payload), timestamp: clock.now() },
       });
     });
   };
@@ -535,7 +546,7 @@ export async function createWorkflowsTestHarness<
 
     const getWorkflowResult = async () => (await getRunnerRuntime()).fragments.workflows;
 
-    const tick = async (payload: WorkflowEnqueuedHookPayload) => {
+    const tick = async (payload: WorkflowsTestRunPayload) => {
       const runnerRuntime = await getRunnerRuntime();
       return await runTick(
         runnerRuntime,
@@ -545,7 +556,7 @@ export async function createWorkflowsTestHarness<
     };
 
     const runUntilIdle = async (
-      payload: WorkflowEnqueuedHookPayload,
+      payload: WorkflowsTestRunPayload,
       options?: RunUntilIdleOptions,
     ) => {
       const maxTicks = options?.maxTicks ?? 25;
@@ -587,12 +598,9 @@ export async function createWorkflowsTestHarness<
   };
 
   const defaultRunner = createRunner(mainRunnerRuntime);
-  const tick = async (payload: WorkflowEnqueuedHookPayload) =>
+  const tick = async (payload: WorkflowsTestRunPayload) =>
     await runTick(mainRunnerRuntime, payload, config.stepEmissions);
-  const runUntilIdle = async (
-    payload: WorkflowEnqueuedHookPayload,
-    options?: RunUntilIdleOptions,
-  ) => {
+  const runUntilIdle = async (payload: WorkflowsTestRunPayload, options?: RunUntilIdleOptions) => {
     const maxTicks = options?.maxTicks ?? 25;
     let ticks = 0;
     let processed = 0;

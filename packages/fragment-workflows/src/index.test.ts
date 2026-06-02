@@ -5,6 +5,7 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
+import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
 import {
@@ -80,7 +81,8 @@ describe("Workflows Fragment", () => {
     const instanceRef = await (async () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
-        id: instanceId,
+        id: buildScopedInstanceRowId(workflowName, instanceId),
+        instanceId: instanceId,
         workflowName,
         status: "pending",
         params: { source: "tests" },
@@ -173,7 +175,7 @@ describe("Workflows Fragment", () => {
       status: "pending",
       params: { source: "tests" },
     });
-    expect(instance.id.toString()).toBe(instanceId);
+    expect(instance.instanceId).toBe(instanceId);
     expect(instance.createdAt).toBeInstanceOf(Date);
     expect(instance.updatedAt).toBeInstanceOf(Date);
 
@@ -247,7 +249,8 @@ describe("Workflows Fragment", () => {
     test("GET /:workflowName/instances should filter by status", async () => {
       const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
-        id: "active-route",
+        id: buildScopedInstanceRowId("demo-workflow", "active-route"),
+        instanceId: "active-route",
         workflowName: "demo-workflow",
         status: "active",
         params: {},
@@ -258,7 +261,8 @@ describe("Workflows Fragment", () => {
         errorMessage: null,
       });
       uow.create("workflow_instance", {
-        id: "complete-route",
+        id: buildScopedInstanceRowId("demo-workflow", "complete-route"),
+        instanceId: "complete-route",
         workflowName: "demo-workflow",
         status: "complete",
         params: {},
@@ -319,7 +323,7 @@ describe("Workflows Fragment", () => {
       expect(instance).toMatchObject({
         workflowName: "demo-workflow",
       });
-      expect(instance?.id.toString()).toBe("route-1");
+      expect(instance?.instanceId).toBe("route-1");
     });
 
     test("POST /:workflowName/instances should be idempotent for duplicate instance id", async () => {
@@ -397,7 +401,8 @@ describe("Workflows Fragment", () => {
       const instanceRef = await (async () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
-          id: "history-route",
+          id: buildScopedInstanceRowId("demo-workflow", "history-route"),
+          instanceId: "history-route",
           workflowName: "demo-workflow",
           status: "active",
           params: {},
@@ -514,7 +519,8 @@ describe("Workflows Fragment", () => {
       const instanceRef = await (async () => {
         const uow = db.createUnitOfWork("wf").forSchema(workflowsSchema);
         uow.create("workflow_instance", {
-          id: "history-latest",
+          id: buildScopedInstanceRowId("demo-workflow", "history-latest"),
+          instanceId: "history-latest",
           workflowName: "demo-workflow",
           status: "active",
           params: {},

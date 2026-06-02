@@ -99,7 +99,11 @@ describe("Workflows Runner", () => {
       await stepEntered.promise;
       await flushBus(harness, emissionBus);
 
-      const rowsWhileRunning = await readStepEmissionRows(harness, instanceId);
+      const rowsWhileRunning = await readStepEmissionRows(
+        harness,
+        "step-emission-bus-workflow",
+        instanceId,
+      );
       expect(rowsWhileRunning.map((row) => row.actor).sort()).toEqual(["system", "user"]);
     } finally {
       releaseStep.resolve();
@@ -108,7 +112,9 @@ describe("Workflows Runner", () => {
       await drainDurableHooks(harness.fragment);
     }
 
-    expect(await readStepEmissionRows(harness, instanceId)).toHaveLength(0);
+    expect(
+      await readStepEmissionRows(harness, "step-emission-bus-workflow", instanceId),
+    ).toHaveLength(0);
   });
 
   test("WorkflowStepTx previousEmissions returns rows loaded before the current attempt", async () => {
@@ -133,7 +139,7 @@ describe("Workflows Runner", () => {
       autoTickHooks: false,
     });
 
-    const instanceId = await harness.createInstance("PREVIOUS_EMISSIONS");
+    await harness.createInstance("PREVIOUS_EMISSIONS");
     const [instance] = (
       await harness.db
         .createUnitOfWork("read")
@@ -147,7 +153,7 @@ describe("Workflows Runner", () => {
       .createUnitOfWork("seed-previous-emission")
       .forSchema(workflowsSchema);
     seedUow.create("workflow_step_emission", {
-      instanceRef: instanceId,
+      instanceRef: instance!.id,
       stepKey: "do:recoverable",
       epoch: "previous-epoch",
       sequence: 0,
@@ -217,9 +223,11 @@ describe("Workflows Runner", () => {
       await stepEntered.promise;
       await flushBus(harness, emissionBus);
 
-      expect((await readStepEmissionRows(harness, instanceId)).map((row) => row.actor)).toContain(
-        "user",
-      );
+      expect(
+        (
+          await readStepEmissionRows(harness, "central-message-bus-outbound-workflow", instanceId)
+        ).map((row) => row.actor),
+      ).toContain("user");
       expect(await observed.next()).toEqual({ type: "started" });
       expect(observed.pendingCount()).toBe(0);
     } finally {
@@ -555,9 +563,15 @@ describe("Workflows Runner", () => {
     try {
       await stepEntered.promise;
       await flushBus(harness, localBus);
-      expect((await readStepEmissionRows(harness, instanceId)).map((row) => row.actor)).toContain(
-        "user",
-      );
+      expect(
+        (
+          await readStepEmissionRows(
+            harness,
+            "central-message-bus-remote-outbound-workflow",
+            instanceId,
+          )
+        ).map((row) => row.actor),
+      ).toContain("user");
 
       await flushBus(harness, remoteBus);
       expect(await observed.next()).toEqual({ type: "remote-started" });
@@ -631,19 +645,37 @@ describe("Workflows Runner", () => {
 
   const readStepEmissionRows = async (
     harness: { db: WorkflowsTestHarnessDatabase },
+    workflowName: string,
     instanceId: string,
-  ) =>
-    (
+  ) => {
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+          ),
+        )
+        .executeRetrieve()
+    )[0];
+
+    if (!instance) {
+      return [];
+    }
+
+    return (
       await harness.db
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_step_emission", (b) =>
           b.whereIndex("idx_workflow_step_emission_instance_actor_createdAt_sequence_id", (eb) =>
-            eb("instanceRef", "=", instanceId),
+            eb("instanceRef", "=", instance.id),
           ),
         )
         .executeRetrieve()
     )[0];
+  };
 
   type WorkflowsTestHarnessDatabase = Awaited<ReturnType<typeof createWorkflowsTestHarness>>["db"];
   type WorkflowsTestHarness = Awaited<ReturnType<typeof createWorkflowsTestHarness>>;
@@ -709,11 +741,11 @@ describe("Workflows Runner", () => {
   };
 
   const buildPayload = (
-    instance: { id: { toString(): string }; workflowName: string },
+    instance: { id: { toString(): string }; instanceId: string; workflowName: string },
     reason: WorkflowEnqueuedHookPayload["reason"],
   ): WorkflowEnqueuedHookPayload => ({
     workflowName: instance.workflowName,
-    instanceId: instance.id.toString(),
+    instanceId: instance.instanceId,
     instanceRef: String(instance.id),
     reason,
   });
@@ -1326,10 +1358,10 @@ describe("Workflows Runner", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
             eb.and(
               eb("workflowName", "=", "service-call-parent-workflow"),
-              eb("id", "=", parentId),
+              eb("instanceId", "=", parentId),
             ),
           ),
         )
@@ -1351,8 +1383,11 @@ describe("Workflows Runner", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-            eb.and(eb("workflowName", "=", "service-call-child-workflow"), eb("id", "=", childId)),
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(
+              eb("workflowName", "=", "service-call-child-workflow"),
+              eb("instanceId", "=", childId),
+            ),
           ),
         )
         .executeRetrieve()

@@ -516,6 +516,7 @@ export const upvote_schema = {
 export const workflow_instance_workflows = sqliteTable("workflow_instance_workflows", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   workflowName: text("workflowName").notNull(),
+  instanceId: text("instanceId").notNull(),
   status: text("status").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
@@ -528,8 +529,8 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam38b77dcb").on(table.workflowName, table.status, table.id),
+  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
+  index("idx_workflow_instance_idx_workflow_instance_workflowNam3beb4686").on(table.workflowName, table.status, table.instanceId),
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_external_i88920a7e").on(table.id)
 ])
 

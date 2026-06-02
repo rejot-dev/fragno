@@ -30,13 +30,14 @@ describe("createWorkflowsTestHarness", () => {
   const buildPayload = (
     instance: {
       id: { internalId?: bigint };
+      instanceId: string;
       workflowName: string;
     },
     reason: WorkflowEnqueuedHookPayload["reason"],
   ): WorkflowEnqueuedHookPayload => {
     return {
       workflowName: instance.workflowName,
-      instanceId: instance.id.toString(),
+      instanceId: instance.instanceId,
       instanceRef: instance.id.toString(),
       reason,
     };
@@ -61,8 +62,8 @@ describe("createWorkflowsTestHarness", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("instanceId", "=", sleepId)),
           ),
         )
         .executeRetrieve()
@@ -87,8 +88,8 @@ describe("createWorkflowsTestHarness", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-            eb.and(eb("workflowName", "=", "event-workflow"), eb("id", "=", eventId)),
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", "event-workflow"), eb("instanceId", "=", eventId)),
           ),
         )
         .executeRetrieve()
@@ -127,8 +128,8 @@ describe("createWorkflowsTestHarness", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("id", "=", sleepId)),
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", "sleep-workflow"), eb("instanceId", "=", sleepId)),
           ),
         )
         .executeRetrieve()
@@ -193,8 +194,8 @@ describe("createWorkflowsTestHarness", () => {
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
         .find("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-            eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("id", "=", retryId)),
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", "retry-delay-workflow"), eb("instanceId", "=", retryId)),
           ),
         )
         .executeRetrieve()

@@ -500,6 +500,7 @@ export const upvote_schema = {
 export const workflow_instance_workflows = mysqlTable("workflow_instance_workflows", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   workflowName: varchar("workflowName", { length: 191 }).notNull(),
+  instanceId: varchar("instanceId", { length: 191 }).notNull(),
   status: varchar("status", { length: 191 }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
@@ -512,8 +513,8 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa203e01f5").on(table.workflowName, table.id),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam38b77dcb").on(table.workflowName, table.status, table.id)
+  uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
+  index("idx_workflow_instance_idx_workflow_instance_workflowNam3beb4686").on(table.workflowName, table.status, table.instanceId)
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {

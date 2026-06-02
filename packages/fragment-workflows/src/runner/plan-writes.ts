@@ -225,7 +225,7 @@ export function applyOutcome(
     "onWorkflowEnqueued",
     {
       workflowName: instance.workflowName,
-      instanceId: instance.id.toString(),
+      instanceId: instance.instanceId,
       instanceRef: String(instance.id),
       reason: kind,
     },

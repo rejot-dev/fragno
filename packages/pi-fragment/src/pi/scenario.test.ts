@@ -481,10 +481,14 @@ describe("Pi workflow scenarios", () => {
         }),
         stores: ({ clients, store }) => ({
           agentSession: store((ctx) =>
-            clients.agent.useSession({ path: { sessionId: ctx.vars.sessionId! } }),
+            clients.agent.useSession({
+              path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId! },
+            }),
           ),
           userSession: store((ctx) =>
-            clients.user.useSession({ path: { sessionId: ctx.vars.sessionId! } }),
+            clients.user.useSession({
+              path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId! },
+            }),
           ),
         }),
         runners: ["agent", "user"],
@@ -492,8 +496,8 @@ describe("Pi workflow scenarios", () => {
           workflow.read({
             read: async () => {
               const session = await clients.user.useCreateSession().mutate({
+                path: { workflowName: interactiveChatWorkflow.name },
                 body: {
-                  workflow: interactiveChatWorkflow.name,
                   name: "Scenario Session",
                   input: { agentName: "default" },
                 },

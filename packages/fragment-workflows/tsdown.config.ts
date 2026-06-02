@@ -9,6 +9,7 @@ export default defineConfig([
       "./src/workflow.ts",
       "./src/debug-log.ts",
       "./src/stream-step-emissions.ts",
+      "./src/instance-ref.ts",
       "./src/runner/step-live-pump.ts",
       "./src/scenario.ts",
       "./src/test.ts",

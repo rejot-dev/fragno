@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { FragnoClientApiError } from "@fragno-dev/core/client";
+import { atom } from "nanostores";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
@@ -46,7 +47,7 @@ const createStore = (
   options: Partial<Parameters<typeof createPiSessionStore>[1]> = {},
 ) =>
   createPiSessionStore(
-    { path: { sessionId: "session_1" } },
+    { path: { workflowName: "workflow_1", sessionId: "session_1" } },
     {
       transport,
       retryDelay: () => 0,
@@ -61,7 +62,10 @@ const waitForStatus = async (store: ReturnType<typeof createPiSessionStore>, sta
 
 describe("Pi session stream reducer", () => {
   it("reduces snapshots, live message updates, and tool calls", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
 
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     expect(state).toMatchObject({ connectionStatus: "open", agent: snapshot, lastFrameAt: 1 });
@@ -101,7 +105,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("replaces an abandoned partial assistant message when recovery starts a new stream", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
     state = reducePiSessionStreamFrame(
@@ -123,7 +130,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("handles recovery that emits message_update without a new message_start", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
     state = reducePiSessionStreamFrame(
@@ -142,7 +152,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("handles recovery events before message_update without duplicating the abandoned draft", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
     state = reducePiSessionStreamFrame(
@@ -163,7 +176,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("keeps a completed message when the next recovered message starts", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -181,7 +197,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("drops only the abandoned partial when multiple completed messages exist", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -206,7 +225,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("replaces an abandoned step-emission partial when recovery starts in the same epoch", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -239,7 +261,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("replaces an abandoned step-emission partial when recovery starts in a new uncommitted epoch", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -270,7 +295,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("does not duplicate recovered step-emission updates after an old epoch commits stale", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -305,7 +333,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("does not mark a committed stale step emission as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -328,7 +359,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("does not mark old uncommitted step emissions as stuck after a later step commits", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -362,7 +396,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("does not mark a disconnected stale session as needing a nudge", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -376,7 +413,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks a stale tool execution start as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -388,7 +428,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks a stale tool execution update as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -400,7 +443,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks a stale agent start as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(state, { type: "agent_start" } as AgentEvent, {
       now: 1_000,
@@ -410,7 +456,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks a stale message start as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, {
       now: 1_000,
@@ -420,7 +469,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks an uncommitted stale step after message_end as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -438,7 +490,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("marks an uncommitted stale step after agent_end as possibly stuck", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -456,7 +511,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("detects an open session as possibly stuck when the last event is non-terminal and stale", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
     state = reducePiSessionStreamFrame(
       state,
@@ -476,7 +534,10 @@ describe("Pi session stream reducer", () => {
   });
 
   it("rolls back stale step-emission events when a competing epoch commits", () => {
-    let state = createInitialPiSessionStoreState({ sessionId: "session_1" });
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
     state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
 
     state = reducePiSessionStreamFrame(
@@ -556,6 +617,7 @@ describe("createStorePiSessionTransport", () => {
     });
 
     const frames = await transport.openEvents({
+      workflowName: "workflow_1",
       sessionId: "session_1",
       signal: new AbortController().signal,
     });
@@ -584,6 +646,7 @@ describe("createStorePiSessionTransport", () => {
     });
 
     const frames = await transport.openEvents({
+      workflowName: "workflow_1",
       sessionId: "session_1",
       signal: new AbortController().signal,
     });
@@ -605,6 +668,7 @@ describe("createStorePiSessionTransport", () => {
     });
 
     const frames = await transport.openEvents({
+      workflowName: "workflow_1",
       sessionId: "session_1",
       signal: controller.signal,
     });
@@ -752,6 +816,64 @@ describe("createPiSessionStore", () => {
     expect(store.get()).toMatchObject({
       command: { loading: false, error: undefined, lastAck: ack },
     });
+  });
+
+  it("sends commands with the current path atom values", async () => {
+    const workflowName = atom("workflow_1");
+    const sessionId = atom("session_1");
+    const sentPaths: Array<{ workflowName: string; sessionId: string }> = [];
+    const transport: PiSessionTransport = {
+      openEvents: async () => stream([{ type: "snapshot", state: snapshot }]),
+      sendCommand: async ({ workflowName, sessionId }) => {
+        sentPaths.push({ workflowName, sessionId });
+        return { accepted: true, commandId: "cmd_1", status: "active" };
+      },
+    };
+
+    const store = createPiSessionStore(
+      { path: { workflowName, sessionId } },
+      { transport, retryDelay: () => 0, now: () => 100 },
+    );
+
+    workflowName.set("workflow_2");
+    sessionId.set("session_2");
+
+    await store.sendCommand({ kind: "continue" });
+
+    expect(sentPaths).toEqual([{ workflowName: "workflow_2", sessionId: "session_2" }]);
+    expect(store.get()).toMatchObject({ workflowName: "workflow_2", sessionId: "session_2" });
+  });
+
+  it("reopens events with the current path atom values after navigation", async () => {
+    const workflowName = atom("workflow_1");
+    const sessionId = atom("session_1");
+    const openedPaths: Array<{ workflowName: string; sessionId: string }> = [];
+    const transport: PiSessionTransport = {
+      openEvents: async ({ workflowName, sessionId, signal }) =>
+        (async function* () {
+          openedPaths.push({ workflowName, sessionId });
+          yield { type: "snapshot", state: snapshot };
+          await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+        })(),
+      sendCommand: async () => ({ accepted: true, commandId: "cmd_1", status: "active" }),
+    };
+
+    const store = createPiSessionStore(
+      { path: { workflowName, sessionId } },
+      { transport, retryDelay: () => 0, now: () => 100 },
+    );
+    const unsubscribe = store.subscribe(() => {});
+    await vi.waitFor(() => expect(openedPaths).toHaveLength(1));
+
+    workflowName.set("workflow_2");
+    sessionId.set("session_2");
+
+    await vi.waitFor(() =>
+      expect(openedPaths).toContainEqual({ workflowName: "workflow_2", sessionId: "session_2" }),
+    );
+    expect(store.get()).toMatchObject({ workflowName: "workflow_2", sessionId: "session_2" });
+
+    unsubscribe();
   });
 
   it("keeps command errors separate from stream state", async () => {

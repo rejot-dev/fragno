@@ -122,7 +122,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const turnSummaries: Record<string, string | null> = {};
   const detailResults = await Promise.all(
     sessions.map((session) =>
-      fetchPiSessionDetail(request, context, params.orgId!, session.id).catch(() => null),
+      fetchPiSessionDetail(request, context, params.orgId!, session.workflowName, session.id).catch(
+        () => null,
+      ),
     ),
   );
 
@@ -199,11 +201,28 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       } satisfies PiSendMessageActionData;
     }
 
-    const result = await sendPiSessionMessage(request, context, params.orgId, sessionId, {
-      text,
-      done,
-      commandKind: commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
-    });
+    const workflowName = getValue("workflowName");
+    if (!workflowName) {
+      return {
+        intent: "send-message",
+        ok: false,
+        message: "Workflow name is required.",
+      } satisfies PiSendMessageActionData;
+    }
+
+    const result = await sendPiSessionMessage(
+      request,
+      context,
+      params.orgId,
+      workflowName,
+      sessionId,
+      {
+        text,
+        done,
+        commandKind:
+          commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
+      },
+    );
 
     return {
       intent: "send-message",
@@ -292,7 +311,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   });
 
   const result = await createPiSession(request, context, params.orgId, {
-    workflow: interactiveChatWorkflow.name,
+    workflowName: interactiveChatWorkflow.name,
     input: { agentName: agent },
     name: name || undefined,
   });
@@ -305,7 +324,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     } satisfies PiCreateSessionActionData;
   }
 
-  return redirect(`/backoffice/sessions/${params.orgId}/sessions/${result.session.id}`);
+  return redirect(
+    `/backoffice/sessions/${params.orgId}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`,
+  );
 }
 
 export default function BackofficeOrganisationPiSessionsLayout() {
@@ -313,8 +334,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
   const navigation = useNavigation();
   const { orgId, configState } = useOutletContext<PiLayoutContext>();
-  const { sessionId } = useParams();
+  const { sessionId, workflowName } = useParams();
   const [searchParams] = useSearchParams();
+  const selectedWorkflowName = workflowName ?? null;
   const selectedSessionId = sessionId ?? null;
   const isNewSession = searchParams.get("new") === "1";
   const basePath = `/backoffice/sessions/${orgId}/sessions`;
@@ -518,7 +540,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               ) : (
                 sessions.map((session) => {
                   const summary = turnSummaries[session.id];
-                  const isSelected = session.id === selectedSessionId;
+                  const isSelected =
+                    session.workflowName === selectedWorkflowName &&
+                    session.id === selectedSessionId;
                   const [harnessId, provider, model] = session.agent.split("::");
                   const harnessLabel =
                     harnesses.find((entry) => entry.id === harnessId)?.label ??
@@ -532,7 +556,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                   return (
                     <Link
                       key={session.id}
-                      to={`${basePath}/${session.id}`}
+                      to={`${basePath}/${encodeURIComponent(session.workflowName)}/${encodeURIComponent(session.id)}`}
                       preventScrollReset
                       aria-current={isSelected ? "page" : undefined}
                       className={

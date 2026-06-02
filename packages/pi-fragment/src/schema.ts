@@ -4,8 +4,9 @@ export const piSchema = schema("pi-fragment", (s) => {
   return s.addTable("session", (t) => {
     return (
       t
-        // id is equal to the workflow's workflowInstanceId
+        // id is the scoped persistence row id; sessionId is the workflow instance id exposed to callers.
         .addColumn("id", idColumn())
+        .addColumn("sessionId", column("string"))
         .addColumn("name", column("string").nullable())
         .addColumn("agent", column("string"))
         .addColumn("workflowName", column("string"))
@@ -21,6 +22,10 @@ export const piSchema = schema("pi-fragment", (s) => {
         )
         .createIndex("idx_session_status", ["status"])
         .createIndex("idx_session_created", ["createdAt"])
+        .createIndex("idx_session_workflow_created", ["workflowName", "createdAt"])
+        .createIndex("idx_session_workflow_session", ["workflowName", "sessionId"], {
+          unique: true,
+        })
     );
   });
 });

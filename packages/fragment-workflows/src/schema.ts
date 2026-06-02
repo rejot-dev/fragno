@@ -9,10 +9,12 @@ export const workflowsSchema = schema("workflows", (s) => {
       .addTable("workflow_instance", (t) => {
         return (
           t
-            // External instance id (idColumn provides external string + internal bigint).
+            // Opaque row id (idColumn provides external string + internal bigint).
             .addColumn("id", idColumn())
             // Workflow registry key for routing and list queries.
             .addColumn("workflowName", column("string"))
+            // Public instance id, scoped by workflowName.
+            .addColumn("instanceId", column("string"))
             // Current status of the instance (active/waiting/paused/complete/errored/etc).
             .addColumn("status", column("string"))
             // Creation time for ordering and history cursoring.
@@ -36,14 +38,18 @@ export const workflowsSchema = schema("workflows", (s) => {
             // Failure diagnostics for terminal errors.
             .addColumn("errorName", column("string").nullable())
             .addColumn("errorMessage", column("string").nullable())
-            .createIndex("idx_workflow_instance_workflowName_id", ["workflowName", "id"], {
-              unique: true,
-            })
+            .createIndex(
+              "idx_workflow_instance_workflowName_instanceId",
+              ["workflowName", "instanceId"],
+              {
+                unique: true,
+              },
+            )
             // Powers status-filtered list queries with cursor-safe string/id ordering.
-            .createIndex("idx_workflow_instance_workflowName_status_id", [
+            .createIndex("idx_workflow_instance_workflowName_status_instanceId", [
               "workflowName",
               "status",
-              "id",
+              "instanceId",
             ])
         );
       })

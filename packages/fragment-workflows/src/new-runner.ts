@@ -255,7 +255,7 @@ function planEarlyReschedule(
               "onWorkflowEnqueued",
               {
                 workflowName: selectionResult.instance.workflowName,
-                instanceId: selectionResult.instance.id.toString(),
+                instanceId: selectionResult.instance.instanceId,
                 instanceRef: String(selectionResult.instance.id),
                 reason: "wake",
               },
@@ -289,7 +289,7 @@ function planEarlyReschedule(
               "onWorkflowEnqueued",
               {
                 workflowName: selectionResult.instance.workflowName,
-                instanceId: selectionResult.instance.id.toString(),
+                instanceId: selectionResult.instance.instanceId,
                 instanceRef: String(selectionResult.instance.id),
                 reason: "retry",
               },
@@ -382,7 +382,7 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
   return {
     payload: instance.params ?? {},
     timestamp,
-    instanceId: instance.id.toString(),
+    instanceId: instance.instanceId,
   };
 }
 
@@ -406,7 +406,7 @@ async function runTask(
     state,
     taskKind,
     workflowName: instance.workflowName,
-    instanceId: instance.id.toString(),
+    instanceId: instance.instanceId,
     handlerTx: ctx.busHandlerTx,
     createEpoch: ctx.createEpoch,
     stepEmissions: ctx.stepEmissions,
@@ -511,7 +511,7 @@ async function markInstanceErrored(
   })
     .retrieve(({ forSchema }) =>
       forSchema(workflowsSchema).find("workflow_instance", (b) =>
-        b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceId)),
+        b.whereIndex("primary", (eb) => eb("id", "=", payload.instanceRef)),
       ),
     )
     .execute();
@@ -591,7 +591,7 @@ export async function runWorkflowsTick(options: {
       .retrieve(({ forSchema }) =>
         forSchema(workflowsSchema)
           .find("workflow_instance", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", options.payload.instanceId)),
+            b.whereIndex("primary", (eb) => eb("id", "=", options.payload.instanceRef)),
           )
           .find("workflow_step", (b) =>
             b

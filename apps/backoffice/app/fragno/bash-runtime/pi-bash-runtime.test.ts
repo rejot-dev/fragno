@@ -709,7 +709,10 @@ describe("createPiRouteBashRuntime", () => {
             const url = new URL(request.url);
             const path = `${url.pathname}${url.search}`;
 
-            if (path === "/api/pi/sessions?orgId=acme" && request.method === "POST") {
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme" &&
+              request.method === "POST"
+            ) {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
@@ -731,7 +734,8 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2?events=true&trace=false&turns=true&orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&orgId=acme" &&
               request.method === "GET"
             ) {
               return new Response(
@@ -760,7 +764,8 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
@@ -773,7 +778,8 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
@@ -782,7 +788,11 @@ describe("createPiRouteBashRuntime", () => {
               });
             }
 
-            if (path === "/api/pi/sessions/session-2?orgId=acme" && request.method === "GET") {
+            if (
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme" &&
+              request.method === "GET"
+            ) {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
@@ -828,7 +838,10 @@ describe("createPiRouteBashRuntime", () => {
               );
             }
 
-            if (path === "/api/pi/sessions?limit=10&orgId=acme" && request.method === "GET") {
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&orgId=acme" &&
+              request.method === "GET"
+            ) {
               return new Response(
                 JSON.stringify([
                   {
@@ -933,31 +946,30 @@ describe("createPiRouteBashRuntime", () => {
     ]);
     expect(requests).toEqual([
       {
-        url: "https://pi.do/api/pi/sessions?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme",
         method: "POST",
         body: {
-          workflow: "interactive-chat-workflow",
           name: "route-session",
           input: { agentName: "assistant" },
         },
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2?events=true&trace=false&turns=true&orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&orgId=acme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/sessions?limit=10&orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&orgId=acme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2/events?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2/command?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
         method: "POST",
         body: {
           kind: "prompt",
@@ -965,7 +977,7 @@ describe("createPiRouteBashRuntime", () => {
         },
       },
       {
-        url: "https://pi.do/api/pi/sessions/session-2?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
         method: "GET",
         body: undefined,
       },
@@ -1001,7 +1013,10 @@ describe("createPiRouteBashRuntime", () => {
             const url = new URL(request.url);
             const path = `${url.pathname}${url.search}`;
 
-            if (path === "/api/pi/sessions/session-2/events?orgId=acme") {
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
+            ) {
               return createLongLivedNdjsonResponse([
                 { type: "snapshot", state: { messages: [] } },
                 { type: "message_end", message: assistantMessage },
@@ -1010,14 +1025,19 @@ describe("createPiRouteBashRuntime", () => {
               ]);
             }
 
-            if (path === "/api/pi/sessions/session-2/command?orgId=acme") {
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
+            ) {
               return new Response(JSON.stringify({ status: "active" }), {
                 status: 200,
                 headers: { "content-type": "application/json" },
               });
             }
 
-            if (path === "/api/pi/sessions/session-2?orgId=acme") {
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
+            ) {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
@@ -1059,9 +1079,9 @@ describe("createPiRouteBashRuntime", () => {
       expect.objectContaining({ type: "turn_end" }),
     ]);
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/sessions/session-2/events?orgId=acme",
-      "https://pi.do/api/pi/sessions/session-2/command?orgId=acme",
-      "https://pi.do/api/pi/sessions/session-2?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
     ]);
   });
 
@@ -1074,7 +1094,10 @@ describe("createPiRouteBashRuntime", () => {
             const url = new URL(request.url);
             const path = `${url.pathname}${url.search}`;
 
-            if (path === "/api/pi/sessions?orgId=acme" && request.method === "POST") {
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme" &&
+              request.method === "POST"
+            ) {
               return new Response(JSON.stringify({ message: "Agent not found" }), {
                 status: 404,
                 headers: { "content-type": "application/json" },
@@ -1116,7 +1139,8 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return new Response(JSON.stringify({ status: "waiting" }), {
@@ -1151,7 +1175,8 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
@@ -1167,7 +1192,8 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ message: "Session not ready" }), {
@@ -1202,7 +1228,8 @@ describe("createPiRouteBashRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/sessions/session-2/events?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
               request.method === "GET"
             ) {
               return createNdjsonResponse([
@@ -1218,7 +1245,8 @@ describe("createPiRouteBashRuntime", () => {
             }
 
             if (
-              path === "/api/pi/sessions/session-2/command?orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
@@ -1227,7 +1255,11 @@ describe("createPiRouteBashRuntime", () => {
               });
             }
 
-            if (path === "/api/pi/sessions/session-2?orgId=acme" && request.method === "GET") {
+            if (
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme" &&
+              request.method === "GET"
+            ) {
               return new Response(JSON.stringify({ message: "Detail unavailable" }), {
                 status: 500,
                 headers: { "content-type": "application/json" },

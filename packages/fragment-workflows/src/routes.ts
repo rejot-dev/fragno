@@ -8,6 +8,7 @@ import {
   validateWorkflowParams,
   workflowsFragmentDefinition,
 } from "./definition";
+import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsSchema } from "./schema";
 import { streamWorkflowStepEmissions } from "./stream-step-emissions";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
@@ -222,6 +223,13 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         return error({ message: "Instance is terminal", code: "INSTANCE_TERMINAL" as Code }, 409);
       }
 
+      if (err.message === "EVENT_ID_CONFLICT") {
+        return error(
+          { message: "Event id belongs to another instance", code: "EVENT_ID_CONFLICT" as Code },
+          409,
+        );
+      }
+
       if (isUniqueConstraintError(err)) {
         return error(
           { message: "Instance already exists", code: "INSTANCE_ID_ALREADY_EXISTS" as Code },
@@ -360,10 +368,10 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             const result = await this.handlerTx()
               .retrieve(({ forSchema }) =>
                 forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
-                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
                     eb.and(
                       eb("workflowName", "=", workflowName),
-                      eb("id", "=", requestedInstanceId),
+                      eb("instanceId", "=", requestedInstanceId),
                     ),
                   ),
                 ),
@@ -374,7 +382,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 }
 
                 return control.return({
-                  id: existingInstance.id.toString(),
+                  id: existingInstance.instanceId,
                   details: buildInstanceStatus(existingInstance),
                 });
               })
@@ -481,14 +489,17 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               .retrieve(({ forSchema }) =>
                 forSchema(workflowsSchema)
                   .findFirst("workflow_instance", (b) =>
-                    b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                      eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+                    b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                      eb.and(
+                        eb("workflowName", "=", workflowName),
+                        eb("instanceId", "=", instanceId),
+                      ),
                     ),
                   )
                   .findWithCursor("workflow_step", (b) =>
                     b
                       .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
-                        eb("instanceRef", "=", instanceId),
+                        eb("instanceRef", "=", buildScopedInstanceRowId(workflowName, instanceId)),
                       )
                       .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc")
                       .pageSize(1),
@@ -585,8 +596,11 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             await this.handlerTx()
               .retrieve(({ forSchema }) =>
                 forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
-                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-                    eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+                  b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                    ),
                   ),
                 ),
               )
@@ -790,6 +804,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           "INVALID_EVENT_TYPE",
           "INSTANCE_NOT_FOUND",
           "INSTANCE_TERMINAL",
+          "EVENT_ID_CONFLICT",
         ],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;

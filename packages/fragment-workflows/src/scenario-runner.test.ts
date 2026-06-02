@@ -1736,10 +1736,10 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .createUnitOfWork("concurrent-event-tick-instance")
                 .forSchema(workflowsSchema)
                 .find("workflow_instance", (b) =>
-                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
                     eb.and(
                       eb("workflowName", "=", workflowName),
-                      eb("id", "=", "concurrent-event-tick-1"),
+                      eb("instanceId", "=", "concurrent-event-tick-1"),
                     ),
                   ),
                 )
@@ -1749,7 +1749,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             expect(instance).toBeDefined();
             const payload = {
               workflowName,
-              instanceId: instance.id.toString(),
+              instanceId: instance.instanceId,
               instanceRef: String(instance.id),
               reason: "event",
             } as const;
@@ -1851,10 +1851,10 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 .createUnitOfWork("concurrent-emission-instance")
                 .forSchema(workflowsSchema)
                 .find("workflow_instance", (b) =>
-                  b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
                     eb.and(
                       eb("workflowName", "=", workflowName),
-                      eb("id", "=", "concurrent-emit-1"),
+                      eb("instanceId", "=", "concurrent-emit-1"),
                     ),
                   ),
                 )
@@ -1864,7 +1864,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             expect(instance).toBeDefined();
             const payload = {
               workflowName,
-              instanceId: instance.id.toString(),
+              instanceId: instance.instanceId,
               instanceRef: instance.id.toString(),
               reason: "create",
             } as const;

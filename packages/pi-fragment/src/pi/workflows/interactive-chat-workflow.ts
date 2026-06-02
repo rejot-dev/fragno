@@ -1,3 +1,4 @@
+import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import { z } from "zod";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -190,11 +191,15 @@ export const interactiveChatWorkflow = definePiWorkflow(
 
             tx.mutate(({ forSchema }) => {
               const uow = forSchema(piSchema);
-              uow.update("session", ctx.sessionId, (builder) =>
-                builder.set({
-                  status: normalizedCommand.kind === "complete" ? "complete" : "active",
-                  updatedAt: uow.now(),
-                }),
+              const status = normalizedCommand.kind === "complete" ? "complete" : "active";
+              uow.update(
+                "session",
+                buildScopedInstanceRowId(interactiveChatWorkflow.name, ctx.sessionId),
+                (builder) =>
+                  builder.set({
+                    status,
+                    updatedAt: uow.now(),
+                  }),
               );
             });
           },

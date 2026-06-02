@@ -55,13 +55,17 @@ describe("pi-fragment Pi-shaped routes", () => {
   });
 
   const createSession = async () => {
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: {
-        workflow: interactiveChatWorkflow.name,
-        name: "Pi Session",
-        input: { agentName: "default" },
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name },
+        body: {
+          name: "Pi Session",
+          input: { agentName: "default" },
+        },
       },
-    });
+    );
     expect(response.type).toBe("json");
     if (response.type !== "json") {
       throw new Error("expected json response");
@@ -74,19 +78,22 @@ describe("pi-fragment Pi-shaped routes", () => {
     await harness.workflows.runUntilIdle({
       workflowName: interactiveChatWorkflow.name,
       instanceId: sessionId,
-      instanceRef: sessionId,
       reason: "event",
     });
   };
 
   it("creates an interactive chat workflow session", async () => {
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: {
-        workflow: interactiveChatWorkflow.name,
-        name: "Pi Session",
-        input: { agentName: "default" },
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name },
+        body: {
+          name: "Pi Session",
+          input: { agentName: "default" },
+        },
       },
-    });
+    );
     expect(response.type).toBe("json");
     if (response.type !== "json") {
       throw new Error("expected json response");
@@ -103,9 +110,14 @@ describe("pi-fragment Pi-shaped routes", () => {
   });
 
   it("rejects unknown custom workflow session creation", async () => {
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { workflow: "missing", input: {} },
-    });
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: "missing" },
+        body: { input: {} },
+      },
+    );
 
     expect(response.type).toBe("error");
     if (response.type !== "error") {
@@ -113,6 +125,55 @@ describe("pi-fragment Pi-shaped routes", () => {
     }
     expect(response.status).toBe(404);
     expect(response.error.code).toBe("WORKFLOW_NOT_FOUND");
+  });
+
+  it("allows different workflows to reuse the same public session id", async () => {
+    await harness.test.cleanup();
+    const first = definePiWorkflow({ name: "first" }, () => ({ ok: true }));
+    const second = definePiWorkflow({ name: "second" }, () => ({ ok: true }));
+    harness = await buildHarness(createConfig(), { workflows: [first, second] });
+
+    await harness.fragments.pi.callServices(() => [
+      harness.fragments.pi.services.createWorkflowSession({
+        id: "shared-session",
+        workflowName: "first",
+        agent: "default",
+        name: "First",
+        createdAt: new Date(),
+        params: {},
+      }),
+      harness.fragments.pi.services.createWorkflowSession({
+        id: "shared-session",
+        workflowName: "second",
+        agent: "default",
+        name: "Second",
+        createdAt: new Date(),
+        params: {},
+      }),
+    ]);
+
+    const firstSessions = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions",
+      { pathParams: { workflowName: "first" } },
+    );
+    const secondSessions = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions",
+      { pathParams: { workflowName: "second" } },
+    );
+
+    expect(firstSessions.type).toBe("json");
+    expect(secondSessions.type).toBe("json");
+    if (firstSessions.type !== "json" || secondSessions.type !== "json") {
+      throw new Error("expected json response");
+    }
+    expect(firstSessions.data).toEqual([
+      expect.objectContaining({ id: "shared-session", workflowName: "first" }),
+    ]);
+    expect(secondSessions.data).toEqual([
+      expect.objectContaining({ id: "shared-session", workflowName: "second" }),
+    ]);
   });
 
   it("lets one workflow session start another through the Pi service", async () => {
@@ -141,9 +202,14 @@ describe("pi-fragment Pi-shaped routes", () => {
     });
     piServices = harness.fragments.pi.services;
 
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { workflow: "parent", input: {}, name: "Parent" },
-    });
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: "parent" },
+        body: { input: {}, name: "Parent" },
+      },
+    );
     expect(response.type).toBe("json");
     if (response.type !== "json") {
       throw new Error("expected json response");
@@ -152,7 +218,6 @@ describe("pi-fragment Pi-shaped routes", () => {
     await harness.workflows.runUntilIdle({
       workflowName: "parent",
       instanceId: response.data.id,
-      instanceRef: response.data.id,
       reason: "create",
     });
     await drainDurableHooks(harness.workflows.fragment);
@@ -161,16 +226,26 @@ describe("pi-fragment Pi-shaped routes", () => {
       expect.objectContaining({ status: "complete" }),
     );
 
-    const sessions = await harness.fragments.pi.callRoute("GET", "/sessions", {});
-    expect(sessions.type).toBe("json");
-    if (sessions.type !== "json") {
+    const parentSessions = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions",
+      { pathParams: { workflowName: "parent" } },
+    );
+    const childSessions = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions",
+      { pathParams: { workflowName: "child" } },
+    );
+    expect(parentSessions.type).toBe("json");
+    expect(childSessions.type).toBe("json");
+    if (parentSessions.type !== "json" || childSessions.type !== "json") {
       throw new Error("expected json response");
     }
-    expect(sessions.data).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "Parent", workflowName: "parent" }),
-        expect.objectContaining({ name: "Child", workflowName: "child" }),
-      ]),
+    expect(parentSessions.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "Parent", workflowName: "parent" })]),
+    );
+    expect(childSessions.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "Child", workflowName: "child" })]),
     );
   });
 
@@ -182,9 +257,14 @@ describe("pi-fragment Pi-shaped routes", () => {
     );
     harness = await buildHarness(createConfig(), { autoTickHooks: true, workflows: [workflow] });
 
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { workflow: "custom", input: { topic: "durability" }, name: "Custom" },
-    });
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: "custom" },
+        body: { input: { topic: "durability" }, name: "Custom" },
+      },
+    );
     expect(response.type).toBe("json");
     if (response.type !== "json") {
       throw new Error("expected json response");
@@ -210,9 +290,14 @@ describe("pi-fragment Pi-shaped routes", () => {
     });
     harness = await buildHarness(createConfig(), { workflows: [workflow] });
 
-    const response = await harness.fragments.pi.callRoute("POST", "/sessions", {
-      body: { workflow: "approval", input: {}, name: "Approval" },
-    });
+    const response = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: "approval" },
+        body: { input: {}, name: "Approval" },
+      },
+    );
     expect(response.type).toBe("json");
     if (response.type !== "json") {
       throw new Error("expected json response");
@@ -221,14 +306,17 @@ describe("pi-fragment Pi-shaped routes", () => {
     await harness.workflows.runUntilIdle({
       workflowName: "approval",
       instanceId: response.data.id,
-      instanceRef: response.data.id,
       reason: "create",
     });
 
-    const events = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId/events", {
-      pathParams: { sessionId: response.data.id },
-      query: { once: "true" },
-    });
+    const events = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId/events",
+      {
+        pathParams: { workflowName: response.data.workflowName, sessionId: response.data.id },
+        query: { once: "true" },
+      },
+    );
     expect(events.type).toBe("jsonStream");
     if (events.type !== "jsonStream") {
       throw new Error("expected json stream response");
@@ -239,10 +327,14 @@ describe("pi-fragment Pi-shaped routes", () => {
     }
     expect(frames).toEqual([expect.objectContaining({ type: "snapshot" })]);
 
-    const command = await harness.fragments.pi.callRoute("POST", "/sessions/:sessionId/command", {
-      pathParams: { sessionId: response.data.id },
-      body: { kind: "complete" },
-    });
+    const command = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName: response.data.workflowName, sessionId: response.data.id },
+        body: { kind: "complete" },
+      },
+    );
     expect(command.type).toBe("json");
     if (command.type !== "json") {
       throw new Error("expected json response");
@@ -252,13 +344,16 @@ describe("pi-fragment Pi-shaped routes", () => {
     await harness.workflows.runUntilIdle({
       workflowName: "approval",
       instanceId: response.data.id,
-      instanceRef: response.data.id,
       reason: "event",
     });
 
-    const detail = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId", {
-      pathParams: { sessionId: response.data.id },
-    });
+    const detail = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId",
+      {
+        pathParams: { workflowName: response.data.workflowName, sessionId: response.data.id },
+      },
+    );
     expect(detail.type).toBe("json");
     if (detail.type !== "json") {
       throw new Error("expected json response");
@@ -272,9 +367,13 @@ describe("pi-fragment Pi-shaped routes", () => {
   it("creates a session with empty Pi state and no old public detail fields", async () => {
     const sessionId = await createSession();
 
-    const detail = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId", {
-      pathParams: { sessionId },
-    });
+    const detail = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+      },
+    );
     expect(detail.type).toBe("json");
     if (detail.type !== "json") {
       throw new Error("expected json response");
@@ -294,10 +393,14 @@ describe("pi-fragment Pi-shaped routes", () => {
     const sessionId = await createSession();
     await runSessionUntilIdle(sessionId);
 
-    const command = await harness.fragments.pi.callRoute("POST", "/sessions/:sessionId/command", {
-      pathParams: { sessionId },
-      body: { kind: "prompt", input: { text: "hello" } },
-    });
+    const command = await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+        body: { kind: "prompt", input: { text: "hello" } },
+      },
+    );
     expect(command.type).toBe("json");
     if (command.type !== "json") {
       throw new Error("expected json response");
@@ -307,18 +410,26 @@ describe("pi-fragment Pi-shaped routes", () => {
     await drainDurableHooks(harness.workflows.fragment);
     await runSessionUntilIdle(sessionId);
 
-    let detail = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId", {
-      pathParams: { sessionId },
-    });
+    let detail = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+      },
+    );
     for (
       let attempt = 0;
       attempt < 20 && detail.type === "json" && detail.data.agent.state.messages.length < 2;
       attempt += 1
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      detail = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId", {
-        pathParams: { sessionId },
-      });
+      detail = await harness.fragments.pi.callRoute(
+        "GET",
+        "/workflows/:workflowName/sessions/:sessionId",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+        },
+      );
     }
     expect(detail.type).toBe("json");
     if (detail.type !== "json") {
@@ -344,9 +455,13 @@ describe("pi-fragment Pi-shaped routes", () => {
   it("streams an initial snapshot from /events", async () => {
     const sessionId = await createSession();
 
-    const stream = await harness.fragments.pi.callRoute("GET", "/sessions/:sessionId/events", {
-      pathParams: { sessionId },
-    });
+    const stream = await harness.fragments.pi.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId/events",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+      },
+    );
     expect(stream.type).toBe("jsonStream");
     if (stream.type !== "jsonStream") {
       throw new Error("expected json stream response");

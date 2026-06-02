@@ -72,10 +72,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       WorkflowsLogger.configure(config.logging);
     }
 
-    const loadPiSessionDetailSnapshot = (sessionId: string) =>
-      services.getSessionDetailSnapshot(sessionId);
-
-    const toSessionDetailLoadError = (err: unknown, sessionId: string) => {
+    const toSessionDetailLoadError = (err: unknown, workflowName: string, sessionId: string) => {
       if (isRouteError(err)) {
         const code: "SESSION_NOT_FOUND" | "WORKFLOW_INSTANCE_MISSING" =
           err.code === "SESSION_NOT_FOUND" ? "SESSION_NOT_FOUND" : "WORKFLOW_INSTANCE_MISSING";
@@ -89,7 +86,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
         (err.message === "SESSION_NOT_FOUND" || err.message === "INSTANCE_NOT_FOUND")
       ) {
         return {
-          body: { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" as const },
+          body: {
+            message: `Session ${workflowName}/${sessionId} not found.`,
+            code: "SESSION_NOT_FOUND" as const,
+          },
           init: { status: 404 as const },
         };
       }
@@ -103,9 +103,8 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
     return [
       defineRoute({
         method: "POST",
-        path: "/sessions",
+        path: "/workflows/:workflowName/sessions",
         inputSchema: z.object({
-          workflow: z.string(),
           name: z.string().optional(),
           input: z.unknown().optional(),
         }),
@@ -116,10 +115,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           "WORKFLOW_PARAMS_INVALID",
           "WORKFLOW_CREATE_FAILED",
         ],
-        handler: async function ({ input }, { json, error }) {
+        handler: async function ({ input, pathParams }, { json, error }) {
           const values = await input.valid();
 
-          const workflowName = values.workflow;
+          const workflowName = pathParams.workflowName;
           const now = new Date();
           const sessionId = createId();
 
@@ -172,7 +171,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
           } catch (err) {
             if (err instanceof Error && err.message === "WORKFLOW_NOT_FOUND") {
               return error(
-                { message: `Workflow ${values.workflow} not found.`, code: "WORKFLOW_NOT_FOUND" },
+                { message: `Workflow ${workflowName} not found.`, code: "WORKFLOW_NOT_FOUND" },
                 { status: 404 },
               );
             }
@@ -191,10 +190,11 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       }),
       defineRoute({
         method: "GET",
-        path: "/sessions",
+        path: "/workflows/:workflowName/sessions",
         queryParameters: ["limit"],
         outputSchema: z.array(sessionBaseSchema),
-        handler: async function ({ query }, { json }) {
+        handler: async function ({ pathParams, query }, { json }) {
+          const workflowName = pathParams.workflowName;
           const limit = Number.parseInt(query.get("limit") ?? `${DEFAULT_PAGE_SIZE}`, 10);
           const normalizedLimit = Number.isFinite(limit)
             ? Math.max(1, Math.min(MAX_PAGE_SIZE, limit))
@@ -205,8 +205,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               const uow = forSchema(piSchema);
               return uow.find("session", (b) =>
                 b
-                  .whereIndex("idx_session_created")
-                  .orderByIndex("idx_session_created", "desc")
+                  .whereIndex("idx_session_workflow_created", (eb) =>
+                    eb("workflowName", "=", workflowName),
+                  )
+                  .orderByIndex("idx_session_workflow_created", "desc")
                   .pageSize(normalizedLimit),
               );
             })
@@ -214,7 +216,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
 
           return json(
             sessions.map((session) => ({
-              id: session.id.valueOf(),
+              id: session.sessionId,
               name: session.name ?? null,
               status: session.status as PiSession["status"],
               agent: session.agent,
@@ -227,13 +229,15 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       }),
       defineRoute({
         method: "GET",
-        path: "/sessions/:sessionId",
+        path: "/workflows/:workflowName/sessions/:sessionId",
         outputSchema: sessionDetailSchema,
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
-        handler: async function ({ pathParams: { sessionId } }, { json, error }) {
+        handler: async function ({ pathParams: { workflowName, sessionId } }, { json, error }) {
           try {
             const result = await this.handlerTx()
-              .withServiceCalls(() => [loadPiSessionDetailSnapshot(sessionId)] as const)
+              .withServiceCalls(
+                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
+              )
               .transform(({ serviceResult: [snapshot] }) => snapshot)
               .execute();
             const agentEvents = result.detailState.events;
@@ -253,21 +257,24 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               },
             });
           } catch (err) {
-            const loadError = toSessionDetailLoadError(err, sessionId);
+            const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
             return error(loadError.body, loadError.init);
           }
         },
       }),
       defineRoute({
         method: "GET",
-        path: "/sessions/:sessionId/export/pi-jsonl",
+        path: "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
         handler: async function ({ pathParams }, { error }) {
+          const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
 
           try {
             const snapshot = await this.handlerTx()
-              .withServiceCalls(() => [loadPiSessionDetailSnapshot(sessionId)] as const)
+              .withServiceCalls(
+                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
+              )
               .transform(({ serviceResult: [snapshot] }) => snapshot)
               .execute();
             const agent = config.agents[snapshot.session.agent];
@@ -295,32 +302,35 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
               },
             });
           } catch (err) {
-            const loadError = toSessionDetailLoadError(err, sessionId);
+            const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
             return error(loadError.body, loadError.init);
           }
         },
       }),
       defineRoute({
         method: "GET",
-        path: "/sessions/:sessionId/events",
+        path: "/workflows/:workflowName/sessions/:sessionId/events",
         queryParameters: ["once"],
         outputSchema: z.array(sessionEventStreamItemSchema),
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
         handler: async function ({ pathParams, query }, { error, jsonStream }) {
+          const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
           const once = parseBooleanQueryValue(query.get("once"));
           const workflowsService = serviceDeps.workflows;
 
           try {
             const initialDetail = await this.handlerTx()
-              .withServiceCalls(() => [loadPiSessionDetailSnapshot(sessionId)] as const)
+              .withServiceCalls(
+                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
+              )
               .transform(({ serviceResult: [snapshot] }) => snapshot)
               .execute();
 
             return jsonStream(async (stream) => {
               const emissionBusHandle =
                 workflowsService.observeStepEmissions<PiSessionEventStreamItem>({
-                  workflowName: initialDetail.session.workflowName,
+                  workflowName,
                   instanceId: sessionId,
                   handlerTx: this.handlerTx,
                 });
@@ -391,7 +401,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             }
             if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
               return error(
-                { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" },
+                {
+                  message: `Session ${workflowName}/${sessionId} not found.`,
+                  code: "SESSION_NOT_FOUND",
+                },
                 { status: 404 },
               );
             }
@@ -403,12 +416,13 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
       }),
       defineRoute({
         method: "POST",
-        path: "/sessions/:sessionId/command",
+        path: "/workflows/:workflowName/sessions/:sessionId/command",
         inputSchema: commandInputSchema,
         outputSchema: commandAckSchema,
         errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const command = await input.valid();
+          const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
           const workflowsService = serviceDeps.workflows;
           const commandId = createId();
@@ -418,23 +432,25 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             const result = await this.handlerTx()
               .withServiceCalls(() =>
                 serviceCalls(
-                  workflowsService.sendEventById(sessionId, {
+                  workflowsService.sendEvent(workflowName, sessionId, {
                     type: "command",
                     payload,
                   }),
-                  workflowsService.getInstanceStatusById(sessionId),
+                  workflowsService.getInstanceStatus(workflowName, sessionId),
                 ),
               )
               .retrieve(({ forSchema }) =>
                 forSchema(piSchema).findFirst("session", (b) =>
-                  b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
+                  b.whereIndex("idx_session_workflow_session", (eb) =>
+                    eb.and(eb("workflowName", "=", workflowName), eb("sessionId", "=", sessionId)),
+                  ),
                 ),
               )
               .mutate(({ forSchema, retrieveResult: [sessionRow] }) => {
                 if (!sessionRow) {
                   throw createRouteError(
                     "SESSION_NOT_FOUND",
-                    `Session ${sessionId} not found.`,
+                    `Session ${workflowName}/${sessionId} not found.`,
                     404,
                   );
                 }
@@ -448,7 +464,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 if (!workflowStatus) {
                   throw createRouteError(
                     "WORKFLOW_INSTANCE_MISSING",
-                    `Session ${sessionId} workflow status is missing.`,
+                    `Session ${workflowName}/${sessionId} workflow status is missing.`,
                     500,
                   );
                 }
@@ -475,7 +491,10 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
             }
             if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
               return error(
-                { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" },
+                {
+                  message: `Session ${workflowName}/${sessionId} not found.`,
+                  code: "SESSION_NOT_FOUND",
+                },
                 { status: 404 },
               );
             }

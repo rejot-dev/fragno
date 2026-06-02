@@ -93,13 +93,17 @@ describe("agent loop tool call results", () => {
         steps: ({ workflow, runners }) => [
           workflow.read({
             read: async (ctx) => {
-              const response = await ctx.harness.fragments.pi.callRoute("POST", "/sessions", {
-                body: {
-                  workflow: interactiveChatWorkflow.name,
-                  name: "Tool Call Session",
-                  input: { agentName: "default" },
+              const response = await ctx.harness.fragments.pi.callRoute(
+                "POST",
+                "/workflows/:workflowName/sessions",
+                {
+                  pathParams: { workflowName: interactiveChatWorkflow.name },
+                  body: {
+                    name: "Tool Call Session",
+                    input: { agentName: "default" },
+                  },
                 },
-              });
+              );
               expect(response.type).toBe("json");
               assert(response.type === "json", "expected json response");
               assert(!Array.isArray(response.data), "expected session response");

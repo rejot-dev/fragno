@@ -9,6 +9,7 @@ import {
 
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 
+import { buildScopedInstanceRowId } from "../instance-ref";
 import { workflowsSchema } from "../schema";
 import {
   isSystemEventActor,
@@ -144,30 +145,31 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
 }): Promise<
   BufferedFlushResult<WorkflowStepEmission<TOutEmission>, WorkflowStepEvent<TInEvent>>
 > => {
+  const instanceRef = buildScopedInstanceRowId(options.workflowName, options.instanceId);
   const result = await options
     .handlerTx()
     .retrieve(({ forSchema }) => {
       const uow = forSchema(workflowsSchema);
       return uow
         .findFirst("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
             eb.and(
               eb("workflowName", "=", options.workflowName),
-              eb("id", "=", options.instanceId),
+              eb("instanceId", "=", options.instanceId),
             ),
           ),
         )
         .find("workflow_step_emission", (b) =>
           b
             .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
-              eb("instanceRef", "=", options.instanceId),
+              eb("instanceRef", "=", instanceRef),
             )
             .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
         )
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
-              eb("instanceRef", "=", options.instanceId),
+              eb("instanceRef", "=", instanceRef),
             )
             .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
         );

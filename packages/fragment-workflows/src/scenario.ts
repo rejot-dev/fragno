@@ -1464,6 +1464,7 @@ const resolveInternalId = (value: { internalId?: bigint } | bigint, label: strin
 /** Row shape from `workflow_instance` reads in scenario harness (matches mapInstanceRow input). */
 type ScenarioDbWorkflowInstance = {
   id: { internalId?: bigint } | bigint;
+  instanceId: string;
   workflowName: string;
   status: string;
   createdAt: Date;
@@ -1486,8 +1487,8 @@ const getScenarioInstanceRow = async <TRegistry extends WorkflowsRegistry>(
       .createUnitOfWork("scenario-instance")
       .forSchema(workflowsSchema)
       .find("workflow_instance", (b) =>
-        b.whereIndex("idx_workflow_instance_workflowName_id", (eb) =>
-          eb.and(eb("workflowName", "=", workflowName), eb("id", "=", instanceId)),
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
         ),
       )
       .executeRetrieve()
@@ -1518,13 +1519,14 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     updatedAt: Date;
     startedAt: Date | null;
     completedAt: Date | null;
+    instanceId: string;
     params: unknown;
     output: unknown | null;
     errorName: string | null;
     errorMessage: string | null;
   }): WorkflowScenarioInstanceRow => ({
     id: resolveInternalId(instance.id, "workflow instance"),
-    instanceId: instance.id.toString(),
+    instanceId: instance.instanceId,
     workflowName: instance.workflowName,
     status: instance.status,
     createdAt: instance.createdAt,
@@ -2272,7 +2274,7 @@ export async function runScenario<
 
     return {
       workflowName,
-      instanceId: instance.id.toString(),
+      instanceId: instance.instanceId,
       instanceRef: String(instance.id),
       reason: options.reason,
     };

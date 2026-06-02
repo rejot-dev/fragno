@@ -23,31 +23,41 @@ export type PiFragmentClientConfig = FragnoPublicClientConfig & {
 
 export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {}) {
   const builder = createClientBuilder(piFragmentDefinition, fragnoConfig, [piRoutesFactory]);
-  const useSessionDetail = builder.createHook("/sessions/:sessionId");
-  const useSessionEvents = builder.createHook("/sessions/:sessionId/events", {
-    onErrorRetry: ({ retryCount }) => Math.min(10_000, 500 * 2 ** Math.min(retryCount, 8)),
-  });
+  const useSessionDetail = builder.createHook("/workflows/:workflowName/sessions/:sessionId");
+  const useSessionEvents = builder.createHook(
+    "/workflows/:workflowName/sessions/:sessionId/events",
+    {
+      onErrorRetry: ({ retryCount }) => Math.min(10_000, 500 * 2 ** Math.min(retryCount, 8)),
+    },
+  );
 
   const useCommandSession = builder.createMutator(
     "POST",
-    "/sessions/:sessionId/command",
+    "/workflows/:workflowName/sessions/:sessionId/command",
     (invalidate, params) => {
+      const workflowName = params.pathParams.workflowName;
       const sessionId = params.pathParams.sessionId;
-      if (!sessionId) {
+      if (!workflowName || !sessionId) {
         return;
       }
 
-      invalidate("GET", "/sessions/:sessionId", {
-        pathParams: { sessionId },
+      invalidate("GET", "/workflows/:workflowName/sessions/:sessionId", {
+        pathParams: { workflowName, sessionId },
       });
-      invalidate("GET", "/sessions", {});
+      invalidate("GET", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName },
+      });
     },
   );
 
   const defaultSessionTransport = createStorePiSessionTransport({
-    openEventsStore: ({ sessionId }) => useSessionEvents.store({ path: { sessionId } }),
-    sendCommand: async ({ sessionId, command }) => {
-      const ack = await useCommandSession.mutateQuery({ path: { sessionId }, body: command });
+    openEventsStore: ({ workflowName, sessionId }) =>
+      useSessionEvents.store({ path: { workflowName, sessionId } }),
+    sendCommand: async ({ workflowName, sessionId, command }) => {
+      const ack = await useCommandSession.mutateQuery({
+        path: { workflowName, sessionId },
+        body: command,
+      });
       if (!ack) {
         throw new Error("Expected command route to return an acknowledgement.");
       }
@@ -56,9 +66,9 @@ export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {
   });
 
   return {
-    useSessions: builder.createHook("/sessions"),
+    useSessions: builder.createHook("/workflows/:workflowName/sessions"),
     useSessionDetail,
-    useCreateSession: builder.createMutator("POST", "/sessions"),
+    useCreateSession: builder.createMutator("POST", "/workflows/:workflowName/sessions"),
     useSessionEvents,
     useCommandSession,
     useSession: builder.createStore(

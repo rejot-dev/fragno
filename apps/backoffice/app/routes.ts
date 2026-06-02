@@ -117,8 +117,11 @@ export default [
         route("harnesses", "routes/backoffice/sessions/harnesses.tsx"),
         route("sessions", "routes/backoffice/sessions/sessions.tsx", [
           index("routes/backoffice/sessions/sessions-index.tsx"),
-          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
-          route(":sessionId/debug", "routes/backoffice/sessions/debug-session-detail.tsx"),
+          route(":workflowName/:sessionId", "routes/backoffice/sessions/session-detail.tsx"),
+          route(
+            ":workflowName/:sessionId/debug",
+            "routes/backoffice/sessions/debug-session-detail.tsx",
+          ),
         ]),
       ]),
       route("files", "routes/backoffice/files/index.tsx"),
