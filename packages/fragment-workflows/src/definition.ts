@@ -118,7 +118,7 @@ function generateInstanceId(randomUuid: () => string) {
   return `${prefix}${raw.slice(0, suffixLength)}`;
 }
 
-function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceStatus {
+export function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceStatus {
   if (!INSTANCE_STATUSES.has(instance.status as InstanceStatus["status"])) {
     throw new Error(`INSTANCE_STATUS_INVALID:${instance.status}`);
   }
