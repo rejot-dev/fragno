@@ -253,6 +253,20 @@ export interface ServiceTxCallbacks<
  * Callbacks for handler-level executeTx.
  * Uses context-based callbacks that provide forSchema() method.
  */
+export type EarlyReturnDecision<TResult> =
+  | { type: "continue" }
+  | { type: "return"; result: TResult };
+
+export type EarlyReturnControl = {
+  continue: () => EarlyReturnDecision<never>;
+  return: <TResult>(result: TResult) => EarlyReturnDecision<TResult>;
+};
+
+const earlyReturnControl: EarlyReturnControl = {
+  continue: () => ({ type: "continue" }),
+  return: (result) => ({ type: "return", result }),
+};
+
 export interface HandlerTxCallbacks<
   TRetrieveResults extends unknown[],
   TRetrieveSuccessResult,
@@ -274,6 +288,15 @@ export interface HandlerTxCallbacks<
   retrieve?: (
     context: HandlerTxContext<THooks>,
   ) => TypedUnitOfWork<AnySchema, TRetrieveResults, unknown, HooksMap> | void;
+
+  /**
+   * Optional early-return after handler retrieve results are available, before service calls are
+   * processed. Returning control.return(value) skips service calls, mutate, and success.
+   */
+  earlyReturn?: (ctx: {
+    retrieveResult: TRetrieveResults;
+    control: EarlyReturnControl;
+  }) => EarlyReturnDecision<unknown>;
 
   /**
    * Transform retrieve results before passing to mutate.
@@ -821,6 +844,16 @@ async function executeTx(
       const retrieveResult: TRetrieveResults = typedUowFromRetrieve
         ? await typedUowFromRetrieve.retrievalPhase
         : ([] as unknown as TRetrieveResults);
+
+      if (callbacks.earlyReturn) {
+        const earlyReturnResult = callbacks.earlyReturn({
+          retrieveResult,
+          control: earlyReturnControl,
+        });
+        if (earlyReturnResult.type === "return") {
+          return await awaitPromisesInObject(earlyReturnResult.result);
+        }
+      }
 
       for (const txResult of allServiceCallTxResults) {
         await processTxResultAfterRetrieve(txResult, baseUow);
@@ -1603,6 +1636,10 @@ interface HandlerTxBuilderState<
     idempotencyKey: string;
     currentAttempt: number;
   }) => TypedUnitOfWork<AnySchema, TRetrieveResults, unknown, HooksMap> | void;
+  earlyReturnFn?: (ctx: {
+    retrieveResult: TRetrieveResults;
+    control: EarlyReturnControl;
+  }) => EarlyReturnDecision<unknown>;
   transformRetrieveFn?: (
     retrieveResult: TRetrieveResults,
     serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
@@ -1748,6 +1785,33 @@ export class HandlerTxBuilder<
       TTransformResult,
       THooks
     >);
+  }
+
+  /**
+   * Return early after handler retrieve results are available, before declared service calls are
+   * processed. Use control.return(value) to skip service calls/mutations, or control.continue().
+   */
+  earlyReturn(
+    fn: (ctx: {
+      retrieveResult: TRetrieveResults;
+      control: EarlyReturnControl;
+    }) => EarlyReturnDecision<unknown>,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      earlyReturnFn: fn,
+    });
   }
 
   /**
@@ -1901,6 +1965,7 @@ export class HandlerTxBuilder<
             });
           }
         : undefined,
+      earlyReturn: state.earlyReturnFn,
       retrieveSuccess: state.transformRetrieveFn,
       mutate: state.mutateFn
         ? (ctx) => {
