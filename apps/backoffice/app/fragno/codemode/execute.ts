@@ -7,6 +7,7 @@ import type { IFileSystem } from "@/files/interface";
 import { createBackofficeCodemodeProviders } from "@/fragno/runtime-tools/runtime-tools";
 import type {
   AnyBackofficeRuntimeTool,
+  BackofficeRuntimeToolCall,
   BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 
@@ -25,7 +26,9 @@ export type RunBackofficeCodemodeInput = {
   context?: BackofficeToolContext;
 };
 
-export type BackofficeCodemodeResult = ExecuteResult;
+export type BackofficeCodemodeExecuteResult = ExecuteResult & {
+  toolCalls: BackofficeRuntimeToolCall[];
+};
 
 export const runBackofficeCodemode = async ({
   code,
@@ -34,7 +37,7 @@ export const runBackofficeCodemode = async ({
   timeout,
   tools = [],
   context = { runtimes: {} },
-}: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeResult> => {
+}: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     timeout,
@@ -42,12 +45,14 @@ export const runBackofficeCodemode = async ({
   });
 
   const stateBackend = new FileSystemStateBackend(new BackofficeStateFileSystem(fs));
+  const toolCalls: BackofficeRuntimeToolCall[] = [];
   const providers = [
     resolveProvider(stateToolsFromBackend(stateBackend)),
-    ...createBackofficeCodemodeProviders({ tools, context }).map((provider) =>
+    ...createBackofficeCodemodeProviders({ tools, context, toolCalls }).map((provider) =>
       resolveProvider(provider),
     ),
   ];
 
-  return executor.execute(code, providers);
+  const result = await executor.execute(code, providers);
+  return { ...result, toolCalls };
 };

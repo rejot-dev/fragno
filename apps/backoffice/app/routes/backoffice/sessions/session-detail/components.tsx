@@ -54,6 +54,18 @@ const formatJson = (value: unknown) => {
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const getCodeArgument = (value: unknown) => {
+  if (!isRecord(value) || typeof value.code !== "string") {
+    return null;
+  }
+
+  const { code, ...rest } = value;
+  return { code, rest };
+};
+
 export function SessionHeader({
   backTo,
   harnessLabel,
@@ -604,18 +616,32 @@ function MessageCard({
   return null;
 }
 
+function ScrollablePre({ children }: { children: string }) {
+  return (
+    <pre className="max-h-72 max-w-full overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2 font-mono text-[11px] leading-relaxed whitespace-pre text-[var(--bo-fg)]">
+      {children}
+    </pre>
+  );
+}
+
 function ContentBlock({
   block,
   completedToolResult = null,
   liveTool = null,
+  scrollableText = false,
 }: {
   block: ContentBlock;
   completedToolResult?: ToolResultMessage | null;
   liveTool?: LiveToolExecution | null;
+  scrollableText?: boolean;
 }) {
   switch (block.type) {
     case "text":
-      return <p>{block.text}</p>;
+      return scrollableText ? (
+        <ScrollablePre>{block.text}</ScrollablePre>
+      ) : (
+        <p className="break-words whitespace-pre-wrap">{block.text}</p>
+      );
     case "thinking":
       return (
         <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
@@ -647,6 +673,26 @@ function ContentBlock({
   }
 }
 
+function ToolArgumentsBlock({ value }: { value: unknown }) {
+  const codeArgument = getCodeArgument(value);
+
+  if (!codeArgument) {
+    return <ScrollablePre>{formatJson(value)}</ScrollablePre>;
+  }
+
+  const restKeys = Object.keys(codeArgument.rest);
+
+  return (
+    <div className="space-y-2">
+      {restKeys.length > 0 ? <ScrollablePre>{formatJson(codeArgument.rest)}</ScrollablePre> : null}
+      {restKeys.length > 0 ? (
+        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Code</p>
+      ) : null}
+      <ScrollablePre>{codeArgument.code}</ScrollablePre>
+    </div>
+  );
+}
+
 function ToolCallBlock({
   argumentsValue,
   completedToolResult,
@@ -659,7 +705,7 @@ function ToolCallBlock({
   name: string;
 }) {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
+    <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Tool call · {name}
@@ -671,17 +717,17 @@ function ToolCallBlock({
           </span>
         ) : null}
       </div>
-      <pre className="mt-1 text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-        {formatJson(argumentsValue)}
-      </pre>
+      <div className="mt-1">
+        <ToolArgumentsBlock value={argumentsValue} />
+      </div>
       {liveTool && liveTool.partialResult !== null ? (
         <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
           <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Live result
           </p>
-          <pre className="mt-1 text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-            {formatJson(liveTool.partialResult)}
-          </pre>
+          <div className="mt-1">
+            <ScrollablePre>{formatJson(liveTool.partialResult)}</ScrollablePre>
+          </div>
         </div>
       ) : null}
       {completedToolResult ? (
@@ -694,9 +740,9 @@ function ToolCallBlock({
               <span className="text-[10px] tracking-[0.22em] text-red-500 uppercase">Error</span>
             ) : null}
           </div>
-          <div className="mt-1 space-y-2 text-[11px] text-[var(--bo-fg)]">
+          <div className="mt-1 min-w-0 space-y-2 text-[11px] text-[var(--bo-fg)]">
             {normalizeContent(completedToolResult.content).map((block, index) => (
-              <ContentBlock key={`${block.type}-result-${index}`} block={block} />
+              <ContentBlock key={`${block.type}-result-${index}`} block={block} scrollableText />
             ))}
           </div>
         </div>

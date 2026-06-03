@@ -1,5 +1,7 @@
 import { SYSTEM_FILE_CONTENT } from "@/files";
 
+import { STATE_SYSTEM_PROMPT, STATE_TYPES } from "../codemode/state-prompt";
+
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -89,20 +91,25 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "gemini", name: "gemini-3-pro-preview", label: "Gemini 3 Pro (Preview)" },
 ];
 
-export const PI_TOOL_IDS = ["bash", "runStateCode"] as const;
+export const PI_TOOL_IDS = ["bash", "execCodeMode"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
 const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}`;
+
+const STATE_HARNESS_PROMPT = STATE_SYSTEM_PROMPT.replace("{{types}}", STATE_TYPES);
 
 const CODEMODE_HARNESS_PROMPT = `${BASH_HARNESS_PROMPT}
 
 Codemode harness guidance:
 
-- Use runStateCode for coordinated filesystem work in the combined session filesystem.
-- Use state.* APIs from inside runStateCode for multi-file operations.
+- Use execCodeMode for coordinated filesystem work in the combined session filesystem.
+- Use state.* APIs from inside execCodeMode for multi-file operations.
 - Prefer camelCase domain tools when they are available in codemode contexts.
 - Do not assume import() or module loading is available inside dynamic Worker code.
-- Write codemode automation scripts as standalone async arrow functions, for example: async () => { return await state.readFile("/workspace/file.txt"); }`;
+- Write codemode automation scripts as standalone async arrow functions, for example: async () => { return await state.readFile("/workspace/file.txt"); }
+- Do not call non-existent aliases like state.listFiles, state.readDirectory, or state.list.
+
+${STATE_HARNESS_PROMPT}`;
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
@@ -115,9 +122,9 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
     id: "codemode",
     label: "Codemode",
-    description: "Built-in harness with runStateCode access to the combined session filesystem.",
+    description: "Built-in harness with execCodeMode access to the combined session filesystem.",
     systemPrompt: CODEMODE_HARNESS_PROMPT,
-    tools: ["runStateCode"],
+    tools: ["execCodeMode"],
   },
 ];
 
