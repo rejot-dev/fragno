@@ -116,6 +116,60 @@ describe("executeCodemodeAutomation", () => {
     ]);
   });
 
+  test("exposes event tools to codemode automations", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRecordingAutomationRuntime(calls);
+    const eventFixture: AutomationEvent = {
+      id: "event-codemode-emit-event",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-06-03T00:00:00.000Z",
+      payload: { plan: "basic" },
+    };
+
+    const result = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context: createAutomationContext(eventFixture, runtime),
+      script: `async () => {
+        const eventFixture = JSON.parse(await state.readFile("/context/event.json"));
+        return await event.emit({
+          eventType: "identity.bound",
+          source: eventFixture.source,
+          payload: eventFixture.payload,
+        });
+      }`,
+    });
+
+    expect(result).toMatchObject({
+      runtime: "codemode",
+      eventId: "event-codemode-emit-event",
+      exitCode: 0,
+      stderr: "",
+      result: {
+        accepted: true,
+        eventId: "emitted-1",
+        source: "telegram",
+        eventType: "identity.bound",
+      },
+      toolCalls: [
+        {
+          providerName: "event",
+          toolName: "emit",
+          toolId: "event.emit",
+          status: "success",
+        },
+      ],
+    });
+    expect(calls).toEqual([
+      [
+        "emitEvent",
+        { eventType: "identity.bound", source: "telegram", payload: { plan: "basic" } },
+      ],
+    ]);
+  });
+
   test("uses the same automation identity tool definition through bash and codemode", async () => {
     const calls: unknown[] = [];
     const runtime = createRecordingAutomationRuntime(calls);
@@ -264,8 +318,14 @@ const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime =
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");
   },
-  emitEvent: async () => {
-    throw new Error("emitEvent should not be called in this test.");
+  emitEvent: async (input) => {
+    calls.push(["emitEvent", input]);
+    return {
+      accepted: true,
+      eventId: "emitted-1",
+      source: input.source ?? "telegram",
+      eventType: input.eventType,
+    };
   },
 });
 

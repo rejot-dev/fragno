@@ -1,54 +1,12 @@
-import { createAutomationCommands } from "../automation/commands/bash-adapter";
-import { EVENT_COMMAND_SPEC_LIST } from "../automation/commands/registry";
-import type {
-  AutomationCommandContext,
-  EventCommandHandlers,
-  EventEmitArgs,
-} from "../automation/commands/types";
 import type { AutomationEvent } from "../automation/contracts";
-import type { BashCommandFactoryInput } from "./bash-host";
+import type { AutomationEmitEventResult, EventRuntime } from "../runtime-tools/families/event";
 
-export type AutomationEmitEventResult = {
-  accepted: boolean;
-  eventId: string;
-  orgId?: string;
-  source: string;
-  eventType: string;
-};
-
-export type EventBashRuntime = {
-  emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
-};
-
-export type RegisteredEventBashCommandContext = AutomationCommandContext & {
-  runtime: EventBashRuntime;
-};
+export type { AutomationEmitEventResult };
+export type EventBashRuntime = EventRuntime;
 
 export type CreateEventBashRuntimeOptions = {
   env?: CloudflareEnv;
   event: AutomationEvent;
-};
-
-const eventCommandHandlers: EventCommandHandlers<RegisteredEventBashCommandContext> = {
-  "event.emit": async (command, context) => {
-    return {
-      data: await context.runtime.emitEvent(command.args),
-    };
-  },
-};
-
-export const createEventBashCommands = (input: BashCommandFactoryInput) => {
-  const automationContext = input.context.automation;
-  if (!automationContext) {
-    return [];
-  }
-
-  return createAutomationCommands(
-    EVENT_COMMAND_SPEC_LIST,
-    eventCommandHandlers,
-    automationContext,
-    input.commandCallsResult,
-  );
 };
 
 const buildIngestResult = (event: AutomationEvent): AutomationEmitEventResult => ({

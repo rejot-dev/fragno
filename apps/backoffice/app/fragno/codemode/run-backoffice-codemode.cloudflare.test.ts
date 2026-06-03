@@ -9,6 +9,7 @@ import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 import { automationIdentityRuntimeTools } from "@/fragno/runtime-tools/families/automations";
+import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
 
 describe("runBackofficeCodemode", () => {
   test("runs dynamic worker code with state.* against a mounted filesystem", async () => {
@@ -96,6 +97,56 @@ describe("runBackofficeCodemode", () => {
         toolName: "bindActor",
         toolId: "automations.identity.bind-actor",
         inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
+        status: "success",
+      },
+    ]);
+  });
+
+  test("calls event tools through codemode providers", async () => {
+    const calls: unknown[] = [];
+    const eventRuntime: EventRuntime = {
+      emitEvent: async (input) => {
+        calls.push(["emitEvent", input]);
+        return {
+          accepted: true,
+          eventId: "event-2",
+          orgId: "org-1",
+          source: input.source ?? "telegram",
+          eventType: input.eventType,
+        };
+      },
+    };
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      tools: eventRuntimeTools,
+      context: { runtimes: { event: eventRuntime } },
+      code: `async () => {
+        return await event.emit({
+          eventType: "identity.bound",
+          source: "otp",
+          payload: { plan: "basic" },
+        });
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      accepted: true,
+      eventId: "event-2",
+      orgId: "org-1",
+      source: "otp",
+      eventType: "identity.bound",
+    });
+    expect(calls).toEqual([
+      ["emitEvent", { eventType: "identity.bound", source: "otp", payload: { plan: "basic" } }],
+    ]);
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "event",
+        toolName: "emit",
+        toolId: "event.emit",
         status: "success",
       },
     ]);

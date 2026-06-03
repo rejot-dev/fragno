@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { AutomationsRuntime } from "./families/automations";
 import { automationIdentityRuntimeTools } from "./families/automations";
+import { eventRuntimeTools, type EventRuntime } from "./families/event";
 import { createBackofficeBashCommands } from "./runtime-tools";
 import { defineBackofficeRuntimeTool } from "./runtime-tools";
 
@@ -63,6 +64,73 @@ describe("createBackofficeBashCommands", () => {
       "automations.identity.lookup-binding",
       "automations.identity.bind-actor",
     ]);
+  });
+
+  test("routes generated event bash commands through semantic runtime tools", async () => {
+    const calls: unknown[] = [];
+    const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
+    const eventRuntime: EventRuntime = {
+      emitEvent: async (input) => {
+        calls.push(["emitEvent", input]);
+        return {
+          accepted: true,
+          eventId: "event-2",
+          orgId: "org-1",
+          source: input.source ?? "telegram",
+          eventType: input.eventType,
+        };
+      },
+    };
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: eventRuntimeTools,
+        context: { runtimes: { event: eventRuntime } },
+        commandCallsResult,
+      }),
+    });
+
+    await expect(
+      bash.exec(
+        'event.emit --event-type identity.bound --source otp --payload-json \'{"plan":"basic"}\' --print eventId',
+      ),
+    ).resolves.toMatchObject({ stdout: "event-2\n", exitCode: 0 });
+
+    expect(calls).toEqual([
+      ["emitEvent", { eventType: "identity.bound", source: "otp", payload: { plan: "basic" } }],
+    ]);
+    expect(commandCallsResult).toEqual([{ command: "event.emit", output: "event-2", exitCode: 0 }]);
+  });
+
+  test("rejects invalid output options before executing a runtime tool", async () => {
+    const calls: unknown[] = [];
+    const bash = createTestBash([
+      defineBackofficeRuntimeTool({
+        id: "test.echo",
+        namespace: "test",
+        name: "echo",
+        description: "Echo a value.",
+        inputSchema: z.object({ value: z.string().min(1) }),
+        outputSchema: z.object({ value: z.string() }),
+        execute: async (input) => {
+          calls.push(input);
+          return input;
+        },
+        bash: {
+          command: "test.echo",
+          help: { summary: "Echo a value.", options: [] },
+          parse: () => ({ value: "ok" }),
+        },
+      }),
+    ]);
+
+    await expect(bash.exec("test.echo --format xml")).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      stderr: "Unsupported --format value 'xml'\n",
+    });
+    expect(calls).toEqual([]);
   });
 
   test("rejects invalid parsed input before executing a runtime tool", async () => {

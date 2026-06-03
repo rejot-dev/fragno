@@ -191,8 +191,9 @@ export const createBackofficeBashCommands = <TContext extends BackofficeToolCont
       }
 
       try {
-        const output = await executeBackofficeRuntimeTool(tool, bash.parse(args), context);
+        const input = bash.parse(args);
         const commandOutput = readOutputOptions(parsed);
+        const output = await executeBackofficeRuntimeTool(tool, input, context);
         const result = normalizeExecutionResult(
           bash.format ? bash.format(output, commandOutput) : { data: output },
         );
