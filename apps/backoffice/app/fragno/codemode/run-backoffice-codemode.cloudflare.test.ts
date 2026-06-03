@@ -10,6 +10,11 @@ import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 import { automationIdentityRuntimeTools } from "@/fragno/runtime-tools/families/automations";
 import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
+import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
+import {
+  telegramRuntimeTools,
+  type TelegramRuntime,
+} from "@/fragno/runtime-tools/families/telegram";
 
 describe("runBackofficeCodemode", () => {
   test("runs dynamic worker code with state.* against a mounted filesystem", async () => {
@@ -149,6 +154,115 @@ describe("runBackofficeCodemode", () => {
         toolId: "event.emit",
         status: "success",
       },
+    ]);
+  });
+
+  test("calls otp tools through codemode providers", async () => {
+    const calls: unknown[] = [];
+    const otpRuntime: OtpRuntime = {
+      createClaim: async (input) => {
+        calls.push(["createClaim", input]);
+        return {
+          url: `https://example.com/claim/${input.externalActorId}`,
+          externalId: input.externalActorId,
+          code: "123456",
+          type: "identity",
+        };
+      },
+    };
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      tools: otpRuntimeTools,
+      context: { runtimes: { otp: otpRuntime } },
+      code: `async () => {
+        return await otp.createIdentityClaim({
+          source: "telegram",
+          externalActorId: "chat-123",
+          ttlMinutes: 15,
+        });
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      url: "https://example.com/claim/chat-123",
+      externalId: "chat-123",
+      code: "123456",
+      type: "identity",
+    });
+    expect(calls).toEqual([
+      ["createClaim", { source: "telegram", externalActorId: "chat-123", ttlMinutes: 15 }],
+    ]);
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "otp",
+        toolName: "createIdentityClaim",
+        toolId: "otp.identity.create-claim",
+        status: "success",
+      },
+    ]);
+  });
+
+  test("calls telegram tools through codemode providers", async () => {
+    const calls: unknown[] = [];
+    const telegramRuntime: TelegramRuntime = {
+      getFile: async (input) => {
+        calls.push(["getFile", input]);
+        return { fileId: input.fileId, filePath: `voice/${input.fileId}.ogg`, fileSize: 4 };
+      },
+      downloadFile: async (input) => {
+        calls.push(["downloadFile", input]);
+        return new Response(new Uint8Array([0, 1, 2]), {
+          headers: { "content-type": "application/octet-stream" },
+        });
+      },
+      sendMessage: async (input) => {
+        calls.push(["sendMessage", input]);
+        return { ok: true, queued: true };
+      },
+      sendChatAction: async (input) => {
+        calls.push(["sendChatAction", input]);
+        return { ok: true };
+      },
+      editMessage: async (input) => {
+        calls.push(["editMessage", input]);
+        return { ok: true, queued: true };
+      },
+    };
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      tools: telegramRuntimeTools,
+      context: { runtimes: { telegram: telegramRuntime } },
+      code: `async () => {
+        const file = await telegram.getFile({ fileId: "file-1" });
+        const sent = await telegram.sendMessage({ chatId: "chat-1", text: "Hello" });
+        const downloaded = await telegram.downloadFile({ fileId: file.fileId });
+        return { file, sent, downloaded };
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      file: { fileId: "file-1", filePath: "voice/file-1.ogg", fileSize: 4 },
+      sent: { ok: true, queued: true },
+      downloaded: {
+        bytes: [0, 1, 2],
+        contentType: "application/octet-stream",
+      },
+    });
+    expect(calls).toEqual([
+      ["getFile", { fileId: "file-1" }],
+      ["sendMessage", { chatId: "chat-1", text: "Hello" }],
+      ["downloadFile", { fileId: "file-1" }],
+    ]);
+    expect(result.toolCalls).toMatchObject([
+      { providerName: "telegram", toolName: "getFile", toolId: "telegram.file.get" },
+      { providerName: "telegram", toolName: "sendMessage", toolId: "telegram.chat.send" },
+      { providerName: "telegram", toolName: "downloadFile", toolId: "telegram.file.download" },
     ]);
   });
 

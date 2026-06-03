@@ -615,8 +615,8 @@ Repeat per family:
 Suggested order:
 
 - [x] `event`
-- [ ] `otp`
-- [ ] `telegram`
+- [x] `otp`
+- [x] `telegram`
 - [ ] `resend`
 - [ ] `reson8`
 - [ ] `pi`
@@ -638,6 +638,18 @@ Progress:
 - `executeCodemodeAutomation(...)` now exposes event tools alongside automation identity tools.
 - Kept `event-bash-runtime.ts` focused on constructing the event runtime; bash command registration
   is generated in the bash host from `eventRuntimeTools`.
+- Migrated the `otp` family to `app/fragno/runtime-tools/families/otp.ts` and removed the old
+  bespoke `automation/commands/specs/otp.ts` source of truth.
+- `otp.identity.create-claim` now maps to codemode `otp.createIdentityClaim(...)` and generated bash
+  command registration from `otpRuntimeTools`.
+- Migrated the `telegram` family to `app/fragno/runtime-tools/families/telegram.ts`, including
+  codemode `telegram.getFile(...)`, `telegram.downloadFile(...)`, `telegram.sendMessage(...)`,
+  `telegram.sendChatAction(...)`, and `telegram.editMessage(...)`.
+- Preserved legacy bash behavior for `telegram.file.download` binary stdout and `--output` writes as
+  a bash-host compatibility command, while the semantic runtime operation is shared through
+  `telegramRuntimeTools`.
+- `executeCodemodeAutomation(...)` and Pi `execCodeMode` now expose OTP and Telegram tools when
+  those runtimes are present in the execution context.
 
 ### Slice 8: Remove old bash-runtime architecture
 

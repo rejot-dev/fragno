@@ -12,6 +12,19 @@ import { createTelegramApi } from "./telegram-api";
 import { parseTelegramUpdate } from "./telegram-utils";
 import type { TelegramFragmentConfig, TelegramHooksMap } from "./types";
 
+const isTelegramEntityParseError = (result: {
+  ok: false;
+  errorCode?: number;
+  description?: string;
+}) => result.errorCode === 400 && result.description?.includes("can't parse entities");
+
+const stripParseMode = (payload: Record<string, unknown>) => {
+  const plainPayload = { ...payload };
+  delete plainPayload["parseMode"];
+  delete plainPayload["parse_mode"];
+  return plainPayload;
+};
+
 export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>(
   "telegram-fragment",
 )
@@ -29,10 +42,18 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
     return {
       internalOutgoingMessage: defineHook(async function (payload) {
         const messageType = payload.action === "editMessageText" ? "edited_message" : "message";
-        const result =
+        let result =
           payload.action === "editMessageText"
             ? await api.editMessageText(payload.payload)
             : await api.sendMessage(payload.payload);
+
+        if (!result.ok && isTelegramEntityParseError(result)) {
+          const plainPayload = stripParseMode(payload.payload);
+          result =
+            payload.action === "editMessageText"
+              ? await api.editMessageText(plainPayload)
+              : await api.sendMessage(plainPayload);
+        }
 
         if (!result.ok) {
           throw new Error(result.description ?? "Telegram API error");
