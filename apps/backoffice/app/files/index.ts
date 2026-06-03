@@ -102,8 +102,6 @@ export {
   STARTER_AUTOMATION_CONTENT,
   STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
   STARTER_AUTOMATION_SCRIPT_PATHS,
-  STARTER_AUTOMATION_SIMULATOR_PATHS,
-  starterAutomationSimulatorReadme,
 } from "./content/automations";
 export { SYSTEM_FILE_CONTENT, SYSTEM_FILE_ROOT_DESCRIPTION } from "./content/system";
 export { normalizeMountedFileSystem } from "./mounted-file-system";

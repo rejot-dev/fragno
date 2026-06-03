@@ -1,19 +1,18 @@
-import type { AutomationIdentityClaimRecord, OtpRuntime } from "../runtime-tools/families/otp";
+import type { AutomationIdentityClaimRecord, OtpRuntime } from "./otp";
 
-export type { AutomationIdentityClaimRecord };
-export type OtpBashRuntime = OtpRuntime;
+export type { AutomationIdentityClaimRecord, OtpRuntime };
 
-export type RegisteredOtpBashCommandContext = {
-  runtime: OtpBashRuntime;
+export type RegisteredOtpCommandContext = {
+  runtime: OtpRuntime;
 };
 
-export const createOtpBashRuntime = ({
+export const createOtpRuntime = ({
   env,
   orgId,
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): OtpBashRuntime => ({
+}): OtpRuntime => ({
   createClaim: async ({ source, externalActorId, ttlMinutes }) => {
     const normalizedOrgId = orgId.trim();
     if (!normalizedOrgId) {

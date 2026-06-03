@@ -7,7 +7,7 @@ import { otpRuntimeTools } from "./otp";
 describe("otp runtime tools", () => {
   test("derive otp bash commands from runtime tools", () => {
     expect(OTP_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      otpRuntimeTools.map((tool) => tool.bash?.command),
+      otpRuntimeTools.map((tool) => tool.adapters?.bash?.command),
     );
   });
 
@@ -17,7 +17,7 @@ describe("otp runtime tools", () => {
     expect(createClaim.name).toBe("createIdentityClaim");
     expect(
       createClaim.inputSchema.parse(
-        createClaim.bash!.parse([
+        createClaim.adapters!.bash!.parse([
           "--source",
           "telegram",
           "--external-actor-id",

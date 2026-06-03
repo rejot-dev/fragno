@@ -16,11 +16,11 @@ import type { TelegramFragment } from "@/fragno/telegram";
 import {
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
-  throwOnHttpResponseError,
   throwOnRouteRuntimeError,
-} from "./runtime-errors";
+} from "../runtime-errors";
 
 export type {
+  TelegramRuntime,
   TelegramActionOutput,
   TelegramAutomationFileMetadata,
   TelegramEditMessageArgs,
@@ -31,10 +31,8 @@ export type {
   TelegramSendMessageArgs,
 };
 
-export type TelegramBashRuntime = TelegramRuntime;
-
-export type RegisteredTelegramBashCommandContext = {
-  runtime: TelegramBashRuntime;
+export type RegisteredTelegramCommandContext = {
+  runtime: TelegramRuntime;
 };
 
 const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram");
@@ -46,7 +44,7 @@ type CreateRouteBackedTelegramRuntimeOptions = {
 };
 
 export type TelegramRouteBackedCommands = Pick<
-  TelegramBashRuntime,
+  TelegramRuntime,
   "sendMessage" | "sendChatAction" | "editMessage"
 >;
 
@@ -61,15 +59,7 @@ const createTelegramRouteCaller = (
   });
 };
 
-export const throwOnTelegramDownloadError = async (response: Response): Promise<never> => {
-  return throwOnHttpResponseError(response, {
-    runtimeLabel: "Telegram fragment",
-    label: "telegram.file.download",
-    notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
-  });
-};
-
-export const createRouteBackedTelegramBashRuntime = (
+export const createRouteBackedTelegramRuntime = (
   options: CreateRouteBackedTelegramRuntimeOptions,
 ): TelegramRouteBackedCommands => {
   const baseUrl = options.baseUrl.trim();
@@ -168,15 +158,15 @@ export const createRouteBackedTelegramBashRuntime = (
   };
 };
 
-export const createTelegramBashRuntime = ({
+export const createTelegramRuntime = ({
   env,
   orgId,
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): TelegramBashRuntime => {
+}): TelegramRuntime => {
   const telegramDo = env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
-  const routeBacked = createRouteBackedTelegramBashRuntime({
+  const routeBacked = createRouteBackedTelegramRuntime({
     baseUrl: "https://telegram.do",
     fetch: async (outboundRequest) => telegramDo.fetch(outboundRequest),
   });
@@ -188,9 +178,9 @@ export const createTelegramBashRuntime = ({
   };
 };
 
-export const createUnavailableTelegramBashRuntime = (
+export const createUnavailableTelegramRuntime = (
   message = TELEGRAM_NOT_CONFIGURED,
-): TelegramBashRuntime => ({
+): TelegramRuntime => ({
   getFile: async () => {
     throw new Error(message);
   },

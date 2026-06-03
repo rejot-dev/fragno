@@ -17,31 +17,27 @@ export type BackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
 };
 
-export type RunBackofficeCodemodeInput<
-  TContext extends BackofficeToolContext = BackofficeToolContext,
-> = {
+export type RunBackofficeCodemodeInput = {
   code: string;
   fs: IFileSystem;
   env: BackofficeCodemodeEnv;
   timeout?: number;
-  tools?: readonly AnyBackofficeRuntimeTool<TContext>[];
-  context?: TContext;
+  tools?: readonly AnyBackofficeRuntimeTool[];
+  context?: BackofficeToolContext;
 };
 
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   toolCalls: BackofficeRuntimeToolCall[];
 };
 
-export const runBackofficeCodemode = async <
-  TContext extends BackofficeToolContext = BackofficeToolContext,
->({
+export const runBackofficeCodemode = async ({
   code,
   fs,
   env,
   timeout,
   tools = [],
-  context = { runtimes: {} } as TContext,
-}: RunBackofficeCodemodeInput<TContext>): Promise<BackofficeCodemodeExecuteResult> => {
+  context = { runtimes: {} },
+}: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     timeout,

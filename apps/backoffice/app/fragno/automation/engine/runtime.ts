@@ -10,25 +10,25 @@ import {
   type Reson8BashRuntime,
 } from "@/fragno/bash-runtime/reson8-bash-runtime";
 import {
-  createTelegramBashRuntime,
-  createUnavailableTelegramBashRuntime,
-  type TelegramBashRuntime,
-} from "@/fragno/bash-runtime/telegram-bash-runtime";
+  createTelegramRuntime,
+  createUnavailableTelegramRuntime,
+  type TelegramRuntime,
+} from "@/fragno/runtime-tools/families/telegram-runtime";
 
-import {
-  createEventBashRuntime,
-  type AutomationEmitEventResult,
-  type EventBashRuntime,
-} from "../../bash-runtime/event-bash-runtime";
-import {
-  createOtpBashRuntime,
-  type AutomationIdentityClaimRecord,
-  type OtpBashRuntime,
-} from "../../bash-runtime/otp-bash-runtime";
 import type {
   AutomationIdentityBindingRecord,
   AutomationsRuntime,
 } from "../../runtime-tools/families/automations";
+import {
+  createEventRuntime,
+  type AutomationEmitEventResult,
+  type EventRuntime,
+} from "../../runtime-tools/families/event-runtime";
+import {
+  createOtpRuntime,
+  type AutomationIdentityClaimRecord,
+  type OtpRuntime,
+} from "../../runtime-tools/families/otp-runtime";
 import type { AutomationCommandContext, AutomationTriggerBinding } from "../commands/types";
 import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
 import {
@@ -43,7 +43,7 @@ export type AutomationPiBashContext = {
   defaultAgent?: string;
 };
 
-export type AutomationRuntime = AutomationsRuntime & OtpBashRuntime & EventBashRuntime;
+export type AutomationRuntime = AutomationsRuntime & OtpRuntime & EventRuntime;
 
 export type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
@@ -55,7 +55,7 @@ export type AutomationRuntimeHostContext = {
     runtime: AutomationsRuntime;
   };
   otp: {
-    runtime: OtpBashRuntime;
+    runtime: OtpRuntime;
   };
   pi: {
     runtime: PiBashRuntime;
@@ -67,7 +67,7 @@ export type AutomationRuntimeHostContext = {
     runtime: ResendBashRuntime;
   };
   telegram: {
-    runtime: TelegramBashRuntime;
+    runtime: TelegramRuntime;
   };
 };
 
@@ -91,7 +91,7 @@ export const createAutomationRuntime = ({
   return {
     ...createStorageBackedAutomationsRuntime({ hookContext }),
     ...(env && orgId
-      ? createOtpBashRuntime({
+      ? createOtpRuntime({
           env,
           orgId,
         })
@@ -104,7 +104,7 @@ export const createAutomationRuntime = ({
             throw new Error("otp.identity.create-claim requires an organisation id");
           },
         }),
-    ...createEventBashRuntime({
+    ...createEventRuntime({
       env,
       event: {
         ...event,
@@ -167,7 +167,7 @@ export const createAutomationExecutionContext = ({
         : { runtime: createUnavailableResendBashRuntime() },
     telegram:
       env && orgId
-        ? { runtime: createTelegramBashRuntime({ env, orgId }) }
-        : { runtime: createUnavailableTelegramBashRuntime() },
+        ? { runtime: createTelegramRuntime({ env, orgId }) }
+        : { runtime: createUnavailableTelegramRuntime() },
   };
 };

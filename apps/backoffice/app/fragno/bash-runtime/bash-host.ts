@@ -1,4 +1,4 @@
-import { Bash, defineCommand } from "just-bash";
+import { Bash } from "just-bash";
 
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -16,32 +16,30 @@ import {
   createAutomationRunResult,
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
-import { automationsRuntimeTools } from "@/fragno/runtime-tools/families/automations";
 import type {
   AutomationsRuntime,
   ScriptRunnerRuntime,
 } from "@/fragno/runtime-tools/families/automations";
-import { eventRuntimeTools } from "@/fragno/runtime-tools/families/event";
-import { otpRuntimeTools } from "@/fragno/runtime-tools/families/otp";
 import {
-  parseTelegramFileDownloadBashArgs,
-  telegramDownloadRuntimeTool,
-  telegramGenericBashRuntimeTools,
-} from "@/fragno/runtime-tools/families/telegram";
-import { createBackofficeBashCommands } from "@/fragno/runtime-tools/runtime-tools";
+  createBackofficeBashCommands,
+  getAvailableRuntimeTools,
+  type BackofficeToolContext,
+} from "@/fragno/runtime-tools/runtime-tools";
+import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import {
-  buildCommandHelp,
-  ensureTrailingNewline,
-  hasHelpOption,
-  parseCliTokens,
-} from "../automation/commands/cli";
 import type {
   AutomationCommandContext,
   BashAutomationCommandResult,
 } from "../automation/commands/types";
-import { createEventBashRuntime, type EventBashRuntime } from "./event-bash-runtime";
-import { createOtpBashRuntime, type RegisteredOtpBashCommandContext } from "./otp-bash-runtime";
+import { createEventRuntime, type EventRuntime } from "../runtime-tools/families/event-runtime";
+import {
+  createOtpRuntime,
+  type RegisteredOtpCommandContext,
+} from "../runtime-tools/families/otp-runtime";
+import {
+  createTelegramRuntime,
+  type RegisteredTelegramCommandContext,
+} from "../runtime-tools/families/telegram-runtime";
 import {
   createPiBashCommands,
   createPiRouteBashRuntime,
@@ -57,11 +55,6 @@ import {
   createReson8RouteBashRuntime,
   type RegisteredReson8BashCommandContext,
 } from "./reson8-bash-runtime";
-import {
-  createTelegramBashRuntime,
-  throwOnTelegramDownloadError,
-  type RegisteredTelegramBashCommandContext,
-} from "./telegram-bash-runtime";
 
 // ---------------------------------------------------------------------------
 // Low-level bash host
@@ -73,17 +66,17 @@ export type RegisteredAutomationsBashCommandContext = {
 };
 
 export type RegisteredEventBashCommandContext = AutomationCommandContext & {
-  runtime: EventBashRuntime;
+  runtime: EventRuntime;
 };
 
 export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
-  otp: RegisteredOtpBashCommandContext | null;
+  otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiBashCommandContext | null;
   reson8: RegisteredReson8BashCommandContext | null;
   resend: RegisteredResendBashCommandContext | null;
-  telegram: RegisteredTelegramBashCommandContext | null;
+  telegram: RegisteredTelegramCommandContext | null;
 };
 
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
@@ -129,213 +122,54 @@ export type BashCommandFactoryInput = {
   context: BashHostContext;
 };
 
-const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
-  const automationsContext = input.context.automations;
-  if (!automationsContext) {
-    return [];
-  }
+const createBashToolContext = (context: BashHostContext): BackofficeToolContext => ({
+  runtimes: {
+    automations: context.automations?.runtime,
+    event: context.automation?.runtime,
+    otp: context.otp?.runtime,
+    telegram: context.telegram?.runtime,
+  },
+  scriptRunner: context.automations?.scriptRunner,
+});
+
+const createRuntimeFamilyBashCommands = (input: BashCommandFactoryInput) => {
+  const context = createBashToolContext(input.context);
+  const tools = getAvailableRuntimeTools({ families: bashRuntimeToolFamilies, context });
 
   return createBackofficeBashCommands({
-    tools: automationsRuntimeTools,
-    context: {
-      runtimes: {
-        automations: automationsContext.runtime,
-      },
-      scriptRunner: automationsContext.scriptRunner,
-    },
+    tools,
+    context,
     commandCallsResult: input.commandCallsResult,
   });
 };
 
-const createOtpBashCommands = (input: BashCommandFactoryInput) => {
-  const otpContext = input.context.otp;
-  if (!otpContext) {
-    return [];
-  }
-
-  return createBackofficeBashCommands({
-    tools: otpRuntimeTools,
-    context: {
-      runtimes: {
-        otp: otpContext.runtime,
-      },
-    },
-    commandCallsResult: input.commandCallsResult,
-  });
-};
-
-const createEventBashCommands = (input: BashCommandFactoryInput) => {
-  const automationContext = input.context.automation;
-  if (!automationContext) {
-    return [];
-  }
-
-  return createBackofficeBashCommands({
-    tools: eventRuntimeTools,
-    context: {
-      runtimes: {
-        event: automationContext.runtime,
-      },
-    },
-    commandCallsResult: input.commandCallsResult,
-  });
-};
-
-const bytesToBinaryString = (bytes: Uint8Array) => {
-  if (bytes.byteLength === 0) {
-    return "";
-  }
-
-  const chunkSize = 0x8000;
-  let result = "";
-  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
-    result += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return result;
-};
-
-const createTelegramDownloadCommand = (
-  telegramContext: RegisteredTelegramBashCommandContext,
-  commandCallsResult: BashAutomationCommandResult[],
-) => {
-  const bash = telegramDownloadRuntimeTool.bash!;
-
-  return defineCommand(bash.command, async (args, ctx) => {
-    const parsed = parseCliTokens(args);
-
-    if (hasHelpOption(parsed)) {
-      const helpText = buildCommandHelp({
-        name: bash.command,
-        help: bash.help,
-        parse: (rawArgs) => ({
-          name: bash.command,
-          args: bash.parse(rawArgs),
-          output: { format: "text" },
-          rawArgs,
-        }),
-      });
-      commandCallsResult.push({
-        command: bash.command,
-        output: helpText.replace(/\n$/, ""),
-        exitCode: 0,
-      });
-      return { stdout: helpText, stderr: "", exitCode: 0 };
-    }
-
-    try {
-      const { fileId, outputPath } = parseTelegramFileDownloadBashArgs(args);
-      const response = await telegramContext.runtime.downloadFile({ fileId });
-      if (!response.ok) {
-        await throwOnTelegramDownloadError(response);
-      }
-
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (outputPath) {
-        const resolvedPath = ctx.fs.resolvePath(ctx.cwd, outputPath);
-        await ctx.fs.writeFile(resolvedPath, bytes);
-
-        const message = `Downloaded ${bytes.byteLength} bytes to ${resolvedPath}\n`;
-        commandCallsResult.push({
-          command: bash.command,
-          output: message.replace(/\n$/, ""),
-          exitCode: 0,
-        });
-        return { stdout: message, stderr: "", exitCode: 0 };
-      }
-
-      commandCallsResult.push({ command: bash.command, output: "<binary>", exitCode: 0 });
-      return {
-        stdout: bytesToBinaryString(bytes),
-        stderr: "",
-        exitCode: 0,
-        stdoutEncoding: "binary" as const,
-      };
-    } catch (error) {
-      commandCallsResult.push({ command: bash.command, output: "", exitCode: 1 });
-      return {
-        stdout: "",
-        stderr: ensureTrailingNewline(error instanceof Error ? error.message : String(error)),
-        exitCode: 1,
-      };
-    }
-  });
-};
-
-const createTelegramBashCommands = (input: BashCommandFactoryInput) => {
-  const telegramContext = input.context.telegram;
-  if (!telegramContext) {
-    return [];
-  }
-
-  return [
-    ...createBackofficeBashCommands({
-      tools: telegramGenericBashRuntimeTools,
-      context: {
-        runtimes: {
-          telegram: telegramContext.runtime,
-        },
-      },
-      commandCallsResult: input.commandCallsResult,
-    }),
-    createTelegramDownloadCommand(telegramContext, input.commandCallsResult),
-  ];
-};
-
-type BashHostModuleId = keyof BashHostContext;
-type BashHostCustomCommand = ReturnType<typeof createAutomationsBashCommands>[number];
+type BashHostCustomCommand = ReturnType<typeof createRuntimeFamilyBashCommands>[number];
 type BashHostModule = {
-  id: BashHostModuleId;
-  selectContext: (context: BashHostContext) => BashHostContext[BashHostModuleId];
+  id: string;
   createCommands: (input: BashCommandFactoryInput) => BashHostCustomCommand[];
 };
 
 const BASH_HOST_MODULES: BashHostModule[] = [
   {
-    id: "automations",
-    selectContext: (context) => context.automations,
-    createCommands: createAutomationsBashCommands,
-  },
-  {
-    id: "otp",
-    selectContext: (context) => context.otp,
-    createCommands: createOtpBashCommands,
-  },
-  {
-    id: "automation",
-    selectContext: (context) => context.automation,
-    createCommands: createEventBashCommands,
+    id: "runtime-tools",
+    createCommands: createRuntimeFamilyBashCommands,
   },
   {
     id: "pi",
-    selectContext: (context) => context.pi,
     createCommands: createPiBashCommands,
   },
   {
     id: "reson8",
-    selectContext: (context) => context.reson8,
     createCommands: createReson8BashCommands,
   },
   {
     id: "resend",
-    selectContext: (context) => context.resend,
     createCommands: createResendBashCommands,
-  },
-  {
-    id: "telegram",
-    selectContext: (context) => context.telegram,
-    createCommands: createTelegramBashCommands,
   },
 ];
 
-const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
-  return BASH_HOST_MODULES.flatMap((module) => {
-    if (!module.selectContext(input.context)) {
-      return [];
-    }
-
-    return module.createCommands(input);
-  });
-};
+const createRegisteredBashCommands = (input: BashCommandFactoryInput) =>
+  BASH_HOST_MODULES.flatMap((module) => module.createCommands(input));
 
 export const createRouteBackedInteractiveBashContext = ({
   env,
@@ -349,7 +183,7 @@ export const createRouteBackedInteractiveBashContext = ({
     runtime: createRouteBackedAutomationsRuntime({ env, orgId }),
   },
   otp: {
-    runtime: createOtpBashRuntime({ env, orgId }),
+    runtime: createOtpRuntime({ env, orgId }),
   },
   pi: {
     runtime: createPiRouteBashRuntime({ env, orgId }),
@@ -361,7 +195,7 @@ export const createRouteBackedInteractiveBashContext = ({
     runtime: createResendRouteBashRuntime({ env, orgId }),
   },
   telegram: {
-    runtime: createTelegramBashRuntime({ env, orgId }),
+    runtime: createTelegramRuntime({ env, orgId }),
   },
 });
 
@@ -536,7 +370,7 @@ const createInteractiveScriptRunContext = ({
     },
     idempotencyKey,
     bashEnv: {},
-    runtime: createEventBashRuntime({ env, event }),
+    runtime: createEventRuntime({ env, event }),
   },
   automations: parentContext.automations
     ? {

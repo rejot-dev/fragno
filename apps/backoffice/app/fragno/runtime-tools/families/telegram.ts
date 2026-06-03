@@ -8,9 +8,14 @@ import {
   readStringOption,
   type ParsedCliTokens,
 } from "@/fragno/automation/commands/cli";
+import {
+  createOrganisationNotConfiguredMessage,
+  throwOnHttpResponseError,
+} from "@/fragno/runtime-tools/runtime-errors";
 
 import {
   defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
   type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
@@ -232,6 +237,29 @@ const parseTelegramMessageEdit = (args: string[]): TelegramEditMessageArgs => {
 
 const dataFormat = <T>(result: T) => ({ data: result });
 
+const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram");
+
+const bytesToBinaryString = (bytes: Uint8Array) => {
+  if (bytes.byteLength === 0) {
+    return "";
+  }
+
+  const chunkSize = 0x8000;
+  let result = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+    result += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return result;
+};
+
+const throwOnTelegramDownloadError = async (response: Response): Promise<never> => {
+  return throwOnHttpResponseError(response, {
+    runtimeLabel: "Telegram fragment",
+    label: "telegram.file.download",
+    notConfiguredMessage: TELEGRAM_NOT_CONFIGURED,
+  });
+};
+
 const readTelegramDownload = async (response: Response): Promise<TelegramDownloadedFile> => {
   if (!response.ok) {
     throw new Error(`Telegram file download failed with status ${response.status}`);
@@ -252,28 +280,30 @@ export const telegramRuntimeTools = [
     inputSchema: fileGetInputSchema,
     outputSchema: fileMetadataOutputSchema,
     execute: async (input, context) => getTelegramRuntime(context.runtimes.telegram).getFile(input),
-    bash: {
-      command: "telegram.file.get",
-      help: {
-        summary:
-          "telegram.file.get resolves Telegram attachment metadata through the Telegram Durable Object.",
-        options: [
-          {
-            name: "file-id",
-            required: true,
-            valueRequired: true,
-            valueName: "file-id",
-            description: "Telegram file id to resolve",
-          },
-        ],
-        examples: [
-          'telegram.file.get --file-id "$file_id"',
-          'telegram.file.get --file-id "$file_id" --print filePath',
-        ],
+    adapters: {
+      bash: {
+        command: "telegram.file.get",
+        help: {
+          summary:
+            "telegram.file.get resolves Telegram attachment metadata through the Telegram Durable Object.",
+          options: [
+            {
+              name: "file-id",
+              required: true,
+              valueRequired: true,
+              valueName: "file-id",
+              description: "Telegram file id to resolve",
+            },
+          ],
+          examples: [
+            'telegram.file.get --file-id "$file_id"',
+            'telegram.file.get --file-id "$file_id" --print filePath',
+          ],
+        },
+        parse: parseTelegramFileGet,
+        outputOptions: defaultStructuredOutput,
+        format: dataFormat,
       },
-      parse: parseTelegramFileGet,
-      outputOptions: defaultStructuredOutput,
-      format: dataFormat,
     },
   }),
   defineTelegramRuntimeTool({
@@ -285,33 +315,56 @@ export const telegramRuntimeTools = [
     outputSchema: downloadedFileOutputSchema,
     execute: async (input, context) =>
       readTelegramDownload(await getTelegramRuntime(context.runtimes.telegram).downloadFile(input)),
-    bash: {
-      command: "telegram.file.download",
-      help: {
-        summary:
-          "telegram.file.download fetches a Telegram file. Use --output (-o) to write directly to a path, or pipe stdout for shell redirections.",
-        options: [
-          {
-            name: "file-id",
-            required: true,
-            valueRequired: true,
-            valueName: "file-id",
-            description: "Telegram file id to download",
-          },
-          {
-            name: "output",
-            valueRequired: true,
-            valueName: "path",
-            description: "Write file directly to this path instead of stdout (-o shorthand)",
-          },
-        ],
-        examples: [
-          'telegram.file.download --file-id "$file_id" -o /workspace/attachment.bin',
-          'telegram.file.download --file-id "$file_id" --output /workspace/photo.jpg',
-          'telegram.file.download --file-id "$file_id" > /workspace/attachment.bin',
-        ],
+    adapters: {
+      bash: {
+        command: "telegram.file.download",
+        help: {
+          summary:
+            "telegram.file.download fetches a Telegram file. Use --output (-o) to write directly to a path, or pipe stdout for shell redirections.",
+          options: [
+            {
+              name: "file-id",
+              required: true,
+              valueRequired: true,
+              valueName: "file-id",
+              description: "Telegram file id to download",
+            },
+            {
+              name: "output",
+              valueRequired: true,
+              valueName: "path",
+              description: "Write file directly to this path instead of stdout (-o shorthand)",
+            },
+          ],
+          examples: [
+            'telegram.file.download --file-id "$file_id" -o /workspace/attachment.bin',
+            'telegram.file.download --file-id "$file_id" --output /workspace/photo.jpg',
+            'telegram.file.download --file-id "$file_id" > /workspace/attachment.bin',
+          ],
+        },
+        parse: parseTelegramFileDownload,
+        execute: async ({ args, context, shell }) => {
+          const { fileId, outputPath } = parseTelegramFileDownloadBashArgs(args);
+          const response = await getTelegramRuntime(context.runtimes.telegram).downloadFile({
+            fileId,
+          });
+          if (!response.ok) {
+            await throwOnTelegramDownloadError(response);
+          }
+
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (outputPath) {
+            const resolvedPath = shell.fs.resolvePath(shell.cwd, outputPath);
+            await shell.fs.writeFile(resolvedPath, bytes);
+            return { stdout: `Downloaded ${bytes.byteLength} bytes to ${resolvedPath}\n` };
+          }
+
+          return {
+            stdout: bytesToBinaryString(bytes),
+            stdoutEncoding: "binary" as const,
+          };
+        },
       },
-      parse: parseTelegramFileDownload,
     },
   }),
   defineTelegramRuntimeTool({
@@ -323,50 +376,52 @@ export const telegramRuntimeTools = [
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context) =>
       getTelegramRuntime(context.runtimes.telegram).sendMessage(input),
-    bash: {
-      command: "telegram.chat.send",
-      help: {
-        summary: "telegram.chat.send queues a message to be sent to a Telegram chat.",
-        options: [
-          {
-            name: "chat-id",
-            required: true,
-            valueRequired: true,
-            valueName: "chat-id",
-            description: "Telegram chat id to send to",
-          },
-          {
-            name: "text",
-            required: true,
-            valueRequired: true,
-            valueName: "text",
-            description: "Message text",
-          },
-          {
-            name: "parse-mode",
-            valueRequired: true,
-            valueName: "mode",
-            description: "Parse mode (Markdown|MarkdownV2|HTML). Defaults to Markdown.",
-          },
-          {
-            name: "disable-web-page-preview",
-            description: "Disable web page previews for links",
-          },
-          {
-            name: "reply-to-message-id",
-            valueRequired: true,
-            valueName: "message-id",
-            description: "Reply to this Telegram message id",
-          },
-        ],
-        examples: [
-          'telegram.chat.send --chat-id "$chat_id" --text "Hello from bash"',
-          'telegram.chat.send --chat-id "$chat_id" --text "<b>Hello</b>" --parse-mode HTML',
-        ],
+    adapters: {
+      bash: {
+        command: "telegram.chat.send",
+        help: {
+          summary: "telegram.chat.send queues a message to be sent to a Telegram chat.",
+          options: [
+            {
+              name: "chat-id",
+              required: true,
+              valueRequired: true,
+              valueName: "chat-id",
+              description: "Telegram chat id to send to",
+            },
+            {
+              name: "text",
+              required: true,
+              valueRequired: true,
+              valueName: "text",
+              description: "Message text",
+            },
+            {
+              name: "parse-mode",
+              valueRequired: true,
+              valueName: "mode",
+              description: "Parse mode (Markdown|MarkdownV2|HTML). Defaults to Markdown.",
+            },
+            {
+              name: "disable-web-page-preview",
+              description: "Disable web page previews for links",
+            },
+            {
+              name: "reply-to-message-id",
+              valueRequired: true,
+              valueName: "message-id",
+              description: "Reply to this Telegram message id",
+            },
+          ],
+          examples: [
+            'telegram.chat.send --chat-id "$chat_id" --text "Hello from bash"',
+            'telegram.chat.send --chat-id "$chat_id" --text "<b>Hello</b>" --parse-mode HTML',
+          ],
+        },
+        parse: parseTelegramChatSend,
+        outputOptions: defaultStructuredOutput,
+        format: dataFormat,
       },
-      parse: parseTelegramChatSend,
-      outputOptions: defaultStructuredOutput,
-      format: dataFormat,
     },
   }),
   defineTelegramRuntimeTool({
@@ -378,33 +433,36 @@ export const telegramRuntimeTools = [
     outputSchema: actionOutputSchema,
     execute: async (input, context) =>
       getTelegramRuntime(context.runtimes.telegram).sendChatAction(input),
-    bash: {
-      command: "telegram.chat.actions",
-      help: {
-        summary: "telegram.chat.actions sends a chat action (only typing is supported currently).",
-        options: [
-          {
-            name: "chat-id",
-            required: true,
-            valueRequired: true,
-            valueName: "chat-id",
-            description: "Telegram chat id",
-          },
-          {
-            name: "action",
-            valueRequired: true,
-            valueName: "action",
-            description: "Action to send (typing only for now)",
-          },
-        ],
-        examples: [
-          'telegram.chat.actions --chat-id "$chat_id" --action typing',
-          'telegram.chat.actions --chat-id "$chat_id" --action typing --format json',
-        ],
+    adapters: {
+      bash: {
+        command: "telegram.chat.actions",
+        help: {
+          summary:
+            "telegram.chat.actions sends a chat action (only typing is supported currently).",
+          options: [
+            {
+              name: "chat-id",
+              required: true,
+              valueRequired: true,
+              valueName: "chat-id",
+              description: "Telegram chat id",
+            },
+            {
+              name: "action",
+              valueRequired: true,
+              valueName: "action",
+              description: "Action to send (typing only for now)",
+            },
+          ],
+          examples: [
+            'telegram.chat.actions --chat-id "$chat_id" --action typing',
+            'telegram.chat.actions --chat-id "$chat_id" --action typing --format json',
+          ],
+        },
+        parse: parseTelegramChatActions,
+        outputOptions: defaultStructuredOutput,
+        format: dataFormat,
       },
-      parse: parseTelegramChatActions,
-      outputOptions: defaultStructuredOutput,
-      format: dataFormat,
     },
   }),
   defineTelegramRuntimeTool({
@@ -416,56 +474,58 @@ export const telegramRuntimeTools = [
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context) =>
       getTelegramRuntime(context.runtimes.telegram).editMessage(input),
-    bash: {
-      command: "telegram.message.edit",
-      help: {
-        summary: "telegram.message.edit queues an edit of an existing Telegram message.",
-        options: [
-          {
-            name: "chat-id",
-            required: true,
-            valueRequired: true,
-            valueName: "chat-id",
-            description: "Telegram chat id",
-          },
-          {
-            name: "message-id",
-            required: true,
-            valueRequired: true,
-            valueName: "message-id",
-            description: "Telegram message id to edit",
-          },
-          {
-            name: "text",
-            required: true,
-            valueRequired: true,
-            valueName: "text",
-            description: "New message text",
-          },
-          {
-            name: "parse-mode",
-            valueRequired: true,
-            valueName: "mode",
-            description: "Parse mode (MarkdownV2|Markdown|HTML)",
-          },
-          {
-            name: "disable-web-page-preview",
-            description: "Disable web page previews for links",
-          },
-        ],
-        examples: [
-          'telegram.message.edit --chat-id "$chat_id" --message-id 123 --text "Updated text"',
-        ],
+    adapters: {
+      bash: {
+        command: "telegram.message.edit",
+        help: {
+          summary: "telegram.message.edit queues an edit of an existing Telegram message.",
+          options: [
+            {
+              name: "chat-id",
+              required: true,
+              valueRequired: true,
+              valueName: "chat-id",
+              description: "Telegram chat id",
+            },
+            {
+              name: "message-id",
+              required: true,
+              valueRequired: true,
+              valueName: "message-id",
+              description: "Telegram message id to edit",
+            },
+            {
+              name: "text",
+              required: true,
+              valueRequired: true,
+              valueName: "text",
+              description: "New message text",
+            },
+            {
+              name: "parse-mode",
+              valueRequired: true,
+              valueName: "mode",
+              description: "Parse mode (MarkdownV2|Markdown|HTML)",
+            },
+            {
+              name: "disable-web-page-preview",
+              description: "Disable web page previews for links",
+            },
+          ],
+          examples: [
+            'telegram.message.edit --chat-id "$chat_id" --message-id 123 --text "Updated text"',
+          ],
+        },
+        parse: parseTelegramMessageEdit,
+        outputOptions: defaultStructuredOutput,
+        format: dataFormat,
       },
-      parse: parseTelegramMessageEdit,
-      outputOptions: defaultStructuredOutput,
-      format: dataFormat,
     },
   }),
 ] as const;
 
-export const telegramDownloadRuntimeTool = telegramRuntimeTools[1];
-
-export const telegramGenericBashRuntimeTools = telegramRuntimeTools.filter(
-  (tool) => tool.id !== "telegram.file.download",
-);
+export const telegramToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "telegram",
+  tools: telegramRuntimeTools,
+  isAvailable: (context: TelegramToolContext) => !!context.runtimes.telegram,
+});

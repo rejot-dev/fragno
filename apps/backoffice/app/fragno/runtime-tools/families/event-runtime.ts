@@ -1,10 +1,9 @@
-import type { AutomationEvent } from "../automation/contracts";
-import type { AutomationEmitEventResult, EventRuntime } from "../runtime-tools/families/event";
+import type { AutomationEvent } from "../../automation/contracts";
+import type { AutomationEmitEventResult, EventRuntime } from "./event";
 
-export type { AutomationEmitEventResult };
-export type EventBashRuntime = EventRuntime;
+export type { AutomationEmitEventResult, EventRuntime };
 
-export type CreateEventBashRuntimeOptions = {
+export type CreateEventRuntimeOptions = {
   env?: CloudflareEnv;
   event: AutomationEvent;
 };
@@ -17,10 +16,7 @@ const buildIngestResult = (event: AutomationEvent): AutomationEmitEventResult =>
   eventType: event.eventType,
 });
 
-export const createEventBashRuntime = ({
-  env,
-  event,
-}: CreateEventBashRuntimeOptions): EventBashRuntime => ({
+export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): EventRuntime => ({
   emitEvent: async ({ eventType, source, externalActorId, actorType, subjectUserId, payload }) => {
     if (!env) {
       throw new Error("event.emit is not configured");

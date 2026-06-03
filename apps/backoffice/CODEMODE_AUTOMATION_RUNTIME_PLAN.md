@@ -466,7 +466,7 @@ Implemented:
 - Kept the old bash host working, but the automations-family bash commands now come from
   `createBackofficeBashCommands(...)` over `automationsRuntimeTools`.
 - Updated the legacy automation command registry to derive automations command specs from
-  `automationsRuntimeTools`, so scenario/test support follows the same source of truth.
+  `automationsRuntimeTools`, so remaining legacy bash tests followed the same source of truth.
 - Replaced the local duplicate unique-constraint matcher with `isUniqueConstraintError` from
   `@fragno-dev/db`.
 
@@ -549,7 +549,7 @@ Tests:
 
 - Catalog test rejects bindings without explicit `engine`.
 - Catalog test rejects codemode script paths that do not end in `.cm.js`.
-- Scenario test runs a `.cm.js` automation that reads `/context/event.json` and writes an output
+- Cloudflare test runs a `.cm.js` automation that reads `/context/event.json` and writes an output
   file.
 - Existing bash automation tests still pass after adding explicit `engine: "bash"` to fixtures.
 
@@ -579,8 +579,8 @@ Implement:
 
 Tests:
 
-- Scenario test runs a `.cm.js` automation that calls `automations.bindActor(...)`.
-- Scenario test verifies the same tool definition works through bash and codemode.
+- Cloudflare test runs a `.cm.js` automation that calls `automations.bindActor(...)`.
+- Cloudflare test verifies the same tool definition works through bash and codemode.
 - Failure test verifies failed codemode execution causes the durable hook to fail with a useful
   message.
 
@@ -631,6 +631,13 @@ Tests per family:
 
 Progress:
 
+- Added the shared runtime-tool family/adapter architecture before continuing with more families:
+  - Families now export `defineBackofficeRuntimeToolFamily(...)` registrations.
+  - Bash compatibility lives under `tool.adapters.bash` instead of as top-level tool shape.
+  - Bash adapters can provide custom `execute(...)` behavior for shell-specific commands that need
+    filesystem/cwd access or non-JSON stdout.
+  - `getAvailableRuntimeTools(...)` centralizes runtime-context-to-tool availability for bash,
+    codemode automations, and Pi `execCodeMode`.
 - Migrated the `event` family to `app/fragno/runtime-tools/families/event.ts`.
 - `event.emit` now has the same runtime-aware definition for codemode `event.emit(...)` and legacy
   bash `event.emit` command parsing/formatting.
@@ -645,11 +652,34 @@ Progress:
 - Migrated the `telegram` family to `app/fragno/runtime-tools/families/telegram.ts`, including
   codemode `telegram.getFile(...)`, `telegram.downloadFile(...)`, `telegram.sendMessage(...)`,
   `telegram.sendChatAction(...)`, and `telegram.editMessage(...)`.
-- Preserved legacy bash behavior for `telegram.file.download` binary stdout and `--output` writes as
-  a bash-host compatibility command, while the semantic runtime operation is shared through
-  `telegramRuntimeTools`.
+- Preserved legacy bash behavior for `telegram.file.download` binary stdout and `--output` writes
+  through a custom `adapters.bash.execute(...)` on the Telegram runtime tool, while the semantic
+  codemode operation is shared through `telegramRuntimeTools`.
 - `executeCodemodeAutomation(...)` and Pi `execCodeMode` now expose OTP and Telegram tools when
   those runtimes are present in the execution context.
+
+Guidance for the next families:
+
+- Add each family as a `defineBackofficeRuntimeToolFamily(...)` export from
+  `app/fragno/runtime-tools/families/<family>.ts`.
+- Put bash CLI parsing/formatting under `adapters.bash`; keep the top-level tool definition semantic
+  and runtime-neutral.
+- Use `adapters.bash.execute(...)` only for shell compatibility behavior that cannot be represented
+  as ordinary semantic input/output, such as binary stdout, output file writes, or cwd-sensitive
+  behavior.
+- Wire availability by adding the family to the central family lists in
+  `app/fragno/runtime-tools/tool-families.ts`, not by hand-building tool arrays in each caller.
+
+Cleanup completed during Slice 7:
+
+- Removed the automation scenario simulator and all scenario routes/tests/UI. Manual testing now
+  goes through `scripts.run` plus event JSON fixtures instead of a custom scenario DSL.
+- Removed starter workspace simulator/scenario files and README content.
+- Moved route/runtime error helpers out of `bash-runtime` into `runtime-tools/runtime-errors.ts`.
+- Moved ported runtime factories/types for `event`, `otp`, and `telegram` into
+  `runtime-tools/families/*-runtime.ts` and renamed them away from `*BashRuntime` /
+  `create*BashRuntime`.
+- Simplified the scripts detail page to source + trigger inspection only.
 
 ### Slice 8: Remove old bash-runtime architecture
 
@@ -659,14 +689,17 @@ Implement:
 
 - Replace `BASH_HOST_MODULES` with generated command registration from the runtime tool registry.
 - Remove obsolete command maps and `ParsedCommandByName` types.
-- Rename remaining route-backed APIs away from `BashRuntime` where they are no longer bash-specific.
-- Rename `BashAutomationRunResult` to `AutomationRunResult`.
-- Update starter automation files and docs to use explicit `engine` and `.cm.js` for codemode.
+- Rename remaining route-backed APIs away from `BashRuntime` where they are no longer bash-specific
+  (`resend`, `reson8`, `pi`) as those families are ported.
+- Move `resend`, `reson8`, and `pi` runtime factories/types out of `bash-runtime/` as part of their
+  family migrations.
+- Delete the old `automation/commands/*` command-spec/handler compatibility layer after all families
+  have `BackofficeRuntimeTool` definitions.
 
 Tests:
 
 - Full backoffice type-check.
-- All automation scenario tests.
+- All automation runtime and ingest tests.
 - Pi bash harness test.
 - Pi codemode harness test.
 - One end-to-end durable-object automation ingest test for bash and one for codemode.

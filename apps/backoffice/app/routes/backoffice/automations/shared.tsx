@@ -53,54 +53,6 @@ export type AutomationIdentityItem = {
   updatedAt?: string | Date | null;
 };
 
-export type AutomationScenarioStepItem = {
-  index: number;
-  id: string;
-  title?: string;
-  event: {
-    id: string;
-    orgId?: string;
-    source: string;
-    eventType: string;
-    occurredAt: string;
-    payload: Record<string, unknown>;
-    actor?: {
-      type?: string;
-      externalId?: string;
-      [key: string]: unknown;
-    } | null;
-    subject?: {
-      orgId?: string;
-      userId?: string;
-      [key: string]: unknown;
-    } | null;
-  };
-  matchedBindingIds: string[];
-  matchedScriptIds: string[];
-  matchedScriptKeys: string[];
-  matchedScriptPaths: string[];
-};
-
-export type AutomationScenarioItem = {
-  id: string;
-  path: string;
-  relativePath: string;
-  fileName: string;
-  name: string;
-  description?: string;
-  env: Record<string, string>;
-  initialState?: unknown;
-  commandMocks?: unknown;
-  stepCount: number;
-  relatedBindingIds: string[];
-  relatedScriptIds: string[];
-  relatedScriptKeys: string[];
-  relatedScriptPaths: string[];
-  sources: string[];
-  eventTypes: string[];
-  steps: AutomationScenarioStepItem[];
-};
-
 export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;

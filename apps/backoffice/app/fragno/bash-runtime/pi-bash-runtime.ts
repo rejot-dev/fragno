@@ -22,8 +22,8 @@ import type {
   AutomationCommandSpec,
   ParsedCommand,
 } from "../automation/commands/types";
+import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-tools/runtime-errors";
 import type { BashCommandFactoryInput } from "./bash-host";
-import { isSuccessStatus, throwOnRouteRuntimeError } from "./runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiFragment>;
 

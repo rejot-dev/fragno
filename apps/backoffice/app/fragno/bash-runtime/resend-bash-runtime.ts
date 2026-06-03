@@ -25,13 +25,13 @@ import type {
   AutomationCommandSpec,
   ParsedCommand,
 } from "../automation/commands/types";
-import type { BashCommandFactoryInput } from "./bash-host";
 import {
   NotConfiguredError,
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
-} from "./runtime-errors";
+} from "../runtime-tools/runtime-errors";
+import type { BashCommandFactoryInput } from "./bash-host";
 
 const RESEND_COMMAND_NAMES = [
   "resend.threads.get",

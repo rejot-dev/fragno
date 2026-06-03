@@ -6,13 +6,10 @@ import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files";
 import {
   AUTOMATION_WORKSPACE_ROOT,
-  listAutomationScenarios,
   listAutomationWorkspaceScripts,
   loadAutomationManifestSummary,
   readAutomationWorkspaceScript,
   type AutomationManifestSummary,
-  type AutomationScenarioCatalogEntry,
-  type AutomationSimulationResult,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
@@ -50,8 +47,6 @@ export type AutomationScriptRecord = {
 };
 
 export type AutomationTriggerBindingRecord = AutomationManifestSummary["bindings"][number];
-export type AutomationScenarioRecord = AutomationScenarioCatalogEntry;
-
 export type AutomationIdentityBindingRecord = {
   id?: AutomationIdLike;
   source?: string | null;
@@ -309,49 +304,6 @@ export async function loadAutomationScriptSource({
   }
 }
 
-export async function loadAutomationScenariosForScript({
-  context,
-  orgId,
-  scriptId,
-}: {
-  context: Readonly<RouterContextProvider>;
-  orgId: string;
-  scriptId: string;
-}): Promise<{
-  scenarios: AutomationScenarioRecord[];
-  scenariosError: string | null;
-}> {
-  const fileSystem = await createBackofficeAutomationFileSystem({ context, orgId });
-
-  let manifest: AutomationManifestSummary | null = null;
-  let manifestError: string | null = null;
-  try {
-    manifest = await loadAutomationManifestSummary(fileSystem);
-  } catch (error) {
-    manifestError = formatErrorMessage(error, "Failed to load automation manifest.");
-  }
-
-  try {
-    const selectedScriptId = fromAutomationScriptId(scriptId);
-    const scenarios = await listAutomationScenarios(fileSystem, {
-      catalog: manifest,
-      allowCatalogErrors: true,
-    });
-
-    return {
-      scenarios: scenarios.filter((scenario) =>
-        scenario.relatedScriptPaths.includes(selectedScriptId),
-      ),
-      scenariosError: manifestError,
-    };
-  } catch (error) {
-    return {
-      scenarios: [],
-      scenariosError: formatErrorMessage(error, "Failed to load automation scenarios."),
-    };
-  }
-}
-
 export async function fetchAutomationIdentityBindings(
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -386,52 +338,6 @@ export async function fetchAutomationIdentityBindings(
     return {
       identityBindings: [],
       identityBindingsError: formatErrorMessage(error, "Failed to load identity bindings."),
-    };
-  }
-}
-
-export async function runAutomationScenario(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-  path: string,
-): Promise<{
-  ok: boolean;
-  result: AutomationSimulationResult | null;
-  error: string | null;
-}> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, orgId);
-    const response = await callRoute("POST", "/scenarios/run", {
-      body: { path },
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        ok: true,
-        result: response.data as AutomationSimulationResult,
-        error: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return {
-        ok: false,
-        result: null,
-        error: response.error.message,
-      };
-    }
-
-    return {
-      ok: false,
-      result: null,
-      error: `Failed to run automation scenario (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      result: null,
-      error: formatErrorMessage(error, "Failed to run automation scenario."),
     };
   }
 }

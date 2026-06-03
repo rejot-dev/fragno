@@ -2,15 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost } from "./bash-host";
-import {
-  createRouteBackedTelegramBashRuntime,
-  type TelegramBashRuntime,
-} from "./telegram-bash-runtime";
+import { createBashHost } from "../../bash-runtime/bash-host";
+import { createRouteBackedTelegramRuntime, type TelegramRuntime } from "./telegram-runtime";
 
-const createTelegramRuntime = (
-  overrides: Partial<TelegramBashRuntime> = {},
-): TelegramBashRuntime => ({
+const createTelegramRuntime = (overrides: Partial<TelegramRuntime> = {}): TelegramRuntime => ({
   getFile: async ({ fileId }) => ({
     fileId,
     fileUniqueId: `unique-${fileId}`,
@@ -276,7 +271,7 @@ describe("telegram bash command registration", () => {
   });
 
   it("uses the shared route error formatting for telegram route-backed commands", async () => {
-    const runtime = createRouteBackedTelegramBashRuntime({
+    const runtime = createRouteBackedTelegramRuntime({
       baseUrl: "https://telegram.do",
       fetch: async () => Response.json({ message: "Chat not found" }, { status: 404 }),
     });

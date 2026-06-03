@@ -9,7 +9,7 @@ describe("telegram runtime tools", () => {
     expect(sendMessage.name).toBe("sendMessage");
     expect(
       sendMessage.inputSchema.parse(
-        sendMessage.bash!.parse([
+        sendMessage.adapters!.bash!.parse([
           "-c",
           "chat-123",
           "-t",
@@ -36,7 +36,7 @@ describe("telegram runtime tools", () => {
     expect(downloadFile.name).toBe("downloadFile");
     expect(
       downloadFile.inputSchema.parse(
-        downloadFile.bash!.parse(["--file-id", "file-1", "-o", "/tmp/file.bin"]),
+        downloadFile.adapters!.bash!.parse(["--file-id", "file-1", "-o", "/tmp/file.bin"]),
       ),
     ).toEqual({
       fileId: "file-1",
@@ -49,7 +49,7 @@ describe("telegram runtime tools", () => {
     )!;
 
     expect(() =>
-      sendChatAction.bash!.parse(["--chat-id", "chat-123", "--action", "upload_photo"]),
+      sendChatAction.adapters!.bash!.parse(["--chat-id", "chat-123", "--action", "upload_photo"]),
     ).toThrow("Unsupported Telegram chat action");
   });
 });

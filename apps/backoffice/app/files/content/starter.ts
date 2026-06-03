@@ -13,8 +13,7 @@ This workspace is the editable side of the combined Files system.
 3. Manage automation defaults in \`automations/bindings.json\` (with absolute \`/workspace/automations/...\` script paths) and scripts under \`automations/scripts/\`.
    - Use \`*.cm.js\` plus \`engine: "codemode"\` for codemode scripts.
    - Use \`*.sh\` plus \`engine: "bash"\` for bash scripts.
-4. Use \`automations/simulator/\` for scenario files that run the real automation workspace against mocked commands.
-5. When Upload is configured, persistent files can override these starter files at the same path.
+4. When Upload is configured, persistent files can override these starter files at the same path.
 
 Starter files should be seeded only when missing so later runtime bootstraps do not overwrite your work.
 `,
