@@ -37,6 +37,12 @@ import {
   automationIdentityRuntimeTools,
   type AutomationsRuntime,
 } from "../runtime-tools/families/automations";
+import { otpRuntimeTools } from "../runtime-tools/families/otp";
+import { telegramRuntimeTools } from "../runtime-tools/families/telegram";
+import type {
+  AnyBackofficeRuntimeTool,
+  BackofficeToolContext,
+} from "../runtime-tools/runtime-tools";
 import {
   PI_MODEL_CATALOG,
   PI_PROVIDER_TO_MODEL_PROVIDER,
@@ -79,6 +85,12 @@ export type PiSessionFileSystemContext = {
   orgId: string;
   env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
 };
+
+type PiCodemodeToolContext = BackofficeToolContext<{
+  automations?: AutomationsRuntime;
+  otp?: OtpBashRuntime;
+  telegram?: TelegramBashRuntime;
+}>;
 
 export type PiCodemodeRuntime = {
   env: BackofficeCodemodeEnv;
@@ -230,16 +242,25 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
+      const tools: AnyBackofficeRuntimeTool<PiCodemodeToolContext>[] = [
+        ...automationIdentityRuntimeTools,
+        ...(bashCommandContext?.otp ? otpRuntimeTools : []),
+        ...(bashCommandContext?.telegram ? telegramRuntimeTools : []),
+      ];
+      const context: PiCodemodeToolContext = {
+        runtimes: {
+          automations: bashCommandContext?.automations.runtime,
+          otp: bashCommandContext?.otp?.runtime,
+          telegram: bashCommandContext?.telegram?.runtime,
+        },
+      };
+
       const result = await codemode.execute({
         code,
         fs,
         env: codemode.env,
-        tools: automationIdentityRuntimeTools,
-        context: {
-          runtimes: {
-            automations: bashCommandContext?.automations.runtime,
-          },
-        },
+        tools,
+        context,
       });
 
       const text = formatExecCodeModeText(result);

@@ -1,11 +1,10 @@
 import { automationsRuntimeTools } from "@/fragno/runtime-tools/families/automations";
 import { eventRuntimeTools } from "@/fragno/runtime-tools/families/event";
+import { otpRuntimeTools } from "@/fragno/runtime-tools/families/otp";
 import type { AnyBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 
 import { parseCliTokens, readOutputOptions } from "./cli";
-import { otpCommandSpecs } from "./specs/otp";
 import {
-  OTP_COMMANDS,
   type AutomationCommandSpecs,
   type AutomationsCommandName,
   type EventCommandName,
@@ -31,9 +30,6 @@ const toCommandSpec = (tool: AnyBackofficeRuntimeTool) => {
   };
 };
 
-const OTP_COMMAND_SPECS: AutomationCommandSpecs<ParsedCommandByName, OtpCommandName> =
-  otpCommandSpecs;
-
 export const AUTOMATIONS_COMMAND_SPEC_LIST = automationsRuntimeTools.map(
   toCommandSpec,
 ) as readonly AutomationCommandSpecs<
@@ -41,8 +37,8 @@ export const AUTOMATIONS_COMMAND_SPEC_LIST = automationsRuntimeTools.map(
   AutomationsCommandName
 >[AutomationsCommandName][];
 
-export const OTP_COMMAND_SPEC_LIST = OTP_COMMANDS.map(
-  (name) => OTP_COMMAND_SPECS[name],
+export const OTP_COMMAND_SPEC_LIST = otpRuntimeTools.map(
+  toCommandSpec,
 ) as readonly AutomationCommandSpecs<ParsedCommandByName, OtpCommandName>[OtpCommandName][];
 
 export const EVENT_COMMAND_SPEC_LIST = eventRuntimeTools.map(

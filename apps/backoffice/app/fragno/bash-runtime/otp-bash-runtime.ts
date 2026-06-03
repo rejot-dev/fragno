@@ -1,44 +1,10 @@
-import { createAutomationCommands } from "../automation/commands/bash-adapter";
-import { OTP_COMMAND_SPEC_LIST } from "../automation/commands/registry";
-import type { IdentityCreateClaimArgs, OtpCommandHandlers } from "../automation/commands/types";
-import type { BashCommandFactoryInput } from "./bash-host";
+import type { AutomationIdentityClaimRecord, OtpRuntime } from "../runtime-tools/families/otp";
 
-export type AutomationIdentityClaimRecord = {
-  url: string;
-  externalId: string;
-  code: string;
-  type?: string;
-  expiresAt?: string;
-};
-
-export type OtpBashRuntime = {
-  createClaim: (input: IdentityCreateClaimArgs) => Promise<AutomationIdentityClaimRecord>;
-};
+export type { AutomationIdentityClaimRecord };
+export type OtpBashRuntime = OtpRuntime;
 
 export type RegisteredOtpBashCommandContext = {
   runtime: OtpBashRuntime;
-};
-
-const otpCommandHandlers: OtpCommandHandlers<RegisteredOtpBashCommandContext> = {
-  "otp.identity.create-claim": async (command, context) => {
-    return {
-      data: await context.runtime.createClaim(command.args),
-    };
-  },
-};
-
-export const createOtpBashCommands = (input: BashCommandFactoryInput) => {
-  const otpContext = input.context.otp;
-  if (!otpContext) {
-    return [];
-  }
-
-  return createAutomationCommands(
-    OTP_COMMAND_SPEC_LIST,
-    otpCommandHandlers,
-    otpContext,
-    input.commandCallsResult,
-  );
 };
 
 export const createOtpBashRuntime = ({

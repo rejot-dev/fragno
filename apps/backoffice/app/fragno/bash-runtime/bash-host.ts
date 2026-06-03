@@ -1,4 +1,4 @@
-import { Bash } from "just-bash";
+import { Bash, defineCommand } from "just-bash";
 
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -22,18 +22,26 @@ import type {
   ScriptRunnerRuntime,
 } from "@/fragno/runtime-tools/families/automations";
 import { eventRuntimeTools } from "@/fragno/runtime-tools/families/event";
+import { otpRuntimeTools } from "@/fragno/runtime-tools/families/otp";
+import {
+  parseTelegramFileDownloadBashArgs,
+  telegramDownloadRuntimeTool,
+  telegramGenericBashRuntimeTools,
+} from "@/fragno/runtime-tools/families/telegram";
 import { createBackofficeBashCommands } from "@/fragno/runtime-tools/runtime-tools";
 
+import {
+  buildCommandHelp,
+  ensureTrailingNewline,
+  hasHelpOption,
+  parseCliTokens,
+} from "../automation/commands/cli";
 import type {
   AutomationCommandContext,
   BashAutomationCommandResult,
 } from "../automation/commands/types";
 import { createEventBashRuntime, type EventBashRuntime } from "./event-bash-runtime";
-import {
-  createOtpBashCommands,
-  createOtpBashRuntime,
-  type RegisteredOtpBashCommandContext,
-} from "./otp-bash-runtime";
+import { createOtpBashRuntime, type RegisteredOtpBashCommandContext } from "./otp-bash-runtime";
 import {
   createPiBashCommands,
   createPiRouteBashRuntime,
@@ -50,8 +58,8 @@ import {
   type RegisteredReson8BashCommandContext,
 } from "./reson8-bash-runtime";
 import {
-  createTelegramBashCommands,
   createTelegramBashRuntime,
+  throwOnTelegramDownloadError,
   type RegisteredTelegramBashCommandContext,
 } from "./telegram-bash-runtime";
 
@@ -139,6 +147,23 @@ const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
   });
 };
 
+const createOtpBashCommands = (input: BashCommandFactoryInput) => {
+  const otpContext = input.context.otp;
+  if (!otpContext) {
+    return [];
+  }
+
+  return createBackofficeBashCommands({
+    tools: otpRuntimeTools,
+    context: {
+      runtimes: {
+        otp: otpContext.runtime,
+      },
+    },
+    commandCallsResult: input.commandCallsResult,
+  });
+};
+
 const createEventBashCommands = (input: BashCommandFactoryInput) => {
   const automationContext = input.context.automation;
   if (!automationContext) {
@@ -154,6 +179,106 @@ const createEventBashCommands = (input: BashCommandFactoryInput) => {
     },
     commandCallsResult: input.commandCallsResult,
   });
+};
+
+const bytesToBinaryString = (bytes: Uint8Array) => {
+  if (bytes.byteLength === 0) {
+    return "";
+  }
+
+  const chunkSize = 0x8000;
+  let result = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+    result += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return result;
+};
+
+const createTelegramDownloadCommand = (
+  telegramContext: RegisteredTelegramBashCommandContext,
+  commandCallsResult: BashAutomationCommandResult[],
+) => {
+  const bash = telegramDownloadRuntimeTool.bash!;
+
+  return defineCommand(bash.command, async (args, ctx) => {
+    const parsed = parseCliTokens(args);
+
+    if (hasHelpOption(parsed)) {
+      const helpText = buildCommandHelp({
+        name: bash.command,
+        help: bash.help,
+        parse: (rawArgs) => ({
+          name: bash.command,
+          args: bash.parse(rawArgs),
+          output: { format: "text" },
+          rawArgs,
+        }),
+      });
+      commandCallsResult.push({
+        command: bash.command,
+        output: helpText.replace(/\n$/, ""),
+        exitCode: 0,
+      });
+      return { stdout: helpText, stderr: "", exitCode: 0 };
+    }
+
+    try {
+      const { fileId, outputPath } = parseTelegramFileDownloadBashArgs(args);
+      const response = await telegramContext.runtime.downloadFile({ fileId });
+      if (!response.ok) {
+        await throwOnTelegramDownloadError(response);
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (outputPath) {
+        const resolvedPath = ctx.fs.resolvePath(ctx.cwd, outputPath);
+        await ctx.fs.writeFile(resolvedPath, bytes);
+
+        const message = `Downloaded ${bytes.byteLength} bytes to ${resolvedPath}\n`;
+        commandCallsResult.push({
+          command: bash.command,
+          output: message.replace(/\n$/, ""),
+          exitCode: 0,
+        });
+        return { stdout: message, stderr: "", exitCode: 0 };
+      }
+
+      commandCallsResult.push({ command: bash.command, output: "<binary>", exitCode: 0 });
+      return {
+        stdout: bytesToBinaryString(bytes),
+        stderr: "",
+        exitCode: 0,
+        stdoutEncoding: "binary" as const,
+      };
+    } catch (error) {
+      commandCallsResult.push({ command: bash.command, output: "", exitCode: 1 });
+      return {
+        stdout: "",
+        stderr: ensureTrailingNewline(error instanceof Error ? error.message : String(error)),
+        exitCode: 1,
+      };
+    }
+  });
+};
+
+const createTelegramBashCommands = (input: BashCommandFactoryInput) => {
+  const telegramContext = input.context.telegram;
+  if (!telegramContext) {
+    return [];
+  }
+
+  return [
+    ...createBackofficeBashCommands({
+      tools: telegramGenericBashRuntimeTools,
+      context: {
+        runtimes: {
+          telegram: telegramContext.runtime,
+        },
+      },
+      commandCallsResult: input.commandCallsResult,
+    }),
+    createTelegramDownloadCommand(telegramContext, input.commandCallsResult),
+  ];
 };
 
 type BashHostModuleId = keyof BashHostContext;

@@ -740,6 +740,76 @@ describe("telegram-fragment", async () => {
     expect(storedAfterEdit[0]?.editedAt).not.toBeNull();
   });
 
+  test("retries outgoing messages as plain text when Telegram rejects parse mode", async () => {
+    const text = "*   `telegram-pi-session.ensure.sh`";
+    const sentMessage = {
+      message_id: 62,
+      date: 1_710_000_100,
+      text,
+      chat: {
+        id: 123,
+        type: "group",
+        title: "Test Chat",
+      },
+      from: {
+        id: 999,
+        is_bot: true,
+        first_name: "TestBot",
+        username: "test_bot",
+      },
+    };
+
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: can't parse entities: Can't find end of the entity",
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: sentMessage }),
+      } as Response);
+
+    const sendResponse = await fragment.callRoute("POST", "/chats/:chatId/send", {
+      pathParams: { chatId: "123" },
+      body: { text, parseMode: "Markdown" },
+    });
+
+    expect(sendResponse.type).toBe("json");
+
+    await drainDurableHooks(fragment);
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    const firstRequest = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
+    const retryRequest = vi.mocked(globalThis.fetch).mock.calls[1]?.[1];
+    const firstRequestBody =
+      firstRequest && typeof firstRequest === "object" && "body" in firstRequest
+        ? JSON.parse(String(firstRequest.body))
+        : null;
+    const retryRequestBody =
+      retryRequest && typeof retryRequest === "object" && "body" in retryRequest
+        ? JSON.parse(String(retryRequest.body))
+        : null;
+
+    expect(firstRequestBody).toMatchObject({ text, parse_mode: "Markdown" });
+    expect(retryRequestBody).toMatchObject({ chat_id: "123", text });
+    expect(retryRequestBody).not.toHaveProperty("parse_mode");
+
+    const messages = await (async () => {
+      const uow = fragments.telegram.db
+        .createUnitOfWork("read")
+        .forSchema(telegramSchema)
+        .find("message", (b) => b.whereIndex("primary"));
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe(text);
+  });
+
   test("persists outgoing messages sent via command handler api", async () => {
     sendOnCommand = true;
 

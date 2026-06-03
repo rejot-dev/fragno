@@ -6,6 +6,11 @@ import {
   type AutomationsRuntime,
 } from "@/fragno/runtime-tools/families/automations";
 import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
+import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
+import {
+  telegramRuntimeTools,
+  type TelegramRuntime,
+} from "@/fragno/runtime-tools/families/telegram";
 import type {
   AnyBackofficeRuntimeTool,
   BackofficeToolContext,
@@ -17,6 +22,8 @@ import { createAutomationExecutionFileSystem } from "./execution-file-system";
 type AutomationCodemodeToolContext = BackofficeToolContext<{
   automations?: AutomationsRuntime;
   event?: EventRuntime;
+  otp?: OtpRuntime;
+  telegram?: TelegramRuntime;
 }>;
 
 const createAutomationToolRuntimeContext = (
@@ -25,6 +32,8 @@ const createAutomationToolRuntimeContext = (
   runtimes: {
     automations: context.automations?.runtime,
     event: context.automation.runtime,
+    otp: context.otp?.runtime,
+    telegram: context.telegram?.runtime,
   },
 });
 
@@ -45,14 +54,16 @@ export const executeCodemodeAutomation = async ({
   });
   const toolContext = createAutomationToolRuntimeContext(context);
   const tools: AnyBackofficeRuntimeTool<AutomationCodemodeToolContext>[] = [
-    ...automationIdentityRuntimeTools,
+    ...(context.automations ? automationIdentityRuntimeTools : []),
     ...eventRuntimeTools,
+    ...(context.otp ? otpRuntimeTools : []),
+    ...(context.telegram ? telegramRuntimeTools : []),
   ];
   const result = await runBackofficeCodemode({
     code: script,
     fs: executionFs,
     env,
-    tools: context.automations ? tools : eventRuntimeTools,
+    tools,
     context: toolContext,
   });
 

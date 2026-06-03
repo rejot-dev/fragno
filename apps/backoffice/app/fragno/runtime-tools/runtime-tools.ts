@@ -11,6 +11,7 @@ import {
   normalizeExecutionResult,
   parseCliTokens,
   readOutputOptions,
+  type ParsedCliTokens,
 } from "@/fragno/automation/commands/cli";
 import type {
   AutomationCommandExecutionResult,
@@ -53,6 +54,7 @@ export type BackofficeRuntimeTool<
     command: string;
     help: AutomationCommandHelp;
     parse: (args: string[]) => z.input<TInputSchema>;
+    outputOptions?(args: string[], parsed: ParsedCliTokens): AutomationCommandOutputOptions;
     format?(
       output: z.output<TOutputSchema>,
       options: AutomationCommandOutputOptions,
@@ -192,7 +194,9 @@ export const createBackofficeBashCommands = <TContext extends BackofficeToolCont
 
       try {
         const input = bash.parse(args);
-        const commandOutput = readOutputOptions(parsed);
+        const commandOutput = bash.outputOptions
+          ? bash.outputOptions(args, parsed)
+          : readOutputOptions(parsed);
         const output = await executeBackofficeRuntimeTool(tool, input, context);
         const result = normalizeExecutionResult(
           bash.format ? bash.format(output, commandOutput) : { data: output },
