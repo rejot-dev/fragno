@@ -21,14 +21,14 @@ import type {
   AutomationsRuntime,
   ScriptRunnerRuntime,
 } from "@/fragno/runtime-tools/families/automations";
+import { eventRuntimeTools } from "@/fragno/runtime-tools/families/event";
 import { createBackofficeBashCommands } from "@/fragno/runtime-tools/runtime-tools";
 
-import type { BashAutomationCommandResult } from "../automation/commands/types";
-import {
-  createEventBashCommands,
-  createEventBashRuntime,
-  type RegisteredEventBashCommandContext,
-} from "./event-bash-runtime";
+import type {
+  AutomationCommandContext,
+  BashAutomationCommandResult,
+} from "../automation/commands/types";
+import { createEventBashRuntime, type EventBashRuntime } from "./event-bash-runtime";
 import {
   createOtpBashCommands,
   createOtpBashRuntime,
@@ -62,6 +62,10 @@ import {
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationsRuntime;
   scriptRunner?: ScriptRunnerRuntime;
+};
+
+export type RegisteredEventBashCommandContext = AutomationCommandContext & {
+  runtime: EventBashRuntime;
 };
 
 export type BashHostContext = {
@@ -130,6 +134,23 @@ const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
         automations: automationsContext.runtime,
       },
       scriptRunner: automationsContext.scriptRunner,
+    },
+    commandCallsResult: input.commandCallsResult,
+  });
+};
+
+const createEventBashCommands = (input: BashCommandFactoryInput) => {
+  const automationContext = input.context.automation;
+  if (!automationContext) {
+    return [];
+  }
+
+  return createBackofficeBashCommands({
+    tools: eventRuntimeTools,
+    context: {
+      runtimes: {
+        event: automationContext.runtime,
+      },
     },
     commandCallsResult: input.commandCallsResult,
   });

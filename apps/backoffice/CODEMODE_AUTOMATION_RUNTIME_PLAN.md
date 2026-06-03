@@ -614,12 +614,12 @@ Repeat per family:
 
 Suggested order:
 
-1. `event`
-2. `otp`
-3. `telegram`
-4. `resend`
-5. `reson8`
-6. `pi`
+- [x] `event`
+- [ ] `otp`
+- [ ] `telegram`
+- [ ] `resend`
+- [ ] `reson8`
+- [ ] `pi`
 
 Tests per family:
 
@@ -628,6 +628,16 @@ Tests per family:
 - bash invocation,
 - route-backed runtime behavior or unavailable-runtime error behavior,
 - result formatting.
+
+Progress:
+
+- Migrated the `event` family to `app/fragno/runtime-tools/families/event.ts`.
+- `event.emit` now has the same runtime-aware definition for codemode `event.emit(...)` and legacy
+  bash `event.emit` command parsing/formatting.
+- Removed the old bespoke `automation/commands/specs/events.ts` source of truth.
+- `executeCodemodeAutomation(...)` now exposes event tools alongside automation identity tools.
+- Kept `event-bash-runtime.ts` focused on constructing the event runtime; bash command registration
+  is generated in the bash host from `eventRuntimeTools`.
 
 ### Slice 8: Remove old bash-runtime architecture
 
