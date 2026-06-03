@@ -16,11 +16,11 @@ import {
 import type { AutomationEvent } from "./contracts";
 import {
   createAutomationExecutionContext,
-  createAutomationBashRuntime,
+  createAutomationRuntime,
   type AutomationPiBashContext,
-} from "./engine/bash";
+} from "./engine/runtime";
 
-export type { AutomationPiBashContext } from "./engine/bash";
+export type { AutomationPiBashContext } from "./engine/runtime";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -91,7 +91,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           return;
         }
 
-        const runtime = createAutomationBashRuntime({
+        const runtime = createAutomationRuntime({
           hookContext: this,
           env: config.env,
           event: payload,

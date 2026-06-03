@@ -7,7 +7,7 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
-import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
+import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
 
@@ -85,7 +85,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsBashRuntime = {
+    const automationsRuntime: AutomationsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {
@@ -158,7 +158,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsBashRuntime = {
+    const automationsRuntime: AutomationsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return null;
@@ -191,7 +191,7 @@ describe("Pi execCodeMode tool", () => {
 const createExecCodeModeTool = async ({
   automationsRuntime,
 }: {
-  automationsRuntime?: AutomationsBashRuntime;
+  automationsRuntime?: AutomationsRuntime;
 }) => {
   const fs = createTestMasterFileSystem({});
   const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([

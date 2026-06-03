@@ -3,32 +3,16 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
 
 import type {
-  IdentityBindActorArgs,
-  IdentityLookupBindingArgs,
-} from "../automation/commands/types";
-import type { createAutomationFragment } from "../automation/index";
-import { automationFragmentSchema } from "../automation/schema";
-import { automationsRuntimeTools } from "../runtime-tools/families/automations";
-import type {
   AutomationIdentityBindingRecord,
-  AutomationsBashRuntime,
-  ScriptRunnerRuntime,
+  AutomationsRuntime,
 } from "../runtime-tools/families/automations";
-import { createBackofficeBashCommands } from "../runtime-tools/runtime-tools";
-import type { BashCommandFactoryInput } from "./bash-host";
+import type { IdentityBindActorArgs, IdentityLookupBindingArgs } from "./commands/types";
+import type { createAutomationFragment } from "./index";
+import { automationFragmentSchema } from "./schema";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
-export type {
-  AutomationIdentityBindingRecord,
-  AutomationsBashRuntime,
-  ScriptRunnerRuntime,
-} from "../runtime-tools/families/automations";
-
-export type RegisteredAutomationsBashCommandContext = {
-  runtime: AutomationsBashRuntime;
-  scriptRunner?: ScriptRunnerRuntime;
-};
+export type { AutomationIdentityBindingRecord, AutomationsRuntime };
 
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
 
@@ -44,24 +28,6 @@ const findIdentityBindingBySourceKey =
         eb.and(eb("source", "=", source), eb("key", "=", key)),
       ),
     );
-
-export const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
-  const automationsContext = input.context.automations;
-  if (!automationsContext) {
-    return [];
-  }
-
-  return createBackofficeBashCommands({
-    tools: automationsRuntimeTools,
-    context: {
-      runtimes: {
-        automations: automationsContext.runtime,
-      },
-      scriptRunner: automationsContext.scriptRunner,
-    },
-    commandCallsResult: input.commandCallsResult,
-  });
-};
 
 export const lookupAutomationIdentityBinding = async (
   context: AutomationIdentityStorageContext,
@@ -158,20 +124,20 @@ export const bindAutomationIdentityActor = async (
   throw new Error("Failed to bind automation identity actor after retrying a concurrent insert.");
 };
 
-export const createAutomationsBashRuntime = ({
+export const createAutomationsRuntime = ({
   lookupBinding,
   bindActor,
-}: AutomationsBashRuntime): AutomationsBashRuntime => ({
+}: AutomationsRuntime): AutomationsRuntime => ({
   lookupBinding,
   bindActor,
 });
 
-export const createStorageBackedAutomationsBashRuntime = ({
+export const createStorageBackedAutomationsRuntime = ({
   hookContext,
 }: {
   hookContext: AutomationIdentityStorageContext;
-}): AutomationsBashRuntime =>
-  createAutomationsBashRuntime({
+}): AutomationsRuntime =>
+  createAutomationsRuntime({
     lookupBinding: async (args) => lookupAutomationIdentityBinding(hookContext, args),
     bindActor: async (args) => bindAutomationIdentityActor(hookContext, args),
   });
@@ -191,13 +157,13 @@ const createAutomationsRouteCaller = (env: CloudflareEnv, orgId: string) => {
   });
 };
 
-export const createRouteBackedAutomationsBashRuntime = ({
+export const createRouteBackedAutomationsRuntime = ({
   env,
   orgId,
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): AutomationsBashRuntime => {
+}): AutomationsRuntime => {
   const normalizedOrgId = orgId.trim();
   if (!normalizedOrgId) {
     throw new Error("Automation identity backend requires an organisation id");
@@ -205,7 +171,7 @@ export const createRouteBackedAutomationsBashRuntime = ({
 
   const callRoute = createAutomationsRouteCaller(env, normalizedOrgId);
 
-  return createAutomationsBashRuntime({
+  return createAutomationsRuntime({
     lookupBinding: async ({ source, key }) => {
       const response = await callRoute("GET", "/identity-bindings/lookup", {
         query: { source, key },

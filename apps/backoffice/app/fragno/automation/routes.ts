@@ -2,13 +2,10 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import {
-  bindAutomationIdentityActor,
-  lookupAutomationIdentityBinding,
-} from "../bash-runtime/automations-bash-runtime";
 import { loadAutomationCatalogFromConfig, resolveAutomationFileSystem } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import { automationIdentityBindingRecordSchema } from "./identity";
+import { bindAutomationIdentityActor, lookupAutomationIdentityBinding } from "./identity-runtime";
 import {
   listAutomationScenarios,
   resolveAutomationScenarioPath,

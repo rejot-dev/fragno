@@ -16,10 +16,6 @@ import {
 } from "@/fragno/bash-runtime/telegram-bash-runtime";
 
 import {
-  createStorageBackedAutomationsBashRuntime,
-  type AutomationIdentityStorageContext,
-} from "../../bash-runtime/automations-bash-runtime";
-import {
   createEventBashRuntime,
   type AutomationEmitEventResult,
   type EventBashRuntime,
@@ -31,14 +27,14 @@ import {
 } from "../../bash-runtime/otp-bash-runtime";
 import type {
   AutomationIdentityBindingRecord,
-  AutomationsBashRuntime,
+  AutomationsRuntime,
 } from "../../runtime-tools/families/automations";
-import type {
-  AutomationCommandContext,
-  AutomationTriggerBinding,
-  BashAutomationCommandResult,
-} from "../commands/types";
+import type { AutomationCommandContext, AutomationTriggerBinding } from "../commands/types";
 import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
+import {
+  createStorageBackedAutomationsRuntime,
+  type AutomationIdentityStorageContext,
+} from "../identity-runtime";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -47,26 +43,16 @@ export type AutomationPiBashContext = {
   defaultAgent?: string;
 };
 
-export type BashAutomationRunResult = {
-  runtime: "bash";
-  eventId: string;
-  scriptId: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  commandCalls: BashAutomationCommandResult[];
+export type AutomationRuntime = AutomationsRuntime & OtpBashRuntime & EventBashRuntime;
+
+export type AutomationRuntimeCommandContext = AutomationCommandContext & {
+  runtime: AutomationRuntime;
 };
 
-export type AutomationBashRuntime = AutomationsBashRuntime & OtpBashRuntime & EventBashRuntime;
-
-export type AutomationBashCommandContext = AutomationCommandContext & {
-  runtime: AutomationBashRuntime;
-};
-
-export type AutomationBashHostContext = {
-  automation: AutomationBashCommandContext;
+export type AutomationRuntimeHostContext = {
+  automation: AutomationRuntimeCommandContext;
   automations: {
-    runtime: AutomationsBashRuntime;
+    runtime: AutomationsRuntime;
   };
   otp: {
     runtime: OtpBashRuntime;
@@ -91,7 +77,7 @@ export type {
   AutomationIdentityClaimRecord,
 };
 
-export const createAutomationBashRuntime = ({
+export const createAutomationRuntime = ({
   hookContext,
   env,
   event,
@@ -99,11 +85,11 @@ export const createAutomationBashRuntime = ({
   hookContext: AutomationIdentityStorageContext;
   env?: CloudflareEnv;
   event: AutomationEvent;
-}): AutomationBashRuntime => {
+}): AutomationRuntime => {
   const orgId = normalizeOrgId(event.orgId);
 
   return {
-    ...createStorageBackedAutomationsBashRuntime({ hookContext }),
+    ...createStorageBackedAutomationsRuntime({ hookContext }),
     ...(env && orgId
       ? createOtpBashRuntime({
           env,
@@ -139,10 +125,10 @@ export const createAutomationExecutionContext = ({
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
-  runtime: AutomationBashRuntime;
+  runtime: AutomationRuntime;
   env?: CloudflareEnv;
   pi: AutomationPiBashContext | null;
-}): AutomationBashHostContext => {
+}): AutomationRuntimeHostContext => {
   const normalizedEvent: AutomationEvent = {
     ...event,
     orgId: normalizeOrgId(event.orgId),

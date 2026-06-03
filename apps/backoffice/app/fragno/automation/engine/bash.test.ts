@@ -22,9 +22,9 @@ import type {
 import type { AutomationEvent } from "../contracts";
 import {
   createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
-  createAutomationBashRuntime,
-  type AutomationBashRuntime,
-} from "./bash";
+  createAutomationRuntime as createStorageBackedAutomationRuntime,
+  type AutomationRuntime,
+} from "./runtime";
 
 type TestContext = {
   invocation: string[];
@@ -60,7 +60,7 @@ const createTestCommandContext = (overrides: Partial<TestContext> = {}): TestCon
   ...overrides,
 });
 
-const runtime: AutomationBashRuntime = {
+const runtime: AutomationRuntime = {
   lookupBinding: async () => null,
   bindActor: async (input) => ({
     source: input.source,
@@ -83,8 +83,8 @@ const runtime: AutomationBashRuntime = {
 };
 
 const createAutomationRuntime = (
-  overrides: Partial<AutomationBashRuntime> = {},
-): AutomationBashRuntime => ({
+  overrides: Partial<AutomationRuntime> = {},
+): AutomationRuntime => ({
   ...runtime,
   ...overrides,
 });
@@ -105,7 +105,7 @@ const createTestAutomationExecutionContext = ({
   runtime: automationRuntime,
 }: {
   event: AutomationEvent;
-  runtime: AutomationBashRuntime;
+  runtime: AutomationRuntime;
 }) =>
   createRuntimeAutomationExecutionContext({
     event,
@@ -544,7 +544,7 @@ describe("bash command runner", () => {
       payload: {},
     };
 
-    const automationRuntime = createAutomationBashRuntime({
+    const automationRuntime = createStorageBackedAutomationRuntime({
       hookContext: {
         handlerTx: (() => {
           throw new Error("handlerTx should not be used in this test");
@@ -712,7 +712,9 @@ describe("bash command runner", () => {
                 exitCode: 0,
                 stdout: "hello from sub-script\n",
                 stderr: "",
+                logs: [],
                 commandCalls: [],
+                toolCalls: [],
               };
             },
           },
@@ -758,7 +760,9 @@ describe("bash command runner", () => {
               exitCode: 0,
               stdout: "echoed output\n",
               stderr: "",
+              logs: [],
               commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
+              toolCalls: [],
             }),
           },
         },
@@ -781,7 +785,9 @@ describe("bash command runner", () => {
       exitCode: 0,
       stdout: "echoed output\n",
       stderr: "",
+      logs: [],
       commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
+      toolCalls: [],
     });
   });
 
@@ -803,7 +809,9 @@ describe("bash command runner", () => {
               exitCode: 1,
               stdout: "partial output\n",
               stderr: "something went wrong\n",
+              logs: [],
               commandCalls: [],
+              toolCalls: [],
             }),
           },
         },
@@ -846,7 +854,7 @@ describe("bash command runner", () => {
       },
     };
 
-    const automationRuntime = createAutomationBashRuntime({
+    const automationRuntime = createStorageBackedAutomationRuntime({
       hookContext: {
         handlerTx: (() => {
           throw new Error("handlerTx should not be used in this test");
@@ -877,7 +885,7 @@ describe("bash command runner", () => {
   });
 
   it("mounts /dev/null so scripts can discard output", async () => {
-    const automationRuntime = createAutomationBashRuntime({
+    const automationRuntime = createStorageBackedAutomationRuntime({
       hookContext: {
         handlerTx: (() => {
           throw new Error("handlerTx should not be used in this test");
@@ -917,7 +925,7 @@ describe("bash command runner", () => {
   it("keeps the shared master filesystem mount list unchanged after execution", async () => {
     const masterFs = new MasterFileSystem({ mounts: [] });
 
-    const automationRuntime = createAutomationBashRuntime({
+    const automationRuntime = createStorageBackedAutomationRuntime({
       hookContext: {
         handlerTx: (() => {
           throw new Error("handlerTx should not be used in this test");
@@ -1129,7 +1137,7 @@ describe("bash command runner", () => {
       ),
     });
 
-    const automationRuntime = createAutomationBashRuntime({
+    const automationRuntime = createStorageBackedAutomationRuntime({
       hookContext: {
         handlerTx: (() => {
           throw new Error("handlerTx should not be used in this test");

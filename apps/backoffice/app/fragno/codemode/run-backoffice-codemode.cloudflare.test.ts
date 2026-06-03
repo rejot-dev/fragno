@@ -7,7 +7,7 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import type { AutomationsBashRuntime } from "@/fragno/runtime-tools/families/automations";
+import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 import { automationIdentityRuntimeTools } from "@/fragno/runtime-tools/families/automations";
 
 describe("runBackofficeCodemode", () => {
@@ -35,7 +35,7 @@ describe("runBackofficeCodemode", () => {
 
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsBashRuntime = {
+    const automationsRuntime: AutomationsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {
@@ -116,7 +116,7 @@ describe("runBackofficeCodemode", () => {
 
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsBashRuntime = {
+    const automationsRuntime: AutomationsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return null;

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { env } from "cloudflare:workers";
 
 import { createTestMasterFileSystem } from "@/fragno/automation/engine/test-master-file-system.test-utils";
-import type { AutomationsBashRuntime } from "@/fragno/runtime-tools/families/automations";
+import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 
 import { createBashHost, createScriptRunnerRuntime, type BashHostContext } from "./bash-host";
 
@@ -52,7 +52,7 @@ const createInteractiveContext = ({
 }: {
   fs: ReturnType<typeof createTestMasterFileSystem>;
 }): BashHostContext => {
-  const automationsRuntime: AutomationsBashRuntime = {
+  const automationsRuntime: AutomationsRuntime = {
     lookupBinding: async () => null,
     bindActor: async (input) => ({
       source: input.source,

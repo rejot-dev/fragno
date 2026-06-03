@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
+import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import { createBashHost } from "./bash-host";
 import {
   createPiRouteBashRuntime,
@@ -143,7 +143,7 @@ const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime 
   ...overrides,
 });
 
-const createAutomationsRuntime = (): AutomationsBashRuntime => ({
+const createAutomationsRuntime = (): AutomationsRuntime => ({
   lookupBinding: async ({ key }) => {
     if (key !== "actor-1") {
       return null;

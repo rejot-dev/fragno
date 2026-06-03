@@ -77,8 +77,6 @@ Rules for codemode scripts:
 - automations.identity.lookup-binding --source <source> --key <key>
   - Resolves the saved identity binding for a source/key.
   - Returns null if the binding is missing or not linked.
-  - Backed by the storage-backed runtime (createStorageBackedAutomationsBashRuntime) or a DO-backed
-    route runtime (createRouteBackedAutomationsBashRuntime) depending on runtime construction.
 
 - automations.identity.bind-actor --source <source> --key <key> --value <value> [--description ...]
   - Creates or updates a binding record.
