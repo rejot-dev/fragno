@@ -7,7 +7,7 @@ Add a second automation runtime for backoffice automations and Pi/agent sessions
 
 The target state is:
 
-- Pi agents have a `runStateCode` tool that runs JavaScript in a Cloudflare dynamic worker.
+- Pi agents have a `execCodeMode` tool that runs JavaScript in a Cloudflare dynamic worker.
 - Automations can run either bash scripts or codemode scripts.
 - Both runtimes use the same backoffice domain tool definitions.
 - Tool definitions are redesigned with fully breaking changes where useful.
@@ -34,7 +34,7 @@ Relevant files:
 - `workers/pi.do.ts`
   - Durable Object entrypoint for Pi sessions.
 - `/Users/wilco/dev/agents/examples/workspace-chat/src/server.ts`
-  - Reference implementation for `runStateCode` using `DynamicWorkerExecutor` and `stateTools`.
+  - Reference implementation for `execCodeMode` using `DynamicWorkerExecutor` and `stateTools`.
 
 ## Guiding decisions
 
@@ -293,7 +293,7 @@ It should:
 Update Pi tool IDs:
 
 ```ts
-export const PI_TOOL_IDS = ["bash", "runStateCode"] as const;
+export const PI_TOOL_IDS = ["bash", "execCodeMode"] as const;
 ```
 
 Pi should ship with **two default harnesses** instead of one mixed harness:
@@ -303,11 +303,11 @@ Pi should ship with **two default harnesses** instead of one mixed harness:
    - keeps the current shell-oriented guidance,
    - is useful for legacy automation scripts and true shell-style workflows.
 2. `codemode` harness
-   - exposes only `runStateCode`,
+   - exposes only `execCodeMode`,
    - gives strong guidance for `state.*` and camelCase domain tools,
    - is the preferred harness for new agents and automation authoring.
 
-Add a `runStateCode` Pi tool in `app/fragno/pi/pi.ts`.
+Add a `execCodeMode` Pi tool in `app/fragno/pi/pi.ts`.
 
 The tool should:
 
@@ -319,7 +319,7 @@ The tool should:
 
 Update the codemode harness system prompt to tell agents:
 
-- use `runStateCode` for coordinated filesystem work,
+- use `execCodeMode` for coordinated filesystem work,
 - use `state.*` for multi-file operations,
 - use camelCase domain providers for backoffice effects,
 - do not assume `import()` is available inside the dynamic worker code,
@@ -470,46 +470,46 @@ Implemented:
 - Replaced the local duplicate unique-constraint matcher with `isUniqueConstraintError` from
   `@fragno-dev/db`.
 
-### [x] Slice 3: Pi codemode harness with filesystem-only `runStateCode`
+### [x] Slice 3: Pi codemode harness with filesystem-only `execCodeMode`
 
 Goal: ship a separately selectable Pi codemode harness even before every domain tool is migrated.
 
 Implement:
 
-- Add `runStateCode` to `PI_TOOL_IDS`.
+- Add `execCodeMode` to `PI_TOOL_IDS`.
 - Split the default Pi harnesses into `bash` and `codemode` harnesses.
-- Add the `runStateCode` Pi tool with `state.*` support.
-- The codemode harness initially exposes `runStateCode`; the bash harness keeps `bash`.
+- Add the `execCodeMode` Pi tool with `state.*` support.
+- The codemode harness initially exposes `execCodeMode`; the bash harness keeps `bash`.
 
 Tests:
 
 - Pi registry test confirms two default harnesses exist and have non-overlapping tool sets.
-- Pi tool test runs `runStateCode` against a session filesystem and verifies file writes persist.
+- Pi tool test runs `execCodeMode` against a session filesystem and verifies file writes persist.
 - Prompt/config test verifies the codemode harness guidance mentions `state.*`, camelCase tools, and
   no `import()` assumption.
 
 Implemented:
 
-- Added `runStateCode` to `PI_TOOL_IDS` and registered it in the backoffice Pi builder.
+- Added `execCodeMode` to `PI_TOOL_IDS` and registered it in the backoffice Pi builder.
 - Split the built-in fallback harness configuration into separate `bash` and `codemode` harnesses.
-  The bash harness exposes only `bash`; the codemode harness exposes only `runStateCode`.
-- Added `runStateCodeParametersSchema` and a Pi tool factory that runs standalone async arrow
+  The bash harness exposes only `bash`; the codemode harness exposes only `execCodeMode`.
+- Added `execCodeModeParametersSchema` and a Pi tool factory that runs standalone async arrow
   functions through `runBackofficeCodemode(...)` against the same cached session filesystem used by
   bash.
 - Kept the codemode import lazy inside the tool execution path so Node-only Pi tests do not load the
   Cloudflare dynamic-worker modules.
 - Added codemode harness prompt guidance for `state.*`, camelCase domain tools, no `import()`
   assumption, and standalone async arrow functions.
-- Added a colocated Cloudflare test that executes `runStateCode`, writes through `state.*`, and
+- Added a colocated Cloudflare test that executes `execCodeMode`, writes through `state.*`, and
   verifies the write persists in the Pi session filesystem.
 
-### Slice 4: Pi codemode harness with one domain tool family
+### [x] Slice 4: Pi codemode harness with one domain tool family
 
 Goal: prove Pi agents can use codemode to call real backoffice domain tools.
 
 Implement:
 
-- Wire the Slice 2 runtime-aware tool family into Pi `runStateCode`.
+- Wire the Slice 2 runtime-aware tool family into Pi `execCodeMode`.
 - Ensure tool calls are recorded in structured details.
 - Add user-facing formatting for codemode result, logs, errors, and tool calls.
 
@@ -519,6 +519,17 @@ Tests:
 - Error-path test verifies zod validation errors surface clearly to the agent.
 - Tool-call metadata test verifies details include provider name, tool name, input summary, and
   result/error.
+
+Implemented:
+
+- `runBackofficeCodemode(...)` now records structured domain tool-call metadata while preserving the
+  underlying `@cloudflare/codemode` result shape.
+- Pi `execCodeMode` now exposes the migrated automation identity tools as camelCase codemode APIs:
+  `automations.lookupBinding(...)` and `automations.bindActor(...)`.
+- Pi `execCodeMode` returns readable text for results, logs, errors, and tool calls instead of
+  dropping domain-call context on failures.
+- Added Cloudflare tests for successful Pi domain-tool calls, zod validation errors, and structured
+  tool-call metadata.
 
 ### Slice 5: Codemode automation with no domain effects
 
@@ -617,8 +628,8 @@ Tests:
 
 ## Success criteria
 
-- A Pi session can use `runStateCode` to edit files through `state.*`.
-- A Pi session can use `runStateCode` to call backoffice domain tools.
+- A Pi session can use `execCodeMode` to edit files through `state.*`.
+- A Pi session can use `execCodeMode` to call backoffice domain tools.
 - An automation binding can run a codemode script in a dynamic worker.
 - Bash and codemode use the same runtime tool definitions.
 - The old bash-specific tool-definition model is removed or reduced to a generated compatibility

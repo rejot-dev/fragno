@@ -24,6 +24,16 @@ export type BackofficeToolContext = {
   scriptRunner?: unknown;
 };
 
+export type BackofficeRuntimeToolCall = {
+  providerName: string;
+  toolName: string;
+  toolId: string;
+  inputSummary: string;
+  status: "success" | "error";
+  resultSummary?: string;
+  error?: string;
+};
+
 export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
@@ -65,6 +75,20 @@ type CodemodeToolDescriptor = {
   execute: (input: unknown) => Promise<unknown>;
 };
 
+const summarizeToolValue = (value: unknown) => {
+  try {
+    const summary = JSON.stringify(value);
+    if (typeof summary === "string") {
+      return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
+    }
+  } catch {
+    // Fall through to String(...) for unserializable values.
+  }
+
+  const summary = String(value);
+  return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
+};
+
 const executeBackofficeRuntimeTool = async <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
@@ -80,9 +104,11 @@ const executeBackofficeRuntimeTool = async <
 export const createBackofficeCodemodeProviders = ({
   tools,
   context,
+  toolCalls,
 }: {
   tools: readonly AnyBackofficeRuntimeTool[];
   context: BackofficeToolContext;
+  toolCalls?: BackofficeRuntimeToolCall[];
 }): ToolProvider[] => {
   const grouped = new Map<string, Record<string, CodemodeToolDescriptor>>();
 
@@ -93,7 +119,27 @@ export const createBackofficeCodemodeProviders = ({
       description: tool.description,
       inputSchema: tool.inputSchema,
       outputSchema: tool.outputSchema,
-      execute: (input) => executeBackofficeRuntimeTool(tool, input, context),
+      execute: async (input) => {
+        const call: BackofficeRuntimeToolCall = {
+          providerName: tool.namespace,
+          toolName: tool.name,
+          toolId: tool.id,
+          inputSummary: summarizeToolValue(input),
+          status: "success",
+        };
+
+        try {
+          const output = await executeBackofficeRuntimeTool(tool, input, context);
+          call.resultSummary = summarizeToolValue(output);
+          toolCalls?.push(call);
+          return output;
+        } catch (error) {
+          call.status = "error";
+          call.error = error instanceof Error ? error.message : String(error);
+          toolCalls?.push(call);
+          throw error;
+        }
+      },
     };
   }
 

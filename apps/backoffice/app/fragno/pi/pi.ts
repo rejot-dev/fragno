@@ -30,10 +30,13 @@ import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
 import type { TelegramBashRuntime } from "../bash-runtime/telegram-bash-runtime";
 import type {
   BackofficeCodemodeEnv,
-  BackofficeCodemodeResult,
+  BackofficeCodemodeExecuteResult,
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
-import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
+import {
+  automationIdentityRuntimeTools,
+  type AutomationsBashRuntime,
+} from "../runtime-tools/families/automations";
 import {
   PI_MODEL_CATALOG,
   PI_PROVIDER_TO_MODEL_PROVIDER,
@@ -79,7 +82,7 @@ export type PiSessionFileSystemContext = {
 
 export type PiCodemodeRuntime = {
   env: BackofficeCodemodeEnv;
-  execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeResult>;
+  execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
 };
 
 export const bashParametersSchema = withSinclairSchema(
@@ -94,7 +97,7 @@ export const bashParametersSchema = withSinclairSchema(
   }),
 );
 
-export const runStateCodeParametersSchema = withSinclairSchema(
+export const execCodeModeParametersSchema = withSinclairSchema(
   Type.Object({
     code: Type.String({
       minLength: 1,
@@ -186,17 +189,37 @@ const createBashTool = (
     },
   });
 
-const createRunStateCodeTool = (
+const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
+  const lines: string[] = [];
+  const logs = result.logs ?? [];
+  lines.push(...logs);
+
+  if (result.error) {
+    lines.push(result.error);
+    return lines.join("\n");
+  }
+
+  if (result.result === undefined) {
+    return lines.join("\n");
+  }
+
+  lines.push(
+    typeof result.result === "string" ? result.result : (JSON.stringify(result.result) ?? ""),
+  );
+  return lines.join("\n");
+};
+
+const createExecCodeModeTool = (
   fs: MasterFileSystem,
-  sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
+  bashCommandContext: PiBashCommandContext | undefined,
 ): AgentTool =>
   defineTool({
-    name: "runStateCode",
-    label: "Run State Code",
+    name: "execCodeMode",
+    label: "Exec Code Mode",
     description:
       "Execute a standalone async arrow function in an isolated dynamic Worker with state.* filesystem tools.",
-    parameters: runStateCodeParametersSchema,
+    parameters: execCodeModeParametersSchema,
     execute: async (_toolCallId, params, signal) => {
       const { code } = params;
       if (signal?.aborted) {
@@ -204,28 +227,30 @@ const createRunStateCodeTool = (
       }
 
       if (!codemode) {
-        throw new Error("runStateCode is not configured for this Pi runtime.");
+        throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
       const result = await codemode.execute({
         code,
         fs,
         env: codemode.env,
+        tools: automationIdentityRuntimeTools,
+        context: {
+          runtimes: {
+            automations: bashCommandContext?.automations.runtime,
+          },
+        },
       });
 
+      const text = formatExecCodeModeText(result);
+
       if (result.error) {
-        throw new Error(result.error);
+        throw new Error(text);
       }
 
-      const logs = result.logs ?? [];
-      const outputLines = [...logs, `Result: ${JSON.stringify(result.result)}`];
-
       return {
-        content: [{ type: "text", text: outputLines.join("\n") }],
-        details: {
-          result: result.result,
-          logs,
-        },
+        content: [{ type: "text", text }],
+        details: result,
       };
     },
   });
@@ -282,9 +307,9 @@ export const createPiToolRegistry = ({
       sessionFileSystemContext.orgId,
     );
   },
-  runStateCode: async ({ session }) => {
+  execCodeMode: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createRunStateCodeTool(fileSystem, session.id, codemode);
+    return createExecCodeModeTool(fileSystem, codemode, bashCommandContext);
   },
 });
 
@@ -304,7 +329,7 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
 const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
   createPi()
     .withTool("bash", tools.bash)
-    .withTool("runStateCode", tools.runStateCode)
+    .withTool("execCodeMode", tools.execCodeMode)
     .withWorkflow(interactiveChatWorkflow)
     .logging({ enabled: true, level: "debug" });
 

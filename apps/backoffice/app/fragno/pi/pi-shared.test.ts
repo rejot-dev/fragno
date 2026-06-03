@@ -46,12 +46,16 @@ describe("pi-shared helpers", () => {
     expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
     expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
     expect(harnesses.find((harness) => harness.id === "bash")?.tools).toEqual(["bash"]);
-    expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual(["runStateCode"]);
+    expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual(["execCodeMode"]);
   });
 
   it("guides codemode harnesses toward state APIs and standalone dynamic worker code", () => {
     const codemodeHarness = resolvePiHarnesses([]).find((harness) => harness.id === "codemode");
     expect(codemodeHarness?.systemPrompt).toContain("state.*");
+    expect(codemodeHarness?.systemPrompt).toContain("readFile(path");
+    expect(codemodeHarness?.systemPrompt).toContain("readdir(path");
+    expect(codemodeHarness?.systemPrompt).toContain("find(path");
+    expect(codemodeHarness?.systemPrompt).toContain("planEdits(instructions");
     expect(codemodeHarness?.systemPrompt).toContain("camelCase");
     expect(codemodeHarness?.systemPrompt).toContain("import()");
     expect(codemodeHarness?.systemPrompt).toContain("standalone async arrow functions");

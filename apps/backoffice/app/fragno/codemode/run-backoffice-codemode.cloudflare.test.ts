@@ -82,6 +82,23 @@ describe("runBackofficeCodemode", () => {
       ["lookupBinding", { source: "telegram", key: "chat-123" }],
       ["bindActor", { source: "telegram", key: "chat-456", value: "user-55" }],
     ]);
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "automations",
+        toolName: "lookupBinding",
+        toolId: "automations.identity.lookup-binding",
+        inputSummary: '{"source":"telegram","key":"chat-123"}',
+        status: "success",
+        resultSummary: '{"source":"telegram","key":"chat-123","value":"user-55","status":"linked"}',
+      },
+      {
+        providerName: "automations",
+        toolName: "bindActor",
+        toolId: "automations.identity.bind-actor",
+        inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
+        status: "success",
+      },
+    ]);
   });
 
   test("does not expose runtime tools that were not provided", async () => {
@@ -128,6 +145,15 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.result).toBeUndefined();
     expect(result.error).toBeTruthy();
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "automations",
+        toolName: "bindActor",
+        inputSummary: '{"source":"telegram","key":"chat-123","value":""}',
+        status: "error",
+      },
+    ]);
+    expect(result.toolCalls[0]?.error).toContain("Too small");
     expect(calls).toEqual([]);
   });
 
